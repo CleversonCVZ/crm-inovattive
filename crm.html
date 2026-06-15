@@ -187,6 +187,15 @@
   .gear-menu button:hover{background:#f1f3f5}
   .gear-menu hr{border:none;border-top:1px solid var(--border);margin:5px 8px}
 
+  /* ===== Menu do usuário (nome no canto superior direito) ===== */
+  .user-wrap{position:relative}
+  .user-btn{border:none;background:none;font-size:13px;color:var(--muted);white-space:nowrap;cursor:pointer;padding:4px 8px;border-radius:8px;font-family:inherit}
+  .user-btn:hover{background:#e9ecef}
+  .user-menu{display:none;position:absolute;right:0;top:36px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:170px;z-index:60;padding:6px}
+  .user-menu.open{display:block}
+  .user-menu button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--text);cursor:pointer;border-radius:7px}
+  .user-menu button:hover{background:#f1f3f5}
+
   /* ===== Login ===== */
   .login-bg{position:fixed;inset:0;background:linear-gradient(135deg,#1d5b86,#198754);display:flex;align-items:center;justify-content:center;z-index:100}
   .login-box{background:#fff;border-radius:14px;padding:30px 28px;width:360px;max-width:92vw;box-shadow:0 10px 40px rgba(0,0,0,.35)}
@@ -215,16 +224,19 @@
   <div class="gear-wrap" id="gear-wrap" style="display:none">
     <button class="gear-btn" title="Configurações" onclick="toggleGearMenu(event)">⚙️</button>
     <div class="gear-menu" id="gear-menu">
-      <button onclick="abrirMeuUsuario()">👤 Meu usuário</button>
       <button id="gm-sistema" onclick="irParaView('usuarios')">🛠️ Cadastro de usuários</button>
       <button id="gm-grupos" onclick="irParaView('grupos')">🔐 Grupos de acesso</button>
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
-      <hr>
+    </div>
+  </div>
+  <div class="user-wrap" id="user-wrap" style="display:none">
+    <button class="user-btn" id="user-info" onclick="toggleUserMenu(event)"></button>
+    <div class="user-menu" id="user-menu">
+      <button onclick="abrirMeuUsuario()">👤 Meus dados</button>
       <button onclick="logout()">🚪 Sair</button>
     </div>
   </div>
-  <div class="user" id="user-info"></div>
 </header>
 
 <div class="corpo">
@@ -1039,6 +1051,7 @@ async function logout(){
   usuarioAtual=null;
   document.getElementById('login-bg').style.display='flex';
   document.getElementById('gear-wrap').style.display='none';
+  document.getElementById('user-wrap').style.display='none';
   document.getElementById('user-info').textContent='';
   document.getElementById('lg-senha').value='';
   document.getElementById('lg-erro').textContent='';
@@ -1048,6 +1061,7 @@ function iniciarApp(u){
   usuarioAtual = u;
   document.getElementById('login-bg').style.display='none';
   document.getElementById('gear-wrap').style.display='';
+  document.getElementById('user-wrap').style.display='';
   document.getElementById('user-info').textContent = `${u.nome} · ${u.funcao||''}${ehAdmin(u)?' (Admin)':''}`;
   atualizarMarca();
   aplicarPermissoes();
@@ -1061,6 +1075,16 @@ function toggleGearMenu(e){
 }
 document.addEventListener('click', ()=>{
   const m=document.getElementById('gear-menu');
+  if(m) m.classList.remove('open');
+});
+
+/* ===== Menu do usuário (nome no canto superior direito) ===== */
+function toggleUserMenu(e){
+  e.stopPropagation();
+  document.getElementById('user-menu').classList.toggle('open');
+}
+document.addEventListener('click', ()=>{
+  const m=document.getElementById('user-menu');
   if(m) m.classList.remove('open');
 });
 
@@ -1147,7 +1171,7 @@ function atualizarMarca(){
 function abrirMeuUsuario(){
   const u=usuarioAtual;
   abrirModal(`
-    <h3>Meu Usuário</h3>
+    <h3>Meus dados</h3>
     <label>Nome</label><input id="mu-nome" value="${u.nome.replace(/"/g,'&quot;')}">
     <label>Login</label><input id="mu-login" value="${u.login}" autocomplete="off">
     <label>Nova senha <small>(deixe em branco para manter a atual)</small></label>
@@ -2787,6 +2811,7 @@ sb.auth.onAuthStateChange((evento)=>{
     usuarioAtual=null;
     document.getElementById('login-bg').style.display='flex';
     document.getElementById('gear-wrap').style.display='none';
+    document.getElementById('user-wrap').style.display='none';
     document.getElementById('user-info').textContent='';
   }
 });
