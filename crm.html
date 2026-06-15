@@ -683,7 +683,8 @@ function ultimoHist(c){ return (c.historico&&c.historico[0]) ? c.historico[0].te
 function registrarHist(c, texto){ if(texto && texto.trim()) c.historico.unshift({data:agoraISO(), texto:texto.trim()}); }
 function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
 function cardAtivo(c){ return !c.perdido && !c.concluido; }
-function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); syncConfigSupabase(); }
+function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); syncConfigSupabase(); syncDadosSupabase(); }
+function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:cidade||'',uf:''}; }
 
 /* Busca as entidades de configuração no Supabase (após login) e
    sobrescreve as cópias locais (db.fases, db.fasesProposta, db.origens,
@@ -719,16 +720,56 @@ async function carregarConfigSupabase(){
   }catch(e){ console.error('Falha ao carregar configurações do Supabase:', e); }
 }
 
+/* Busca clientes, obras, cards e o histórico dos cards no Supabase (após login)
+   e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
+async function carregarDadosSupabase(){
+  try{
+    const [clientes, obras, cards, historico] = await Promise.all([
+      sb.from('clientes').select('*').order('id'),
+      sb.from('obras').select('*').order('id'),
+      sb.from('cards').select('*').order('id'),
+      sb.from('card_historico').select('*').order('id', {ascending:false})
+    ]);
+    if(clientes.data)
+      db.clientes = clientes.data.map(c=>({
+        id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'',
+        endereco: (c.endereco && Object.keys(c.endereco).length) ? c.endereco : enderecoVazio(c.cidade)
+      }));
+    if(obras.data)
+      db.obras = obras.data.map(o=>({
+        id:o.id, clienteId:o.cliente_id, nome:o.nome,
+        endereco: (o.endereco && Object.keys(o.endereco).length) ? o.endereco : enderecoVazio('')
+      }));
+    if(cards.data){
+      db.cards = cards.data.map(c=>({
+        id:c.id, num:c.num, clienteId:c.cliente_id, obraId:c.obra_id, origemId:c.origem_id,
+        faseId:c.fase_id, responsavel:c.responsavel||'', agenda: c.agenda ? c.agenda.slice(0,10) : '',
+        valor:Number(c.valor)||0, perdido:!!c.perdido, concluido:!!c.concluido, historico:[]
+      }));
+      if(historico.data){
+        historico.data.forEach(h=>{
+          const c = db.cards.find(x=>x.id===h.card_id);
+          if(c) c.historico.push({data: h.data ? h.data.slice(0,16) : null, texto:h.texto});
+        });
+      }
+    }
+    save();
+  }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
+}
+
 /* Envia uma lista local (db.fases, db.grupos, etc.) para a tabela do Supabase:
    faz upsert de todas as linhas e remove no banco as que não existem mais localmente. */
 async function sincronizarTabela(tabela, linhas, mapear){
   try{
     const rows = linhas.map(mapear);
-    if(!rows.length) return;
-    const {error:errUp} = await sb.from(tabela).upsert(rows);
-    if(errUp){ console.error(`Erro ao sincronizar ${tabela}:`, errUp); return; }
+    if(rows.length){
+      const {error:errUp} = await sb.from(tabela).upsert(rows);
+      if(errUp){ console.error(`Erro ao sincronizar ${tabela}:`, errUp); return; }
+    }
     const ids = rows.map(r=>r.id);
-    const {error:errDel} = await sb.from(tabela).delete().not('id','in', `(${ids.join(',')})`);
+    const {error:errDel} = ids.length
+      ? await sb.from(tabela).delete().not('id','in', `(${ids.join(',')})`)
+      : await sb.from(tabela).delete().neq('id', -1); // lista local vazia: remove tudo
     if(errDel) console.error(`Erro ao limpar ${tabela}:`, errDel);
   }catch(e){ console.error(`Falha ao sincronizar ${tabela}:`, e); }
 }
@@ -753,6 +794,52 @@ function syncConfigSupabase(){
       endereco: e.endereco || {}
     }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
   }, 800);
+}
+
+/* Sincroniza clientes, obras, cards e o histórico dos cards com o Supabase
+   (em segundo plano, com pequeno atraso para agrupar várias edições seguidas). */
+let _syncDadosTimer=null;
+function syncDadosSupabase(){
+  if(!usuarioAtual) return;
+  clearTimeout(_syncDadosTimer);
+  _syncDadosTimer = setTimeout(async ()=>{
+    await sincronizarTabela('clientes', db.clientes, c=>({
+      id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'', endereco:c.endereco||{}
+    }));
+    await sincronizarTabela('obras', db.obras, o=>({
+      id:o.id, cliente_id:o.clienteId, nome:o.nome, endereco:o.endereco||{}
+    }));
+    await sincronizarTabela('cards', db.cards, c=>({
+      id:c.id, num:c.num, cliente_id:c.clienteId, obra_id:c.obraId||null, origem_id:c.origemId||null,
+      fase_id:c.faseId, responsavel:c.responsavel||'', agenda:c.agenda||null,
+      valor:c.valor||0, perdido:!!c.perdido, concluido:!!c.concluido
+    }));
+    await sincronizarHistoricos();
+  }, 800);
+}
+
+/* Substitui no Supabase o histórico de contatos de cada card pelo array
+   atual (db.cards[].historico) e remove o histórico de cards excluídos. */
+async function sincronizarHistoricos(){
+  try{
+    const cardIds = db.cards.map(c=>c.id);
+    if(cardIds.length){
+      const {error:errOrf} = await sb.from('card_historico').delete().not('card_id','in', `(${cardIds.join(',')})`);
+      if(errOrf) console.error('Erro ao limpar card_historico de cards excluídos:', errOrf);
+      const {error:errDel} = await sb.from('card_historico').delete().in('card_id', cardIds);
+      if(errDel){ console.error('Erro ao limpar card_historico:', errDel); return; }
+    } else {
+      const {error:errAll} = await sb.from('card_historico').delete().neq('id', -1);
+      if(errAll) console.error('Erro ao limpar card_historico:', errAll);
+      return;
+    }
+    const rows=[];
+    db.cards.forEach(c=>(c.historico||[]).forEach(h=>rows.push({card_id:c.id, data:h.data||null, texto:h.texto})));
+    if(rows.length){
+      const {error:errIns} = await sb.from('card_historico').insert(rows);
+      if(errIns) console.error('Erro ao gravar card_historico:', errIns);
+    }
+  }catch(e){ console.error('Falha ao sincronizar card_historico:', e); }
 }
 function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
 function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
@@ -1035,6 +1122,7 @@ async function entrarComSessao(erro){
   if(!session) return false;
   await carregarConfigSupabase();
   await carregarUsuariosSupabase();
+  await carregarDadosSupabase();
   const u = db.usuarios.find(x=>x.authId===session.user.id);
   if(!u || u.ativo===false){
     if(erro) erro.textContent = u ? 'Usuário desativado. Fale com o administrador.' : 'Usuário autenticado, mas não cadastrado no CRM. Fale com o administrador.';
