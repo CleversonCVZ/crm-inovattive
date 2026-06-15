@@ -439,20 +439,25 @@
 <div class="login-bg" id="login-bg" style="display:none">
   <div class="login-box">
     <div class="logo" style="font-size:26px;text-align:center;margin-bottom:4px">CRM<span>+Obras</span></div>
-    <p style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:14px">Acesse com seu usuário e senha</p>
-    <label>Login</label>
-    <input id="lg-login" autocomplete="username">
+    <p style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:14px">Acesse com seu e-mail e senha</p>
+    <label>E-mail</label>
+    <input id="lg-login" type="email" autocomplete="username">
     <label>Senha</label>
     <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
-    <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
     <div id="lg-erro" class="lg-erro"></div>
-    <button class="btn primary" style="width:100%;margin-top:12px;padding:10px" onclick="fazerLogin()">Entrar</button>
+    <button class="btn primary" id="lg-btn" style="width:100%;margin-top:12px;padding:10px" onclick="fazerLogin()">Entrar</button>
   </div>
 </div>
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
+/* ================= SUPABASE ================= */
+const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 /* ================= DADOS ================= */
 const hoje = new Date(); hoje.setHours(0,0,0,0);
 function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
@@ -639,7 +644,77 @@ function ultimoHist(c){ return (c.historico&&c.historico[0]) ? c.historico[0].te
 function registrarHist(c, texto){ if(texto && texto.trim()) c.historico.unshift({data:agoraISO(), texto:texto.trim()}); }
 function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
 function cardAtivo(c){ return !c.perdido && !c.concluido; }
-function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); }
+function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); syncConfigSupabase(); }
+
+/* Busca as entidades de configuração no Supabase (após login) e
+   sobrescreve as cópias locais (db.fases, db.fasesProposta, db.origens,
+   db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
+async function carregarConfigSupabase(){
+  try{
+    const [fasesCrm, fasesProp, origens, funcoes, grupos, empresa] = await Promise.all([
+      sb.from('fases_crm').select('*').order('ordem'),
+      sb.from('fases_proposta').select('*').order('ordem'),
+      sb.from('origens').select('*').order('id'),
+      sb.from('funcoes').select('*').order('id'),
+      sb.from('grupos').select('*').order('id'),
+      sb.from('empresa').select('*').limit(1).maybeSingle()
+    ]);
+    if(fasesCrm.data && fasesCrm.data.length)
+      db.fases = fasesCrm.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(fasesProp.data && fasesProp.data.length)
+      db.fasesProposta = fasesProp.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(origens.data && origens.data.length)
+      db.origens = origens.data.map(o=>({id:o.id, nome:o.nome}));
+    if(funcoes.data && funcoes.data.length)
+      db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
+    if(grupos.data && grupos.data.length)
+      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[]}));
+    if(empresa.data){
+      db.empresa = {
+        id:empresa.data.id, logo:empresa.data.logo||'', razao:empresa.data.razao||'', fantasia:empresa.data.fantasia||'',
+        cnpj:empresa.data.cnpj||'', ie:empresa.data.ie||'', tel:empresa.data.tel||'', email:empresa.data.email||'',
+        site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''}
+      };
+    }
+    save();
+  }catch(e){ console.error('Falha ao carregar configurações do Supabase:', e); }
+}
+
+/* Envia uma lista local (db.fases, db.grupos, etc.) para a tabela do Supabase:
+   faz upsert de todas as linhas e remove no banco as que não existem mais localmente. */
+async function sincronizarTabela(tabela, linhas, mapear){
+  try{
+    const rows = linhas.map(mapear);
+    if(!rows.length) return;
+    const {error:errUp} = await sb.from(tabela).upsert(rows);
+    if(errUp){ console.error(`Erro ao sincronizar ${tabela}:`, errUp); return; }
+    const ids = rows.map(r=>r.id);
+    const {error:errDel} = await sb.from(tabela).delete().not('id','in', `(${ids.join(',')})`);
+    if(errDel) console.error(`Erro ao limpar ${tabela}:`, errDel);
+  }catch(e){ console.error(`Falha ao sincronizar ${tabela}:`, e); }
+}
+
+/* Sincroniza as entidades de configuração com o Supabase (em segundo plano,
+   com pequeno atraso para agrupar várias edições seguidas). Só roda com
+   usuário logado, pois sem sessão o RLS bloqueia a escrita. */
+let _syncConfigTimer=null;
+function syncConfigSupabase(){
+  if(!usuarioAtual) return;
+  clearTimeout(_syncConfigTimer);
+  _syncConfigTimer = setTimeout(()=>{
+    sincronizarTabela('fases_crm', db.fases, f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('fases_proposta', db.fasesProposta, f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
+    sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[]}));
+    const e = db.empresa||{};
+    sb.from('empresa').upsert({
+      id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
+      tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
+      endereco: e.endereco || {}
+    }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
+  }, 800);
+}
 function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
 function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
 function obraDe(c){ return c.obraId ? (db.obras.find(o=>o.id===c.obraId)||null) : null; }
@@ -887,37 +962,53 @@ function textColor(hex){
 }
 
 /* ================= LOGIN / SESSÃO ================= */
-function sessaoGravada(){
-  try{ return JSON.parse(sessionStorage.getItem('crmSessao') || localStorage.getItem('crmSessao') || 'null'); }catch(e){ return null; }
+/* ===== Login via Supabase Auth =====
+   O "login" do usuário no CRM agora é o e-mail cadastrado no Supabase Auth.
+   A sessão (token) é gerenciada automaticamente pelo supabase-js (localStorage),
+   então um refresh da página mantém o usuário conectado. */
+async function carregarUsuarioLogado(authId){
+  const {data, error} = await sb.from('usuarios').select('*').eq('auth_id', authId).maybeSingle();
+  if(error || !data) return null;
+  return {
+    id:data.id, nome:data.nome, login:data.login, funcao:data.funcao,
+    grupoId:data.grupo_id, diasLogado:data.dias_logado, ativo:data.ativo,
+    authId:data.auth_id
+  };
 }
-function encerrarSessao(){ sessionStorage.removeItem('crmSessao'); localStorage.removeItem('crmSessao'); }
 
-function usuarioDaSessao(){
-  const s = sessaoGravada();
-  if(!s) return null;
-  if(s.expira && Date.now() > s.expira){ encerrarSessao(); return null; }
-  return db.usuarios.find(u=>u.id===s.usuarioId && u.ativo!==false) || null;
-}
-
-function fazerLogin(){
-  const lg = document.getElementById('lg-login').value.trim();
-  const sn = document.getElementById('lg-senha').value;
+async function fazerLogin(){
+  const email = document.getElementById('lg-login').value.trim();
+  const senha = document.getElementById('lg-senha').value;
   const erro = document.getElementById('lg-erro');
-  const u = db.usuarios.find(x=>x.login.toLowerCase()===lg.toLowerCase() && x.senha===sn);
-  if(!u){ erro.textContent='Login ou senha incorretos.'; return; }
-  if(u.ativo===false){ erro.textContent='Usuário desativado. Fale com o administrador.'; return; }
-  const sessao = {usuarioId:u.id};
-  if(document.getElementById('lg-perm').checked){
-    sessao.expira = Date.now() + (u.diasLogado||7)*24*60*60*1000;
-    localStorage.setItem('crmSessao', JSON.stringify(sessao));
-  } else {
-    sessionStorage.setItem('crmSessao', JSON.stringify(sessao));
-  }
-  iniciarApp(u);
+  const btn = document.getElementById('lg-btn');
+  erro.textContent='';
+  btn.disabled=true; btn.textContent='Entrando...';
+  const {error:authErr} = await sb.auth.signInWithPassword({email, password:senha});
+  btn.disabled=false; btn.textContent='Entrar';
+  if(authErr){ erro.textContent='E-mail ou senha incorretos.'; return; }
+  await entrarComSessao(erro);
 }
 
-function logout(){
-  encerrarSessao();
+/* chamado após login bem-sucedido OU ao reabrir a página com sessão válida */
+async function entrarComSessao(erro){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session) return false;
+  await carregarConfigSupabase();
+  const u = await carregarUsuarioLogado(session.user.id);
+  if(!u || u.ativo===false){
+    if(erro) erro.textContent = u ? 'Usuário desativado. Fale com o administrador.' : 'Usuário autenticado, mas não cadastrado no CRM. Fale com o administrador.';
+    await sb.auth.signOut();
+    return false;
+  }
+  const idx = db.usuarios.findIndex(x=>x.id===u.id);
+  if(idx>=0) db.usuarios[idx] = {...db.usuarios[idx], ...u};
+  else db.usuarios.push(u);
+  iniciarApp(u);
+  return true;
+}
+
+async function logout(){
+  await sb.auth.signOut();
   usuarioAtual=null;
   document.getElementById('login-bg').style.display='flex';
   document.getElementById('gear-wrap').style.display='none';
@@ -2603,9 +2694,19 @@ function excluirGrupo(id){
 function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); }
 load();
 atualizarMarca();
-const u0 = usuarioDaSessao();
-if(u0) iniciarApp(u0);
-else document.getElementById('login-bg').style.display='flex';
+(async function(){
+  const ok = await entrarComSessao();
+  if(!ok) document.getElementById('login-bg').style.display='flex';
+})();
+/* se a sessão expirar/for invalidada em outra aba, volta para a tela de login */
+sb.auth.onAuthStateChange((evento)=>{
+  if(evento==='SIGNED_OUT' && usuarioAtual){
+    usuarioAtual=null;
+    document.getElementById('login-bg').style.display='flex';
+    document.getElementById('gear-wrap').style.display='none';
+    document.getElementById('user-info').textContent='';
+  }
+});
 </script>
 </body>
 </html>
