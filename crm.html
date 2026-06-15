@@ -1176,6 +1176,31 @@ async function salvarMeuUsuario(){
   if(senha) alert('Senha atualizada com sucesso.');
 }
 
+/* ===== Definir senha (primeiro acesso via convite, ou recuperação) ===== */
+function abrirDefinirSenha(){
+  abrirModal(`
+    <h3>Defina sua senha</h3>
+    <p style="font-size:13px;color:var(--muted)">Bem-vindo(a)! Para acessar o sistema, defina uma senha.</p>
+    <label>Nova senha</label>
+    <input id="ds-senha" type="password" autocomplete="new-password">
+    <label>Confirmar senha</label>
+    <input id="ds-senha2" type="password" autocomplete="new-password">
+    <div id="ds-erro" class="lg-erro"></div>
+    <div class="actions">
+      <button class="btn primary" onclick="salvarDefinirSenha()">Salvar</button>
+    </div>`);
+}
+async function salvarDefinirSenha(){
+  const s1=document.getElementById('ds-senha').value;
+  const s2=document.getElementById('ds-senha2').value;
+  const erro=document.getElementById('ds-erro');
+  if(!s1 || s1.length<6){ erro.textContent='A senha deve ter pelo menos 6 caracteres.'; return; }
+  if(s1!==s2){ erro.textContent='As senhas não coincidem.'; return; }
+  const {error} = await sb.auth.updateUser({password:s1});
+  if(error){ erro.textContent='Erro: '+error.message; return; }
+  fecharModal();
+}
+
 /* ===== Funções na empresa ===== */
 function renderFuncoes(){
   const tb=document.getElementById('funcoes-tbody'); tb.innerHTML='';
@@ -2746,8 +2771,15 @@ function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsu
 load();
 atualizarMarca();
 (async function(){
+  // Links de convite/recuperação de senha trazem o token no #hash da URL
+  const hashParams = new URLSearchParams(window.location.hash.slice(1));
+  const tipoLink = hashParams.get('type'); // 'invite' ou 'recovery'
   const ok = await entrarComSessao();
   if(!ok) document.getElementById('login-bg').style.display='flex';
+  else if(tipoLink==='invite' || tipoLink==='recovery'){
+    history.replaceState(null,'',window.location.pathname+window.location.search);
+    abrirDefinirSenha();
+  }
 })();
 /* se a sessão expirar/for invalidada em outra aba, volta para a tela de login */
 sb.auth.onAuthStateChange((evento)=>{
