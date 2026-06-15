@@ -470,6 +470,21 @@ const authStorage = {
 };
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ storage:authStorage } });
 
+/* Edge Function admin-usuarios: criação/edição/exclusão de usuários (login+senha+e-mail) */
+const ADMIN_USUARIOS_URL = `${SUPABASE_URL}/functions/v1/admin-usuarios`;
+async function chamarAdminUsuarios(payload){
+  try{
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session) return {error:'Sessão expirada. Faça login novamente.'};
+    const resp = await fetch(ADMIN_USUARIOS_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'Authorization':`Bearer ${session.access_token}`},
+      body: JSON.stringify(payload)
+    });
+    return await resp.json();
+  }catch(e){ return {error:'Falha de conexão: '+e.message}; }
+}
+
 /* ================= DADOS ================= */
 const hoje = new Date(); hoje.setHours(0,0,0,0);
 function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
@@ -978,14 +993,13 @@ function textColor(hex){
    O "login" do usuário no CRM agora é o e-mail cadastrado no Supabase Auth.
    A sessão (token) é gerenciada automaticamente pelo supabase-js (localStorage),
    então um refresh da página mantém o usuário conectado. */
-async function carregarUsuarioLogado(authId){
-  const {data, error} = await sb.from('usuarios').select('*').eq('auth_id', authId).maybeSingle();
-  if(error || !data) return null;
-  return {
-    id:data.id, nome:data.nome, login:data.login, funcao:data.funcao,
-    grupoId:data.grupo_id, diasLogado:data.dias_logado, ativo:data.ativo,
-    authId:data.auth_id
-  };
+async function carregarUsuariosSupabase(){
+  const {data, error} = await sb.from('usuarios').select('*').order('id');
+  if(error || !data) return;
+  db.usuarios = data.map(u=>({
+    id:u.id, nome:u.nome, login:u.login, email:u.email, funcao:u.funcao,
+    grupoId:u.grupo_id, diasLogado:u.dias_logado, ativo:u.ativo, authId:u.auth_id
+  }));
 }
 
 async function fazerLogin(){
@@ -1008,15 +1022,13 @@ async function entrarComSessao(erro){
   const {data:{session}} = await sb.auth.getSession();
   if(!session) return false;
   await carregarConfigSupabase();
-  const u = await carregarUsuarioLogado(session.user.id);
+  await carregarUsuariosSupabase();
+  const u = db.usuarios.find(x=>x.authId===session.user.id);
   if(!u || u.ativo===false){
     if(erro) erro.textContent = u ? 'Usuário desativado. Fale com o administrador.' : 'Usuário autenticado, mas não cadastrado no CRM. Fale com o administrador.';
     await sb.auth.signOut();
     return false;
   }
-  const idx = db.usuarios.findIndex(x=>x.id===u.id);
-  if(idx>=0) db.usuarios[idx] = {...db.usuarios[idx], ...u};
-  else db.usuarios.push(u);
   iniciarApp(u);
   return true;
 }
@@ -1146,16 +1158,22 @@ function abrirMeuUsuario(){
       <button class="btn primary" onclick="salvarMeuUsuario()">Salvar</button>
     </div>`);
 }
-function salvarMeuUsuario(){
+async function salvarMeuUsuario(){
   const nome=document.getElementById('mu-nome').value.trim();
   const login=document.getElementById('mu-login').value.trim();
   const senha=document.getElementById('mu-senha').value;
   if(!nome || !login){ alert('Informe nome e login.'); return; }
   if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==usuarioAtual.id)){ alert('Já existe um usuário com esse login.'); return; }
+  if(senha){
+    const {error} = await sb.auth.updateUser({password:senha});
+    if(error){ alert('Erro ao atualizar senha: '+error.message); return; }
+  }
   const u=db.usuarios.find(x=>x.id===usuarioAtual.id);
   u.nome=nome; u.login=login;
-  if(senha) u.senha=senha;
+  const {error:erroUpd} = await sb.from('usuarios').update({nome, login}).eq('id', u.id);
+  if(erroUpd){ alert('Erro ao salvar dados: '+erroUpd.message); return; }
   save(); fecharModal(); iniciarApp(u);
+  if(senha) alert('Senha atualizada com sucesso.');
 }
 
 /* ===== Funções na empresa ===== */
@@ -2553,9 +2571,13 @@ function renderUsuarios(){
 function formUsuario(u){
   return `
     <label>Nome</label><input id="u-nome" value="${u?u.nome.replace(/"/g,'&quot;'):''}">
+    <label>E-mail (acesso ao sistema)</label>
+    <input id="u-email" type="email" value="${u?(u.email||''):''}" autocomplete="off">
     <label>Login</label><input id="u-login" value="${u?u.login:''}" autocomplete="off">
-    <label>Senha ${u?'<small>(deixe em branco para manter a atual)</small>':''}</label>
-    <input id="u-senha" type="password" autocomplete="new-password">
+    ${u
+      ? `<label>Nova senha <small>(deixe em branco para manter a atual)</small></label>
+         <input id="u-senha" type="password" autocomplete="new-password">`
+      : `<p style="font-size:12.5px;color:var(--muted);margin:4px 0 0">Um e-mail de convite será enviado para o usuário definir a própria senha.</p>`}
     <label>Grupo de acesso</label>
     <select id="u-grupo">${db.grupos.map(g=>`<option value="${g.id}" ${u&&u.grupoId===g.id?'selected':''}>${g.nome}${g.admin?' (acesso total)':''}</option>`).join('')}</select>
     <label>Função na empresa</label>
@@ -2563,14 +2585,15 @@ function formUsuario(u){
     <datalist id="funcoes-list">${db.funcoes.map(f=>`<option value="${f.nome}">`).join('')}</datalist>
     <label>Permanecer logado por (dias)</label>
     <input id="u-dias" type="number" min="1" max="365" value="${u?(u.diasLogado||7):7}">
-    <label class="perm-item" style="margin-top:12px"><input type="checkbox" id="u-ativo" ${!u||u.ativo!==false?'checked':''}> Usuário ativo</label>`;
+    <label class="perm-item" style="margin-top:12px"><input type="checkbox" id="u-ativo" ${!u||u.ativo!==false?'checked':''}> Usuário ativo</label>
+    <div id="u-erro" class="lg-erro"></div>`;
 }
 
 function abrirNovoUsuario(){
   abrirModal(`<h3>Novo Usuário</h3>${formUsuario(null)}
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarUsuario()">Salvar</button>
+      <button class="btn primary" id="u-btn-salvar" onclick="salvarUsuario()">Salvar</button>
     </div>`);
 }
 
@@ -2580,50 +2603,63 @@ function abrirEditarUsuario(id){
     <div class="actions">
       <button class="btn danger" onclick="excluirUsuario(${u.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarUsuario(${u.id})">Salvar</button>
+      <button class="btn primary" id="u-btn-salvar" onclick="salvarUsuario(${u.id})">Salvar</button>
     </div>`);
 }
 
-function salvarUsuario(id){
+async function salvarUsuario(id){
   const nome=document.getElementById('u-nome').value.trim();
+  const email=document.getElementById('u-email').value.trim();
   const login=document.getElementById('u-login').value.trim();
-  const senha=document.getElementById('u-senha').value;
+  const senhaEl=document.getElementById('u-senha');
+  const senha=senhaEl?senhaEl.value:'';
   const grupoId=+document.getElementById('u-grupo').value;
   const ativo=document.getElementById('u-ativo').checked;
-  if(!nome || !login){ alert('Informe nome e login.'); return; }
-  if(!id && !senha){ alert('Informe a senha do novo usuário.'); return; }
-  if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==id)){ alert('Já existe um usuário com esse login.'); return; }
+  const erroEl=document.getElementById('u-erro');
+  const btn=document.getElementById('u-btn-salvar');
+  erroEl.textContent='';
+  if(!nome || !login || !email){ erroEl.textContent='Informe nome, login e e-mail.'; return; }
+  if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==id)){ erroEl.textContent='Já existe um usuário com esse login.'; return; }
+  if(db.usuarios.some(x=>(x.email||'').toLowerCase()===email.toLowerCase() && x.id!==id)){ erroEl.textContent='Já existe um usuário com esse e-mail.'; return; }
   // proteção: não deixar o sistema sem nenhum usuário ativo no grupo Administradores
   const gNovo = db.grupos.find(g=>g.id===grupoId);
   const outrosAdmins = db.usuarios.some(x=>x.id!==id && ehAdmin(x) && x.ativo!==false);
   if(id && (!gNovo.admin || !ativo) && !outrosAdmins && ehAdmin(db.usuarios.find(x=>x.id===id))){
-    alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
+    erroEl.textContent='Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'; return;
   }
-  const dados={
-    nome, login, grupoId,
-    funcao:document.getElementById('u-funcao').value.trim(),
-    diasLogado:Math.max(1, +document.getElementById('u-dias').value||7),
+  const payload={
+    acao: id?'atualizar':'criar', id, email, nome, login,
+    funcao: document.getElementById('u-funcao').value.trim(),
+    grupoId, diasLogado: Math.max(1, +document.getElementById('u-dias').value||7),
     ativo
   };
-  if(id){
-    const u=db.usuarios.find(x=>x.id===id);
-    Object.assign(u, dados);
-    if(senha) u.senha=senha;
-    if(usuarioAtual && usuarioAtual.id===id) iniciarApp(u); // atualiza cabeçalho/permissões se editou a si mesmo
-  } else {
-    db.usuarios.push(Object.assign({id:nextId(db.usuarios), senha}, dados));
+  if(senha) payload.senha=senha;
+
+  btn.disabled=true; btn.textContent='Salvando...';
+  const res = await chamarAdminUsuarios(payload);
+  btn.disabled=false; btn.textContent='Salvar';
+
+  if(res.error){ erroEl.textContent=res.error; return; }
+
+  await carregarUsuariosSupabase();
+  if(usuarioAtual && id===usuarioAtual.id){
+    const me=db.usuarios.find(x=>x.id===usuarioAtual.id);
+    if(me) iniciarApp(me);
   }
   save(); fecharModal(); renderAll();
+  if(!id) alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
 }
 
-function excluirUsuario(id){
+async function excluirUsuario(id){
   if(usuarioAtual && usuarioAtual.id===id){ alert('Você não pode excluir o usuário com o qual está logado.'); return; }
   const u=db.usuarios.find(x=>x.id===id);
   if(ehAdmin(u) && !db.usuarios.some(x=>x.id!==id && ehAdmin(x) && x.ativo!==false)){
     alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
   }
   if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
-  db.usuarios=db.usuarios.filter(x=>x.id!==id);
+  const res = await chamarAdminUsuarios({acao:'excluir', id});
+  if(res.error){ alert(res.error); return; }
+  await carregarUsuariosSupabase();
   save(); fecharModal(); renderAll();
 }
 
