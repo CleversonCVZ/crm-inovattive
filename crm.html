@@ -1223,6 +1223,7 @@ async function salvarDefinirSenha(){
   const {error} = await sb.auth.updateUser({password:s1});
   if(error){ erro.textContent='Erro: '+error.message; return; }
   fecharModal();
+  alert(`Senha cadastrada com sucesso!\nVocê já está conectado como ${usuarioAtual.nome}.`);
 }
 
 /* ===== Funções na empresa ===== */
