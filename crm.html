@@ -191,7 +191,7 @@
   .login-bg{position:fixed;inset:0;background:linear-gradient(135deg,#1d5b86,#198754);display:flex;align-items:center;justify-content:center;z-index:100}
   .login-box{background:#fff;border-radius:14px;padding:30px 28px;width:360px;max-width:92vw;box-shadow:0 10px 40px rgba(0,0,0,.35)}
   .login-box label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 3px;text-transform:uppercase}
-  .login-box input[type=text],.login-box input:not([type]),.login-box input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px}
+  .login-box input[type=text],.login-box input:not([type]),.login-box input[type=password],.login-box input[type=email]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px}
   .login-box .lembrar{display:flex;align-items:center;gap:8px;text-transform:none;font-size:13.5px;color:var(--text);margin-top:14px;cursor:pointer}
   .login-box .lembrar input{width:auto;accent-color:var(--green)}
   .lg-erro{color:var(--red);font-size:13px;font-weight:600;margin-top:8px;min-height:18px}
@@ -444,6 +444,7 @@
     <input id="lg-login" type="email" autocomplete="username">
     <label>Senha</label>
     <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
     <div id="lg-erro" class="lg-erro"></div>
     <button class="btn primary" id="lg-btn" style="width:100%;margin-top:12px;padding:10px" onclick="fazerLogin()">Entrar</button>
   </div>
@@ -456,7 +457,18 @@
 /* ================= SUPABASE ================= */
 const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+/* Armazenamento da sessão: se "Permanecer conectado" estiver marcado (crmLembrar=1),
+   a sessão fica no localStorage (sobrevive a fechar o navegador); senão, fica só
+   no sessionStorage (some ao fechar a aba/navegador). */
+const authStorage = {
+  getItem:(k)=> localStorage.getItem(k) ?? sessionStorage.getItem(k),
+  setItem:(k,v)=>{
+    if(localStorage.getItem('crmLembrar')==='1'){ localStorage.setItem(k,v); sessionStorage.removeItem(k); }
+    else { sessionStorage.setItem(k,v); localStorage.removeItem(k); }
+  },
+  removeItem:(k)=>{ localStorage.removeItem(k); sessionStorage.removeItem(k); }
+};
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ storage:authStorage } });
 
 /* ================= DADOS ================= */
 const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -983,6 +995,8 @@ async function fazerLogin(){
   const btn = document.getElementById('lg-btn');
   erro.textContent='';
   btn.disabled=true; btn.textContent='Entrando...';
+  if(document.getElementById('lg-perm').checked) localStorage.setItem('crmLembrar','1');
+  else localStorage.removeItem('crmLembrar');
   const {error:authErr} = await sb.auth.signInWithPassword({email, password:senha});
   btn.disabled=false; btn.textContent='Entrar';
   if(authErr){ erro.textContent='E-mail ou senha incorretos.'; return; }
@@ -1009,6 +1023,7 @@ async function entrarComSessao(erro){
 
 async function logout(){
   await sb.auth.signOut();
+  localStorage.removeItem('crmLembrar');
   usuarioAtual=null;
   document.getElementById('login-bg').style.display='flex';
   document.getElementById('gear-wrap').style.display='none';
