@@ -1,0 +1,2611 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM — Painel de Vendas</title>
+<style>
+  :root{
+    --bg:#f1f3f5; --card:#fff; --border:#dee2e6; --text:#212529; --muted:#6c757d;
+    --green:#198754; --blue-dark:#1d5b86; --red:#dc3545; --red-soft:#f8d7da;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  body{background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  header{background:#fff;border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+  .logo{font-weight:800;font-size:18px;color:var(--blue-dark)}
+  .logo span{color:var(--green)}
+  .search{flex:1;max-width:480px}
+  .search input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+  .user{font-size:13px;color:var(--muted);white-space:nowrap}
+  .empresa-brand{margin-left:auto;display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--text);white-space:nowrap}
+  .empresa-brand img{height:34px}
+
+  .corpo{display:flex;flex:1;overflow:hidden}
+  .sidebar{width:58px;background:#23272b;display:flex;flex-direction:column;padding-top:12px;flex-shrink:0;gap:2px;overflow:hidden;transition:width .18s ease}
+  .sidebar:hover{width:176px}
+  .sidebar button{color:#f1f3f5;background:none;border:none;padding:14px 0 14px 13px;text-align:left;font-size:14.5px;font-weight:700;cursor:pointer;display:flex;gap:12px;align-items:center;border-left:4px solid transparent;letter-spacing:.2px;white-space:nowrap}
+  .sidebar button .ic{font-size:20px;flex-shrink:0;width:24px;text-align:center}
+  .sidebar button .lbl{opacity:0;transition:opacity .15s ease}
+  .sidebar:hover button .lbl{opacity:1}
+  .sidebar button:hover{background:rgba(255,255,255,.10)}
+  .sidebar button.ativo{color:#fff;background:var(--green);border-left-color:#fff}
+  .conteudo{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+  nav{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;display:flex;gap:4px;flex-shrink:0}
+  nav button{border:none;background:none;padding:12px 18px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+  nav button.active{color:var(--blue-dark);border-bottom-color:var(--blue-dark)}
+  nav button:hover{color:var(--text)}
+
+  main{flex:1;overflow:auto;padding:16px 20px}
+  .view{display:none}
+  .view.active{display:block}
+
+  .bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;min-height:40px}
+  .bar h2{font-size:18px;margin-right:8px}
+  .spacer{flex:1}
+  .btn{padding:8px 16px;border-radius:8px;border:1px solid var(--green);background:#fff;color:var(--green);font-weight:600;font-size:13px;cursor:pointer}
+  .btn:hover{background:var(--green);color:#fff}
+  .btn.primary{background:var(--green);color:#fff}
+  .btn.neutral{border-color:var(--border);color:var(--muted)}
+  .btn.neutral:hover{background:#e9ecef;color:var(--text)}
+  .btn.danger{border-color:var(--red);color:var(--red)}
+  .btn.danger:hover{background:var(--red);color:#fff}
+  .btn.sm{padding:4px 10px;font-size:12px}
+
+  /* ===== Kanban ===== */
+  .kanban{display:flex;gap:14px;align-items:flex-start;overflow-x:auto;padding-bottom:20px}
+  .col{background:#e9ecef;border-radius:var(--radius);min-width:285px;max-width:285px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 220px)}
+  .col-head{padding:10px 12px;display:flex;align-items:center;gap:8px;border-radius:var(--radius) var(--radius) 0 0}
+  .col-count{font-size:11px;font-weight:700;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(0,0,0,.18)}
+  .col-title{font-size:12px;font-weight:700;text-transform:uppercase;line-height:1.3}
+  .col-sub{font-size:10px;font-weight:600;opacity:.85}
+  .vista-sel{padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;color:var(--blue-dark);background:#fff;cursor:pointer}
+  .col-body{padding:10px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:60px}
+  .col.dragover .col-body{outline:2px dashed var(--blue-dark);outline-offset:-4px;border-radius:8px}
+
+  .kcard{background:var(--card);border-radius:8px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;border-left:5px solid var(--border);font-size:12.5px}
+  .kcard:hover{box-shadow:0 3px 8px rgba(0,0,0,.18)}
+  .kcard .top{display:flex;align-items:center;gap:6px;font-weight:700;margin-bottom:4px;font-size:13px}
+  .kcard .num{color:var(--muted);font-size:11px}
+  .kcard .row{margin:2px 0;color:#343a40}
+  .kcard .row b{color:var(--text)}
+  .kcard .valor{font-weight:700;color:var(--blue-dark)}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-top:5px}
+  .badge.atrasado{background:var(--red-soft);color:var(--red)}
+  .badge.hoje{background:#fff3cd;color:#9a6700}
+
+  /* ===== Fases ===== */
+  .fases-table{width:100%;border-collapse:separate;border-spacing:0 6px}
+  .fases-table th{padding:8px 12px;text-align:left;font-size:12px;text-transform:uppercase;color:var(--muted)}
+  .fases-table td{padding:10px 12px;font-size:14px;font-weight:600}
+  .fases-table tr.fase-row td:first-child{border-radius:8px 0 0 8px}
+  .fases-table tr.fase-row td:last-child{border-radius:0 8px 8px 0}
+  .fase-row{box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .fase-row input[type=text]{border:none;background:rgba(255,255,255,.75);border-radius:6px;padding:6px 10px;font-size:14px;font-weight:600;width:100%;max-width:280px}
+  .fase-row input[type=number]{border:none;background:rgba(255,255,255,.75);border-radius:6px;padding:6px;font-size:14px;font-weight:600;width:70px;text-align:center}
+  .cor-chip{display:inline-flex;align-items:center;gap:8px;background:#fff;color:#212529;border-radius:20px;padding:6px 14px;cursor:pointer;font-size:12.5px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.25);white-space:nowrap;position:relative}
+  .cor-chip:hover{transform:scale(1.05);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+  .cor-amostra{width:18px;height:18px;border-radius:50%;border:2px solid #adb5bd;flex-shrink:0}
+  .cor-chip input[type=color]{position:absolute;opacity:0;width:100%;height:100%;left:0;top:0;cursor:pointer;border:none;padding:0}
+  .icon-btn{border:none;background:rgba(255,255,255,.6);border-radius:6px;width:32px;height:32px;cursor:pointer;font-size:15px}
+  .icon-btn:hover{background:#fff}
+  .icon-btn.del{color:var(--red)}
+
+  /* ===== Clientes ===== */
+  table.lista{width:100%;border-collapse:collapse;background:#fff;border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  table.lista th,table.lista td{padding:11px 14px;text-align:left;font-size:13.5px;border-bottom:1px solid var(--border)}
+  table.lista th{background:#f8f9fa;font-size:12px;text-transform:uppercase;color:var(--muted)}
+  table.lista tr:hover td{background:#f8f9fa}
+
+  /* ===== Modal ===== */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:12px;padding:22px;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto}
+  .modal.cartao{width:920px;height:min(660px,90vh);display:flex;flex-direction:column}
+  .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
+  .rodape-cartao{flex-shrink:0;border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
+  .dados-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  .dados-grid .col-hist .hist{max-height:380px}
+  @media (max-width:1000px){
+    .modal.cartao{width:600px;height:min(720px,90vh)}
+    .dados-grid{grid-template-columns:1fr}
+    .dados-grid .col-hist .hist{max-height:220px}
+  }
+  .modal h3{margin-bottom:14px;font-size:16px}
+  .modal label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 3px;text-transform:uppercase}
+  .modal input,.modal select,.modal textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit}
+  .modal textarea{resize:vertical;min-height:60px}
+  .modal .actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+  .hist{max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;padding:8px}
+  .hist-item{background:#fff;border-radius:7px;padding:8px 10px;margin-bottom:6px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.07)}
+  .hist-item:last-child{margin-bottom:0}
+  .hist-data{font-size:11px;font-weight:700;color:var(--blue-dark);margin-bottom:2px}
+  .flags{display:flex;gap:10px;margin-top:14px}
+  .flags .flag{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;border:2px solid var(--border);border-radius:8px;padding:8px 14px;cursor:pointer;flex:1;justify-content:center}
+  .flags .flag input{width:auto;accent-color:currentColor;cursor:pointer}
+  .flags .flag.perdido{color:var(--red);border-color:var(--red-soft)}
+  .flags .flag.perdido:has(input:checked){background:var(--red-soft)}
+  .flags .flag.concluido{color:#6a1b9a;border-color:#e6d6f2}
+  .flags .flag.concluido:has(input:checked){background:#e6d6f2}
+  .form-row{display:flex;gap:10px}
+  .form-row>div{flex:1}
+  .form-row>div.estreito{flex:0 0 90px}
+  .cep-linha{display:flex;gap:8px;align-items:center}
+  .cep-status{font-size:12px;font-weight:600;margin-top:3px;display:block}
+  .cep-status.ok{color:var(--green)}
+  .cep-status.erro{color:var(--red)}
+  .obra-item{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:6px;font-size:13.5px}
+
+  /* ===== Abas do cartão / propostas ===== */
+  .abas{display:flex;gap:2px;border-bottom:2px solid var(--border);margin-bottom:12px;flex-wrap:wrap}
+  .aba{border:none;background:none;padding:8px 12px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
+  .aba.ativa{color:var(--blue-dark);border-bottom-color:var(--blue-dark)}
+  .prop-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13.5px}
+  .prop-item.aprovada{background:#f3ebf9;border-color:#d8c2ec}
+  .prop-arqs{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
+  .arq-btn{border:1px solid var(--border);background:#fff;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .arq-btn:hover{background:#e9ecef}
+  .prop-acoes{display:flex;gap:6px;flex-shrink:0;align-items:center}
+  .badge-status{font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
+  .badge-status.emitida{background:#cfe2ff;color:var(--blue-dark)}
+  .badge-status.aprovada{background:#e6d6f2;color:#6a1b9a}
+  .badge-status.perdida{background:var(--red-soft);color:var(--red)}
+  .tag-adt{font-size:10px;font-weight:800;background:#fff3cd;color:#9a6700;padding:2px 8px;border-radius:8px;vertical-align:middle}
+  .itens-wrap{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+  .itens-tab{width:100%;border-collapse:collapse;font-size:12.5px}
+  .itens-tab th,.itens-tab td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left}
+  .itens-tab th{background:#f8f9fa;font-size:11px;text-transform:uppercase;color:var(--muted);position:sticky;top:0}
+  .itens-tab tfoot td{background:#f8f9fa;border-top:2px solid var(--border)}
+  .stat{background:#fff;border-radius:var(--radius);padding:12px 18px;box-shadow:0 1px 3px rgba(0,0,0,.08);min-width:150px}
+  .stat .n{font-size:22px;font-weight:800;color:var(--blue-dark)}
+  .stat .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:600}
+  .novo-cliente-box{border:1px dashed var(--green);border-radius:8px;padding:4px 12px 12px;margin-top:8px;background:#f6fcf9;display:none}
+  .novo-cliente-box.open{display:block}
+  .link-btn{background:none;border:none;color:var(--green);font-weight:700;font-size:13px;cursor:pointer;padding:6px 0;text-decoration:underline}
+  .empty{color:var(--muted);font-size:13px;text-align:center;padding:14px}
+
+  /* ===== Configurações do sistema ===== */
+  .config-grid{display:grid;grid-template-columns:340px minmax(0,560px);gap:14px;align-items:start}
+  @media (max-width:800px){.config-grid{grid-template-columns:1fr}}
+  .config-card{background:#fff;border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .config-card h3{font-size:15px;margin-bottom:10px;color:var(--blue-dark)}
+  .config-card label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 3px;text-transform:uppercase}
+  .config-card input,.config-card select{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit}
+  .logo-preview{border:2px dashed var(--border);border-radius:10px;min-height:110px;display:flex;align-items:center;justify-content:center;background:#f8f9fa;padding:10px}
+  .logo-preview img{max-width:100%;max-height:120px}
+  .logo-preview .sem-logo{color:var(--muted);font-size:13px}
+
+  /* ===== Engrenagem / menu config ===== */
+  .gear-wrap{position:relative}
+  .gear-btn{border:none;background:none;font-size:21px;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .gear-btn:hover{background:#e9ecef}
+  .gear-menu{display:none;position:absolute;right:0;top:40px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.18);min-width:250px;z-index:60;padding:6px}
+  .gear-menu.open{display:block}
+  .gear-menu button{display:block;width:100%;text-align:left;border:none;background:none;padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--text);cursor:pointer;border-radius:7px}
+  .gear-menu button:hover{background:#f1f3f5}
+  .gear-menu hr{border:none;border-top:1px solid var(--border);margin:5px 8px}
+
+  /* ===== Login ===== */
+  .login-bg{position:fixed;inset:0;background:linear-gradient(135deg,#1d5b86,#198754);display:flex;align-items:center;justify-content:center;z-index:100}
+  .login-box{background:#fff;border-radius:14px;padding:30px 28px;width:360px;max-width:92vw;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  .login-box label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 3px;text-transform:uppercase}
+  .login-box input[type=text],.login-box input:not([type]),.login-box input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:15px}
+  .login-box .lembrar{display:flex;align-items:center;gap:8px;text-transform:none;font-size:13.5px;color:var(--text);margin-top:14px;cursor:pointer}
+  .login-box .lembrar input{width:auto;accent-color:var(--green)}
+  .lg-erro{color:var(--red);font-size:13px;font-weight:600;margin-top:8px;min-height:18px}
+
+  /* ===== Permissões ===== */
+  .perm-box{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#f8f9fa}
+  .perm-item{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:4px 0;cursor:pointer;text-transform:none;font-weight:600;color:var(--text)}
+  .perm-item input{width:auto;accent-color:var(--green)}
+  .badge-papel{font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
+  .badge-papel.admin{background:#cfe2ff;color:var(--blue-dark)}
+  .badge-papel.usuario{background:#e9ecef;color:var(--muted)}
+  .badge-inativo{background:var(--red-soft);color:var(--red);font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo" id="modulo-titulo">Módulo CRM</div>
+  <div class="search"><input id="busca" type="text" placeholder="Buscar cliente ou cartão..."></div>
+  <div class="empresa-brand" id="empresa-brand"></div>
+  <div class="gear-wrap" id="gear-wrap" style="display:none">
+    <button class="gear-btn" title="Configurações" onclick="toggleGearMenu(event)">⚙️</button>
+    <div class="gear-menu" id="gear-menu">
+      <button onclick="abrirMeuUsuario()">👤 Meu usuário</button>
+      <button id="gm-sistema" onclick="irParaView('usuarios')">🛠️ Cadastro de usuários</button>
+      <button id="gm-grupos" onclick="irParaView('grupos')">🔐 Grupos de acesso</button>
+      <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
+      <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
+      <hr>
+      <button onclick="logout()">🚪 Sair</button>
+    </div>
+  </div>
+  <div class="user" id="user-info"></div>
+</header>
+
+<div class="corpo">
+<aside class="sidebar" id="sidebar"></aside>
+<div class="conteudo">
+<nav id="nav-telas"></nav>
+
+<main>
+  <!-- PAINEL -->
+  <div class="view active" id="view-painel">
+    <div class="bar">
+      <h2>CRM Acompanhamento</h2>
+      <select id="vista" class="vista-sel" onchange="mudarVista(this.value)">
+        <option value="fases">Visualização: por fase</option>
+        <option value="arquivados">Visualização: perdidos & concluídos</option>
+        <option value="data">Visualização: por data da agenda</option>
+      </select>
+      <span id="arquivados-info" style="font-size:12.5px;color:var(--muted)"></span>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoCartao()">+ Novo CRM</button>
+    </div>
+    <div class="kanban" id="kanban"></div>
+  </div>
+
+  <!-- FASES -->
+  <div class="view" id="view-fases">
+    <div class="bar">
+      <h2>Fases do CRM</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaFase()">+ Nova Fase</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases viram colunas do painel, na ordem definida. Edite nome, cor e ordem direto na tabela — as alterações salvam automaticamente.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>CRM(s)</th><th></th></tr></thead>
+      <tbody id="fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- CLIENTES -->
+  <div class="view" id="view-clientes">
+    <div class="bar">
+      <h2>Clientes</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
+    </div>
+    <table class="lista">
+      <thead><tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th></tr></thead>
+      <tbody id="clientes-tbody"></tbody>
+    </table>
+  </div>
+  <!-- OBRAS: PAINEL (em construção) -->
+  <div class="view" id="view-obras-painel">
+    <div class="bar"><h2>Obras — Acompanhamento</h2></div>
+    <div class="empty" style="padding:60px 20px;font-size:15px">
+      🏗️ Módulo de Obras em construção.<br>
+      <small style="color:var(--muted)">Aqui entrarão o painel de obras por etapa/data, ordens de serviço e o controle físico das obras.</small>
+    </div>
+  </div>
+
+  <!-- PROPOSTAS: PAINEL -->
+  <div class="view" id="view-prop-painel">
+    <div class="bar">
+      <h2>Propostas — Acompanhamento</h2>
+      <select id="prop-vista" class="vista-sel" onchange="mudarPropVista(this.value)">
+        <option value="fase">Visualização: por fase</option>
+        <option value="aprovadas">Visualização: aprovadas</option>
+        <option value="perdidas">Visualização: perdidas/abandonadas</option>
+        <option value="data">Visualização: por validade</option>
+      </select>
+      <div class="spacer"></div>
+    </div>
+    <div class="kanban" id="prop-kanban"></div>
+  </div>
+
+  <!-- PROPOSTAS: FASES -->
+  <div class="view" id="view-prop-fases">
+    <div class="bar">
+      <h2>Fases da Proposta</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaFaseProposta()">+ Nova Fase</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases viram colunas do painel de propostas, na ordem definida. Edite nome, cor e ordem direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>Propostas</th><th></th></tr></thead>
+      <tbody id="prop-fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- PROPOSTAS: LISTA -->
+  <div class="view" id="view-propostas">
+    <div class="bar">
+      <h2>Controle de Propostas</h2>
+      <div class="spacer"></div>
+    </div>
+    <div class="stats" id="prop-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As propostas são criadas dentro do cartão CRM (abra o cartão → aba "Propostas Emitidas"). Clique numa linha para abrir o cartão correspondente.
+    </p>
+    <table class="lista">
+      <thead><tr><th>Número</th><th>Cliente</th><th>Obra</th><th>Cartão</th><th>Emissão</th><th>Valor</th><th>Fase</th><th>Status</th><th>Arquivos</th></tr></thead>
+      <tbody id="propostas-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- CONFIGURAÇÕES DO SISTEMA -->
+  <div class="view" id="view-gerais">
+    <div class="bar">
+      <h2>Configurações do Sistema</h2>
+      <span id="emp-msg" style="font-size:13px;font-weight:600;color:var(--green)"></span>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="salvarEmpresa()">Salvar Configurações</button>
+    </div>
+    <div class="config-grid">
+      <div class="config-card">
+        <h3>Logotipo da Empresa</h3>
+        <div id="logo-preview" class="logo-preview"></div>
+        <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="carregarLogo(this)" style="display:none">
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn" onclick="document.getElementById('logo-file').click()">📁 Enviar logotipo</button>
+          <button class="btn neutral" id="logo-remover" onclick="removerLogo()">Remover</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px">PNG ou JPG. A imagem é redimensionada e exibida no topo do sistema e na tela de login.</p>
+      </div>
+      <div class="config-card">
+        <h3>Dados da Empresa</h3>
+        <label>Razão social</label><input id="emp-razao">
+        <label>Nome fantasia <small>(exibido no sistema)</small></label><input id="emp-fantasia">
+        <div class="form-row">
+          <div><label>CNPJ</label><input id="emp-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+            oninput="this.value=this.value.replace(/\D/g,'').replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d)/,'$1-$2')"></div>
+          <div><label>Inscrição estadual</label><input id="emp-ie"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Telefone</label><input id="emp-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)"></div>
+          <div><label>E-mail</label><input id="emp-email"></div>
+        </div>
+        <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
+        <div id="emp-endereco"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GRUPOS DE ACESSO -->
+  <div class="view" id="view-grupos">
+    <div class="bar">
+      <h2>Grupos de Acesso</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoGrupo()">+ Novo Grupo</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Cada usuário pertence a um grupo, e o grupo define quais telas ele acessa. O grupo Administradores sempre tem acesso total.
+    </p>
+    <table class="lista" style="max-width:760px">
+      <thead><tr><th>Grupo</th><th>Telas Permitidas</th><th>Usuários</th></tr></thead>
+      <tbody id="grupos-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- ORIGEM DO LEAD -->
+  <div class="view" id="view-origens">
+    <div class="bar">
+      <h2>Origem do Lead</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaOrigem()">+ Nova Origem</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Edite o nome direto na lista.
+    </p>
+    <table class="lista" style="max-width:560px">
+      <thead><tr><th>Origem</th><th>CRM(s) com a origem</th><th></th></tr></thead>
+      <tbody id="origens-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- FUNÇÕES NA EMPRESA -->
+  <div class="view" id="view-funcoes">
+    <div class="bar">
+      <h2>Funções na Empresa</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaFuncao()">+ Nova Função</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Estas funções aparecem como sugestão no cadastro de usuários. Edite o nome direto na lista.
+    </p>
+    <table class="lista" style="max-width:560px">
+      <thead><tr><th>Função</th><th>Usuários com a função</th><th></th></tr></thead>
+      <tbody id="funcoes-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- USUÁRIOS (Configurações de sistema) -->
+  <div class="view" id="view-usuarios">
+    <div class="bar">
+      <h2>Cadastro de Usuários</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoUsuario()">+ Novo Usuário</button>
+    </div>
+    <table class="lista">
+      <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Função na Empresa</th><th>Telas Permitidas</th><th>Dias Logado</th><th>Status</th></tr></thead>
+      <tbody id="usuarios-tbody"></tbody>
+    </table>
+  </div>
+</main>
+</div>
+</div>
+
+<!-- LOGIN -->
+<div class="login-bg" id="login-bg" style="display:none">
+  <div class="login-box">
+    <div class="logo" style="font-size:26px;text-align:center;margin-bottom:4px">CRM<span>+Obras</span></div>
+    <p style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:14px">Acesse com seu usuário e senha</p>
+    <label>Login</label>
+    <input id="lg-login" autocomplete="username">
+    <label>Senha</label>
+    <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
+    <div id="lg-erro" class="lg-erro"></div>
+    <button class="btn primary" style="width:100%;margin-top:12px;padding:10px" onclick="fazerLogin()">Entrar</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ================= DADOS ================= */
+const hoje = new Date(); hoje.setHours(0,0,0,0);
+function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
+
+const SEED = {
+  fases: [
+    {id:1,  nome:'Contato Frio',            cor:'#607d8b', ordem:1},
+    {id:2,  nome:'Apresentação',            cor:'#2191b0', ordem:2},
+    {id:3,  nome:'Orçamento',               cor:'#4db6ac', ordem:3},
+    {id:4,  nome:'Negociação',              cor:'#f4866d', ordem:4},
+    {id:5,  nome:'Pós-Venda',               cor:'#1d8348', ordem:5},
+    {id:6,  nome:'Chamado',                 cor:'#ffee33', ordem:6},
+    {id:7,  nome:'Perdido/Abandonado',      cor:'#ff2d00', ordem:7, tipo:'perdido'},
+    {id:9,  nome:'Aguardando Obra Avançar', cor:'#ddd0f5', ordem:9},
+    {id:10, nome:'Obra Concluída',          cor:'#00bfff', ordem:10},
+    {id:11, nome:'Instalação',              cor:'#1c8dbf', ordem:11},
+    {id:12, nome:'Criando Projeto',         cor:'#7cb342', ordem:12},
+    {id:13, nome:'CRM Concluído',           cor:'#6a1b9a', ordem:13, tipo:'concluido'}
+  ],
+  clientes: [
+    {id:1, nome:'Leonardo Zagonel', tel:'(41) 99999-1111', email:'leonardo@email.com', cidade:'Curitiba'},
+    {id:2, nome:'Celso Lick Neto', tel:'(41) 99999-2222', email:'celso@email.com', cidade:'Paranaguá'},
+    {id:3, nome:'Silmara Soczek', tel:'(41) 99999-3333', email:'silmara@email.com', cidade:'Curitiba'},
+    {id:4, nome:'Henrique Prospect', tel:'(41) 99999-4444', email:'henrique@email.com', cidade:'São José dos Pinhais'},
+    {id:5, nome:'Ricardo Spancerski', tel:'(41) 99999-5555', email:'ricardo@email.com', cidade:'Curitiba'},
+    {id:6, nome:'Priscila Bonacim', tel:'(41) 99999-6666', email:'priscila@email.com', cidade:'Pinhais'}
+  ],
+  obras: [
+    {id:1, clienteId:1, nome:'Residência Zagonel — Automação'},
+    {id:2, clienteId:4, nome:'Casa Prospect — CFTV'}
+  ],
+  cards: [
+    {id:1, num:7,  clienteId:1, obraId:1, faseId:9,  responsavel:'Cleverson', agenda:d(-11,'07:00'), valor:3500,
+     historico:[{data:d(-12,'14:32'),texto:'Alterado a data para tornar a chamar em setembro.'},{data:d(-40,'09:15'),texto:'Cliente pediu para aguardar a obra avançar.'}]},
+    {id:2, num:15, clienteId:5, faseId:5,  responsavel:'Cleverson', agenda:d(-3,'10:00'), valor:0,
+     historico:[{data:d(-4,'16:20'),texto:'Recebido o pagamento pelo cabeamento executado.'}]},
+    {id:3, num:55, clienteId:2, faseId:12, responsavel:'Cleverson', agenda:d(1,'10:00'), valor:0,
+     historico:[{data:d(-1,'11:05'),texto:'Cliente fechou o projeto de automação, primeira reunião marcada.'},{data:d(-8,'10:00'),texto:'Enviado material de apresentação por WhatsApp.'}]},
+    {id:4, num:13, clienteId:3, faseId:4,  responsavel:'Cleverson', agenda:d(3,'10:00'), valor:1200,
+     historico:[{data:d(-2,'09:40'),texto:'Retornou informando que vai comprar a câmera.'}]},
+    {id:5, num:16, clienteId:6, faseId:9,  responsavel:'Cleverson', agenda:d(3,'09:00'), valor:0,
+     historico:[{data:d(-5,'15:00'),texto:'Cliente retornou: sem novidades na obra por enquanto.'}]},
+    {id:6, num:25, clienteId:3, faseId:3,  responsavel:'Cleverson', agenda:d(0,'14:00'), valor:5000,
+     historico:[{data:d(-1,'08:30'),texto:'Proposta comercial 3 enviada.'}]},
+    {id:7, num:42, clienteId:4, obraId:2, faseId:4,  responsavel:'Cleverson', agenda:d(2,'11:00'), valor:59278,
+     historico:[{data:d(-3,'17:10'),texto:'Proposta comercial 18 em análise.'},{data:d(-10,'10:45'),texto:'Reunião técnica realizada na obra.'}]},
+    {id:8, num:21, clienteId:1, faseId:11, responsavel:'Cleverson', agenda:d(4,'08:00'), valor:3500,
+     historico:[{data:d(-1,'13:00'),texto:'Instalação agendada com o cliente.'}]},
+    {id:9, num:30, clienteId:4, faseId:1,  responsavel:'Cleverson', agenda:d(0,'16:00'), valor:0,
+     historico:[{data:d(0,'08:00'),texto:'Lead recebido pelo site, ainda sem contato.'}]}
+  ]
+};
+
+/* Registro central de telas — novas telas entram aqui e aparecem nas permissões */
+const TELAS = [
+  {id:'painel',      nome:'CRM — Painel',                menu:'Painel'},
+  {id:'fases',       nome:'CRM — Fases',                 menu:'Fases'},
+  {id:'origens',     nome:'CRM — Origem do Lead',        menu:'Origem do Lead'},
+  {id:'clientes',    nome:'CRM — Clientes',              menu:'Clientes'},
+  {id:'prop-painel', nome:'Propostas — Painel',          menu:'Painel'},
+  {id:'propostas',   nome:'Propostas — Lista',           menu:'Propostas'},
+  {id:'prop-fases',  nome:'Propostas — Fases da Proposta', menu:'Fases da Proposta'},
+  {id:'obras-painel',nome:'Obras — Painel',               menu:'Painel'},
+  {id:'usuarios',    nome:'Cadastro de Usuários'},
+  {id:'grupos',      nome:'Grupos de Acesso'},
+  {id:'funcoes',     nome:'Funções na Empresa'},
+  {id:'gerais',      nome:'Configurações do Sistema'}
+];
+
+/* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
+const RECURSOS = [
+  {id:'aba-propostas', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
+  {id:'aba-obras',     nome:'Cartão CRM — aba Obras'}
+];
+
+/* Módulos: cada um tem seu menu horizontal próprio (sempre começando pelo Painel) */
+const MODULOS = [
+  {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
+  {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','propostas','prop-fases']},
+  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel']} // em construção
+];
+const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
+const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
+
+let db;
+let usuarioAtual = null;
+
+function load(){
+  try{ db = JSON.parse(localStorage.getItem('crmDB')) || null; }catch(e){ db=null; }
+  if(!db) db = JSON.parse(JSON.stringify(SEED));
+  // migração: garante fases de sistema e flags nos cartões
+  db.fases.forEach(f=>{
+    if(!f.tipo){
+      const n=f.nome.toLowerCase();
+      if(n.includes('perdido')) f.tipo='perdido';
+      else if(n.includes('crm conclu')) f.tipo='concluido';
+    }
+  });
+  const ordemMax = ()=> db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
+  if(!db.fases.some(f=>f.tipo==='perdido'))
+    db.fases.push({id:nextId(db.fases), nome:'Perdido/Abandonado', cor:'#ff2d00', ordem:ordemMax()+1, tipo:'perdido'});
+  if(!db.fases.some(f=>f.tipo==='concluido'))
+    db.fases.push({id:nextId(db.fases), nome:'CRM Concluído', cor:'#6a1b9a', ordem:ordemMax()+1, tipo:'concluido'});
+  db.clientes.forEach(c=>{
+    if(!c.endereco) c.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:c.cidade||'',uf:''};
+  });
+  if(!Array.isArray(db.usuarios) || !db.usuarios.length){
+    db.usuarios = [{id:1, nome:'Cleverson', login:'admin', senha:'admin', papel:'admin', funcao:'Sócio', telas:[], diasLogado:30, ativo:true}];
+  }
+  if(!Array.isArray(db.funcoes) || !db.funcoes.length){
+    db.funcoes = FUNCOES_SEED.map((nome,i)=>({id:i+1, nome}));
+  }
+  if(!Array.isArray(db.origens) || !db.origens.length){
+    db.origens = ORIGENS_SEED.map((nome,i)=>({id:i+1, nome}));
+  }
+  if(!db.empresa){
+    db.empresa = {logo:'', razao:'', fantasia:'', cnpj:'', ie:'', tel:'', email:'', site:'',
+      endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''}};
+  }
+  // grupos de acesso (RBAC) + migração do modelo antigo papel/telas por usuário
+  if(!Array.isArray(db.grupos) || !db.grupos.length){
+    db.grupos = [
+      {id:1, nome:'Administradores', admin:true,  telas:[]},
+      {id:2, nome:'Equipe',          admin:false, telas:['painel','clientes']}
+    ];
+  }
+  // migração: grupos existentes começam com todos os recursos liberados (comportamento anterior)
+  db.grupos.forEach(g=>{
+    if(!Array.isArray(g.recursos)) g.recursos = RECURSOS.map(r=>r.id);
+  });
+  const gAdmin = db.grupos.find(g=>g.admin);
+  db.usuarios.forEach(u=>{
+    if(!u.grupoId){
+      if(u.papel==='admin'){ u.grupoId = gAdmin.id; }
+      else {
+        const gEq = db.grupos.find(g=>!g.admin) || gAdmin;
+        u.grupoId = gEq.id;
+        (u.telas||[]).forEach(t=>{ if(!gEq.telas.includes(t)) gEq.telas.push(t); });
+      }
+      delete u.papel; delete u.telas;
+    }
+  });
+  if(!Array.isArray(db.obras)) db.obras=[];
+  if(!Array.isArray(db.propostas)) db.propostas=[];
+  if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
+    db.fasesProposta = [
+      {id:1, nome:'Em Elaboração',      cor:'#90a4ae', ordem:1},
+      {id:2, nome:'Enviada ao Cliente', cor:'#1c8dbf', ordem:2},
+      {id:3, nome:'Em Negociação',      cor:'#fd7e14', ordem:3},
+      {id:4, nome:'Revisão Solicitada', cor:'#ffc107', ordem:4}
+    ];
+  }
+  // fases de sistema: "Aprovada" e "Perdida/Abandonada"
+  if(!db.fasesProposta.some(f=>f.tipo==='aprovada')){
+    const ja=db.fasesProposta.find(f=>f.nome.toLowerCase().includes('aprovad'));
+    if(ja) ja.tipo='aprovada';
+    else db.fasesProposta.push({id:nextId(db.fasesProposta), nome:'Aprovada', cor:'#6a1b9a',
+      ordem:db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0)+1, tipo:'aprovada'});
+  }
+  if(!db.fasesProposta.some(f=>f.tipo==='perdida')){
+    const jp=db.fasesProposta.find(f=>f.nome.toLowerCase().includes('perdid'));
+    if(jp) jp.tipo='perdida';
+    else db.fasesProposta.push({id:nextId(db.fasesProposta), nome:'Perdida/Abandonada', cor:'#ff2d00',
+      ordem:db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0)+1, tipo:'perdida'});
+  }
+  db.propostas.forEach(p=>{
+    if(!('faseId' in p)) p.faseId = db.fasesProposta[0].id;
+    if(!('validadeDias' in p)) p.validadeDias = 10;
+    if(!('aditivo' in p)) p.aditivo = (p.numero||'').toUpperCase().startsWith('ADT');
+  });
+  db.obras.forEach(o=>{
+    if(!o.endereco) o.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
+  });
+  db.cards.forEach(c=>{
+    c.perdido=!!c.perdido; c.concluido=!!c.concluido;
+    if(!('obraId' in c)) c.obraId=null;
+    if(!('origemId' in c)) c.origemId=null;
+    if(!Array.isArray(c.historico)) c.historico=[];
+    if(c.ultimoContato){ c.historico.push({data:null, texto:c.ultimoContato}); delete c.ultimoContato; }
+  });
+}
+function agoraISO(){ const x=new Date(); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,16); }
+function ultimoHist(c){ return (c.historico&&c.historico[0]) ? c.historico[0].texto : ''; }
+function registrarHist(c, texto){ if(texto && texto.trim()) c.historico.unshift({data:agoraISO(), texto:texto.trim()}); }
+function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
+function cardAtivo(c){ return !c.perdido && !c.concluido; }
+function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); }
+function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
+function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
+function obraDe(c){ return c.obraId ? (db.obras.find(o=>o.id===c.obraId)||null) : null; }
+function fase(id){ return db.fases.find(f=>f.id===id); }
+function fasesOrdenadas(){ return db.fases.slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function faseProp(id){ return db.fasesProposta.find(f=>f.id===id); }
+function fasesPropOrdenadas(){ return db.fasesProposta.slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function fasePropTipo(tipo){ return db.fasesProposta.find(f=>f.tipo===tipo); }
+function propostaPerdida(p){ const f=faseProp(p.faseId); return !!(f && f.tipo==='perdida'); }
+function propostaPrincipal(cardId){ return db.propostas.find(p=>p.cardId===cardId && p.status==='aprovada' && !p.aditivo); }
+function aditivosAprovados(cardId){ return db.propostas.filter(p=>p.cardId===cardId && p.status==='aprovada' && p.aditivo); }
+function temAprovada(cardId){ return db.propostas.some(p=>p.cardId===cardId && p.status==='aprovada'); }
+function recalcValorCartao(cardId){
+  const c=db.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  const aprovadas=db.propostas.filter(p=>p.cardId===cardId && p.status==='aprovada');
+  if(aprovadas.length) c.valor=Math.round(aprovadas.reduce((s,p)=>s+(p.valor||0),0)*100)/100;
+}
+function fmtMoney(v){ return v ? v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
+function fmtData(iso){ if(!iso) return ''; const [data,hora]=iso.split('T'); const [a,m,dd]=data.split('-'); return `${dd}/${m}/${a} ${hora||''}`.trim(); }
+function fmtDia2(s){ if(!s) return ''; const [a,m,dd]=s.slice(0,10).split('-'); return `${dd}/${m}/${a}`; }
+
+/* ===== Arquivos de propostas (IndexedDB — localStorage não comporta PDFs/planilhas) ===== */
+let idbConn=null;
+function idbAbrir(){
+  return new Promise((res,rej)=>{
+    if(idbConn) return res(idbConn);
+    const rq=indexedDB.open('crmArquivos',1);
+    rq.onupgradeneeded=()=>rq.result.createObjectStore('arquivos',{keyPath:'id'});
+    rq.onsuccess=()=>{ idbConn=rq.result; res(idbConn); };
+    rq.onerror=()=>rej(rq.error);
+  });
+}
+async function idbSalvar(reg){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const tx=d.transaction('arquivos','readwrite'); tx.objectStore('arquivos').put(reg); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function idbObter(id){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const rq=d.transaction('arquivos').objectStore('arquivos').get(id); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+async function idbExcluir(id){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const tx=d.transaction('arquivos','readwrite'); tx.objectStore('arquivos').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+
+/* Número controlado pelo sistema: código do cliente + nº do cartão CRM + data de emissão */
+function gerarNumeroProposta(c){
+  const d=new Date();
+  const data=String(d.getDate()).padStart(2,'0')+String(d.getMonth()+1).padStart(2,'0')+d.getFullYear();
+  const pref = temAprovada(c.id) ? 'ADT' : 'PRP'; // cartão já tem aprovada → novas emissões são ADITIVOS
+  const base=`${pref}-C${String(c.clienteId).padStart(3,'0')}-CRM${String(c.num).padStart(2,'0')}-${data}`;
+  let n=base, r=2;
+  while(db.propostas.some(p=>(p.numero||'').toLowerCase()===n.toLowerCase())) n=`${base}-R${r++}`;
+  return n;
+}
+function copiarNumeroProposta(){
+  const v=document.getElementById('pn-numero').value;
+  navigator.clipboard.writeText(v).then(()=>{
+    const b=document.getElementById('pn-copiar');
+    b.textContent='✓ Copiado'; setTimeout(()=>{ b.textContent='📋 Copiar'; }, 2000);
+  }).catch(()=>alert('Número: '+v));
+}
+
+/* ===== Leitura do PDF da proposta (pdf.js via CDN) ===== */
+let pdfjsPromise=null;
+function carregarPdfJs(){
+  if(pdfjsPromise) return pdfjsPromise;
+  pdfjsPromise=(async()=>{
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=res;
+      s.onerror=()=>rej(new Error('Sem acesso ao CDN (verifique a internet)'));
+      document.head.appendChild(s);
+    });
+    // o worker precisa ser "mesma origem": baixamos o código e criamos um blob local
+    try{
+      const resp=await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+      const codigo=await resp.text();
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc=URL.createObjectURL(new Blob([codigo],{type:'text/javascript'}));
+    }catch(e){
+      // fallback: aponta direto para o CDN (pode funcionar em alguns navegadores)
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+    return window.pdfjsLib;
+  })();
+  pdfjsPromise.catch(()=>{ pdfjsPromise=null; }); // permite tentar de novo
+  return pdfjsPromise;
+}
+async function extrairTextoPDF(dataURL){
+  const lib=await carregarPdfJs();
+  const bin=atob(dataURL.split(',')[1]);
+  const arr=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+  const doc=await lib.getDocument({data:arr}).promise;
+  let texto='';
+  for(let i=1;i<=doc.numPages;i++){
+    const pg=await doc.getPage(i);
+    const tc=await pg.getTextContent();
+    texto+=tc.items.map(it=>it.str).join(' ')+'\n';
+  }
+  return texto;
+}
+function parseValorBR(s){
+  if(!s) return 0;
+  s=s.trim();
+  if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+  return parseFloat(s)||0;
+}
+function analisarPDFProposta(texto, numeroEsperado){
+  // O pdf.js insere espaços extras no meio de números e rótulos.
+  // Por isso TODA a análise roda numa versão compactada: sem acentos e sem nenhum espaço.
+  const compactar = t => (t||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'');
+  const comp = compactar(texto);
+  const compUp = comp.toUpperCase();
+  window._pdfTextoDebug = comp; // diagnóstico: inspecionável no console
+
+  const numeroOk = comp.toLowerCase().includes(compactar(numeroEsperado).toLowerCase());
+
+  // VALOR: 1º perto do rótulo; 2º maior valor monetário do documento (o total é sempre o maior)
+  const reMoeda = /(\d{1,3}(?:\.\d{3})+,\d{2}|\d+,\d{2})/g;
+  let valor=null;
+  const idx = compUp.indexOf('VALORTOTALDAPROPOSTA');
+  if(idx>=0){
+    const m = comp.slice(idx, idx+80).match(reMoeda);
+    if(m) valor=parseValorBR(m[0]);
+  }
+  if(valor===null){
+    let m2, max=null;
+    while((m2=reMoeda.exec(comp))){
+      const v=parseValorBR(m2[1]);
+      if(max===null || v>max) max=v;
+    }
+    valor=max;
+  }
+
+  // DATA: 1º perto de "EMISSAO"; 2º primeira data dd/mm/aaaa do documento
+  let dataISO=null;
+  const dre=/(\d{1,2})\/(\d{1,2})\/(\d{4})/;
+  const di = compUp.indexOf('EMISSAO');
+  let md = di>=0 ? comp.slice(di, di+40).match(dre) : null;
+  if(!md) md = comp.match(dre);
+  if(md) dataISO=`${md[3]}-${md[2].padStart(2,'0')}-${md[1].padStart(2,'0')}`;
+
+  return {numeroOk, valor, dataISO};
+}
+
+/* ===== Leitura do Excel (SheetJS via CDN) — itens da aba Efetivo_Contratado ===== */
+let xlsxPromise=null;
+function carregarXlsxJs(){
+  if(xlsxPromise) return xlsxPromise;
+  xlsxPromise=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=()=>res(window.XLSX);
+    s.onerror=()=>rej(new Error('Sem acesso ao CDN (verifique a internet)'));
+    document.head.appendChild(s);
+  });
+  xlsxPromise.catch(()=>{ xlsxPromise=null; });
+  return xlsxPromise;
+}
+
+/* Converte as linhas cruas da planilha em itens estruturados.
+   Colunas: A=item, B=descrição, D=qtd, F=unitário, G=total, H=tipo/unidade.
+   Ignora linhas vazias, sem nome de item ou sem nenhum valor numérico (observações). */
+function montarItensDeLinhas(linhas){
+  const itens=[];
+  (linhas||[]).forEach(l=>{
+    const nome=(l[0]==null?'':String(l[0])).trim();
+    const qtd=parseFloat(l[3]), unit=parseFloat(l[5]), total=parseFloat(l[6]);
+    if(!nome || (isNaN(qtd) && isNaN(total))) return;
+    const tipo=(l[7]==null?'':String(l[7])).trim();
+    itens.push({
+      item:nome,
+      descricao:(l[1]==null?'':String(l[1])).trim(),
+      qtd:isNaN(qtd)?null:qtd,
+      unit:isNaN(unit)?null:Math.round(unit*100)/100,
+      total:isNaN(total)?null:Math.round(total*100)/100,
+      tipo,
+      categoria:/SERVI/i.test(tipo)?'servico':'produto'
+    });
+  });
+  return itens;
+}
+
+async function lerItensExcel(dataURL){
+  const X=await carregarXlsxJs();
+  const wb=X.read(dataURL.split(',')[1], {type:'base64'});
+  const ws=wb.Sheets['Efetivo_Contratado'];
+  if(!ws) return null; // aba não encontrada
+  return montarItensDeLinhas(X.utils.sheet_to_json(ws,{header:1,defval:null}));
+}
+
+function somaItens(itens){ return (itens||[]).reduce((s,i)=>s+(i.total||0),0); }
+
+function itensContratadosHTML(p){
+  if(!p.itens || !p.itens.length) return '';
+  const soma=somaItens(p.itens);
+  const nS=p.itens.filter(i=>i.categoria==='servico').length;
+  return `
+    <label style="margin-top:18px;color:var(--blue-dark)">— Itens Contratados (${p.itens.length}: ${nS} serviços, ${p.itens.length-nS} produtos) —</label>
+    <div class="itens-wrap">
+      <table class="itens-tab">
+        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th></tr></thead>
+        <tbody>${p.itens.map(i=>`
+          <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}">
+            <td>${i.item}</td><td>${i.qtd==null?'':i.qtd}</td>
+            <td>${i.unit==null?'':fmtMoney(i.unit)}</td><td>${i.total==null?'':fmtMoney(i.total)}</td>
+            <td>${i.tipo}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="2"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
+      </table>
+    </div>`;
+}
+
+/* Importa itens do Excel com conferência; retorna os itens ou null (não importado) */
+async function importarItensComConferencia(dataURL, nomeArq, p){
+  try{
+    const itens=await lerItensExcel(dataURL);
+    if(itens===null){ alert(`O arquivo "${nomeArq}" não tem a aba "Efetivo_Contratado" — itens não importados.`); return null; }
+    if(!itens.length){ alert(`Nenhum item válido encontrado na aba "Efetivo_Contratado" de "${nomeArq}".`); return null; }
+    const soma=somaItens(itens);
+    const nS=itens.filter(i=>i.categoria==='servico').length;
+    const difere = p.valor && Math.abs(soma-p.valor)>0.01;
+    let msg=`Importação dos itens de "${nomeArq}" (aba Efetivo_Contratado):\n`;
+    msg+=`• ${itens.length} itens lidos (${nS} serviços, ${itens.length-nS} produtos)\n`;
+    msg+=`• Soma dos itens: ${fmtMoney(soma)}\n`;
+    msg+=`• Valor da proposta: ${fmtMoney(p.valor)||'—'}${difere?'  ⚠ os valores diferem (informativo)':'  ✓ confere'}\n`;
+    msg+='\nImportar estes itens?';
+    return confirm(msg) ? itens : null;
+  }catch(e){
+    console.error('Leitura do Excel falhou:', e);
+    alert('Não consegui ler os itens do Excel.\nMotivo: '+(e&&e.message?e.message:e));
+    return null;
+  }
+}
+
+/* Máscara de telefone BR: (00) 0000-0000 ou (00) 00000-0000 — só aceita dígitos */
+function mascaraTel(el){
+  let v = el.value.replace(/\D/g,'').slice(0,11);
+  if(v.length>10)     v = v.replace(/(\d{2})(\d{5})(\d{0,4})/,'($1) $2-$3');
+  else if(v.length>6) v = v.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3');
+  else if(v.length>2) v = v.replace(/(\d{2})(\d{0,5})/,'($1) $2');
+  else if(v.length>0) v = '('+v;
+  el.value = v;
+}
+
+/* Texto preto ou branco conforme a cor de fundo */
+function textColor(hex){
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return (0.299*r + 0.587*g + 0.114*b) > 150 ? '#212529' : '#fff';
+}
+
+/* ================= LOGIN / SESSÃO ================= */
+function sessaoGravada(){
+  try{ return JSON.parse(sessionStorage.getItem('crmSessao') || localStorage.getItem('crmSessao') || 'null'); }catch(e){ return null; }
+}
+function encerrarSessao(){ sessionStorage.removeItem('crmSessao'); localStorage.removeItem('crmSessao'); }
+
+function usuarioDaSessao(){
+  const s = sessaoGravada();
+  if(!s) return null;
+  if(s.expira && Date.now() > s.expira){ encerrarSessao(); return null; }
+  return db.usuarios.find(u=>u.id===s.usuarioId && u.ativo!==false) || null;
+}
+
+function fazerLogin(){
+  const lg = document.getElementById('lg-login').value.trim();
+  const sn = document.getElementById('lg-senha').value;
+  const erro = document.getElementById('lg-erro');
+  const u = db.usuarios.find(x=>x.login.toLowerCase()===lg.toLowerCase() && x.senha===sn);
+  if(!u){ erro.textContent='Login ou senha incorretos.'; return; }
+  if(u.ativo===false){ erro.textContent='Usuário desativado. Fale com o administrador.'; return; }
+  const sessao = {usuarioId:u.id};
+  if(document.getElementById('lg-perm').checked){
+    sessao.expira = Date.now() + (u.diasLogado||7)*24*60*60*1000;
+    localStorage.setItem('crmSessao', JSON.stringify(sessao));
+  } else {
+    sessionStorage.setItem('crmSessao', JSON.stringify(sessao));
+  }
+  iniciarApp(u);
+}
+
+function logout(){
+  encerrarSessao();
+  usuarioAtual=null;
+  document.getElementById('login-bg').style.display='flex';
+  document.getElementById('gear-wrap').style.display='none';
+  document.getElementById('user-info').textContent='';
+  document.getElementById('lg-senha').value='';
+  document.getElementById('lg-erro').textContent='';
+}
+
+function iniciarApp(u){
+  usuarioAtual = u;
+  document.getElementById('login-bg').style.display='none';
+  document.getElementById('gear-wrap').style.display='';
+  document.getElementById('user-info').textContent = `${u.nome} · ${u.funcao||''}${ehAdmin(u)?' (Admin)':''}`;
+  atualizarMarca();
+  aplicarPermissoes();
+  renderAll();
+}
+
+/* ===== Menu engrenagem ===== */
+function toggleGearMenu(e){
+  e.stopPropagation();
+  document.getElementById('gear-menu').classList.toggle('open');
+}
+document.addEventListener('click', ()=>{
+  const m=document.getElementById('gear-menu');
+  if(m) m.classList.remove('open');
+});
+
+function irParaView(viewId){
+  if(!usuarioAtual || !podeVer(usuarioAtual, viewId)) return;
+  ativarView(viewId);
+}
+
+/* ===== Configurações do sistema (empresa) ===== */
+function renderGerais(){
+  if(!usuarioAtual || !podeVer(usuarioAtual,'gerais')) return;
+  const e = db.empresa;
+  document.getElementById('emp-razao').value = e.razao||'';
+  document.getElementById('emp-fantasia').value = e.fantasia||'';
+  document.getElementById('emp-cnpj').value = e.cnpj||'';
+  document.getElementById('emp-ie').value = e.ie||'';
+  document.getElementById('emp-tel').value = e.tel||'';
+  document.getElementById('emp-email').value = e.email||'';
+  document.getElementById('emp-site').value = e.site||'';
+  document.getElementById('emp-endereco').innerHTML = camposEndereco(e.endereco, 'emp', 'Endereço da Empresa');
+  document.getElementById('emp-msg').textContent = '';
+  const prev = document.getElementById('logo-preview');
+  prev.innerHTML = e.logo ? `<img src="${e.logo}" alt="Logotipo">` : '<span class="sem-logo">Nenhum logotipo enviado</span>';
+  document.getElementById('logo-remover').style.display = e.logo ? '' : 'none';
+}
+
+function salvarEmpresa(){
+  const e = db.empresa;
+  e.razao = document.getElementById('emp-razao').value.trim();
+  e.fantasia = document.getElementById('emp-fantasia').value.trim();
+  e.cnpj = document.getElementById('emp-cnpj').value.trim();
+  e.ie = document.getElementById('emp-ie').value.trim();
+  e.tel = document.getElementById('emp-tel').value.trim();
+  e.email = document.getElementById('emp-email').value.trim();
+  e.site = document.getElementById('emp-site').value.trim();
+  e.endereco = lerEndereco('emp');
+  save(); atualizarMarca();
+  const msg=document.getElementById('emp-msg');
+  msg.textContent='✓ Configurações salvas';
+  setTimeout(()=>{ msg.textContent=''; }, 3000);
+}
+
+function carregarLogo(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const max=400;
+      let w=img.width, h=img.height;
+      if(w>max || h>max){ const r=Math.min(max/w, max/h); w=Math.round(w*r); h=Math.round(h*r); }
+      const cv=document.createElement('canvas');
+      cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      db.empresa.logo = cv.toDataURL('image/png');
+      save(); renderGerais(); atualizarMarca();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  input.value='';
+}
+
+function removerLogo(){
+  if(!confirm('Remover o logotipo?')) return;
+  db.empresa.logo='';
+  save(); renderGerais(); atualizarMarca();
+}
+
+function atualizarMarca(){
+  const e = db.empresa||{};
+  const nome = e.fantasia || e.razao;
+  const elBrand = document.getElementById('empresa-brand');
+  if(elBrand) elBrand.innerHTML =
+    (e.logo?`<img src="${e.logo}" alt="logo">`:'') + (nome?`<span>${nome}</span>`:'');
+  const elLogin = document.querySelector('.login-box .logo');
+  if(elLogin) elLogin.innerHTML = e.logo
+    ? `<img src="${e.logo}" alt="logo" style="max-height:60px;max-width:220px">${nome?`<div style="font-size:16px;margin-top:6px;color:var(--text)">${nome}</div>`:''}`
+    : (nome ? nome : `CRM<span>+Obras</span>`);
+}
+
+/* ===== Configurações do próprio usuário ===== */
+function abrirMeuUsuario(){
+  const u=usuarioAtual;
+  abrirModal(`
+    <h3>Meu Usuário</h3>
+    <label>Nome</label><input id="mu-nome" value="${u.nome.replace(/"/g,'&quot;')}">
+    <label>Login</label><input id="mu-login" value="${u.login}" autocomplete="off">
+    <label>Nova senha <small>(deixe em branco para manter a atual)</small></label>
+    <input id="mu-senha" type="password" autocomplete="new-password">
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Grupo: ${grupoDe(u).nome} · Função: ${u.funcao||'—'}<br>Para alterar grupo, função ou permissões, fale com um administrador.</p>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarMeuUsuario()">Salvar</button>
+    </div>`);
+}
+function salvarMeuUsuario(){
+  const nome=document.getElementById('mu-nome').value.trim();
+  const login=document.getElementById('mu-login').value.trim();
+  const senha=document.getElementById('mu-senha').value;
+  if(!nome || !login){ alert('Informe nome e login.'); return; }
+  if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==usuarioAtual.id)){ alert('Já existe um usuário com esse login.'); return; }
+  const u=db.usuarios.find(x=>x.id===usuarioAtual.id);
+  u.nome=nome; u.login=login;
+  if(senha) u.senha=senha;
+  save(); fecharModal(); iniciarApp(u);
+}
+
+/* ===== Funções na empresa ===== */
+function renderFuncoes(){
+  const tb=document.getElementById('funcoes-tbody'); tb.innerHTML='';
+  db.funcoes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).forEach(f=>{
+    const emUso = db.usuarios.filter(u=>(u.funcao||'').toLowerCase()===f.nome.toLowerCase()).length;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}"
+        style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:4px;border-radius:6px"
+        onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+        onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
+      <td>${emUso}</td>
+      <td style="text-align:right"><button class="icon-btn del" title="Excluir função" data-del="${f.id}">🗑</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const nome=inp.value.trim();
+      if(!nome){ alert('O nome da função não pode ficar vazio.'); renderFuncoes(); return; }
+      db.funcoes.find(f=>f.id===+inp.dataset.id).nome=nome;
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>{
+      const f=db.funcoes.find(x=>x.id===+btn.dataset.del);
+      const emUso=db.usuarios.filter(u=>(u.funcao||'').toLowerCase()===f.nome.toLowerCase()).length;
+      if(!confirm(emUso?`A função "${f.nome}" está em uso por ${emUso} usuário(s) — eles mantêm o texto, mas a sugestão some. Excluir?`:`Excluir a função "${f.nome}"?`)) return;
+      db.funcoes=db.funcoes.filter(x=>x.id!==f.id);
+      save(); renderAll();
+    };
+  });
+}
+/* ===== Origem do lead ===== */
+function renderOrigens(){
+  const tb=document.getElementById('origens-tbody'); tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'origens')) return;
+  db.origens.forEach(o=>{
+    const emUso = db.cards.filter(c=>c.origemId===o.id).length;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input type="text" value="${o.nome.replace(/"/g,'&quot;')}" data-id="${o.id}"
+        style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:4px;border-radius:6px"
+        onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+        onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
+      <td>${emUso}</td>
+      <td style="text-align:right"><button class="icon-btn del" title="Excluir origem" data-del="${o.id}">🗑</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const nome=inp.value.trim();
+      if(!nome){ alert('O nome da origem não pode ficar vazio.'); renderOrigens(); return; }
+      db.origens.find(o=>o.id===+inp.dataset.id).nome=nome;
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>{
+      const o=db.origens.find(x=>x.id===+btn.dataset.del);
+      const emUso=db.cards.filter(c=>c.origemId===o.id).length;
+      if(!confirm(emUso?`A origem "${o.nome}" está em uso em ${emUso} CRM(s) — eles ficarão sem origem. Excluir?`:`Excluir a origem "${o.nome}"?`)) return;
+      db.cards.forEach(c=>{ if(c.origemId===o.id) c.origemId=null; });
+      db.origens=db.origens.filter(x=>x.id!==o.id);
+      save(); renderAll();
+    };
+  });
+}
+function novaOrigem(){
+  const nome=prompt('Nome da nova origem:');
+  if(!nome || !nome.trim()) return;
+  if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
+  db.origens.push({id:nextId(db.origens), nome:nome.trim()});
+  save(); renderAll();
+}
+
+function novaFuncao(){
+  const nome=prompt('Nome da nova função:');
+  if(!nome || !nome.trim()) return;
+  if(db.funcoes.some(f=>f.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa função já existe.'); return; }
+  db.funcoes.push({id:nextId(db.funcoes), nome:nome.trim()});
+  save(); renderAll();
+}
+
+/* ================= PERMISSÕES (por grupo de acesso) ================= */
+function grupoDe(u){ return db.grupos.find(g=>g.id===u.grupoId) || {nome:'—', telas:[], admin:false}; }
+function ehAdmin(u){ return !!grupoDe(u).admin; }
+
+function podeVer(u, telaId){
+  if(!TELAS.some(x=>x.id===telaId)) return false;
+  const g = grupoDe(u);
+  if(g.admin) return true;
+  return (g.telas||[]).includes(telaId);
+}
+function podeUsar(u, recursoId){
+  const g = grupoDe(u);
+  if(g.admin) return true;
+  return (g.recursos||[]).includes(recursoId);
+}
+
+function aplicarPermissoes(){
+  // módulo ativo precisa ser permitido
+  const modOk = m => m.telas.some(t=>podeVer(usuarioAtual,t));
+  let mod = MODULOS.find(m=>m.id===moduloAtivo);
+  if(!mod || !modOk(mod)){
+    mod = MODULOS.find(modOk);
+    moduloAtivo = mod ? mod.id : 'crm';
+  }
+  renderSidebar();
+  renderNavTelas();
+  // view ativa precisa ser permitida (telas da engrenagem também valem)
+  const atual = viewAtiva();
+  const gearViews = ['usuarios','grupos','funcoes','gerais'];
+  const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
+    : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
+  if(!permitida && mod){
+    const primeira = mod.telas.find(t=>podeVer(usuarioAtual,t));
+    if(primeira) ativarView(primeira);
+  }
+  // itens do menu engrenagem conforme o grupo
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais'};
+  Object.entries(itens).forEach(([elId, tela])=>{
+    const el=document.getElementById(elId);
+    if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
+  });
+}
+
+/* ================= NAVEGAÇÃO POR MÓDULOS ================= */
+let moduloAtivo = localStorage.getItem('crmModulo') || 'crm';
+
+function viewAtiva(){
+  const v = document.querySelector('.view.active');
+  return v ? v.id.slice(5) : null;
+}
+
+function ativarView(viewId){
+  document.querySelectorAll('#nav-telas button').forEach(x=>x.classList.toggle('active', x.dataset.view===viewId));
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+  const v=document.getElementById('view-'+viewId);
+  if(v) v.classList.add('active');
+  if(viewId==='gerais') renderGerais();
+  renderAll();
+}
+
+function renderSidebar(){
+  const sb=document.getElementById('sidebar'); sb.innerHTML='';
+  MODULOS.filter(m=>m.telas.some(t=>podeVer(usuarioAtual,t))).forEach(m=>{
+    const b=document.createElement('button');
+    b.className = m.id===moduloAtivo ? 'ativo' : '';
+    b.title = m.nome;
+    b.innerHTML = `<span class="ic">${m.icone}</span><span class="lbl">${m.nome}</span>`;
+    b.onclick = ()=> mudarModulo(m.id);
+    sb.appendChild(b);
+  });
+}
+
+function renderNavTelas(){
+  const nav=document.getElementById('nav-telas'); nav.innerHTML='';
+  const mod=MODULOS.find(m=>m.id===moduloAtivo);
+  if(!mod) return;
+  document.getElementById('modulo-titulo').innerHTML = `Módulo <span>${mod.nome}</span>`;
+  const atual=viewAtiva();
+  mod.telas.filter(t=>podeVer(usuarioAtual,t)).forEach(tid=>{
+    const t=TELAS.find(x=>x.id===tid);
+    const b=document.createElement('button');
+    b.dataset.view=tid;
+    b.textContent=t.menu||t.nome;
+    if(tid===atual) b.classList.add('active');
+    b.onclick=()=>ativarView(tid);
+    nav.appendChild(b);
+  });
+}
+
+function mudarModulo(mid){
+  moduloAtivo=mid;
+  localStorage.setItem('crmModulo', mid);
+  renderSidebar();
+  renderNavTelas();
+  const mod=MODULOS.find(m=>m.id===mid);
+  const primeira=mod.telas.find(t=>podeVer(usuarioAtual,t));
+  if(primeira) ativarView(primeira);
+}
+
+document.getElementById('busca').oninput = ()=> renderAll();
+function termoBusca(){ return document.getElementById('busca').value.trim().toLowerCase(); }
+
+function statusAgenda(iso){
+  if(!iso) return null;
+  const diaAg = iso.slice(0,10), diaHoje = new Date().toISOString().slice(0,10);
+  if(diaAg < diaHoje) return 'atrasado';
+  if(diaAg === diaHoje) return 'hoje';
+  return null;
+}
+
+/* ================= KANBAN — 3 VISUALIZAÇÕES ================= */
+let vista = localStorage.getItem('crmVista') || 'fases';
+function mudarVista(v){ vista=v; localStorage.setItem('crmVista', v); renderKanban(); }
+
+function filtroBusca(c){
+  const t = termoBusca();
+  const ob = obraDe(c);
+  return !t || (cliente(c.clienteId).nome+' '+(ob?ob.nome:'')+' '+c.historico.map(h=>h.texto).join(' ')+' '+c.num).toLowerCase().includes(t);
+}
+
+function colEl(titulo, cor, itens, opts={}){
+  const tc = textColor(cor);
+  const col = document.createElement('div');
+  col.className='col';
+  col.innerHTML = `
+    <div class="col-head" style="background:${cor};color:${tc}">
+      <div class="col-count" style="color:${tc}">${String(itens.length).padStart(2,'0')}</div>
+      <div>${opts.sub?`<div class="col-sub">${opts.sub}</div>`:''}<div class="col-title">${titulo}</div></div>
+    </div>
+    <div class="col-body"></div>`;
+  const body = col.querySelector('.col-body');
+  if(!itens.length) body.innerHTML='<div class="empty">Sem cartões</div>';
+  itens.forEach(c=> body.appendChild((opts.render||crmCard)(c, opts.showFase)));
+  if(opts.onDrop){
+    col.ondragover = e=>{ e.preventDefault(); col.classList.add('dragover'); };
+    col.ondragleave = ()=> col.classList.remove('dragover');
+    col.ondrop = e=>{ e.preventDefault(); col.classList.remove('dragover'); opts.onDrop(+e.dataTransfer.getData('text')); };
+  }
+  return col;
+}
+
+function renderKanban(){
+  const k = document.getElementById('kanban'); k.innerHTML='';
+  const selV = document.getElementById('vista');
+  if(selV && selV.value!==vista) selV.value = vista;
+  const info = document.getElementById('arquivados-info');
+  if(info){
+    const nc = db.cards.filter(c=>c.concluido).length, np = db.cards.filter(c=>c.perdido).length;
+    info.textContent = (vista==='fases' && (nc||np)) ? `✔ ${nc} concluído(s) · ✖ ${np} perdido(s) — fora do painel` : '';
+  }
+  if(vista==='fases') renderVistaFases(k);
+  else if(vista==='arquivados') renderVistaArquivados(k);
+  else renderVistaData(k);
+}
+
+/* --- Vista 1: por fase (original) --- */
+function renderVistaFases(k){
+  fasesOrdenadas().forEach(f=>{
+    if(f.tipo) return; // fases de sistema (Perdido/Abandonado e CRM Concluído) NUNCA aparecem nesta visualização
+    if(!db.cards.some(c=>c.faseId===f.id && cardAtivo(c))) return; // só fases com cartão ativo
+    const itens = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c) && filtroBusca(c));
+    k.appendChild(colEl(f.nome, f.cor, itens, {
+      onDrop: id=>{
+        const c = db.cards.find(x=>x.id===id);
+        if(!c) return;
+        if(f.tipo==='perdido'){
+          if(!confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)) return;
+          c.perdido=true; c.concluido=false;
+        } else if(f.tipo==='concluido'){
+          if(!confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. Confirmar?`)) return;
+          c.concluido=true; c.perdido=false;
+        }
+        c.faseId=f.id; save(); renderAll();
+      }
+    }));
+  });
+}
+
+/* --- Vista 2: perdidos & concluídos --- */
+function renderVistaArquivados(k){
+  const fp = faseTipo('perdido'), fc = faseTipo('concluido');
+  k.appendChild(colEl(fp.nome, fp.cor, db.cards.filter(c=>c.perdido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
+  k.appendChild(colEl(fc.nome, fc.cor, db.cards.filter(c=>c.concluido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
+}
+
+/* --- Vista 3: por data da agenda --- */
+function localDia(off){ const x=new Date(); x.setDate(x.getDate()+off); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); }
+function fmtDia(s){ const [a,m,dd]=s.split('-'); return `${dd}/${m}`; }
+
+function renderVistaData(k){
+  const hojeS=localDia(0), amanhaS=localDia(1);
+  const dow=(new Date().getDay()+6)%7; // 0 = segunda-feira
+  const fimSem=localDia(6-dow), fimProx=localDia(13-dow);
+  const buckets={atrasado:[],hoje:[],amanha:[],semana:[],proxsemana:[],futuro:[],sem:[]};
+  db.cards.filter(c=>cardAtivo(c) && filtroBusca(c)).forEach(c=>{
+    let b='sem';
+    if(c.agenda){
+      const dia=c.agenda.slice(0,10);
+      if(dia<hojeS) b = c.historico.some(h=>h.data && h.data>=c.agenda) ? 'sem' : 'atrasado';
+      else if(dia===hojeS) b='hoje';
+      else if(dia===amanhaS) b='amanha';
+      else if(dia<=fimSem) b='semana';
+      else if(dia<=fimProx) b='proxsemana';
+      else b='futuro';
+    }
+    buckets[b].push(c);
+  });
+  Object.values(buckets).forEach(arr=>arr.sort((a,b)=>(a.agenda||'9999').localeCompare(b.agenda||'9999')));
+  [
+    ['atrasado','Atrasados','#dc3545','agenda vencida, sem novo contato'],
+    ['hoje','Hoje','#fd7e14',fmtDia(hojeS)],
+    ['amanha','Amanhã','#ffc107',fmtDia(amanhaS)],
+    ['semana','Esta Semana','#20c997','até '+fmtDia(fimSem)],
+    ['proxsemana','Próxima Semana','#1c8dbf','até '+fmtDia(fimProx)],
+    ['futuro','Futuros','#6c757d','após '+fmtDia(fimProx)],
+    ['sem','Sem Agenda / Reagendar','#adb5bd','contato feito ou sem data']
+  ].forEach(([key,titulo,cor,sub])=>{
+    k.appendChild(colEl(titulo, cor, buckets[key], {sub, showFase:true}));
+  });
+}
+
+function crmCard(c, showFase){
+  const f = fase(c.faseId) || {cor:'#dee2e6', nome:'—'};
+  const el = document.createElement('div');
+  el.className='kcard';
+  el.style.borderLeftColor = f.cor;
+  el.draggable=true;
+  el.ondragstart = e=> e.dataTransfer.setData('text', c.id);
+  el.onclick = ()=> abrirEditarCartao(c.id);
+  const st = cardAtivo(c) ? statusAgenda(c.agenda) : null;
+  const ob = obraDe(c);
+  el.innerHTML = `
+    <div class="top"><span class="num">#${c.num}</span> ${cliente(c.clienteId).nome}</div>
+    ${ob?`<div class="row"><b>Obra:</b> ${ob.nome}</div>`:''}
+    ${c.origemId?`<div class="row"><b>Origem:</b> ${(db.origens.find(o=>o.id===c.origemId)||{}).nome||''}</div>`:''}
+    ${showFase?`<div class="row"><b>Fase:</b> <span style="color:${f.cor}">●</span> ${f.nome}</div>`:''}
+    <div class="row"><b>Resp.:</b> ${c.responsavel}</div>
+    ${ultimoHist(c)?`<div class="row"><b>Último contato:</b> ${ultimoHist(c)}</div>`:''}
+    ${c.agenda?`<div class="row"><b>Agenda:</b> ${fmtData(c.agenda)}</div>`:''}
+    ${c.valor?`<div class="row valor">${fmtMoney(c.valor)}</div>`:''}
+    ${(()=>{const np=db.propostas.filter(p=>p.cardId===c.id); if(!np.length) return ''; const ap=np.some(p=>p.status==='aprovada'); return `<div class="row"><b>Propostas:</b> ${np.length}${ap?' <span style="color:#6a1b9a;font-weight:700">✔ aprovada</span>':''}</div>`;})()}
+    ${st==='atrasado'?'<span class="badge atrasado">⚠ Atrasado</span>':''}
+    ${st==='hoje'?'<span class="badge hoje">● Hoje</span>':''}`;
+  return el;
+}
+
+/* ================= FASES ================= */
+function renderFases(){
+  const tb = document.getElementById('fases-tbody'); tb.innerHTML='';
+  fasesOrdenadas().forEach(f=>{
+    const tc = textColor(f.cor);
+    const qtd = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c)).length;
+    const arq = db.cards.filter(c=>c.faseId===f.id && !cardAtivo(c)).length;
+    const tr = document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background = f.cor;
+    tr.style.color = tc;
+    tr.innerHTML = `
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td>${qtd}${arq?` <small>(+${arq} arquivado${arq>1?'s':''})</small>`:''}</td>
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — usada pelos marcadores Perdido/Concluído">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange = ()=>{
+      const f = fase(+inp.dataset.id);
+      if(inp.dataset.campo==='ordem') f.ordem = parseFloat(inp.value)||0;
+      else f[inp.dataset.campo] = inp.value;
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick = ()=> excluirFase(+btn.dataset.del);
+  });
+}
+
+function novaFase(){
+  const ordemMax = db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
+  db.fases.push({id:nextId(db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1});
+  save(); renderAll();
+}
+
+function excluirFase(id){
+  const qtd = db.cards.filter(c=>c.faseId===id).length;
+  if(db.fases.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+  if(qtd>0){
+    const outras = fasesOrdenadas().filter(f=>f.id!==id);
+    if(!confirm(`Esta fase tem ${qtd} cartão(ões). Eles serão movidos para "${outras[0].nome}". Continuar?`)) return;
+    db.cards.forEach(c=>{ if(c.faseId===id) c.faseId=outras[0].id; });
+  } else {
+    if(!confirm('Excluir esta fase?')) return;
+  }
+  db.fases = db.fases.filter(f=>f.id!==id);
+  save(); renderAll();
+}
+
+/* ================= CLIENTES ================= */
+function renderClientes(){
+  const tb = document.getElementById('clientes-tbody'); tb.innerHTML='';
+  const t = termoBusca();
+  db.clientes.filter(c=>!t || (c.nome+' '+enderecoResumo(c)).toLowerCase().includes(t)).forEach(c=>{
+    const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
+    const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.title='Clique para editar';
+    tr.onclick=()=>abrirEditarCliente(c.id);
+    tr.innerHTML=`<td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* ================= MODAIS ================= */
+const overlay=document.getElementById('overlay'), modal=document.getElementById('modal');
+overlay.onclick=e=>{ if(e.target===overlay) fecharModal(); };
+function fecharModal(){ overlay.classList.remove('open'); }
+function abrirModal(html, classe){
+  modal.className = 'modal' + (classe ? ' ' + classe : '');
+  modal.innerHTML = html;
+  overlay.classList.add('open');
+}
+function optsClientes(sel){ return db.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(c=>`<option value="${c.id}" ${c.id==sel?'selected':''}>${c.nome}</option>`).join(''); }
+function optsFases(sel){ return fasesOrdenadas().map(f=>`<option value="${f.id}" ${f.id==sel?'selected':''}>${f.nome}</option>`).join(''); }
+
+function histHTML(c){
+  if(!c || !c.historico.length) return '';
+  return `
+    <label>Histórico (${c.historico.length} registro${c.historico.length>1?'s':''})</label>
+    <div class="hist">${c.historico.map(h=>`
+      <div class="hist-item">
+        <div class="hist-data">${h.data?fmtData(h.data):'registro anterior (sem data)'}</div>
+        <div>${h.texto}</div>
+      </div>`).join('')}
+    </div>`;
+}
+
+function optsObras(clienteId, sel){
+  const obras = db.obras.filter(o=>o.clienteId===clienteId);
+  return `<option value="">(sem obra)</option>` +
+    obras.map(o=>`<option value="${o.id}" ${o.id==sel?'selected':''}>${o.nome}</option>`).join('');
+}
+function atualizarObras(){
+  const selO = document.getElementById('m-obra');
+  if(!selO) return;
+  const cid = +document.getElementById('m-cliente').value;
+  selO.innerHTML = optsObras(cid, null);
+}
+function toggleNovaObra(){
+  const box = document.getElementById('nova-obra-box');
+  box.classList.toggle('open');
+  document.getElementById('m-obra').disabled = box.classList.contains('open');
+  if(box.classList.contains('open')) document.getElementById('no-nome').focus();
+}
+function resolverObra(clienteId){
+  const box = document.getElementById('nova-obra-box');
+  if(box && box.classList.contains('open')){
+    const nome = document.getElementById('no-nome').value.trim();
+    if(!nome) return null;
+    const id = nextId(db.obras);
+    db.obras.push({id, clienteId, nome});
+    return id;
+  }
+  const v = document.getElementById('m-obra').value;
+  return v ? +v : null;
+}
+
+function camposCartao(c, faseInicial, clienteIdInicial){ // versão de coluna única (modal Novo Cartão)
+  return camposCartaoForm(c, faseInicial, clienteIdInicial) + camposCartaoContato(c);
+}
+
+function camposCartaoForm(c, faseInicial, clienteIdInicial){
+  const cid = c ? c.clienteId : clienteIdInicial;
+  return `
+    <label>Nome da obra</label>
+    <select id="m-obra">${optsObras(cid, c?c.obraId:null)}</select>
+    <button class="link-btn" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
+    <div class="novo-cliente-box" id="nova-obra-box">
+      <label>Nome da nova obra</label><input id="no-nome" placeholder="Ex.: Residência Alphaville — Automação">
+    </div>
+    <label>Origem do lead</label>
+    <select id="m-origem">
+      <option value="">(não informada)</option>
+      ${db.origens.map(o=>`<option value="${o.id}" ${c&&c.origemId===o.id?'selected':''}>${o.nome}</option>`).join('')}
+    </select>
+    <label>Fase</label><select id="m-fase">${optsFases(c?c.faseId:faseInicial)}</select>
+    <label>Responsável</label><input id="m-resp" value="${c?c.responsavel:(usuarioAtual?usuarioAtual.nome:'')}">
+    <label>Agenda (próxima ação)</label><input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}">
+    <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c?(c.valor||0):0}">
+    <div class="flags">
+      <label class="flag perdido"><input type="checkbox" id="m-perdido" ${c&&c.perdido?'checked':''}> ✖ Perdido</label>
+      <label class="flag concluido"><input type="checkbox" id="m-concluido" ${c&&c.concluido?'checked':''}> ✔ Concluído</label>
+    </div>`;
+}
+
+function camposCartaoContato(c){
+  return `
+    <label>${c?'Novo contato / observação':'Primeiro contato / observação'}</label>
+    <textarea id="m-contato" placeholder="${c?'Escreva a atualização e clique em Registrar (ou Ctrl+Enter)':'Ex.: lead recebido pelo site'}"
+      ${c?`onkeydown="if(event.ctrlKey&&event.key==='Enter')registrarRapido(${c.id})"`:''}></textarea>
+    ${c?`<button class="btn primary sm" style="margin-top:6px" onclick="registrarRapido(${c.id})">＋ Registrar no histórico</button>`:''}
+    <div id="hist-wrap">${histHTML(c)}</div>`;
+}
+
+/* Registro rápido no histórico sem fechar o cartão */
+function registrarRapido(id){
+  const c = db.cards.find(x=>x.id===id);
+  const ta = document.getElementById('m-contato');
+  if(!ta.value.trim()){ alert('Escreva o contato antes de registrar.'); ta.focus(); return; }
+  registrarHist(c, ta.value);
+  save();
+  ta.value='';
+  document.getElementById('hist-wrap').innerHTML = histHTML(c);
+  renderKanban(); // atualiza o "último contato" no painel ao fundo
+  ta.focus();
+}
+
+/* Dupla validação fase ↔ marcadores */
+function wireValidacao(){
+  const sel=document.getElementById('m-fase'),
+        cbP=document.getElementById('m-perdido'),
+        cbC=document.getElementById('m-concluido');
+  let faseAnt = sel.value;
+  sel.onchange = ()=>{
+    const f = fase(+sel.value);
+    if(f.tipo==='perdido' && !cbP.checked){
+      if(confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)){
+        cbP.checked=true; cbC.checked=false; faseAnt=sel.value;
+      } else sel.value=faseAnt;
+    } else if(f.tipo==='concluido' && !cbC.checked){
+      if(confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. Confirmar?`)){
+        cbC.checked=true; cbP.checked=false; faseAnt=sel.value;
+      } else sel.value=faseAnt;
+    } else {
+      if(!f.tipo){ cbP.checked=false; cbC.checked=false; }
+      faseAnt=sel.value;
+    }
+  };
+  cbP.onchange = ()=>{
+    if(cbP.checked){
+      const f=faseTipo('perdido');
+      if(confirm(`Marcar como PERDIDO move o cartão para a fase "${f.nome}" e ele sai do painel. Confirmar?`)){
+        sel.value=f.id; cbC.checked=false; faseAnt=sel.value;
+      } else cbP.checked=false;
+    } else if(fase(+sel.value).tipo==='perdido'){
+      alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
+    }
+  };
+  cbC.onchange = ()=>{
+    if(cbC.checked){
+      const f=faseTipo('concluido');
+      if(confirm(`Marcar como CONCLUÍDO move o cartão para a fase "${f.nome}" e ele sai do painel. Confirmar?`)){
+        sel.value=f.id; cbP.checked=false; faseAnt=sel.value;
+      } else cbC.checked=false;
+    } else if(fase(+sel.value).tipo==='concluido'){
+      alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
+    }
+  };
+}
+
+function abrirNovoCartao(faseIdInicial){
+  const f = faseIdInicial || fasesOrdenadas()[0].id;
+  const clientesOrd = db.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+  const primeiroCliente = clientesOrd.length ? clientesOrd[0].id : null;
+  abrirModal(`
+    <h3>Novo Cartão</h3>
+    <label>Cliente</label>
+    <select id="m-cliente" onchange="atualizarObras()">${optsClientes()}</select>
+    <button class="link-btn" onclick="toggleNovoCliente()">+ Cadastrar cliente novo</button>
+    <div class="novo-cliente-box" id="novo-cliente-box">
+      <label>Nome do novo cliente</label><input id="nc-nome" placeholder="Nome completo">
+      <label>Telefone</label><input id="nc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+      <label>E-mail</label><input id="nc-email">
+      <label>Cidade</label><input id="nc-cidade">
+    </div>
+    ${camposCartao(null, f, primeiroCliente)}
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarNovoCartao()">Salvar</button>
+    </div>`);
+  wireValidacao();
+}
+
+function toggleNovoCliente(){
+  const box = document.getElementById('novo-cliente-box');
+  box.classList.toggle('open');
+  const aberto = box.classList.contains('open');
+  document.getElementById('m-cliente').disabled = aberto;
+  const selO = document.getElementById('m-obra');
+  if(selO) selO.innerHTML = aberto ? '<option value="">(sem obra)</option>' : optsObras(+document.getElementById('m-cliente').value, null);
+}
+
+function salvarNovoCartao(){
+  let clienteId;
+  const box = document.getElementById('novo-cliente-box');
+  if(box.classList.contains('open')){
+    const nome = document.getElementById('nc-nome').value.trim();
+    if(!nome){ alert('Informe o nome do novo cliente.'); return; }
+    clienteId = nextId(db.clientes);
+    db.clientes.push({
+      id:clienteId, nome,
+      tel:document.getElementById('nc-tel').value,
+      email:document.getElementById('nc-email').value,
+      cidade:document.getElementById('nc-cidade').value
+    });
+  } else {
+    clienteId = +document.getElementById('m-cliente').value;
+    if(!clienteId){ alert('Selecione um cliente ou cadastre um novo.'); return; }
+  }
+  const novo = {
+    id:nextId(db.cards),
+    num:db.cards.reduce((m,c)=>Math.max(m,c.num),0)+1,
+    clienteId,
+    obraId:resolverObra(clienteId),
+    origemId:+document.getElementById('m-origem').value||null,
+    faseId:+document.getElementById('m-fase').value,
+    responsavel:document.getElementById('m-resp').value,
+    agenda:document.getElementById('m-agenda').value,
+    valor:+document.getElementById('m-valor').value,
+    perdido:document.getElementById('m-perdido').checked,
+    concluido:document.getElementById('m-concluido').checked,
+    historico:[]
+  };
+  registrarHist(novo, document.getElementById('m-contato').value);
+  db.cards.push(novo);
+  save(); fecharModal(); renderAll();
+}
+
+function abrirEditarCartao(id, aba='dados'){
+  // permissões por aba (grupo do usuário logado)
+  const verPropostas = podeUsar(usuarioAtual,'aba-propostas');
+  const verObras = podeUsar(usuarioAtual,'aba-obras');
+  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras)) aba='dados';
+  if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
+  const c=db.cards.find(x=>x.id===id);
+  const nEmit=db.propostas.filter(p=>p.cardId===id && p.status==='emitida').length;
+  const nAprov=db.propostas.filter(p=>p.cardId===id && p.status==='aprovada').length;
+  let corpo='';
+  if(aba==='dados') corpo=`
+    <div class="dados-grid">
+      <div>
+        <label>Cliente</label><select id="m-cliente" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
+        ${camposCartaoForm(c)}
+      </div>
+      <div class="col-hist">${camposCartaoContato(c)}</div>
+    </div>`;
+  else if(aba==='emitidas') corpo=abaPropostasHTML(c);
+  else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
+  else corpo=abaObrasCartaoHTML(c);
+  abrirModal(`
+    <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
+    <div class="abas">
+      <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarCartao(${id},'dados')">Dados</button>
+      ${verPropostas?`
+      <button class="aba ${aba==='emitidas'?'ativa':''}" onclick="abrirEditarCartao(${id},'emitidas')">Propostas Emitidas (${nEmit})</button>
+      <button class="aba ${aba==='aprovada'?'ativa':''}" onclick="abrirEditarCartao(${id},'aprovada')">Proposta Aprovada${nAprov?' ✔':''}</button>`:''}
+      ${verObras?`<button class="aba ${aba==='obras'?'ativa':''}" onclick="abrirEditarCartao(${id},'obras')">Obras</button>`:''}
+    </div>
+    <div class="aba-corpo">${corpo}</div>
+    <div class="actions rodape-cartao">
+      <button class="btn danger" onclick="excluirCartao(${c.id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+      <button class="btn primary" style="${aba==='dados'?'':'visibility:hidden'}" ${aba==='dados'?`onclick="salvarEdicaoCartao(${c.id})"`:'disabled'}>Salvar</button>
+    </div>`, 'cartao');
+  if(aba==='dados') wireValidacao();
+}
+
+function abaObrasCartaoHTML(c){
+  const ob = obraDe(c);
+  return `
+    ${ob?`
+      <div class="obra-item">
+        <div><b>${ob.nome}</b><br><small style="color:var(--muted)">${resumoEnd(ob.endereco)||'sem endereço cadastrado'}</small></div>
+      </div>`:'<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>'}
+    <div class="empty" style="margin-top:24px">
+      🏗️ Acompanhamento da obra em construção.<br>
+      <small style="color:var(--muted)">Aqui entrarão etapas, ordens de serviço e o andamento físico da obra vinculada.</small>
+    </div>`;
+}
+
+/* ================= PROPOSTAS ================= */
+function propostaItemHTML(p){
+  return `
+    <div class="prop-item ${p.status}">
+      <div>
+        <b>${p.numero}</b>${p.aditivo?' <span class="tag-adt">ADITIVO</span>':''} · ${fmtDia2(p.dataEmissao)} · <span style="font-weight:700;color:var(--blue-dark)">${fmtMoney(p.valor)||'—'}</span>
+        ${p.status==='aprovada'?`<div style="font-size:12px;color:#6a1b9a;font-weight:700;margin-top:2px">✔ Aprovada pelo cliente em ${fmtDia2(p.dataAprovacao)}</div>`:''}
+        <div class="prop-arqs">
+          ${(p.arquivos||[]).map(a=>`<button class="arq-btn" title="${a.nome}" onclick="baixarArquivo('${a.id}','${a.nome.replace(/'/g,'')}')">${a.nome.toLowerCase().endsWith('.pdf')?'📄':'📊'} ${a.nome}</button>`).join('')||'<small style="color:var(--muted)">sem arquivos anexados</small>'}
+        </div>
+      </div>
+      <div class="prop-acoes">
+        ${p.status==='aprovada'
+          ?`<button class="btn sm neutral" title="Desfazer a aprovação" onclick="reverterProposta(${p.id})">↩ Reverter</button>`
+          :propostaPerdida(p)
+            ?`<button class="btn sm neutral" title="Devolver à fase anterior" onclick="reativarProposta(${p.id})">↩ Reativar</button>`
+            :`<button class="icon-btn" title="Editar proposta" onclick="editarProposta(${p.id})">✏️</button>
+              <button class="icon-btn" title="Marcar como perdida/abandonada" onclick="marcarPerdida(${p.id})" style="color:var(--red)">✖</button>`}
+        <button class="icon-btn del" title="Excluir proposta" onclick="excluirProposta(${p.id})">🗑</button>
+      </div>
+    </div>`;
+}
+
+function marcarPerdida(id){
+  const p=db.propostas.find(x=>x.id===id);
+  if(!confirm(`Marcar a proposta ${p.numero} como PERDIDA/ABANDONADA?\nEla sai dos painéis por fase e por validade.`)) return;
+  p.faseAnterior=p.faseId;
+  p.faseId=fasePropTipo('perdida').id;
+  save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
+}
+function reativarProposta(id){
+  const p=db.propostas.find(x=>x.id===id);
+  if(!confirm(`Reativar a proposta ${p.numero}? Ela volta para a fase em que estava.`)) return;
+  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior) && !faseProp(p.faseAnterior).tipo) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
+  delete p.faseAnterior;
+  save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
+}
+
+/* ---- Edição de proposta emitida (inline na aba) ---- */
+let propEditandoId=null;
+function editarProposta(id){
+  propEditandoId=id;
+  abrirEditarCartao(db.propostas.find(x=>x.id===id).cardId, 'emitidas');
+}
+function cancelarEdicaoProposta(cardId){
+  propEditandoId=null;
+  abrirEditarCartao(cardId, 'emitidas');
+}
+
+function propostaEditHTML(p){
+  const f=faseProp(p.faseId);
+  return `
+    <div class="prop-item" style="display:block;border-color:var(--green)">
+      <b style="color:var(--green)">Editando ${p.numero}</b>
+      <div class="form-row">
+        <div><label>Número</label><input id="pe-numero" value="${p.numero}"></div>
+        <div><label>Data de emissão</label><input id="pe-data" type="date" value="${p.dataEmissao||''}"></div>
+      </div>
+      <div class="form-row">
+        <div><label>Valor (R$)</label><input id="pe-valor" type="number" step="0.01" min="0" value="${p.valor||0}"></div>
+        <div class="estreito"><label>Validade (dias)</label><input id="pe-validade" type="number" min="0" value="${p.validadeDias||0}"></div>
+      </div>
+      <label>Fase da proposta</label>
+      <select id="pe-fase">${fasesPropOrdenadas().filter(x=>!x.tipo).map(x=>`<option value="${x.id}" ${x.id===p.faseId?'selected':''}>${x.nome}</option>`).join('')}</select>
+      <label>Anexar mais PDFs (opcional)</label>
+      <input id="pe-arqs" type="file" multiple accept=".pdf">
+      <div class="actions">
+        <button class="btn neutral" onclick="cancelarEdicaoProposta(${p.cardId})">Cancelar</button>
+        <button class="btn primary" onclick="salvarEdicaoProposta(${p.id})">Salvar Proposta</button>
+      </div>
+    </div>`;
+}
+
+async function salvarEdicaoProposta(id){
+  const p=db.propostas.find(x=>x.id===id);
+  const numero=document.getElementById('pe-numero').value.trim();
+  if(!numero){ alert('Informe o número da proposta.'); return; }
+  if(db.propostas.some(x=>x.id!==id && x.numero.toLowerCase()===numero.toLowerCase())){ alert('Já existe uma proposta com esse número.'); return; }
+  p.numero=numero;
+  p.dataEmissao=document.getElementById('pe-data').value||p.dataEmissao;
+  p.valor=+document.getElementById('pe-valor').value||0;
+  p.validadeDias=+document.getElementById('pe-validade').value||0;
+  p.faseId=+document.getElementById('pe-fase').value;
+  const files=[...document.getElementById('pe-arqs').files];
+  for(const f of files){
+    if(f.size>15*1024*1024){ alert('Arquivo acima de 15MB: '+f.name); return; }
+    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
+    await idbSalvar({id:fid, nome:f.name, dataURL});
+    p.arquivos.push({id:fid, nome:f.name});
+  }
+  propEditandoId=null;
+  save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
+}
+
+function abaPropostasHTML(c){
+  const emitidas=db.propostas.filter(p=>p.cardId===c.id && p.status==='emitida')
+    .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+  return `
+    ${emitidas.map(p=> p.id===propEditandoId ? propostaEditHTML(p) : propostaItemHTML(p)).join('')||'<div class="empty">Nenhuma proposta emitida neste cartão.</div>'}
+    <label style="margin-top:18px;color:var(--blue-dark)">— ${temAprovada(c.id)?'Novo Aditivo (este cartão já tem proposta aprovada)':'Nova Proposta'} —</label>
+    <label>Número (gerado pelo sistema: cliente + cartão + data)</label>
+    <div style="display:flex;gap:8px">
+      <input id="pn-numero" value="${gerarNumeroProposta(c)}" style="flex:1">
+      <button class="btn sm" id="pn-copiar" type="button" onclick="copiarNumeroProposta()">📋 Copiar</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:4px">Copie este número para a célula da sua planilha Excel <b>antes</b> de gerar o PDF — na subida eu confiro se ele está no arquivo.</p>
+    <div class="form-row">
+      <div><label>Data de emissão</label><input id="pn-data" type="date" value="${localDia(0)}"></div>
+      <div class="estreito"><label>Validade (dias)</label><input id="pn-validade" type="number" min="0" value="10"></div>
+    </div>
+    <label>Valor (R$) <small>(se deixar vazio, leio do PDF)</small></label>
+    <input id="pn-valor" type="number" step="0.01" min="0">
+    <label>Fase da proposta</label>
+    <select id="pn-fase">${fasesPropOrdenadas().filter(f=>!f.tipo).map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}</select>
+    <label>PDF da proposta (gerado da sua planilha)</label>
+    <input id="pn-arqs" type="file" multiple accept=".pdf">
+    <div class="actions" style="justify-content:flex-start">
+      <button class="btn primary" onclick="novaProposta(${c.id})">＋ Adicionar Proposta</button>
+    </div>`;
+}
+
+function formAprovacaoHTML(c, candidatas, rotulo){
+  return `
+    <p style="font-size:13px;color:var(--muted)">A aprovação é efetivada subindo o <b>Excel</b> correspondente.</p>
+    <label>Qual ${rotulo} foi aprovad${rotulo==='proposta emitida'?'a':'o'}?</label>
+    <select id="pa-prop">
+      <option value="">Selecione...</option>
+      ${candidatas.map(p=>`<option value="${p.id}">${p.numero} — ${fmtMoney(p.valor)||'sem valor'} (${fmtDia2(p.dataEmissao)})</option>`).join('')}
+    </select>
+    <label>Excel (memória de cálculo)</label>
+    <input id="pa-arq" type="file" multiple accept=".xlsx,.xls">
+    <div class="actions" style="justify-content:flex-start">
+      <button class="btn primary" onclick="aprovarComExcel(${c.id})">✔ Confirmar Aprovação</button>
+    </div>`;
+}
+
+function abaAprovadaHTML(c){
+  const principal=propostaPrincipal(c.id);
+  if(!principal){
+    const candidatas=db.propostas.filter(p=>p.cardId===c.id && p.status==='emitida' && !p.aditivo && !propostaPerdida(p));
+    if(!candidatas.length) return `<div class="empty">Nenhuma proposta aprovada neste cartão.<br><small>Cadastre primeiro a proposta na aba "Propostas Emitidas".</small></div>`;
+    return formAprovacaoHTML(c, candidatas, 'proposta emitida');
+  }
+  const adAprov=aditivosAprovados(c.id);
+  const adEmitidos=db.propostas.filter(p=>p.cardId===c.id && p.status==='emitida' && p.aditivo && !propostaPerdida(p));
+  const totalObra=Math.round((principal.valor + adAprov.reduce((s,a)=>s+(a.valor||0),0))*100)/100;
+  let html=`
+    <label style="color:var(--blue-dark)">— Proposta Principal —</label>
+    ${propostaItemHTML(principal)}
+    ${itensContratadosHTML(principal)}`;
+  if(adAprov.length){
+    html+=`<label style="margin-top:18px;color:var(--blue-dark)">— Aditivos Aprovados (${adAprov.length}) —</label>`;
+    adAprov.forEach(a=>{ html+=propostaItemHTML(a)+itensContratadosHTML(a); });
+    html+=`<p style="font-size:13.5px;font-weight:700;margin-top:10px">Total contratado (principal + aditivos): <span style="color:var(--blue-dark)">${fmtMoney(totalObra)}</span></p>`;
+  }
+  if(adEmitidos.length){
+    html+=`<label style="margin-top:18px;color:var(--blue-dark)">— Aprovar Aditivo —</label>`+formAprovacaoHTML(c, adEmitidos, 'aditivo emitido');
+  } else {
+    html+=`<p style="font-size:12.5px;color:var(--muted);margin-top:14px">Precisa de um aditivo? Emita-o na aba "Propostas Emitidas" — o número nasce como ADT automaticamente.</p>`;
+  }
+  return html;
+}
+
+
+async function novaProposta(cardId){
+  const c=db.cards.find(x=>x.id===cardId);
+  const numero=document.getElementById('pn-numero').value.trim();
+  if(!numero){ alert('Informe o número da proposta.'); return; }
+  if(db.propostas.some(p=>p.numero.toLowerCase()===numero.toLowerCase())){ alert('Já existe uma proposta com esse número.'); return; }
+  const files=[...document.getElementById('pn-arqs').files];
+  if(files.some(f=>!f.name.toLowerCase().endsWith('.pdf'))){ alert('Nas propostas emitidas, suba apenas o PDF gerado da planilha. O Excel entra depois, na proposta aprovada.'); return; }
+  const grandes=files.filter(f=>f.size>15*1024*1024);
+  if(grandes.length){ alert('Arquivo acima de 15MB: '+grandes[0].name); return; }
+
+  let valor=+document.getElementById('pn-valor').value||0;
+  let dataEmissao=document.getElementById('pn-data').value||localDia(0);
+  const arquivos=[];
+  for(const f of files){
+    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+    // conferência automática no primeiro PDF
+    if(arquivos.length===0){
+      try{
+        const texto=await extrairTextoPDF(dataURL);
+        const a=analisarPDFProposta(texto, numero);
+        let msg='Leitura do PDF "'+f.name+'":\n';
+        msg+= a.numeroOk ? '✓ Número da proposta confere\n' : '✗ ATENÇÃO: o número '+numero+' NÃO foi encontrado no PDF\n';
+        msg+= a.valor!==null ? '• Valor total lido: '+fmtMoney(a.valor)+'\n' : '• Valor total: não encontrado\n';
+        msg+= a.dataISO ? '• Data de emissão lida: '+fmtDia2(a.dataISO)+'\n' : '• Data de emissão: não encontrada\n';
+        msg+='\nContinuar com estes dados?';
+        if(!confirm(msg)) return;
+        if(a.valor!==null && (!valor || Math.abs(a.valor-valor)>0.01)) valor=a.valor;
+        if(a.dataISO) dataEmissao=a.dataISO;
+      }catch(e){
+        console.error('Leitura do PDF falhou:', e);
+        if(!confirm('Não consegui ler o PDF para conferência.\nMotivo: '+(e&&e.message?e.message:e)+'\n\nSubir mesmo assim, com os dados digitados?')) return;
+      }
+    }
+    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
+    await idbSalvar({id:fid, nome:f.name, dataURL});
+    arquivos.push({id:fid, nome:f.name});
+  }
+  db.propostas.push({
+    id:nextId(db.propostas), numero, cardId,
+    clienteId:c.clienteId, obraId:c.obraId,
+    dataEmissao, valor,
+    validadeDias:+document.getElementById('pn-validade').value||0,
+    faseId:+document.getElementById('pn-fase').value,
+    status:'emitida', arquivos,
+    aditivo: temAprovada(cardId)
+  });
+  save(); renderAll(); abrirEditarCartao(cardId,'emitidas');
+}
+
+/* Aprovação acontece exclusivamente pela subida do Excel na aba "Proposta Aprovada" */
+async function aprovarComExcel(cardId){
+  const sel=document.getElementById('pa-prop');
+  const propId=+sel.value;
+  if(!propId){ alert('Selecione qual proposta emitida foi aprovada.'); return; }
+  const p=db.propostas.find(x=>x.id===propId);
+  const files=[...document.getElementById('pa-arq').files];
+  if(!files.length){ alert('Anexe o arquivo Excel da proposta aprovada — é ele que efetiva a aprovação.'); return; }
+  if(files.some(f=>!/\.(xlsx|xls)$/i.test(f.name))){ alert('Aqui só entra o Excel (.xlsx/.xls) da proposta aprovada.'); return; }
+  if(files.some(f=>f.size>15*1024*1024)){ alert('Arquivo acima de 15MB.'); return; }
+  if(!confirm(`Confirmar a APROVAÇÃO d${p.aditivo?'o ADITIVO':'a proposta'} ${p.numero} (${fmtMoney(p.valor)||'sem valor'}) com o Excel anexado?`)) return;
+  let primeiro=true;
+  for(const f of files){
+    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+    if(primeiro){ // importa os itens da aba Efetivo_Contratado do primeiro Excel
+      const itens=await importarItensComConferencia(dataURL, f.name, p);
+      if(itens) p.itens=itens;
+      primeiro=false;
+    }
+    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
+    await idbSalvar({id:fid, nome:f.name, dataURL});
+    p.arquivos.push({id:fid, nome:f.name});
+  }
+  p.status='aprovada'; p.dataAprovacao=localDia(0);
+  p.faseAnterior=p.faseId; // guarda para o caso de reverter
+  const fAp=db.fasesProposta.find(f=>f.tipo==='aprovada');
+  if(fAp) p.faseId=fAp.id; // fase acompanha a aprovação
+  recalcValorCartao(p.cardId); // valor do cartão = principal + aditivos aprovados
+  save(); renderAll(); abrirEditarCartao(cardId,'aprovada');
+}
+
+async function reverterProposta(id){
+  const p=db.propostas.find(x=>x.id===id);
+  // trava: a principal não pode ser revertida enquanto houver aditivos aprovados
+  if(!p.aditivo && aditivosAprovados(p.cardId).length){
+    alert('Esta é a proposta principal e há aditivo(s) aprovado(s) vinculados.\nReverta primeiro os aditivos.');
+    return;
+  }
+  const excels=(p.arquivos||[]).filter(a=>/\.(xlsx|xls)$/i.test(a.nome));
+  if(!confirm(`Reverter ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} para "emitida"?${excels.length?`\nO(s) ${excels.length} arquivo(s) Excel da aprovação serão removidos — só o PDF volta para as emitidas.`:''}`)) return;
+  for(const a of excels){ try{ await idbExcluir(a.id); }catch(e){} }
+  p.arquivos=(p.arquivos||[]).filter(a=>!/\.(xlsx|xls)$/i.test(a.nome));
+  delete p.itens; // itens importados pertencem à aprovação
+  p.status='emitida'; delete p.dataAprovacao;
+  // fase volta para a anterior à aprovação
+  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior)) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
+  delete p.faseAnterior;
+  recalcValorCartao(p.cardId);
+  save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
+}
+
+async function excluirProposta(id){
+  const p=db.propostas.find(x=>x.id===id);
+  if(p.status==='aprovada' && !p.aditivo && aditivosAprovados(p.cardId).length){
+    alert('Esta é a proposta principal e há aditivo(s) aprovado(s) vinculados.\nReverta ou exclua primeiro os aditivos.');
+    return;
+  }
+  if(!confirm(`Excluir ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} e seus arquivos?`)) return;
+  for(const a of (p.arquivos||[])){ try{ await idbExcluir(a.id); }catch(e){} }
+  const aba=p.status==='aprovada'?'aprovada':'emitidas';
+  db.propostas=db.propostas.filter(x=>x.id!==id);
+  recalcValorCartao(p.cardId);
+  save(); renderAll(); abrirEditarCartao(p.cardId, aba);
+}
+
+function baixarArquivo(fid, nome){
+  const ehPdf=(nome||'').toLowerCase().endsWith('.pdf');
+  // Safari: a janela precisa ser aberta DENTRO do clique (síncrono), senão vira popup bloqueado
+  const win = ehPdf ? window.open('', '_blank') : null;
+  if(win){ try{ win.document.write('<title>Abrindo PDF...</title><p style="font-family:sans-serif">Carregando o PDF...</p>'); }catch(e){} }
+  (async()=>{
+    const reg=await idbObter(fid);
+    if(!reg){ if(win) win.close(); alert('Arquivo não encontrado no armazenamento local deste navegador.'); return; }
+    const blob=await (await fetch(reg.dataURL)).blob();
+    const url=URL.createObjectURL(blob);
+    if(ehPdf || (nome||reg.nome).toLowerCase().endsWith('.pdf')){
+      if(win && !win.closed) win.location=url;
+      else window.open(url);
+    } else {
+      const a=document.createElement('a');
+      a.href=url; a.download=nome||reg.nome; a.click();
+    }
+    setTimeout(()=>URL.revokeObjectURL(url), 120000);
+  })();
+}
+
+/* ===== Painel de Propostas (kanban) ===== */
+let propVista = localStorage.getItem('crmPropVista') || 'fase';
+function mudarPropVista(v){ propVista=v; localStorage.setItem('crmPropVista', v); renderPropPainel(); }
+
+function vencimentoProp(p){
+  if(!p.dataEmissao || !p.validadeDias) return null;
+  const x=new Date(p.dataEmissao+'T12:00');
+  x.setDate(x.getDate()+(+p.validadeDias||0));
+  return x.toISOString().slice(0,10);
+}
+
+function propCard(p){
+  const f=faseProp(p.faseId)||{cor:'#dee2e6',nome:'—'};
+  const ob=p.obraId?db.obras.find(o=>o.id===p.obraId):null;
+  const venc=vencimentoProp(p);
+  const hojeS=localDia(0);
+  const el=document.createElement('div');
+  el.className='kcard';
+  el.style.borderLeftColor = p.status==='aprovada' ? '#6a1b9a' : f.cor;
+  el.draggable = p.status==='emitida';
+  el.ondragstart=e=>e.dataTransfer.setData('text', p.id);
+  el.onclick=()=>abrirEditarCartao(p.cardId, p.status==='aprovada'?'aprovada':'emitidas');
+  el.innerHTML=`
+    <div class="top"><span class="num">${p.numero}</span> ${cliente(p.clienteId).nome}</div>
+    ${ob?`<div class="row"><b>Obra:</b> ${ob.nome}</div>`:''}
+    <div class="row"><b>Emissão:</b> ${fmtDia2(p.dataEmissao)}${venc?` · <b>Validade:</b> ${fmtDia2(venc)}`:''}</div>
+    ${p.valor?`<div class="row valor">${fmtMoney(p.valor)}</div>`:''}
+    ${(p.arquivos||[]).length?`<div class="row"><b>Arquivos:</b> ${p.arquivos.length}</div>`:''}
+    ${p.status==='aprovada'?`<span class="badge" style="background:#e6d6f2;color:#6a1b9a">✔ Aprovada ${fmtDia2(p.dataAprovacao)}</span>`:''}
+    ${p.status==='emitida'&&propostaPerdida(p)?'<span class="badge atrasado">✖ Perdida/Abandonada</span>':''}
+    ${p.status==='emitida'&&!propostaPerdida(p)&&venc&&venc<hojeS?'<span class="badge atrasado">⚠ Validade vencida</span>':''}
+    ${p.status==='emitida'&&!propostaPerdida(p)&&venc===hojeS?'<span class="badge hoje">● Vence hoje</span>':''}`;
+  return el;
+}
+
+function renderPropPainel(){
+  const k=document.getElementById('prop-kanban'); if(!k) return;
+  k.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'prop-painel')) return;
+  const selV=document.getElementById('prop-vista');
+  if(selV && selV.value!==propVista) selV.value=propVista;
+  const t=termoBusca();
+  const busca=p=>!t || (p.numero+' '+cliente(p.clienteId).nome).toLowerCase().includes(t);
+
+  if(propVista==='fase'){
+    fasesPropOrdenadas().forEach(f=>{
+      if(f.tipo) return; // fases de sistema (Aprovada e Perdida/Abandonada) NUNCA aparecem aqui
+      const itens=db.propostas.filter(p=>p.status==='emitida' && p.faseId===f.id && busca(p))
+        .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+      if(!db.propostas.some(p=>p.status==='emitida' && p.faseId===f.id)) return; // só fases com proposta
+      k.appendChild(colEl(f.nome, f.cor, itens, {render:propCard, onDrop:id=>{
+        const p=db.propostas.find(x=>x.id===id);
+        if(p && p.status==='emitida'){ p.faseId=f.id; save(); renderAll(); }
+      }}));
+    });
+    if(!k.children.length) k.innerHTML='<div class="empty" style="padding:40px">Nenhuma proposta emitida em aberto. Crie propostas pelo cartão CRM.</div>';
+  }
+  else if(propVista==='aprovadas'){
+    const itens=db.propostas.filter(p=>p.status==='aprovada' && busca(p))
+      .sort((a,b)=>(b.dataAprovacao||'').localeCompare(a.dataAprovacao||''));
+    k.appendChild(colEl('Propostas Aprovadas', '#6a1b9a', itens, {render:propCard}));
+  }
+  else if(propVista==='perdidas'){
+    const itens=db.propostas.filter(p=>p.status==='emitida' && propostaPerdida(p) && busca(p))
+      .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+    k.appendChild(colEl('Perdidas / Abandonadas', '#ff2d00', itens, {render:propCard}));
+  }
+  else {
+    const hojeS=localDia(0), amanhaS=localDia(1);
+    const dow=(new Date().getDay()+6)%7;
+    const fimSem=localDia(6-dow), fimProx=localDia(13-dow);
+    const buckets={vencida:[],hoje:[],semana:[],proxsemana:[],futura:[],sem:[]};
+    db.propostas.filter(p=>p.status==='emitida' && !propostaPerdida(p) && busca(p)).forEach(p=>{
+      const v=vencimentoProp(p);
+      let b='sem';
+      if(v){
+        if(v<hojeS) b='vencida';
+        else if(v===hojeS) b='hoje';
+        else if(v<=fimSem) b='semana';
+        else if(v<=fimProx) b='proxsemana';
+        else b='futura';
+      }
+      buckets[b].push(p);
+    });
+    Object.values(buckets).forEach(a=>a.sort((x,y)=>(vencimentoProp(x)||'9999').localeCompare(vencimentoProp(y)||'9999')));
+    [
+      ['vencida','Validade Vencida','#dc3545','reapresentar ou atualizar'],
+      ['hoje','Vence Hoje','#fd7e14',fmtDia(hojeS)],
+      ['semana','Vence Esta Semana','#20c997','até '+fmtDia(fimSem)],
+      ['proxsemana','Próxima Semana','#1c8dbf','até '+fmtDia(fimProx)],
+      ['futura','Futuras','#6c757d','após '+fmtDia(fimProx)],
+      ['sem','Sem Validade','#adb5bd','']
+    ].forEach(([key,titulo,cor,sub])=>{
+      k.appendChild(colEl(titulo, cor, buckets[key], {render:propCard, sub}));
+    });
+  }
+}
+
+/* ===== Fases da Proposta (CRUD) ===== */
+function renderPropFases(){
+  const tb=document.getElementById('prop-fases-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'prop-fases')) return;
+  fasesPropOrdenadas().forEach(f=>{
+    const tc=textColor(f.cor);
+    const qtd=db.propostas.filter(p=>p.faseId===f.id && p.status==='emitida').length;
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background=f.cor;
+    tr.style.color=tc;
+    tr.innerHTML=`
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td>${qtd}</td>
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — usada na aprovação">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const f=faseProp(+inp.dataset.id);
+      if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
+      else f[inp.dataset.campo]=inp.value;
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>{
+      const id=+btn.dataset.del;
+      if(db.fasesProposta.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+      const qtd=db.propostas.filter(p=>p.faseId===id).length;
+      const outras=fasesPropOrdenadas().filter(f=>f.id!==id);
+      if(qtd>0){
+        if(!confirm(`Esta fase tem ${qtd} proposta(s). Elas serão movidas para "${outras[0].nome}". Continuar?`)) return;
+        db.propostas.forEach(p=>{ if(p.faseId===id) p.faseId=outras[0].id; });
+      } else if(!confirm('Excluir esta fase?')) return;
+      db.fasesProposta=db.fasesProposta.filter(f=>f.id!==id);
+      save(); renderAll();
+    };
+  });
+}
+function novaFaseProposta(){
+  const ordemMax=db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0);
+  db.fasesProposta.push({id:nextId(db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1});
+  save(); renderAll();
+}
+
+function renderPropostas(){
+  const tb=document.getElementById('propostas-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'propostas')) return;
+  const t=termoBusca();
+  const lista=db.propostas
+    .filter(p=>!t || (p.numero+' '+cliente(p.clienteId).nome).toLowerCase().includes(t))
+    .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+  const st=document.getElementById('prop-stats');
+  const aprovadas=db.propostas.filter(p=>p.status==='aprovada');
+  const perdidas=db.propostas.filter(p=>p.status==='emitida' && propostaPerdida(p));
+  const abertas=db.propostas.filter(p=>p.status==='emitida' && !propostaPerdida(p));
+  const soma=arr=>arr.reduce((s,p)=>s+(p.valor||0),0);
+  st.innerHTML=`
+    <div class="stat"><div class="n">${abertas.length}</div><div class="l">Emitidas em aberto</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(abertas))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n">${aprovadas.length}</div><div class="l">Aprovadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(aprovadas))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n">${perdidas.length}</div><div class="l">Perdidas/Abandonadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(perdidas))||'R$ 0,00'}</div></div>`;
+  lista.forEach(p=>{
+    const card=db.cards.find(c=>c.id===p.cardId);
+    const ob=p.obraId?db.obras.find(o=>o.id===p.obraId):null;
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.title='Clique para abrir o cartão';
+    tr.onclick=()=>abrirEditarCartao(p.cardId, p.status==='aprovada'?'aprovada':'emitidas');
+    tr.innerHTML=`
+      <td><b>${p.numero}</b></td>
+      <td>${cliente(p.clienteId).nome}</td>
+      <td>${ob?ob.nome:'—'}</td>
+      <td>#${card?card.num:'?'}</td>
+      <td>${fmtDia2(p.dataEmissao)}</td>
+      <td>${fmtMoney(p.valor)||'—'}</td>
+      <td>${(()=>{const f=faseProp(p.faseId); return f?`<span style="color:${f.cor}">●</span> ${f.nome}`:'—';})()}</td>
+      <td><span class="badge-status ${p.status==='aprovada'?'aprovada':propostaPerdida(p)?'perdida':'emitida'}">${p.status==='aprovada'?'Aprovada':propostaPerdida(p)?'Perdida':'Emitida'}</span></td>
+      <td>${(p.arquivos||[]).length}</td>`;
+    tb.appendChild(tr);
+  });
+  if(!lista.length) tb.innerHTML='<tr><td colspan="9" class="empty">Nenhuma proposta cadastrada.</td></tr>';
+}
+
+function salvarEdicaoCartao(id){
+  const c=db.cards.find(x=>x.id===id);
+  c.clienteId=+document.getElementById('m-cliente').value;
+  c.obraId=resolverObra(c.clienteId);
+  c.origemId=+document.getElementById('m-origem').value||null;
+  c.faseId=+document.getElementById('m-fase').value;
+  c.responsavel=document.getElementById('m-resp').value;
+  registrarHist(c, document.getElementById('m-contato').value);
+  c.agenda=document.getElementById('m-agenda').value;
+  c.valor=+document.getElementById('m-valor').value;
+  c.perdido=document.getElementById('m-perdido').checked;
+  c.concluido=document.getElementById('m-concluido').checked;
+  save(); fecharModal(); renderAll();
+}
+
+async function excluirCartao(id){
+  const props=db.propostas.filter(p=>p.cardId===id);
+  if(!confirm(props.length?`Este cartão tem ${props.length} proposta(s), que serão excluídas junto. Continuar?`:'Excluir este cartão?')) return;
+  for(const p of props){ for(const a of (p.arquivos||[])){ try{ await idbExcluir(a.id); }catch(e){} } }
+  db.propostas=db.propostas.filter(p=>p.cardId!==id);
+  db.cards=db.cards.filter(x=>x.id!==id);
+  save(); fecharModal(); renderAll();
+}
+
+/* ---- Endereço da obra + busca por CEP (ViaCEP) ---- */
+function camposEndereco(e, p='e', titulo='Endereço da Obra'){
+  e = e || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
+  return `
+    <label style="margin-top:16px;color:var(--blue-dark)">— ${titulo} —</label>
+    <label>CEP</label>
+    <div class="cep-linha">
+      <input id="${p}-cep" value="${e.cep}" placeholder="00000-000" maxlength="9" style="max-width:140px"
+        oninput="this.value=this.value.replace(/\\D/g,'').replace(/(\\d{5})(\\d)/,'$1-$2')"
+        onblur="buscarCEP('${p}')" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCEP('${p}');}">
+      <button class="btn sm" type="button" onclick="buscarCEP('${p}')">🔍 Buscar</button>
+    </div>
+    <span class="cep-status" id="${p}-cep-status"></span>
+    <label>Rua</label><input id="${p}-rua" value="${e.rua}">
+    <div class="form-row">
+      <div class="estreito"><label>Número</label><input id="${p}-numero" value="${e.numero}"></div>
+      <div><label>Complemento</label><input id="${p}-compl" value="${e.complemento}" placeholder="apto, bloco, casa..."></div>
+    </div>
+    <label>Bairro</label><input id="${p}-bairro" value="${e.bairro}">
+    <div class="form-row">
+      <div><label>Cidade</label><input id="${p}-cidade" value="${e.cidade}"></div>
+      <div class="estreito"><label>UF</label><input id="${p}-uf" value="${e.uf}" maxlength="2" style="text-transform:uppercase"></div>
+    </div>`;
+}
+
+async function buscarCEP(p='e'){
+  const inp=document.getElementById(p+'-cep'), st=document.getElementById(p+'-cep-status');
+  if(!inp) return;
+  const cep=inp.value.replace(/\D/g,'');
+  if(cep.length!==8){ if(cep.length>0){ st.textContent='CEP incompleto (8 dígitos).'; st.className='cep-status erro'; } return; }
+  st.textContent='Buscando...'; st.className='cep-status';
+  try{
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+    const dados = await r.json();
+    if(dados.erro){ st.textContent='CEP não encontrado — preencha manualmente.'; st.className='cep-status erro'; return; }
+    document.getElementById(p+'-rua').value = dados.logradouro||'';
+    document.getElementById(p+'-bairro').value = dados.bairro||'';
+    document.getElementById(p+'-cidade').value = dados.localidade||'';
+    document.getElementById(p+'-uf').value = dados.uf||'';
+    st.textContent='✓ Endereço encontrado'; st.className='cep-status ok';
+    document.getElementById(p+'-numero').focus();
+  }catch(err){
+    st.textContent='Sem conexão — preencha manualmente.'; st.className='cep-status erro';
+  }
+}
+
+function lerEndereco(p='e'){
+  return {
+    cep:document.getElementById(p+'-cep').value,
+    rua:document.getElementById(p+'-rua').value,
+    numero:document.getElementById(p+'-numero').value,
+    complemento:document.getElementById(p+'-compl').value,
+    bairro:document.getElementById(p+'-bairro').value,
+    cidade:document.getElementById(p+'-cidade').value,
+    uf:document.getElementById(p+'-uf').value.toUpperCase()
+  };
+}
+
+function resumoEnd(e){
+  e=e||{};
+  const p1=[e.rua, e.numero].filter(Boolean).join(', ');
+  const p2=[e.bairro, e.cidade&&(e.cidade+(e.uf?'/'+e.uf:''))].filter(Boolean).join(' — ');
+  return [p1,p2].filter(Boolean).join(' — ');
+}
+function enderecoResumo(c){ return resumoEnd(c.endereco) || c.cidade || ''; }
+
+function abrirNovoCliente(){
+  abrirModal(`
+    <h3>Novo Cliente</h3>
+    <label>Nome</label><input id="m-nome">
+    <label>Telefone</label><input id="m-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <label>E-mail</label><input id="m-email">
+    ${camposEndereco(null,'e','Endereço do Cliente')}
+    <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Depois de salvar, abra o cliente para cadastrar as obras dele (cada obra com endereço próprio).</p>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarNovoCliente()">Salvar</button>
+    </div>`);
+}
+function salvarNovoCliente(){
+  const nome=document.getElementById('m-nome').value.trim();
+  if(!nome){ alert('Informe o nome.'); return; }
+  const end=lerEndereco();
+  db.clientes.push({
+    id:nextId(db.clientes), nome,
+    tel:document.getElementById('m-tel').value,
+    email:document.getElementById('m-email').value,
+    cidade:end.cidade,
+    endereco:end
+  });
+  save(); fecharModal(); renderAll();
+}
+
+function obrasDoClienteHTML(c){
+  const obras=db.obras.filter(o=>o.clienteId===c.id);
+  return `
+    <label style="margin-top:16px;color:var(--blue-dark)">— Obras do Cliente (${obras.length}) —</label>
+    ${obras.map(o=>`
+      <div class="obra-item">
+        <div><b>${o.nome}</b><br><small style="color:var(--muted)">${resumoEnd(o.endereco)||'sem endereço cadastrado'}</small></div>
+        <button class="btn sm" type="button" onclick="irEditarObra(${o.id},${c.id})">Editar</button>
+      </div>`).join('') || '<div style="font-size:13px;color:var(--muted);margin-top:4px">Nenhuma obra cadastrada.</div>'}
+    <button class="link-btn" type="button" onclick="irNovaObraCliente(${c.id})">+ Cadastrar nova obra</button>`;
+}
+
+function abrirEditarCliente(id){
+  const c=db.clientes.find(x=>x.id===id);
+  abrirModal(`
+    <h3>Cliente — ${c.nome}</h3>
+    <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
+    <label>Telefone</label><input id="m-tel" value="${c.tel||''}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <label>E-mail</label><input id="m-email" value="${c.email||''}">
+    ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
+    ${obrasDoClienteHTML(c)}
+    <div class="actions">
+      <button class="btn danger" onclick="excluirCliente(${c.id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoCliente(${c.id})">Salvar</button>
+    </div>`);
+}
+
+function salvarClienteCampos(id){
+  const c=db.clientes.find(x=>x.id===id);
+  const nome=document.getElementById('m-nome').value.trim();
+  if(!nome){ alert('Informe o nome.'); return false; }
+  c.nome=nome;
+  c.tel=document.getElementById('m-tel').value;
+  c.email=document.getElementById('m-email').value;
+  c.endereco=lerEndereco();
+  c.cidade=c.endereco.cidade;
+  save(); return true;
+}
+function salvarEdicaoCliente(id){
+  if(!salvarClienteCampos(id)) return;
+  fecharModal(); renderAll();
+}
+
+/* ---- Obras do cliente (cada obra com endereço próprio) ---- */
+function irEditarObra(obraId, clienteId){ if(salvarClienteCampos(clienteId)) abrirObraModal(obraId, clienteId); }
+function irNovaObraCliente(clienteId){ if(salvarClienteCampos(clienteId)) abrirObraModal(null, clienteId); }
+
+function abrirObraModal(obraId, clienteId){
+  const o = obraId ? db.obras.find(x=>x.id===obraId) : null;
+  abrirModal(`
+    <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
+    <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
+    ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra')}
+    <div class="actions">
+      ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId})">Excluir</button>`:''}
+      <button class="btn neutral" onclick="abrirEditarCliente(${clienteId})">← Voltar ao cliente</button>
+      <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId})">Salvar</button>
+    </div>`);
+}
+function salvarObra(id, clienteId){
+  const nome=document.getElementById('o-nome').value.trim();
+  if(!nome){ alert('Informe o nome da obra.'); return; }
+  const end=lerEndereco('o');
+  if(id){
+    const o=db.obras.find(x=>x.id===id);
+    o.nome=nome; o.endereco=end;
+  } else {
+    db.obras.push({id:nextId(db.obras), clienteId, nome, endereco:end});
+  }
+  save(); renderAll(); abrirEditarCliente(clienteId);
+}
+function excluirObra(id, clienteId){
+  const emUso=db.cards.filter(c=>c.obraId===id).length;
+  if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
+  db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
+  db.obras=db.obras.filter(x=>x.id!==id);
+  save(); renderAll(); abrirEditarCliente(clienteId);
+}
+function excluirCliente(id){
+  const qtd=db.cards.filter(x=>x.clienteId===id).length;
+  if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
+  const qtdObras=db.obras.filter(o=>o.clienteId===id).length;
+  if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
+  db.obras=db.obras.filter(o=>o.clienteId!==id);
+  db.clientes=db.clientes.filter(x=>x.id!==id);
+  save(); fecharModal(); renderAll();
+}
+
+/* ================= USUÁRIOS ================= */
+function renderUsuarios(){
+  const tb = document.getElementById('usuarios-tbody'); tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'usuarios')) return;
+  db.usuarios.forEach(u=>{
+    const g = grupoDe(u);
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.title='Clique para editar';
+    tr.onclick=()=>abrirEditarUsuario(u.id);
+    tr.innerHTML=`
+      <td><b>${u.nome}</b></td><td>${u.login}</td>
+      <td><span class="badge-papel ${g.admin?'admin':'usuario'}">${g.nome}</span></td>
+      <td>${u.funcao||''}</td>
+      <td>${g.admin?'Todas':(g.telas||[]).map(id=>(TELAS.find(t=>t.id===id)||{}).nome).filter(Boolean).join(', ')||'—'}</td>
+      <td>${u.diasLogado||7}</td>
+      <td>${u.ativo===false?'<span class="badge-inativo">Inativo</span>':'Ativo'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function formUsuario(u){
+  return `
+    <label>Nome</label><input id="u-nome" value="${u?u.nome.replace(/"/g,'&quot;'):''}">
+    <label>Login</label><input id="u-login" value="${u?u.login:''}" autocomplete="off">
+    <label>Senha ${u?'<small>(deixe em branco para manter a atual)</small>':''}</label>
+    <input id="u-senha" type="password" autocomplete="new-password">
+    <label>Grupo de acesso</label>
+    <select id="u-grupo">${db.grupos.map(g=>`<option value="${g.id}" ${u&&u.grupoId===g.id?'selected':''}>${g.nome}${g.admin?' (acesso total)':''}</option>`).join('')}</select>
+    <label>Função na empresa</label>
+    <input id="u-funcao" value="${u?(u.funcao||''):''}" list="funcoes-list" placeholder="Ex.: Técnico, Vendedor...">
+    <datalist id="funcoes-list">${db.funcoes.map(f=>`<option value="${f.nome}">`).join('')}</datalist>
+    <label>Permanecer logado por (dias)</label>
+    <input id="u-dias" type="number" min="1" max="365" value="${u?(u.diasLogado||7):7}">
+    <label class="perm-item" style="margin-top:12px"><input type="checkbox" id="u-ativo" ${!u||u.ativo!==false?'checked':''}> Usuário ativo</label>`;
+}
+
+function abrirNovoUsuario(){
+  abrirModal(`<h3>Novo Usuário</h3>${formUsuario(null)}
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarUsuario()">Salvar</button>
+    </div>`);
+}
+
+function abrirEditarUsuario(id){
+  const u=db.usuarios.find(x=>x.id===id);
+  abrirModal(`<h3>Usuário — ${u.nome}</h3>${formUsuario(u)}
+    <div class="actions">
+      <button class="btn danger" onclick="excluirUsuario(${u.id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarUsuario(${u.id})">Salvar</button>
+    </div>`);
+}
+
+function salvarUsuario(id){
+  const nome=document.getElementById('u-nome').value.trim();
+  const login=document.getElementById('u-login').value.trim();
+  const senha=document.getElementById('u-senha').value;
+  const grupoId=+document.getElementById('u-grupo').value;
+  const ativo=document.getElementById('u-ativo').checked;
+  if(!nome || !login){ alert('Informe nome e login.'); return; }
+  if(!id && !senha){ alert('Informe a senha do novo usuário.'); return; }
+  if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==id)){ alert('Já existe um usuário com esse login.'); return; }
+  // proteção: não deixar o sistema sem nenhum usuário ativo no grupo Administradores
+  const gNovo = db.grupos.find(g=>g.id===grupoId);
+  const outrosAdmins = db.usuarios.some(x=>x.id!==id && ehAdmin(x) && x.ativo!==false);
+  if(id && (!gNovo.admin || !ativo) && !outrosAdmins && ehAdmin(db.usuarios.find(x=>x.id===id))){
+    alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
+  }
+  const dados={
+    nome, login, grupoId,
+    funcao:document.getElementById('u-funcao').value.trim(),
+    diasLogado:Math.max(1, +document.getElementById('u-dias').value||7),
+    ativo
+  };
+  if(id){
+    const u=db.usuarios.find(x=>x.id===id);
+    Object.assign(u, dados);
+    if(senha) u.senha=senha;
+    if(usuarioAtual && usuarioAtual.id===id) iniciarApp(u); // atualiza cabeçalho/permissões se editou a si mesmo
+  } else {
+    db.usuarios.push(Object.assign({id:nextId(db.usuarios), senha}, dados));
+  }
+  save(); fecharModal(); renderAll();
+}
+
+function excluirUsuario(id){
+  if(usuarioAtual && usuarioAtual.id===id){ alert('Você não pode excluir o usuário com o qual está logado.'); return; }
+  const u=db.usuarios.find(x=>x.id===id);
+  if(ehAdmin(u) && !db.usuarios.some(x=>x.id!==id && ehAdmin(x) && x.ativo!==false)){
+    alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
+  }
+  if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
+  db.usuarios=db.usuarios.filter(x=>x.id!==id);
+  save(); fecharModal(); renderAll();
+}
+
+/* ================= GRUPOS DE ACESSO ================= */
+function renderGrupos(){
+  const tb = document.getElementById('grupos-tbody'); tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'grupos')) return;
+  db.grupos.forEach(g=>{
+    const qtd = db.usuarios.filter(u=>u.grupoId===g.id).length;
+    const telas = g.admin ? 'Todas (acesso total)' :
+      (g.telas||[]).map(id=>(TELAS.find(t=>t.id===id)||{}).nome).filter(Boolean).join(', ') || '—';
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.title='Clique para editar';
+    tr.onclick=()=>abrirEditarGrupo(g.id);
+    tr.innerHTML=`<td><b>${g.nome}</b>${g.admin?' 🔒':''}</td><td>${telas}</td><td>${qtd}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function formGrupo(g){
+  const telasCk = TELAS.map(t=>`
+    <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
+  const recursosCk = RECURSOS.map(r=>`
+    <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
+  return `
+    <label>Nome do grupo</label><input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas...">
+    ${g&&g.admin
+      ? '<label>Permissões</label><div style="font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</div>'
+      : `<label>Telas permitidas</label>
+         <div class="perm-box">${telasCk}</div>
+         <label>Permissões dentro do cartão CRM</label>
+         <div class="perm-box">${recursosCk}</div>`}`;
+}
+
+function abrirNovoGrupo(){
+  abrirModal(`<h3>Novo Grupo de Acesso</h3>${formGrupo(null)}
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarGrupo()">Salvar</button>
+    </div>`);
+}
+
+function abrirEditarGrupo(id){
+  const g=db.grupos.find(x=>x.id===id);
+  abrirModal(`<h3>Grupo — ${g.nome}</h3>${formGrupo(g)}
+    <div class="actions">
+      ${g.admin?'':`<button class="btn danger" onclick="excluirGrupo(${g.id})">Excluir</button>`}
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarGrupo(${g.id})">Salvar</button>
+    </div>`);
+}
+
+function salvarGrupo(id){
+  const nome=document.getElementById('g-nome').value.trim();
+  if(!nome){ alert('Informe o nome do grupo.'); return; }
+  if(db.grupos.some(g=>g.nome.toLowerCase()===nome.toLowerCase() && g.id!==id)){ alert('Já existe um grupo com esse nome.'); return; }
+  const telas=[...document.querySelectorAll('.ck-gtela:checked')].map(c=>c.value);
+  const recursos=[...document.querySelectorAll('.ck-grec:checked')].map(c=>c.value);
+  if(id){
+    const g=db.grupos.find(x=>x.id===id);
+    g.nome=nome;
+    if(!g.admin){ g.telas=telas; g.recursos=recursos; }
+  } else {
+    db.grupos.push({id:nextId(db.grupos), nome, admin:false, telas, recursos});
+  }
+  save(); fecharModal();
+  if(usuarioAtual) aplicarPermissoes(); // permissões podem ter mudado para o próprio usuário
+  renderAll();
+}
+
+function excluirGrupo(id){
+  const g=db.grupos.find(x=>x.id===id);
+  if(g.admin){ alert('O grupo Administradores não pode ser excluído.'); return; }
+  const qtd=db.usuarios.filter(u=>u.grupoId===id).length;
+  if(qtd>0){ alert(`Este grupo tem ${qtd} usuário(s). Mova-os para outro grupo antes de excluir.`); return; }
+  if(!confirm(`Excluir o grupo "${g.nome}"?`)) return;
+  db.grupos=db.grupos.filter(x=>x.id!==id);
+  save(); fecharModal(); renderAll();
+}
+
+/* ================= INIT ================= */
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); }
+load();
+atualizarMarca();
+const u0 = usuarioDaSessao();
+if(u0) iniciarApp(u0);
+else document.getElementById('login-bg').style.display='flex';
+</script>
+</body>
+</html>

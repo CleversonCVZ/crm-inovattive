@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRM & Controle de Obras</title>
+<style>
+  :root{
+    --bg:#f1f3f5; --card:#fff; --border:#dee2e6; --text:#212529; --muted:#6c757d;
+    --green:#198754; --green-soft:#d1e7dd; --blue:#0d6efd; --blue-dark:#1d5b86;
+    --red:#dc3545; --red-soft:#f8d7da; --orange:#fd7e14; --yellow:#ffc107;
+    --sidebar:#343a40; --radius:10px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  body{background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+  /* ===== Topo ===== */
+  header{background:#fff;border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+  .logo{font-weight:800;font-size:18px;color:var(--blue-dark);white-space:nowrap}
+  .logo span{color:var(--green)}
+  .search{flex:1;max-width:480px;position:relative}
+  .search input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+  .user{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+
+  nav{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;display:flex;gap:4px;flex-shrink:0}
+  nav button{border:none;background:none;padding:12px 18px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent}
+  nav button.active{color:var(--blue-dark);border-bottom-color:var(--blue-dark)}
+  nav button:hover{color:var(--text)}
+
+  main{flex:1;overflow:auto;padding:16px 20px}
+  .view{display:none}
+  .view.active{display:block}
+
+  /* ===== Barra do quadro ===== */
+  .board-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+  .board-bar h2{font-size:18px;margin-right:8px}
+  .chip{padding:6px 14px;border-radius:20px;border:2px solid var(--border);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
+  .chip.on-crm{border-color:var(--green);color:var(--green)}
+  .chip.on-venda{border-color:var(--blue-dark);color:var(--blue-dark)}
+  .chip.on-obra{border-color:var(--orange);color:var(--orange)}
+  .btn{padding:8px 16px;border-radius:8px;border:1px solid var(--green);background:#fff;color:var(--green);font-weight:600;font-size:13px;cursor:pointer}
+  .btn:hover{background:var(--green);color:#fff}
+  .btn.primary{background:var(--green);color:#fff}
+  .btn.neutral{border-color:var(--border);color:var(--muted)}
+  .spacer{flex:1}
+
+  /* ===== Kanban ===== */
+  .kanban{display:flex;gap:14px;align-items:flex-start;overflow-x:auto;padding-bottom:20px}
+  .col{background:#e9ecef;border-radius:var(--radius);min-width:290px;max-width:290px;flex-shrink:0;display:flex;flex-direction:column;max-height:calc(100vh - 230px)}
+  .col-head{padding:10px 12px;display:flex;align-items:center;gap:8px;border-bottom:2px solid var(--border)}
+  .col-count{font-size:11px;font-weight:700;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .col-title{font-size:12px;font-weight:700;text-transform:uppercase;line-height:1.3}
+  .col-sub{font-size:10px;color:var(--muted);font-weight:600}
+  .col-body{padding:10px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:60px}
+  .col.dragover .col-body{outline:2px dashed var(--blue);outline-offset:-4px;border-radius:8px}
+
+  .kcard{background:var(--card);border-radius:8px;padding:10px 12px;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:grab;border-top:4px solid var(--border);font-size:12.5px;position:relative}
+  .kcard:hover{box-shadow:0 3px 8px rgba(0,0,0,.18)}
+  .kcard.crm{border-top-color:var(--green)}
+  .kcard.venda{border-top-color:var(--blue-dark)}
+  .kcard.obra{border-top-color:var(--orange)}
+  .kcard .top{display:flex;align-items:center;gap:6px;font-weight:700;margin-bottom:4px}
+  .kcard .num{color:var(--muted);font-size:11px}
+  .kcard .row{margin:2px 0;color:#343a40}
+  .kcard .row b{color:var(--text)}
+  .kcard .valor{font-weight:700;color:var(--blue-dark)}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;margin-top:5px}
+  .badge.atrasado{background:var(--red-soft);color:var(--red)}
+  .badge.hoje{background:#fff3cd;color:#9a6700}
+  .badge.ok{background:var(--green-soft);color:var(--green)}
+  .progress{height:6px;background:#e9ecef;border-radius:3px;margin-top:6px;overflow:hidden}
+  .progress div{height:100%;background:var(--orange);border-radius:3px}
+
+  /* ===== Tabelas / listas ===== */
+  table{width:100%;border-collapse:collapse;background:#fff;border-radius:var(--radius);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  th,td{padding:11px 14px;text-align:left;font-size:13.5px;border-bottom:1px solid var(--border)}
+  th{background:#f8f9fa;font-size:12px;text-transform:uppercase;color:var(--muted)}
+  tr:hover td{background:#f8f9fa}
+
+  .obra-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+  .obra-card{background:#fff;border-radius:var(--radius);padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);border-left:5px solid var(--orange)}
+  .obra-card h3{font-size:15px;margin-bottom:2px}
+  .obra-card .meta{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+  .etapa{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer}
+  .etapa input{accent-color:var(--green)}
+  .etapa.done span{text-decoration:line-through;color:var(--muted)}
+  .obra-prog{height:8px;background:#e9ecef;border-radius:4px;margin:10px 0 4px;overflow:hidden}
+  .obra-prog div{height:100%;background:var(--green)}
+  .obra-pct{font-size:12px;font-weight:700;color:var(--green)}
+
+  .agenda-dia{margin-bottom:18px}
+  .agenda-dia h3{font-size:13px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px}
+  .agenda-dia h3.hoje{color:var(--green)}
+  .agenda-dia h3.atrasado{color:var(--red)}
+  .visita{background:#fff;border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;align-items:center;gap:14px;box-shadow:0 1px 2px rgba(0,0,0,.08);font-size:13.5px}
+  .visita .hora{font-weight:800;color:var(--blue-dark);min-width:48px}
+  .visita .tipo{font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px}
+  .visita .tipo.tecnica{background:#cfe2ff;color:var(--blue-dark)}
+  .visita .tipo.comercial{background:var(--green-soft);color:var(--green)}
+  .visita .done-btn{margin-left:auto;border:1px solid var(--border);background:none;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:var(--muted)}
+  .visita.concluida{opacity:.55}
+
+  /* ===== Modal ===== */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:#fff;border-radius:12px;padding:22px;width:440px;max-width:94vw;max-height:90vh;overflow-y:auto}
+  .modal h3{margin-bottom:14px;font-size:16px}
+  .modal label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 3px;text-transform:uppercase}
+  .modal input,.modal select,.modal textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit}
+  .modal textarea{resize:vertical;min-height:60px}
+  .modal .actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+  .danger{border-color:var(--red);color:var(--red)}
+  .danger:hover{background:var(--red);color:#fff}
+
+  .stats{display:flex;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+  .stat{background:#fff;border-radius:var(--radius);padding:14px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08);min-width:160px}
+  .stat .n{font-size:24px;font-weight:800;color:var(--blue-dark)}
+  .stat .l{font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600}
+  .empty{color:var(--muted);font-size:13px;text-align:center;padding:14px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">CRM<span>+Obras</span></div>
+  <div class="search"><input id="busca" type="text" placeholder="Buscar cliente, obra ou venda..."></div>
+  <div class="user">Cleverson · INOVATTIVE</div>
+</header>
+
+<nav>
+  <button class="active" data-view="quadro">Quadro 360º</button>
+  <button data-view="obras">Obras</button>
+  <button data-view="agenda">Visitas / Agenda</button>
+  <button data-view="clientes">Clientes</button>
+</nav>
+
+<main>
+  <!-- QUADRO 360 -->
+  <div class="view active" id="view-quadro">
+    <div class="board-bar">
+      <h2>Acompanhamento Diário</h2>
+      <button class="chip on-crm" data-mod="crm">CRM</button>
+      <button class="chip on-venda" data-mod="venda">Venda</button>
+      <button class="chip on-obra" data-mod="obra">Obra</button>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoCartao()">+ Novo Cartão</button>
+    </div>
+    <div class="kanban" id="kanban"></div>
+  </div>
+
+  <!-- OBRAS -->
+  <div class="view" id="view-obras">
+    <div class="board-bar">
+      <h2>Controle de Obras</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaObra()">+ Nova Obra</button>
+    </div>
+    <div class="stats" id="obras-stats"></div>
+    <div class="obra-grid" id="obras-grid"></div>
+  </div>
+
+  <!-- AGENDA -->
+  <div class="view" id="view-agenda">
+    <div class="board-bar">
+      <h2>Visitas e Agenda</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaVisita()">+ Nova Visita</button>
+    </div>
+    <div id="agenda-lista"></div>
+  </div>
+
+  <!-- CLIENTES -->
+  <div class="view" id="view-clientes">
+    <div class="board-bar">
+      <h2>Clientes</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
+    </div>
+    <table>
+      <thead><tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Cidade</th><th>Negócios</th></tr></thead>
+      <tbody id="clientes-tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+/* ================= DADOS ================= */
+const FASES = {
+  crm:   ['Aguardando Obra Avançar','Contatos Para Amanhã','Contatos Futuros'],
+  venda: ['Início Orçamento','Início Projeto','Finalizado'],
+  obra:  ['Em Planejamento','Em Execução','Concluída']
+};
+const COR = {crm:'var(--green)', venda:'var(--blue-dark)', obra:'var(--orange)'};
+
+const hoje = new Date(); hoje.setHours(0,0,0,0);
+function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
+
+const SEED = {
+  clientes: [
+    {id:1, nome:'Leonardo Zagonel', tel:'(41) 99999-1111', email:'leonardo@email.com', cidade:'Curitiba'},
+    {id:2, nome:'Celso Lick Neto', tel:'(41) 99999-2222', email:'celso@email.com', cidade:'Paranaguá'},
+    {id:3, nome:'Silmara Soczek', tel:'(41) 99999-3333', email:'silmara@email.com', cidade:'Curitiba'},
+    {id:4, nome:'Henrique Prospect', tel:'(41) 99999-4444', email:'henrique@email.com', cidade:'São José dos Pinhais'},
+    {id:5, nome:'Ricardo Spancerski', tel:'(41) 99999-5555', email:'ricardo@email.com', cidade:'Curitiba'},
+    {id:6, nome:'Priscila Bonacim', tel:'(41) 99999-6666', email:'priscila@email.com', cidade:'Pinhais'}
+  ],
+  cards: [
+    {id:1, tipo:'crm', num:7,  clienteId:1, fase:'Aguardando Obra Avançar', responsavel:'Cleverson', ultimoContato:'Alterado a data para tornar a chamar em setembro.', agenda:d(-11,'07:00'), valor:3500},
+    {id:2, tipo:'crm', num:15, clienteId:5, fase:'Aguardando Obra Avançar', responsavel:'Cleverson', ultimoContato:'Recebido o pagamento pelo cabeamento executado.', agenda:d(-3,'10:00'), valor:0},
+    {id:3, tipo:'crm', num:55, clienteId:2, fase:'Contatos Para Amanhã', responsavel:'Cleverson', ultimoContato:'Cliente fechou o projeto de automação, primeira reunião marcada.', agenda:d(1,'10:00'), valor:0},
+    {id:4, tipo:'crm', num:13, clienteId:3, fase:'Contatos Futuros', responsavel:'Cleverson', ultimoContato:'Retornou informando que vai comprar a câmera.', agenda:d(3,'10:00'), valor:0},
+    {id:5, tipo:'crm', num:16, clienteId:6, fase:'Contatos Futuros', responsavel:'Cleverson', ultimoContato:'Cliente retornou: sem novidades na obra por enquanto.', agenda:d(3,'09:00'), valor:0},
+    {id:6, tipo:'venda', num:25, clienteId:3, fase:'Início Projeto', responsavel:'Cleverson', ultimoContato:'Proposta comercial 3 enviada.', agenda:d(0,'14:00'), valor:5000},
+    {id:7, tipo:'venda', num:42, clienteId:4, fase:'Início Projeto', responsavel:'Cleverson', ultimoContato:'Proposta comercial 18 em análise.', agenda:d(2,'11:00'), valor:59278},
+    {id:8, tipo:'venda', num:21, clienteId:1, fase:'Finalizado', responsavel:'Cleverson', ultimoContato:'Proposta 1 aprovada e finalizada.', agenda:d(-30,'09:00'), valor:3500},
+    {id:9, tipo:'venda', num:27, clienteId:5, fase:'Finalizado', responsavel:'Cleverson', ultimoContato:'Proposta 5 aprovada.', agenda:d(-20,'09:00'), valor:5375}
+  ],
+  obras: [
+    {id:1, nome:'Automação Residencial - Casa Zagonel', clienteId:1, fase:'Em Execução', responsavel:'Cleverson',
+     etapas:[{n:'Projeto aprovado',ok:true},{n:'Infraestrutura / cabeamento',ok:true},{n:'Instalação de equipamentos',ok:false},{n:'Programação e testes',ok:false},{n:'Entrega ao cliente',ok:false}]},
+    {id:2, nome:'CFTV - Residência Spancerski', clienteId:5, fase:'Em Execução', responsavel:'Cleverson',
+     etapas:[{n:'Projeto aprovado',ok:true},{n:'Cabeamento',ok:true},{n:'Instalação de câmeras',ok:true},{n:'Configuração e testes',ok:false}]},
+    {id:3, nome:'Projeto Automação - Celso Paranaguá', clienteId:2, fase:'Em Planejamento', responsavel:'Cleverson',
+     etapas:[{n:'Levantamento técnico',ok:true},{n:'Projeto',ok:false},{n:'Aprovação do cliente',ok:false}]}
+  ],
+  visitas: [
+    {id:1, clienteId:2, tipo:'comercial', data:d(1,'10:00'), responsavel:'Cleverson', obs:'Primeira reunião do projeto de automação', concluida:false},
+    {id:2, clienteId:3, tipo:'tecnica', data:d(2,'08:00'), responsavel:'Cleverson', obs:'Verificar instalação da câmera', concluida:false},
+    {id:3, clienteId:6, tipo:'tecnica', data:d(-1,'09:00'), responsavel:'Cleverson', obs:'Vistoria da obra', concluida:false},
+    {id:4, clienteId:4, tipo:'comercial', data:d(0,'15:00'), responsavel:'Cleverson', obs:'Apresentar proposta 18', concluida:false}
+  ]
+};
+
+let db;
+function load(){
+  try{ db = JSON.parse(localStorage.getItem('crmObrasDB')) || null; }catch(e){ db=null; }
+  if(!db) db = JSON.parse(JSON.stringify(SEED));
+}
+function save(){ localStorage.setItem('crmObrasDB', JSON.stringify(db)); }
+function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
+function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
+function fmtMoney(v){ return v ? v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
+function fmtData(iso){ if(!iso) return ''; const [data,hora]=iso.split('T'); const [a,m,dd]=data.split('-'); return `${dd}/${m}/${a} ${hora||''}`.trim(); }
+
+/* ================= NAVEGAÇÃO ================= */
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('view-'+b.dataset.view).classList.add('active');
+    renderAll();
+  };
+});
+
+/* ================= FILTRO MÓDULOS ================= */
+const modAtivos = {crm:true, venda:true, obra:true};
+document.querySelectorAll('.chip').forEach(c=>{
+  c.onclick=()=>{
+    const m=c.dataset.mod;
+    modAtivos[m]=!modAtivos[m];
+    c.classList.toggle('on-'+m, modAtivos[m]);
+    renderKanban();
+  };
+});
+
+/* ================= BUSCA ================= */
+document.getElementById('busca').oninput = ()=> renderAll();
+function termoBusca(){ return document.getElementById('busca').value.trim().toLowerCase(); }
+function matchCard(card){
+  const t = termoBusca(); if(!t) return true;
+  return (cliente(card.clienteId).nome+' '+(card.ultimoContato||'')+' '+card.num).toLowerCase().includes(t);
+}
+
+/* ================= STATUS DE PRAZO ================= */
+function statusAgenda(iso){
+  if(!iso) return null;
+  const dt = new Date(iso); const agora = new Date();
+  const diaAg = iso.slice(0,10), diaHoje = agora.toISOString().slice(0,10);
+  if(diaAg < diaHoje) return 'atrasado';
+  if(diaAg === diaHoje) return 'hoje';
+  return null;
+}
+
+/* ================= KANBAN ================= */
+function renderKanban(){
+  const k = document.getElementById('kanban'); k.innerHTML='';
+  ['crm','venda','obra'].forEach(tipo=>{
+    if(!modAtivos[tipo]) return;
+    FASES[tipo].forEach(fase=>{
+      const itens = tipo==='obra'
+        ? db.obras.filter(o=>o.fase===fase && (!termoBusca() || (o.nome+cliente(o.clienteId).nome).toLowerCase().includes(termoBusca())))
+        : db.cards.filter(c=>c.tipo===tipo && c.fase===fase && matchCard(c));
+      const col = document.createElement('div');
+      col.className='col';
+      col.dataset.tipo=tipo; col.dataset.fase=fase;
+      col.innerHTML = `
+        <div class="col-head">
+          <div class="col-count" style="background:${COR[tipo]}">${String(itens.length).padStart(2,'0')}</div>
+          <div><div class="col-sub">${tipo.toUpperCase()}</div><div class="col-title">${fase}</div></div>
+        </div>
+        <div class="col-body"></div>`;
+      const body = col.querySelector('.col-body');
+      if(!itens.length) body.innerHTML='<div class="empty">Sem cartões</div>';
+      itens.forEach(item=> body.appendChild(tipo==='obra' ? obraMiniCard(item) : crmCard(item)));
+      // drag&drop
+      col.ondragover = e=>{ e.preventDefault(); col.classList.add('dragover'); };
+      col.ondragleave = ()=> col.classList.remove('dragover');
+      col.ondrop = e=>{
+        e.preventDefault(); col.classList.remove('dragover');
+        const [t,id] = e.dataTransfer.getData('text').split(':');
+        if(t!==tipo) return;
+        if(t==='obra'){ const o=db.obras.find(x=>x.id==id); if(o) o.fase=fase; }
+        else { const c=db.cards.find(x=>x.id==id); if(c) c.fase=fase; }
+        save(); renderAll();
+      };
+      k.appendChild(col);
+    });
+  });
+}
+
+function crmCard(c){
+  const el = document.createElement('div');
+  el.className='kcard '+c.tipo;
+  el.draggable=true;
+  el.ondragstart = e=> e.dataTransfer.setData('text', c.tipo+':'+c.id);
+  el.onclick = ()=> abrirEditarCartao(c.id);
+  const st = statusAgenda(c.agenda);
+  el.innerHTML = `
+    <div class="top"><span class="num">#${c.num}</span> ${cliente(c.clienteId).nome}</div>
+    <div class="row"><b>Resp.:</b> ${c.responsavel}</div>
+    ${c.ultimoContato?`<div class="row"><b>Último contato:</b> ${c.ultimoContato}</div>`:''}
+    ${c.agenda?`<div class="row"><b>Agenda:</b> ${fmtData(c.agenda)}</div>`:''}
+    ${c.valor?`<div class="row valor">${fmtMoney(c.valor)}</div>`:''}
+    ${st==='atrasado'?'<span class="badge atrasado">⚠ Atrasado</span>':''}
+    ${st==='hoje'?'<span class="badge hoje">● Hoje</span>':''}`;
+  return el;
+}
+
+function obraMiniCard(o){
+  const done = o.etapas.filter(e=>e.ok).length, pct = Math.round(done/o.etapas.length*100);
+  const el = document.createElement('div');
+  el.className='kcard obra';
+  el.draggable=true;
+  el.ondragstart = e=> e.dataTransfer.setData('text', 'obra:'+o.id);
+  el.onclick = ()=>{ document.querySelector('[data-view="obras"]').click(); };
+  el.innerHTML = `
+    <div class="top">${o.nome}</div>
+    <div class="row"><b>Cliente:</b> ${cliente(o.clienteId).nome}</div>
+    <div class="row"><b>Etapas:</b> ${done}/${o.etapas.length}</div>
+    <div class="progress"><div style="width:${pct}%"></div></div>`;
+  return el;
+}
+
+/* ================= OBRAS ================= */
+function renderObras(){
+  const grid = document.getElementById('obras-grid'); grid.innerHTML='';
+  const stats = document.getElementById('obras-stats');
+  const emExec = db.obras.filter(o=>o.fase==='Em Execução').length;
+  const plan = db.obras.filter(o=>o.fase==='Em Planejamento').length;
+  const conc = db.obras.filter(o=>o.fase==='Concluída').length;
+  stats.innerHTML = `
+    <div class="stat"><div class="n">${plan}</div><div class="l">Em planejamento</div></div>
+    <div class="stat"><div class="n">${emExec}</div><div class="l">Em execução</div></div>
+    <div class="stat"><div class="n">${conc}</div><div class="l">Concluídas</div></div>`;
+  db.obras.forEach(o=>{
+    const done = o.etapas.filter(e=>e.ok).length, pct = o.etapas.length?Math.round(done/o.etapas.length*100):0;
+    const card = document.createElement('div');
+    card.className='obra-card';
+    card.innerHTML = `
+      <h3>${o.nome}</h3>
+      <div class="meta">${cliente(o.clienteId).nome} · ${o.fase} · Resp.: ${o.responsavel}</div>
+      <div>${o.etapas.map((e,i)=>`
+        <label class="etapa ${e.ok?'done':''}"><input type="checkbox" ${e.ok?'checked':''} data-obra="${o.id}" data-etapa="${i}"><span>${e.n}</span></label>`).join('')}
+      </div>
+      <div class="obra-prog"><div style="width:${pct}%"></div></div>
+      <span class="obra-pct">${pct}% concluído</span>`;
+    card.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+      cb.onchange = ()=>{
+        const obra = db.obras.find(x=>x.id==cb.dataset.obra);
+        obra.etapas[cb.dataset.etapa].ok = cb.checked;
+        const all = obra.etapas.every(e=>e.ok);
+        if(all) obra.fase='Concluída';
+        else if(obra.etapas.some(e=>e.ok) && obra.fase==='Em Planejamento') obra.fase='Em Execução';
+        save(); renderAll();
+      };
+    });
+    grid.appendChild(card);
+  });
+}
+
+/* ================= AGENDA ================= */
+function renderAgenda(){
+  const wrap = document.getElementById('agenda-lista'); wrap.innerHTML='';
+  const grupos = {};
+  db.visitas.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(v=>{
+    const dia = v.data.slice(0,10);
+    (grupos[dia]=grupos[dia]||[]).push(v);
+  });
+  const diaHoje = new Date().toISOString().slice(0,10);
+  Object.keys(grupos).sort().forEach(dia=>{
+    const sec = document.createElement('div');
+    sec.className='agenda-dia';
+    const [a,m,dd]=dia.split('-');
+    let cls='', label=`${dd}/${m}/${a}`;
+    if(dia===diaHoje){cls='hoje';label+=' — HOJE';}
+    else if(dia<diaHoje){cls='atrasado';label+=' — ATRASADA';}
+    sec.innerHTML=`<h3 class="${cls}">${label}</h3>`;
+    grupos[dia].forEach(v=>{
+      const el=document.createElement('div');
+      el.className='visita'+(v.concluida?' concluida':'');
+      el.innerHTML=`
+        <span class="hora">${v.data.slice(11,16)}</span>
+        <span class="tipo ${v.tipo}">${v.tipo==='tecnica'?'Técnica':'Comercial'}</span>
+        <span><b>${cliente(v.clienteId).nome}</b>${v.obs?' — '+v.obs:''}</span>
+        <button class="done-btn">${v.concluida?'Reabrir':'✓ Concluir'}</button>`;
+      el.querySelector('.done-btn').onclick=()=>{ v.concluida=!v.concluida; save(); renderAgenda(); };
+      sec.appendChild(el);
+    });
+    wrap.appendChild(sec);
+  });
+  if(!db.visitas.length) wrap.innerHTML='<div class="empty">Nenhuma visita agendada</div>';
+}
+
+/* ================= CLIENTES ================= */
+function renderClientes(){
+  const tb = document.getElementById('clientes-tbody'); tb.innerHTML='';
+  const t = termoBusca();
+  db.clientes.filter(c=>!t || c.nome.toLowerCase().includes(t)).forEach(c=>{
+    const negocios = db.cards.filter(x=>x.clienteId===c.id).length + db.obras.filter(x=>x.clienteId===c.id).length;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${c.cidade||''}</td><td>${negocios}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* ================= MODAIS ================= */
+const overlay=document.getElementById('overlay'), modal=document.getElementById('modal');
+overlay.onclick=e=>{ if(e.target===overlay) fecharModal(); };
+function fecharModal(){ overlay.classList.remove('open'); }
+function abrirModal(html){ modal.innerHTML=html; overlay.classList.add('open'); }
+function optsClientes(sel){ return db.clientes.map(c=>`<option value="${c.id}" ${c.id==sel?'selected':''}>${c.nome}</option>`).join(''); }
+
+function abrirNovoCartao(){
+  abrirModal(`
+    <h3>Novo Cartão</h3>
+    <label>Tipo</label>
+    <select id="m-tipo" onchange="document.getElementById('m-fase').innerHTML=FASES[this.value].map(f=>'<option>'+f+'</option>').join('')">
+      <option value="crm">CRM</option><option value="venda">Venda</option>
+    </select>
+    <label>Fase</label><select id="m-fase">${FASES.crm.map(f=>'<option>'+f+'</option>').join('')}</select>
+    <label>Cliente</label><select id="m-cliente">${optsClientes()}</select>
+    <label>Responsável</label><input id="m-resp" value="Cleverson">
+    <label>Último contato / observação</label><textarea id="m-contato"></textarea>
+    <label>Agenda (próxima ação)</label><input id="m-agenda" type="datetime-local">
+    <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="0">
+    <div class="actions"><button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+    <button class="btn primary" onclick="salvarNovoCartao()">Salvar</button></div>`);
+}
+function salvarNovoCartao(){
+  const tipo=document.getElementById('m-tipo').value;
+  db.cards.push({
+    id:nextId(db.cards), tipo, num:nextId(db.cards)+10,
+    clienteId:+document.getElementById('m-cliente').value,
+    fase:document.getElementById('m-fase').value,
+    responsavel:document.getElementById('m-resp').value,
+    ultimoContato:document.getElementById('m-contato').value,
+    agenda:document.getElementById('m-agenda').value,
+    valor:+document.getElementById('m-valor').value
+  });
+  save(); fecharModal(); renderAll();
+}
+
+function abrirEditarCartao(id){
+  const c=db.cards.find(x=>x.id===id);
+  abrirModal(`
+    <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
+    <label>Fase</label><select id="m-fase">${FASES[c.tipo].map(f=>`<option ${f===c.fase?'selected':''}>${f}</option>`).join('')}</select>
+    <label>Cliente</label><select id="m-cliente">${optsClientes(c.clienteId)}</select>
+    <label>Responsável</label><input id="m-resp" value="${c.responsavel}">
+    <label>Último contato</label><textarea id="m-contato">${c.ultimoContato||''}</textarea>
+    <label>Agenda</label><input id="m-agenda" type="datetime-local" value="${c.agenda||''}">
+    <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c.valor||0}">
+    <div class="actions">
+      <button class="btn danger" onclick="excluirCartao(${c.id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoCartao(${c.id})">Salvar</button></div>`);
+}
+function salvarEdicaoCartao(id){
+  const c=db.cards.find(x=>x.id===id);
+  c.fase=document.getElementById('m-fase').value;
+  c.clienteId=+document.getElementById('m-cliente').value;
+  c.responsavel=document.getElementById('m-resp').value;
+  c.ultimoContato=document.getElementById('m-contato').value;
+  c.agenda=document.getElementById('m-agenda').value;
+  c.valor=+document.getElementById('m-valor').value;
+  save(); fecharModal(); renderAll();
+}
+function excluirCartao(id){
+  db.cards=db.cards.filter(x=>x.id!==id);
+  save(); fecharModal(); renderAll();
+}
+
+function abrirNovaObra(){
+  abrirModal(`
+    <h3>Nova Obra</h3>
+    <label>Nome da obra</label><input id="m-nome" placeholder="Ex.: Automação Residencial - Casa Silva">
+    <label>Cliente</label><select id="m-cliente">${optsClientes()}</select>
+    <label>Responsável</label><input id="m-resp" value="Cleverson">
+    <label>Etapas (uma por linha)</label>
+    <textarea id="m-etapas" rows="5">Projeto aprovado
+Infraestrutura / cabeamento
+Instalação de equipamentos
+Programação e testes
+Entrega ao cliente</textarea>
+    <div class="actions"><button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+    <button class="btn primary" onclick="salvarNovaObra()">Salvar</button></div>`);
+}
+function salvarNovaObra(){
+  const etapas=document.getElementById('m-etapas').value.split('\n').map(s=>s.trim()).filter(Boolean).map(n=>({n,ok:false}));
+  db.obras.push({
+    id:nextId(db.obras),
+    nome:document.getElementById('m-nome').value||'Nova obra',
+    clienteId:+document.getElementById('m-cliente').value,
+    fase:'Em Planejamento',
+    responsavel:document.getElementById('m-resp').value,
+    etapas: etapas.length?etapas:[{n:'Início',ok:false}]
+  });
+  save(); fecharModal(); renderAll();
+}
+
+function abrirNovaVisita(){
+  abrirModal(`
+    <h3>Nova Visita</h3>
+    <label>Cliente</label><select id="m-cliente">${optsClientes()}</select>
+    <label>Tipo</label><select id="m-tipo"><option value="comercial">Comercial</option><option value="tecnica">Técnica</option></select>
+    <label>Data e hora</label><input id="m-data" type="datetime-local">
+    <label>Responsável</label><input id="m-resp" value="Cleverson">
+    <label>Observação</label><textarea id="m-obs"></textarea>
+    <div class="actions"><button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+    <button class="btn primary" onclick="salvarNovaVisita()">Salvar</button></div>`);
+}
+function salvarNovaVisita(){
+  const data=document.getElementById('m-data').value;
+  if(!data){ alert('Informe a data da visita.'); return; }
+  db.visitas.push({
+    id:nextId(db.visitas),
+    clienteId:+document.getElementById('m-cliente').value,
+    tipo:document.getElementById('m-tipo').value,
+    data, responsavel:document.getElementById('m-resp').value,
+    obs:document.getElementById('m-obs').value, concluida:false
+  });
+  save(); fecharModal(); renderAll();
+}
+
+function abrirNovoCliente(){
+  abrirModal(`
+    <h3>Novo Cliente</h3>
+    <label>Nome</label><input id="m-nome">
+    <label>Telefone</label><input id="m-tel">
+    <label>E-mail</label><input id="m-email">
+    <label>Cidade</label><input id="m-cidade">
+    <div class="actions"><button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+    <button class="btn primary" onclick="salvarNovoCliente()">Salvar</button></div>`);
+}
+function salvarNovoCliente(){
+  const nome=document.getElementById('m-nome').value.trim();
+  if(!nome){ alert('Informe o nome.'); return; }
+  db.clientes.push({
+    id:nextId(db.clientes), nome,
+    tel:document.getElementById('m-tel').value,
+    email:document.getElementById('m-email').value,
+    cidade:document.getElementById('m-cidade').value
+  });
+  save(); fecharModal(); renderAll();
+}
+
+/* ================= INIT ================= */
+function renderAll(){ renderKanban(); renderObras(); renderAgenda(); renderClientes(); }
+load(); renderAll();
+</script>
+</body>
+</html>
