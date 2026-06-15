@@ -724,11 +724,14 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
-      sb.from('card_historico').select('*').order('id', {ascending:false})
+      sb.from('card_historico').select('*').order('id', {ascending:false}),
+      sb.from('propostas').select('*').order('id'),
+      sb.from('proposta_itens').select('*').order('id'),
+      sb.from('proposta_arquivos').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -750,6 +753,38 @@ async function carregarDadosSupabase(){
         historico.data.forEach(h=>{
           const c = db.cards.find(x=>x.id===h.card_id);
           if(c) c.historico.push({data: h.data ? h.data.slice(0,16) : null, texto:h.texto});
+        });
+      }
+    }
+    if(propostas.data){
+      db.propostas = propostas.data.map(p=>({
+        id:p.id, numero:p.numero, cardId:p.card_id, clienteId:p.cliente_id, obraId:p.obra_id,
+        dataEmissao: p.data_emissao ? p.data_emissao.slice(0,10) : '',
+        valor:Number(p.valor)||0, validadeDias:Number(p.validade_dias)||0, faseId:p.fase_id,
+        status:p.status, aditivo:!!p.aditivo,
+        dataAprovacao: p.data_aprovacao ? p.data_aprovacao.slice(0,10) : undefined,
+        faseAnterior: p.fase_anterior || undefined,
+        itens:[], arquivos:[]
+      }));
+      // remove campos undefined para não "sujar" o objeto (igual ao localStorage anterior)
+      db.propostas.forEach(p=>{
+        if(p.dataAprovacao===undefined) delete p.dataAprovacao;
+        if(p.faseAnterior===undefined) delete p.faseAnterior;
+      });
+      if(propItens.data){
+        propItens.data.forEach(it=>{
+          const p = db.propostas.find(x=>x.id===it.proposta_id);
+          if(p) p.itens.push({
+            item:it.item||'', descricao:it.descricao||'', qtd:Number(it.qtd)||0,
+            unit:Number(it.unit)||0, total:Number(it.total)||0, tipo:it.tipo||'', categoria:it.categoria||''
+          });
+        });
+      }
+      db.propostas.forEach(p=>{ if(!p.itens.length) delete p.itens; });
+      if(propArqs.data){
+        propArqs.data.forEach(a=>{
+          const p = db.propostas.find(x=>x.id===a.proposta_id);
+          if(p) p.arquivos.push({id:a.id, nome:a.nome, path:a.storage_path});
         });
       }
     }
@@ -815,6 +850,14 @@ function syncDadosSupabase(){
       valor:c.valor||0, perdido:!!c.perdido, concluido:!!c.concluido
     }));
     await sincronizarHistoricos();
+    await sincronizarTabela('propostas', db.propostas, p=>({
+      id:p.id, numero:p.numero, card_id:p.cardId, cliente_id:p.clienteId, obra_id:p.obraId||null,
+      data_emissao:p.dataEmissao||null, valor:p.valor||0, validade_dias:p.validadeDias||0,
+      fase_id:p.faseId, status:p.status, aditivo:!!p.aditivo,
+      data_aprovacao:p.dataAprovacao||null, fase_anterior:p.faseAnterior||null
+    }));
+    await sincronizarItensPropostas();
+    await sincronizarArquivosPropostas();
   }, 800);
 }
 
@@ -841,6 +884,44 @@ async function sincronizarHistoricos(){
     }
   }catch(e){ console.error('Falha ao sincronizar card_historico:', e); }
 }
+
+/* Substitui no Supabase os itens (proposta_itens) de cada proposta pelo array
+   atual (db.propostas[].itens) e remove os itens de propostas excluídas. */
+async function sincronizarItensPropostas(){
+  try{
+    const propIds = db.propostas.map(p=>p.id);
+    if(propIds.length){
+      const {error:errOrf} = await sb.from('proposta_itens').delete().not('proposta_id','in', `(${propIds.join(',')})`);
+      if(errOrf) console.error('Erro ao limpar proposta_itens de propostas excluídas:', errOrf);
+      const {error:errDel} = await sb.from('proposta_itens').delete().in('proposta_id', propIds);
+      if(errDel){ console.error('Erro ao limpar proposta_itens:', errDel); return; }
+    } else {
+      const {error:errAll} = await sb.from('proposta_itens').delete().neq('id', -1);
+      if(errAll) console.error('Erro ao limpar proposta_itens:', errAll);
+      return;
+    }
+    const rows=[];
+    db.propostas.forEach(p=>(p.itens||[]).forEach(it=>rows.push({
+      proposta_id:p.id, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
+      unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||''
+    })));
+    if(rows.length){
+      const {error:errIns} = await sb.from('proposta_itens').insert(rows);
+      if(errIns) console.error('Erro ao gravar proposta_itens:', errIns);
+    }
+  }catch(e){ console.error('Falha ao sincronizar proposta_itens:', e); }
+}
+
+/* Sincroniza os metadados dos arquivos das propostas (proposta_arquivos).
+   O conteúdo dos arquivos vai para o Storage separadamente (uploadArquivoProposta). */
+async function sincronizarArquivosPropostas(){
+  const rows=[];
+  db.propostas.forEach(p=>(p.arquivos||[]).forEach(a=>rows.push({
+    id:a.id, proposta_id:p.id, nome:a.nome, storage_path:a.path
+  })));
+  await sincronizarTabela('proposta_arquivos', rows, r=>r);
+}
+
 function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
 function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
 function obraDe(c){ return c.obraId ? (db.obras.find(o=>o.id===c.obraId)||null) : null; }
@@ -863,20 +944,44 @@ function fmtMoney(v){ return v ? v.toLocaleString('pt-BR',{style:'currency',curr
 function fmtData(iso){ if(!iso) return ''; const [data,hora]=iso.split('T'); const [a,m,dd]=data.split('-'); return `${dd}/${m}/${a} ${hora||''}`.trim(); }
 function fmtDia2(s){ if(!s) return ''; const [a,m,dd]=s.slice(0,10).split('-'); return `${dd}/${m}/${a}`; }
 
-/* ===== Arquivos de propostas (IndexedDB — localStorage não comporta PDFs/planilhas) ===== */
-let idbConn=null;
-function idbAbrir(){
-  return new Promise((res,rej)=>{
-    if(idbConn) return res(idbConn);
-    const rq=indexedDB.open('crmArquivos',1);
-    rq.onupgradeneeded=()=>rq.result.createObjectStore('arquivos',{keyPath:'id'});
-    rq.onsuccess=()=>{ idbConn=rq.result; res(idbConn); };
-    rq.onerror=()=>rej(rq.error);
-  });
+/* ===== Arquivos de propostas (Supabase Storage, bucket "propostas") ===== */
+function caminhoArquivo(propId, fid, nome){
+  const limpo = (nome||'arquivo').replace(/[^a-zA-Z0-9.\-_]/g,'_');
+  return `${propId}/${fid}_${limpo}`;
 }
-async function idbSalvar(reg){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const tx=d.transaction('arquivos','readwrite'); tx.objectStore('arquivos').put(reg); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
-async function idbObter(id){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const rq=d.transaction('arquivos').objectStore('arquivos').get(id); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
-async function idbExcluir(id){ const d=await idbAbrir(); return new Promise((res,rej)=>{ const tx=d.transaction('arquivos','readwrite'); tx.objectStore('arquivos').delete(id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }
+async function uploadArquivoProposta(propId, file){
+  const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
+  const path=caminhoArquivo(propId, fid, file.name);
+  const {error}=await sb.storage.from('propostas').upload(path, file, {upsert:true});
+  if(error) throw error;
+  return {id:fid, nome:file.name, path};
+}
+async function excluirArquivoStorage(path){
+  if(!path) return;
+  try{ await sb.storage.from('propostas').remove([path]); }catch(e){ console.error('Erro ao excluir arquivo do Storage:', e); }
+}
+async function baixarArquivo(path, nome){
+  const ehPdf=(nome||'').toLowerCase().endsWith('.pdf');
+  // Safari: a janela precisa ser aberta DENTRO do clique (síncrono), senão vira popup bloqueado
+  const win = ehPdf ? window.open('', '_blank') : null;
+  if(win){ try{ win.document.write('<title>Abrindo...</title><p style="font-family:sans-serif">Carregando o arquivo...</p>'); }catch(e){} }
+  try{
+    const {data, error} = await sb.storage.from('propostas').download(path);
+    if(error || !data){ if(win) win.close(); alert('Não foi possível baixar o arquivo: '+(error?error.message:'')); return; }
+    const url=URL.createObjectURL(data);
+    if(ehPdf){
+      if(win && !win.closed) win.location=url;
+      else window.open(url);
+    } else {
+      const a=document.createElement('a');
+      a.href=url; a.download=nome||'arquivo'; a.click();
+    }
+    setTimeout(()=>URL.revokeObjectURL(url), 120000);
+  }catch(e){
+    if(win) win.close();
+    alert('Erro ao baixar arquivo: '+e.message);
+  }
+}
 
 /* Número controlado pelo sistema: código do cliente + nº do cartão CRM + data de emissão */
 function gerarNumeroProposta(c){
@@ -1994,7 +2099,7 @@ function propostaItemHTML(p){
         <b>${p.numero}</b>${p.aditivo?' <span class="tag-adt">ADITIVO</span>':''} · ${fmtDia2(p.dataEmissao)} · <span style="font-weight:700;color:var(--blue-dark)">${fmtMoney(p.valor)||'—'}</span>
         ${p.status==='aprovada'?`<div style="font-size:12px;color:#6a1b9a;font-weight:700;margin-top:2px">✔ Aprovada pelo cliente em ${fmtDia2(p.dataAprovacao)}</div>`:''}
         <div class="prop-arqs">
-          ${(p.arquivos||[]).map(a=>`<button class="arq-btn" title="${a.nome}" onclick="baixarArquivo('${a.id}','${a.nome.replace(/'/g,'')}')">${a.nome.toLowerCase().endsWith('.pdf')?'📄':'📊'} ${a.nome}</button>`).join('')||'<small style="color:var(--muted)">sem arquivos anexados</small>'}
+          ${(p.arquivos||[]).map(a=>`<button class="arq-btn" title="${a.nome}" onclick="baixarArquivo('${a.path}','${a.nome.replace(/'/g,'')}')">${a.nome.toLowerCase().endsWith('.pdf')?'📄':'📊'} ${a.nome}</button>`).join('')||'<small style="color:var(--muted)">sem arquivos anexados</small>'}
         </div>
       </div>
       <div class="prop-acoes">
@@ -2072,10 +2177,7 @@ async function salvarEdicaoProposta(id){
   const files=[...document.getElementById('pe-arqs').files];
   for(const f of files){
     if(f.size>15*1024*1024){ alert('Arquivo acima de 15MB: '+f.name); return; }
-    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
-    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
-    await idbSalvar({id:fid, nome:f.name, dataURL});
-    p.arquivos.push({id:fid, nome:f.name});
+    p.arquivos.push(await uploadArquivoProposta(p.id, f));
   }
   propEditandoId=null;
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
@@ -2163,12 +2265,13 @@ async function novaProposta(cardId){
 
   let valor=+document.getElementById('pn-valor').value||0;
   let dataEmissao=document.getElementById('pn-data').value||localDia(0);
+  const propId=nextId(db.propostas);
   const arquivos=[];
   for(const f of files){
-    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
     // conferência automática no primeiro PDF
     if(arquivos.length===0){
       try{
+        const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
         const texto=await extrairTextoPDF(dataURL);
         const a=analisarPDFProposta(texto, numero);
         let msg='Leitura do PDF "'+f.name+'":\n';
@@ -2184,12 +2287,10 @@ async function novaProposta(cardId){
         if(!confirm('Não consegui ler o PDF para conferência.\nMotivo: '+(e&&e.message?e.message:e)+'\n\nSubir mesmo assim, com os dados digitados?')) return;
       }
     }
-    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
-    await idbSalvar({id:fid, nome:f.name, dataURL});
-    arquivos.push({id:fid, nome:f.name});
+    arquivos.push(await uploadArquivoProposta(propId, f));
   }
   db.propostas.push({
-    id:nextId(db.propostas), numero, cardId,
+    id:propId, numero, cardId,
     clienteId:c.clienteId, obraId:c.obraId,
     dataEmissao, valor,
     validadeDias:+document.getElementById('pn-validade').value||0,
@@ -2213,15 +2314,13 @@ async function aprovarComExcel(cardId){
   if(!confirm(`Confirmar a APROVAÇÃO d${p.aditivo?'o ADITIVO':'a proposta'} ${p.numero} (${fmtMoney(p.valor)||'sem valor'}) com o Excel anexado?`)) return;
   let primeiro=true;
   for(const f of files){
-    const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
     if(primeiro){ // importa os itens da aba Efetivo_Contratado do primeiro Excel
+      const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
       const itens=await importarItensComConferencia(dataURL, f.name, p);
       if(itens) p.itens=itens;
       primeiro=false;
     }
-    const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
-    await idbSalvar({id:fid, nome:f.name, dataURL});
-    p.arquivos.push({id:fid, nome:f.name});
+    p.arquivos.push(await uploadArquivoProposta(p.id, f));
   }
   p.status='aprovada'; p.dataAprovacao=localDia(0);
   p.faseAnterior=p.faseId; // guarda para o caso de reverter
@@ -2240,7 +2339,7 @@ async function reverterProposta(id){
   }
   const excels=(p.arquivos||[]).filter(a=>/\.(xlsx|xls)$/i.test(a.nome));
   if(!confirm(`Reverter ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} para "emitida"?${excels.length?`\nO(s) ${excels.length} arquivo(s) Excel da aprovação serão removidos — só o PDF volta para as emitidas.`:''}`)) return;
-  for(const a of excels){ try{ await idbExcluir(a.id); }catch(e){} }
+  for(const a of excels){ await excluirArquivoStorage(a.path); }
   p.arquivos=(p.arquivos||[]).filter(a=>!/\.(xlsx|xls)$/i.test(a.nome));
   delete p.itens; // itens importados pertencem à aprovação
   p.status='emitida'; delete p.dataAprovacao;
@@ -2258,32 +2357,11 @@ async function excluirProposta(id){
     return;
   }
   if(!confirm(`Excluir ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} e seus arquivos?`)) return;
-  for(const a of (p.arquivos||[])){ try{ await idbExcluir(a.id); }catch(e){} }
+  for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
   const aba=p.status==='aprovada'?'aprovada':'emitidas';
   db.propostas=db.propostas.filter(x=>x.id!==id);
   recalcValorCartao(p.cardId);
   save(); renderAll(); abrirEditarCartao(p.cardId, aba);
-}
-
-function baixarArquivo(fid, nome){
-  const ehPdf=(nome||'').toLowerCase().endsWith('.pdf');
-  // Safari: a janela precisa ser aberta DENTRO do clique (síncrono), senão vira popup bloqueado
-  const win = ehPdf ? window.open('', '_blank') : null;
-  if(win){ try{ win.document.write('<title>Abrindo PDF...</title><p style="font-family:sans-serif">Carregando o PDF...</p>'); }catch(e){} }
-  (async()=>{
-    const reg=await idbObter(fid);
-    if(!reg){ if(win) win.close(); alert('Arquivo não encontrado no armazenamento local deste navegador.'); return; }
-    const blob=await (await fetch(reg.dataURL)).blob();
-    const url=URL.createObjectURL(blob);
-    if(ehPdf || (nome||reg.nome).toLowerCase().endsWith('.pdf')){
-      if(win && !win.closed) win.location=url;
-      else window.open(url);
-    } else {
-      const a=document.createElement('a');
-      a.href=url; a.download=nome||reg.nome; a.click();
-    }
-    setTimeout(()=>URL.revokeObjectURL(url), 120000);
-  })();
 }
 
 /* ===== Painel de Propostas (kanban) ===== */
@@ -2497,7 +2575,7 @@ function salvarEdicaoCartao(id){
 async function excluirCartao(id){
   const props=db.propostas.filter(p=>p.cardId===id);
   if(!confirm(props.length?`Este cartão tem ${props.length} proposta(s), que serão excluídas junto. Continuar?`:'Excluir este cartão?')) return;
-  for(const p of props){ for(const a of (p.arquivos||[])){ try{ await idbExcluir(a.id); }catch(e){} } }
+  for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
