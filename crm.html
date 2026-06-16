@@ -213,6 +213,29 @@
   .badge-papel.admin{background:#cfe2ff;color:var(--blue-dark)}
   .badge-papel.usuario{background:#e9ecef;color:var(--muted)}
   .badge-inativo{background:var(--red-soft);color:var(--red);font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
+  /* ===== Auditoria ===== */
+  .audit-filtros{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 0 14px;border-bottom:1px solid var(--border);margin-bottom:14px}
+  .audit-filtros input[type=text]{min-width:240px}
+  .audit-filtros input[type=date]{width:145px}
+  .audit-retencao{display:flex;align-items:center;gap:6px;margin-left:auto}
+  .audit-retencao label{font-size:13px;font-weight:600;white-space:nowrap}
+  #audit-tabela{width:100%;border-collapse:collapse;font-size:13px}
+  #audit-tabela th{text-align:left;padding:7px 10px;background:var(--bg);border-bottom:2px solid var(--border);font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  #audit-tabela td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  #audit-tabela tr:hover td{background:#f8f9fa}
+  .audit-acao{display:inline-block;padding:2px 7px;border-radius:5px;font-size:11.5px;font-weight:700;text-transform:uppercase}
+  .audit-acao.criar{background:#e8f5e9;color:#2e7d32}
+  .audit-acao.editar{background:#e3f2fd;color:#1565c0}
+  .audit-acao.excluir{background:#fce4ec;color:#c62828}
+  .audit-acao.login{background:#f3e5f5;color:#6a1b9a}
+  .audit-acao.logout{background:#f3e5f5;color:#6a1b9a}
+  .audit-acao.aprovar{background:#e8f5e9;color:#1b5e20}
+  .audit-acao.reverter{background:#fff3e0;color:#e65100}
+  .audit-acao.marcar_perdida{background:#fce4ec;color:#880e4f}
+  .audit-acao.reativar{background:#e0f2f1;color:#004d40}
+  .audit-acao.config{background:#f1f8e9;color:#558b2f}
+  .audit-vazio{padding:40px;text-align:center;color:var(--muted);font-size:14px}
+  #audit-total{font-size:12.5px;color:var(--muted);margin-top:10px}
 </style>
 </head>
 <body>
@@ -228,6 +251,8 @@
       <button id="gm-grupos" onclick="irParaView('grupos')">🔐 Grupos de acesso</button>
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
+      <hr>
+      <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
   </div>
   <div class="user-wrap" id="user-wrap" style="display:none">
@@ -381,6 +406,32 @@
         <div id="emp-endereco"></div>
       </div>
     </div>
+  </div>
+
+  <!-- AUDITORIA & LOGS -->
+  <div class="view" id="view-auditoria">
+    <div class="bar">
+      <h2>🔍 Auditoria & Logs</h2>
+      <div class="spacer"></div>
+      <button class="btn sm neutral" onclick="carregarLogs()">↺ Atualizar</button>
+    </div>
+    <div class="audit-filtros">
+      <input id="audit-busca" type="text" placeholder="Buscar por usuário, entidade ou descrição..." style="min-width:280px" oninput="filtrarAuditoria()">
+      <input id="audit-de" type="date" onchange="filtrarAuditoria()" title="De">
+      <span style="font-size:13px;color:var(--muted)">até</span>
+      <input id="audit-ate" type="date" onchange="filtrarAuditoria()" title="Até">
+      <button class="btn sm neutral" onclick="limparFiltrosLog()">✕ Limpar</button>
+      <div class="audit-retencao">
+        <label>Retenção:</label>
+        <input id="audit-retencao" type="number" min="7" max="3650" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">dias</span>
+        <button class="btn sm primary" onclick="salvarRetencaoLog()">Salvar</button>
+      </div>
+    </div>
+    <div id="audit-corpo">
+      <div class="audit-vazio">Abrindo tela de auditoria...</div>
+    </div>
+    <div id="audit-total"></div>
   </div>
 
   <!-- GRUPOS DE ACESSO -->
@@ -563,7 +614,8 @@ const TELAS = [
   {id:'usuarios',    nome:'Cadastro de Usuários'},
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
-  {id:'gerais',      nome:'Configurações do Sistema'}
+  {id:'gerais',      nome:'Configurações do Sistema'},
+  {id:'auditoria',   nome:'Auditoria & Logs'}
 ];
 
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
@@ -713,7 +765,8 @@ async function carregarConfigSupabase(){
       db.empresa = {
         id:empresa.data.id, logo:empresa.data.logo||'', razao:empresa.data.razao||'', fantasia:empresa.data.fantasia||'',
         cnpj:empresa.data.cnpj||'', ie:empresa.data.ie||'', tel:empresa.data.tel||'', email:empresa.data.email||'',
-        site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''}
+        site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''},
+        logRetencaoDias: empresa.data.log_retencao_dias || 90
       };
     }
     save();
@@ -826,7 +879,7 @@ function syncConfigSupabase(){
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
       tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
-      endereco: e.endereco || {}
+      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90
     }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
   }, 800);
 }
@@ -920,6 +973,110 @@ async function sincronizarArquivosPropostas(){
     id:a.id, proposta_id:p.id, nome:a.nome, storage_path:a.path
   })));
   await sincronizarTabela('proposta_arquivos', rows, r=>r);
+}
+
+/* ===== Auditoria & Logs ===== */
+
+/* Registra uma ação no Supabase (fire-and-forget — não bloqueia o fluxo). */
+function registrarLog(acao, entidade, entidade_id, descricao){
+  if(!usuarioAtual) return;
+  sb.from('audit_logs').insert({
+    user_id: usuarioAtual.id,
+    user_nome: usuarioAtual.nome,
+    acao, entidade,
+    entidade_id: entidade_id!=null ? String(entidade_id) : null,
+    descricao
+  }).then(({error})=>{ if(error) console.error('Erro ao registrar log:', error); });
+}
+
+/* Cache dos logs carregados (evita rebuscar ao só filtrar) */
+let _auditLogs = [];
+
+/* Busca os logs do Supabase e exibe na tela. */
+async function carregarLogs(){
+  const corpo = document.getElementById('audit-corpo');
+  const retEl = document.getElementById('audit-retencao');
+  if(!corpo) return;
+  // mostra retenção atual
+  if(retEl) retEl.value = (db.empresa||{}).logRetencaoDias || 90;
+  corpo.innerHTML = '<div class="audit-vazio">Carregando logs...</div>';
+  try{
+    // purga logs antigos antes de exibir
+    await purgarLogsAntigos();
+    const {data, error} = await sb.from('audit_logs')
+      .select('*')
+      .order('created_at', {ascending:false})
+      .limit(2000);
+    if(error){ corpo.innerHTML='<div class="audit-vazio">Erro ao carregar logs: '+error.message+'</div>'; return; }
+    _auditLogs = data || [];
+    filtrarAuditoria();
+  }catch(e){ corpo.innerHTML='<div class="audit-vazio">Erro: '+e.message+'</div>'; }
+}
+
+/* Aplica os filtros da UI sobre _auditLogs e renderiza a tabela. */
+function filtrarAuditoria(){
+  const corpo = document.getElementById('audit-corpo');
+  const total = document.getElementById('audit-total');
+  if(!corpo) return;
+  const termo = (document.getElementById('audit-busca')||{}).value||'';
+  const de    = (document.getElementById('audit-de')||{}).value||'';
+  const ate   = (document.getElementById('audit-ate')||{}).value||'';
+  const t = termo.toLowerCase();
+  const filtrados = _auditLogs.filter(l=>{
+    if(t && !(l.user_nome||'').toLowerCase().includes(t) && !(l.descricao||'').toLowerCase().includes(t) && !(l.entidade||'').toLowerCase().includes(t)) return false;
+    if(de  && l.created_at < de+'T00:00:00') return false;
+    if(ate && l.created_at > ate+'T23:59:59') return false;
+    return true;
+  });
+  if(!filtrados.length){
+    corpo.innerHTML='<div class="audit-vazio">Nenhum registro encontrado.</div>';
+    if(total) total.innerHTML='';
+    return;
+  }
+  const linhas = filtrados.map(l=>{
+    const dt = l.created_at ? new Date(l.created_at).toLocaleString('pt-BR') : '—';
+    const acClass = (l.acao||'').replace(/[^a-z_]/g,'');
+    return `<tr>
+      <td style="white-space:nowrap;font-weight:600">${l.user_nome||'—'}</td>
+      <td style="white-space:nowrap;font-size:12px">${dt}</td>
+      <td><span class="audit-acao ${acClass}">${l.acao||'—'}</span></td>
+      <td style="font-size:12px;color:var(--muted)">${l.entidade||'—'}${l.entidade_id?` #${l.entidade_id}`:''}</td>
+      <td>${l.descricao||'—'}</td>
+    </tr>`;
+  }).join('');
+  corpo.innerHTML=`<table id="audit-tabela">
+    <thead><tr>
+      <th>Usuário</th><th>Data / Hora</th><th>Ação</th><th>Entidade</th><th>Descrição</th>
+    </tr></thead>
+    <tbody>${linhas}</tbody>
+  </table>`;
+  if(total) total.innerHTML=`Exibindo ${filtrados.length} de ${_auditLogs.length} registro(s).`;
+}
+
+function limparFiltrosLog(){
+  const el = id=>document.getElementById(id);
+  if(el('audit-busca')) el('audit-busca').value='';
+  if(el('audit-de'))    el('audit-de').value='';
+  if(el('audit-ate'))   el('audit-ate').value='';
+  filtrarAuditoria();
+}
+
+async function salvarRetencaoLog(){
+  const el = document.getElementById('audit-retencao');
+  const dias = Math.max(7, Math.min(3650, +el.value||90));
+  el.value = dias;
+  db.empresa = db.empresa || {};
+  db.empresa.logRetencaoDias = dias;
+  save();
+  registrarLog('config', 'config', null, `Retenção de logs alterada para ${dias} dias`);
+  alert(`Retenção salva: ${dias} dias. Logs mais antigos que isso serão removidos na próxima abertura da tela.`);
+}
+
+async function purgarLogsAntigos(){
+  const dias = (db.empresa||{}).logRetencaoDias || 90;
+  const corte = new Date(Date.now() - dias*24*60*60*1000).toISOString();
+  const {error} = await sb.from('audit_logs').delete().lt('created_at', corte);
+  if(error) console.error('Erro ao purgar logs antigos:', error);
 }
 
 function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
@@ -1235,10 +1392,13 @@ async function entrarComSessao(erro){
     return false;
   }
   iniciarApp(u);
+  // loga somente logins explícitos pelo botão (não restaurações de sessão)
+  if(erro) registrarLog('login', 'sistema', null, `Login efetuado: ${u.nome}`);
   return true;
 }
 
 async function logout(){
+  registrarLog('logout', 'sistema', null, `Sessão encerrada: ${usuarioAtual?usuarioAtual.nome:'?'}`);
   await sb.auth.signOut();
   localStorage.removeItem('crmLembrar');
   usuarioAtual=null;
@@ -1314,6 +1474,7 @@ function salvarEmpresa(){
   e.email = document.getElementById('emp-email').value.trim();
   e.site = document.getElementById('emp-site').value.trim();
   e.endereco = lerEndereco('emp');
+  registrarLog('config', 'config', 1, `Configurações do sistema atualizadas (empresa: "${(db.empresa||{}).fantasia||(db.empresa||{}).razao||'—'}")`);
   save(); atualizarMarca();
   const msg=document.getElementById('emp-msg');
   msg.textContent='✓ Configurações salvas';
@@ -1386,9 +1547,15 @@ async function salvarMeuUsuario(){
     if(error){ alert('Erro ao atualizar senha: '+error.message); return; }
   }
   const u=db.usuarios.find(x=>x.id===usuarioAtual.id);
+  const nomeAntes=u.nome, loginAntes=u.login;
   u.nome=nome; u.login=login;
   const {error:erroUpd} = await sb.from('usuarios').update({nome, login}).eq('id', u.id);
   if(erroUpd){ alert('Erro ao salvar dados: '+erroUpd.message); return; }
+  const mudancas=[];
+  if(nomeAntes!==nome) mudancas.push(`nome: "${nomeAntes}" → "${nome}"`);
+  if(loginAntes!==login) mudancas.push(`login: "${loginAntes}" → "${login}"`);
+  if(senha) mudancas.push('senha alterada');
+  registrarLog('editar','usuario',u.id,`Próprios dados atualizados${mudancas.length?': '+mudancas.join('; '):''}`);
   save(); fecharModal(); iniciarApp(u);
   if(senha) alert('Senha atualizada com sucesso.');
 }
@@ -1438,7 +1605,10 @@ function renderFuncoes(){
     inp.onchange=()=>{
       const nome=inp.value.trim();
       if(!nome){ alert('O nome da função não pode ficar vazio.'); renderFuncoes(); return; }
-      db.funcoes.find(f=>f.id===+inp.dataset.id).nome=nome;
+      const fobj=db.funcoes.find(f=>f.id===+inp.dataset.id);
+      const nomeAnt=fobj.nome;
+      fobj.nome=nome;
+      registrarLog('editar', 'funcao', fobj.id, `Função renomeada: "${nomeAnt}" → "${nome}"`);
       save(); renderAll();
     };
   });
@@ -1447,6 +1617,7 @@ function renderFuncoes(){
       const f=db.funcoes.find(x=>x.id===+btn.dataset.del);
       const emUso=db.usuarios.filter(u=>(u.funcao||'').toLowerCase()===f.nome.toLowerCase()).length;
       if(!confirm(emUso?`A função "${f.nome}" está em uso por ${emUso} usuário(s) — eles mantêm o texto, mas a sugestão some. Excluir?`:`Excluir a função "${f.nome}"?`)) return;
+      registrarLog('excluir', 'funcao', f.id, `Função excluída: "${f.nome}"`);
       db.funcoes=db.funcoes.filter(x=>x.id!==f.id);
       save(); renderAll();
     };
@@ -1472,7 +1643,10 @@ function renderOrigens(){
     inp.onchange=()=>{
       const nome=inp.value.trim();
       if(!nome){ alert('O nome da origem não pode ficar vazio.'); renderOrigens(); return; }
-      db.origens.find(o=>o.id===+inp.dataset.id).nome=nome;
+      const oobj=db.origens.find(o=>o.id===+inp.dataset.id);
+      const nomeAnt=oobj.nome;
+      oobj.nome=nome;
+      registrarLog('editar', 'origem', oobj.id, `Origem renomeada: "${nomeAnt}" → "${nome}"`);
       save(); renderAll();
     };
   });
@@ -1481,6 +1655,7 @@ function renderOrigens(){
       const o=db.origens.find(x=>x.id===+btn.dataset.del);
       const emUso=db.cards.filter(c=>c.origemId===o.id).length;
       if(!confirm(emUso?`A origem "${o.nome}" está em uso em ${emUso} CRM(s) — eles ficarão sem origem. Excluir?`:`Excluir a origem "${o.nome}"?`)) return;
+      registrarLog('excluir', 'origem', o.id, `Origem excluída: "${o.nome}"`);
       db.cards.forEach(c=>{ if(c.origemId===o.id) c.origemId=null; });
       db.origens=db.origens.filter(x=>x.id!==o.id);
       save(); renderAll();
@@ -1491,7 +1666,9 @@ function novaOrigem(){
   const nome=prompt('Nome da nova origem:');
   if(!nome || !nome.trim()) return;
   if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
-  db.origens.push({id:nextId(db.origens), nome:nome.trim()});
+  const no={id:nextId(db.origens), nome:nome.trim()};
+  db.origens.push(no);
+  registrarLog('criar', 'origem', no.id, `Nova origem do lead criada: "${no.nome}"`);
   save(); renderAll();
 }
 
@@ -1499,7 +1676,9 @@ function novaFuncao(){
   const nome=prompt('Nome da nova função:');
   if(!nome || !nome.trim()) return;
   if(db.funcoes.some(f=>f.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa função já existe.'); return; }
-  db.funcoes.push({id:nextId(db.funcoes), nome:nome.trim()});
+  const nf={id:nextId(db.funcoes), nome:nome.trim()};
+  db.funcoes.push(nf);
+  registrarLog('criar', 'funcao', nf.id, `Nova função criada: "${nf.nome}"`);
   save(); renderAll();
 }
 
@@ -1531,7 +1710,7 @@ function aplicarPermissoes(){
   renderNavTelas();
   // view ativa precisa ser permitida (telas da engrenagem também valem)
   const atual = viewAtiva();
-  const gearViews = ['usuarios','grupos','funcoes','gerais'];
+  const gearViews = ['usuarios','grupos','funcoes','gerais','auditoria'];
   const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
     : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
   if(!permitida && mod){
@@ -1539,7 +1718,7 @@ function aplicarPermissoes(){
     if(primeira) ativarView(primeira);
   }
   // itens do menu engrenagem conforme o grupo
-  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais'};
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-auditoria':'auditoria'};
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
@@ -1560,6 +1739,7 @@ function ativarView(viewId){
   const v=document.getElementById('view-'+viewId);
   if(v) v.classList.add('active');
   if(viewId==='gerais') renderGerais();
+  if(viewId==='auditoria') carregarLogs();
   renderAll();
 }
 
@@ -1780,6 +1960,7 @@ function renderFases(){
       const f = fase(+inp.dataset.id);
       if(inp.dataset.campo==='ordem') f.ordem = parseFloat(inp.value)||0;
       else f[inp.dataset.campo] = inp.value;
+      registrarLog('editar', 'fase_crm', f.id, `Fase CRM editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
       save(); renderAll();
     };
   });
@@ -1790,13 +1971,16 @@ function renderFases(){
 
 function novaFase(){
   const ordemMax = db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
-  db.fases.push({id:nextId(db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1});
+  const nf = {id:nextId(db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fases.push(nf);
+  registrarLog('criar', 'fase_crm', nf.id, `Nova fase CRM criada: "${nf.nome}"`);
   save(); renderAll();
 }
 
 function excluirFase(id){
   const qtd = db.cards.filter(c=>c.faseId===id).length;
   if(db.fases.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+  const f = fase(id);
   if(qtd>0){
     const outras = fasesOrdenadas().filter(f=>f.id!==id);
     if(!confirm(`Esta fase tem ${qtd} cartão(ões). Eles serão movidos para "${outras[0].nome}". Continuar?`)) return;
@@ -1804,6 +1988,7 @@ function excluirFase(id){
   } else {
     if(!confirm('Excluir esta fase?')) return;
   }
+  registrarLog('excluir', 'fase_crm', id, `Fase CRM excluída: "${f?f.nome:id}"`);
   db.fases = db.fases.filter(f=>f.id!==id);
   save(); renderAll();
 }
@@ -2036,6 +2221,9 @@ function salvarNovoCartao(){
   };
   registrarHist(novo, document.getElementById('m-contato').value);
   db.cards.push(novo);
+  if(box.classList.contains('open'))
+    registrarLog('criar', 'cliente', clienteId, `Novo cliente criado: "${db.clientes.find(c=>c.id===clienteId).nome}" (junto com novo CRM)`);
+  registrarLog('criar', 'card', novo.id, `Novo CRM #${novo.num} — ${db.clientes.find(c=>c.id===clienteId).nome}`);
   save(); fecharModal(); renderAll();
 }
 
@@ -2119,6 +2307,7 @@ function marcarPerdida(id){
   if(!confirm(`Marcar a proposta ${p.numero} como PERDIDA/ABANDONADA?\nEla sai dos painéis por fase e por validade.`)) return;
   p.faseAnterior=p.faseId;
   p.faseId=fasePropTipo('perdida').id;
+  registrarLog('marcar_perdida', 'proposta', id, `Proposta marcada como perdida: ${p.numero}`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
 function reativarProposta(id){
@@ -2126,6 +2315,7 @@ function reativarProposta(id){
   if(!confirm(`Reativar a proposta ${p.numero}? Ela volta para a fase em que estava.`)) return;
   p.faseId = (p.faseAnterior && faseProp(p.faseAnterior) && !faseProp(p.faseAnterior).tipo) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
   delete p.faseAnterior;
+  registrarLog('reativar', 'proposta', id, `Proposta reativada: ${p.numero}`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
 
@@ -2180,6 +2370,7 @@ async function salvarEdicaoProposta(id){
     p.arquivos.push(await uploadArquivoProposta(p.id, f));
   }
   propEditandoId=null;
+  registrarLog('editar', 'proposta', id, `Proposta editada: ${p.numero} (${fmtMoney(p.valor)||'sem valor'})`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
 
@@ -2289,7 +2480,7 @@ async function novaProposta(cardId){
     }
     arquivos.push(await uploadArquivoProposta(propId, f));
   }
-  db.propostas.push({
+  const novaProp={
     id:propId, numero, cardId,
     clienteId:c.clienteId, obraId:c.obraId,
     dataEmissao, valor,
@@ -2297,7 +2488,9 @@ async function novaProposta(cardId){
     faseId:+document.getElementById('pn-fase').value,
     status:'emitida', arquivos,
     aditivo: temAprovada(cardId)
-  });
+  };
+  db.propostas.push(novaProp);
+  registrarLog('criar', 'proposta', propId, `Nova proposta${novaProp.aditivo?' (aditivo)':''} criada: ${numero} — ${fmtMoney(valor)||'sem valor'}`);
   save(); renderAll(); abrirEditarCartao(cardId,'emitidas');
 }
 
@@ -2327,6 +2520,7 @@ async function aprovarComExcel(cardId){
   const fAp=db.fasesProposta.find(f=>f.tipo==='aprovada');
   if(fAp) p.faseId=fAp.id; // fase acompanha a aprovação
   recalcValorCartao(p.cardId); // valor do cartão = principal + aditivos aprovados
+  registrarLog('aprovar', 'proposta', p.id, `Proposta${p.aditivo?' (aditivo)':''} aprovada: ${p.numero} — ${fmtMoney(p.valor)||'sem valor'}`);
   save(); renderAll(); abrirEditarCartao(cardId,'aprovada');
 }
 
@@ -2347,6 +2541,7 @@ async function reverterProposta(id){
   p.faseId = (p.faseAnterior && faseProp(p.faseAnterior)) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
   delete p.faseAnterior;
   recalcValorCartao(p.cardId);
+  registrarLog('reverter', 'proposta', p.id, `Aprovação revertida para emitida: ${p.numero}`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
 
@@ -2357,6 +2552,7 @@ async function excluirProposta(id){
     return;
   }
   if(!confirm(`Excluir ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} e seus arquivos?`)) return;
+  registrarLog('excluir', 'proposta', id, `Proposta${p.aditivo?' (aditivo)':''} excluída: ${p.numero} — status: ${p.status}`);
   for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
   const aba=p.status==='aprovada'?'aprovada':'emitidas';
   db.propostas=db.propostas.filter(x=>x.id!==id);
@@ -2494,6 +2690,7 @@ function renderPropFases(){
       const f=faseProp(+inp.dataset.id);
       if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
       else f[inp.dataset.campo]=inp.value;
+      registrarLog('editar', 'fase_proposta', f.id, `Fase da proposta editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
       save(); renderAll();
     };
   });
@@ -2501,12 +2698,14 @@ function renderPropFases(){
     btn.onclick=()=>{
       const id=+btn.dataset.del;
       if(db.fasesProposta.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+      const fp=faseProp(id);
       const qtd=db.propostas.filter(p=>p.faseId===id).length;
       const outras=fasesPropOrdenadas().filter(f=>f.id!==id);
       if(qtd>0){
         if(!confirm(`Esta fase tem ${qtd} proposta(s). Elas serão movidas para "${outras[0].nome}". Continuar?`)) return;
         db.propostas.forEach(p=>{ if(p.faseId===id) p.faseId=outras[0].id; });
       } else if(!confirm('Excluir esta fase?')) return;
+      registrarLog('excluir', 'fase_proposta', id, `Fase da proposta excluída: "${fp?fp.nome:id}"`);
       db.fasesProposta=db.fasesProposta.filter(f=>f.id!==id);
       save(); renderAll();
     };
@@ -2514,7 +2713,9 @@ function renderPropFases(){
 }
 function novaFaseProposta(){
   const ordemMax=db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0);
-  db.fasesProposta.push({id:nextId(db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1});
+  const nf={id:nextId(db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fasesProposta.push(nf);
+  registrarLog('criar', 'fase_proposta', nf.id, `Nova fase da proposta criada: "${nf.nome}"`);
   save(); renderAll();
 }
 
@@ -2569,12 +2770,15 @@ function salvarEdicaoCartao(id){
   c.valor=+document.getElementById('m-valor').value;
   c.perdido=document.getElementById('m-perdido').checked;
   c.concluido=document.getElementById('m-concluido').checked;
+  registrarLog('editar', 'card', id, `CRM #${c.num} editado — ${cliente(c.clienteId).nome}`);
   save(); fecharModal(); renderAll();
 }
 
 async function excluirCartao(id){
+  const c=db.cards.find(x=>x.id===id);
   const props=db.propostas.filter(p=>p.cardId===id);
   if(!confirm(props.length?`Este cartão tem ${props.length} proposta(s), que serão excluídas junto. Continuar?`:'Excluir este cartão?')) return;
+  registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${props.length?` (+ ${props.length} proposta(s))`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
@@ -2715,6 +2919,8 @@ function salvarClienteCampos(id){
 }
 function salvarEdicaoCliente(id){
   if(!salvarClienteCampos(id)) return;
+  const c=db.clientes.find(x=>x.id===id);
+  registrarLog('editar', 'cliente', id, `Cliente editado: "${c?c.nome:'?'}"`);
   fecharModal(); renderAll();
 }
 
@@ -2741,23 +2947,30 @@ function salvarObra(id, clienteId){
   if(id){
     const o=db.obras.find(x=>x.id===id);
     o.nome=nome; o.endereco=end;
+    registrarLog('editar', 'obra', id, `Obra editada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   } else {
-    db.obras.push({id:nextId(db.obras), clienteId, nome, endereco:end});
+    const novaObra={id:nextId(db.obras), clienteId, nome, endereco:end};
+    db.obras.push(novaObra);
+    registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
   save(); renderAll(); abrirEditarCliente(clienteId);
 }
 function excluirObra(id, clienteId){
   const emUso=db.cards.filter(c=>c.obraId===id).length;
+  const o=db.obras.find(x=>x.id===id);
   if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
+  registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
   db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
   db.obras=db.obras.filter(x=>x.id!==id);
   save(); renderAll(); abrirEditarCliente(clienteId);
 }
 function excluirCliente(id){
   const qtd=db.cards.filter(x=>x.clienteId===id).length;
+  const cl=db.clientes.find(x=>x.id===id);
   if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
   const qtdObras=db.obras.filter(o=>o.clienteId===id).length;
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
+  registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
@@ -2862,6 +3075,7 @@ async function salvarUsuario(id){
     const me=db.usuarios.find(x=>x.id===usuarioAtual.id);
     if(me) iniciarApp(me);
   }
+  registrarLog(id?'editar':'criar', 'usuario', id||db.usuarios.find(x=>x.login===login)?.id, id ? `Usuário editado: "${nome}" (login: ${login})` : `Novo usuário criado: "${nome}" (login: ${login})`);
   save(); fecharModal(); renderAll();
   if(!id) alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
 }
@@ -2875,6 +3089,7 @@ async function excluirUsuario(id){
   if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
   const res = await chamarAdminUsuarios({acao:'excluir', id});
   if(res.error){ alert(res.error); return; }
+  registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
   await carregarUsuariosSupabase();
   save(); fecharModal(); renderAll();
 }
@@ -2939,8 +3154,11 @@ function salvarGrupo(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
     if(!g.admin){ g.telas=telas; g.recursos=recursos; }
+    registrarLog('editar', 'grupo', id, `Grupo editado: "${nome}"`);
   } else {
-    db.grupos.push({id:nextId(db.grupos), nome, admin:false, telas, recursos});
+    const ng={id:nextId(db.grupos), nome, admin:false, telas, recursos};
+    db.grupos.push(ng);
+    registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
   save(); fecharModal();
   if(usuarioAtual) aplicarPermissoes(); // permissões podem ter mudado para o próprio usuário
@@ -2953,6 +3171,7 @@ function excluirGrupo(id){
   const qtd=db.usuarios.filter(u=>u.grupoId===id).length;
   if(qtd>0){ alert(`Este grupo tem ${qtd} usuário(s). Mova-os para outro grupo antes de excluir.`); return; }
   if(!confirm(`Excluir o grupo "${g.nome}"?`)) return;
+  registrarLog('excluir', 'grupo', id, `Grupo excluído: "${g.nome}"`);
   db.grupos=db.grupos.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
 }
