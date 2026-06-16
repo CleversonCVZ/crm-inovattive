@@ -111,7 +111,7 @@
   @media (max-width:1000px){
     .modal.cartao{width:600px;height:min(720px,90vh)}
     .dados-grid{grid-template-columns:1fr}
-    .dados-grid .col-hist .hist{max-height:220px}
+    .dados-grid .col-hist .hist{height:280px}
   }
   .modal h3{margin-bottom:14px;font-size:16px}
   .modal label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 3px;text-transform:uppercase}
@@ -318,8 +318,36 @@
   <div class="view" id="view-obras-painel">
     <div class="bar"><h2>Obras — Acompanhamento</h2></div>
     <div class="empty" style="padding:60px 20px;font-size:15px">
-      🏗️ Módulo de Obras em construção.<br>
-      <small style="color:var(--muted)">Aqui entrarão o painel de obras por etapa/data, ordens de serviço e o controle físico das obras.</small>
+      🏗️ Painel de Obras em construção.<br>
+      <small style="color:var(--muted)">Aqui entrará o kanban/painel de obras por etapa, com visão geral do andamento físico de cada obra.</small>
+    </div>
+  </div>
+
+  <!-- OBRAS: FASES -->
+  <div class="view" id="view-obras-fases">
+    <div class="bar">
+      <h2>Fases da Obra</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaFaseObra()">+ Nova Fase</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases representam as etapas do andamento físico de uma obra (ex.: Projeto, Instalação, Testes, Entrega). Edite nome, cor e ordem direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>Obras</th><th></th></tr></thead>
+      <tbody id="obras-fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- OBRAS: LISTA -->
+  <div class="view" id="view-obras-lista">
+    <div class="bar">
+      <h2>Obras</h2>
+      <div class="spacer"></div>
+    </div>
+    <div class="empty" style="padding:60px 20px;font-size:15px">
+      🏗️ Lista de Obras em construção.<br>
+      <small style="color:var(--muted)">Aqui aparecerão todas as obras cadastradas com status, fase atual, cliente e progresso.</small>
     </div>
   </div>
 
@@ -579,6 +607,12 @@ const SEED = {
     {id:1, clienteId:1, nome:'Residência Zagonel — Automação'},
     {id:2, clienteId:4, nome:'Casa Prospect — CFTV'}
   ],
+  fasesObra: [
+    {id:1, nome:'Projeto',     cor:'#5c6bc0', ordem:1},
+    {id:2, nome:'Instalação',  cor:'#26a69a', ordem:2},
+    {id:3, nome:'Testes',      cor:'#f4a261', ordem:3},
+    {id:4, nome:'Entrega',     cor:'#2e7d32', ordem:4}
+  ],
   cards: [
     {id:1, num:7,  clienteId:1, obraId:1, faseId:9,  responsavel:'Cleverson', agenda:d(-11,'07:00'), valor:3500,
      historico:[{data:d(-12,'14:32'),texto:'Alterado a data para tornar a chamar em setembro.'},{data:d(-40,'09:15'),texto:'Cliente pediu para aguardar a obra avançar.'}]},
@@ -611,6 +645,8 @@ const TELAS = [
   {id:'propostas',   nome:'Propostas — Lista',           menu:'Proposta'},
   {id:'prop-fases',  nome:'Propostas — Fases da Proposta', menu:'Fases'},
   {id:'obras-painel',nome:'Obras — Painel',               menu:'Painel'},
+  {id:'obras-fases', nome:'Obras — Fases da Obra',        menu:'Fases'},
+  {id:'obras-lista', nome:'Obras — Obras',                menu:'Obras'},
   {id:'usuarios',    nome:'Cadastro de Usuários'},
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
@@ -628,7 +664,7 @@ const RECURSOS = [
 const MODULOS = [
   {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
-  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel']} // em construção
+  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -719,6 +755,10 @@ function load(){
     if(!('validadeDias' in p)) p.validadeDias = 10;
     if(!('aditivo' in p)) p.aditivo = (p.numero||'').toUpperCase().startsWith('ADT');
   });
+  if(!Array.isArray(db.fasesObra) || !db.fasesObra.length){
+    db.fasesObra = [{id:1,nome:'Projeto',cor:'#5c6bc0',ordem:1},{id:2,nome:'Instalação',cor:'#26a69a',ordem:2},
+                    {id:3,nome:'Testes',cor:'#f4a261',ordem:3},{id:4,nome:'Entrega',cor:'#2e7d32',ordem:4}];
+  }
   db.obras.forEach(o=>{
     if(!o.endereco) o.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
   });
@@ -1086,6 +1126,8 @@ function fase(id){ return db.fases.find(f=>f.id===id); }
 function fasesOrdenadas(){ return db.fases.slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function faseProp(id){ return db.fasesProposta.find(f=>f.id===id); }
 function fasesPropOrdenadas(){ return db.fasesProposta.slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function faseObra(id){ return (db.fasesObra||[]).find(f=>f.id===id); }
+function fasesObraOrdenadas(){ return (db.fasesObra||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function fasePropTipo(tipo){ return db.fasesProposta.find(f=>f.tipo===tipo); }
 function propostaPerdida(p){ const f=faseProp(p.faseId); return !!(f && f.tipo==='perdida'); }
 function propostaPrincipal(cardId){ return db.propostas.find(p=>p.cardId===cardId && p.status==='aprovada' && !p.aditivo); }
@@ -2734,6 +2776,70 @@ function novaFaseProposta(){
   save(); renderAll();
 }
 
+/* ===== OBRAS: Fases da Obra ===== */
+function renderObrasFases(){
+  const tb=document.getElementById('obras-fases-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'obras-fases')) return;
+  fasesObraOrdenadas().forEach(f=>{
+    const tc=textColor(f.cor);
+    const qtd=db.obras.filter(o=>o.faseId===f.id).length;
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background=f.cor;
+    tr.style.color=tc;
+    tr.innerHTML=`
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td>${qtd}</td>
+      <td style="text-align:right">${db.fasesObra.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:''}
+      </td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const f=faseObra(+inp.dataset.id);
+      if(!f) return;
+      if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
+      else f[inp.dataset.campo]=inp.value;
+      registrarLog('editar','fase_obra',f.id,`Fase da obra editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>{
+      const id=+btn.dataset.del;
+      if(db.fasesObra.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+      const fo=faseObra(id);
+      const qtd=db.obras.filter(o=>o.faseId===id).length;
+      const outras=fasesObraOrdenadas().filter(f=>f.id!==id);
+      if(qtd>0){
+        if(!confirm(`Esta fase tem ${qtd} obra(s). Elas serão movidas para "${outras[0].nome}". Continuar?`)) return;
+        db.obras.forEach(o=>{ if(o.faseId===id) o.faseId=outras[0].id; });
+      } else if(!confirm('Excluir esta fase?')) return;
+      registrarLog('excluir','fase_obra',id,`Fase da obra excluída: "${fo?fo.nome:id}"`);
+      db.fasesObra=db.fasesObra.filter(f=>f.id!==id);
+      save(); renderAll();
+    };
+  });
+}
+function novaFaseObra(){
+  if(!db.fasesObra) db.fasesObra=[];
+  const ordemMax=db.fasesObra.reduce((m,f)=>Math.max(m,f.ordem),0);
+  const nf={id:nextId(db.fasesObra), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fasesObra.push(nf);
+  registrarLog('criar','fase_obra',nf.id,`Nova fase da obra criada: "${nf.nome}"`);
+  save(); renderAll();
+}
+
 function renderPropostas(){
   const tb=document.getElementById('propostas-tbody'); if(!tb) return;
   tb.innerHTML='';
@@ -3209,7 +3315,7 @@ function excluirGrupo(id){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); }
 load();
 atualizarMarca();
 (async function(){
