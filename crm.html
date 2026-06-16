@@ -351,6 +351,43 @@
     </div>
   </div>
 
+  <!-- O.S.: PAINEL -->
+  <div class="view" id="view-os-painel">
+    <div class="bar"><h2>O.S. — Acompanhamento</h2></div>
+    <div class="empty" style="padding:60px 20px;font-size:15px">
+      🔧 Painel de Ordens de Serviço em construção.<br>
+      <small style="color:var(--muted)">Aqui entrará o kanban/painel de O.S. por fase, com visão geral das ordens em andamento.</small>
+    </div>
+  </div>
+
+  <!-- O.S.: FASES -->
+  <div class="view" id="view-os-fases">
+    <div class="bar">
+      <h2>Fases da O.S.</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaFaseOS()">+ Nova Fase</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases representam o andamento de uma Ordem de Serviço (ex.: Aguardando, Em Execução, Concluída). Edite nome, cor e ordem direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>O.S.</th><th></th></tr></thead>
+      <tbody id="os-fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- O.S.: LISTA -->
+  <div class="view" id="view-os-lista">
+    <div class="bar">
+      <h2>Ordens de Serviço</h2>
+      <div class="spacer"></div>
+    </div>
+    <div class="empty" style="padding:60px 20px;font-size:15px">
+      🔧 Lista de Ordens de Serviço em construção.<br>
+      <small style="color:var(--muted)">Aqui aparecerão todas as O.S. com número, fase, responsável, obra vinculada e status.</small>
+    </div>
+  </div>
+
   <!-- PROPOSTAS: PAINEL -->
   <div class="view" id="view-prop-painel">
     <div class="bar">
@@ -613,6 +650,13 @@ const SEED = {
     {id:3, nome:'Testes',      cor:'#f4a261', ordem:3},
     {id:4, nome:'Entrega',     cor:'#2e7d32', ordem:4}
   ],
+  fasesOS: [
+    {id:1, nome:'Aguardando',    cor:'#78909c', ordem:1},
+    {id:2, nome:'Em Execução',   cor:'#1e88e5', ordem:2},
+    {id:3, nome:'Em Revisão',    cor:'#f9a825', ordem:3},
+    {id:4, nome:'Concluída',     cor:'#2e7d32', ordem:4, tipo:'concluida'},
+    {id:5, nome:'Cancelada',     cor:'#c62828', ordem:5, tipo:'cancelada'}
+  ],
   cards: [
     {id:1, num:7,  clienteId:1, obraId:1, faseId:9,  responsavel:'Cleverson', agenda:d(-11,'07:00'), valor:3500,
      historico:[{data:d(-12,'14:32'),texto:'Alterado a data para tornar a chamar em setembro.'},{data:d(-40,'09:15'),texto:'Cliente pediu para aguardar a obra avançar.'}]},
@@ -647,6 +691,9 @@ const TELAS = [
   {id:'obras-painel',nome:'Obras — Painel',               menu:'Painel'},
   {id:'obras-fases', nome:'Obras — Fases da Obra',        menu:'Fases'},
   {id:'obras-lista', nome:'Obras — Obras',                menu:'Obras'},
+  {id:'os-painel',   nome:'O.S. — Painel',               menu:'Painel'},
+  {id:'os-fases',    nome:'O.S. — Fases da O.S.',        menu:'Fases'},
+  {id:'os-lista',    nome:'O.S. — Ordens de Serviço',    menu:'O.Serviço'},
   {id:'usuarios',    nome:'Cadastro de Usuários'},
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
@@ -664,7 +711,8 @@ const RECURSOS = [
 const MODULOS = [
   {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
-  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']}
+  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']},
+  {id:'os',        nome:'O. Serviço',icone:'🔧', telas:['os-painel','os-fases','os-lista']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -758,6 +806,11 @@ function load(){
   if(!Array.isArray(db.fasesObra) || !db.fasesObra.length){
     db.fasesObra = [{id:1,nome:'Projeto',cor:'#5c6bc0',ordem:1},{id:2,nome:'Instalação',cor:'#26a69a',ordem:2},
                     {id:3,nome:'Testes',cor:'#f4a261',ordem:3},{id:4,nome:'Entrega',cor:'#2e7d32',ordem:4}];
+  }
+  if(!Array.isArray(db.fasesOS) || !db.fasesOS.length){
+    db.fasesOS = [{id:1,nome:'Aguardando',cor:'#78909c',ordem:1},{id:2,nome:'Em Execução',cor:'#1e88e5',ordem:2},
+                  {id:3,nome:'Em Revisão',cor:'#f9a825',ordem:3},{id:4,nome:'Concluída',cor:'#2e7d32',ordem:4,tipo:'concluida'},
+                  {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
   db.obras.forEach(o=>{
     if(!o.endereco) o.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
@@ -1128,6 +1181,8 @@ function faseProp(id){ return db.fasesProposta.find(f=>f.id===id); }
 function fasesPropOrdenadas(){ return db.fasesProposta.slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function faseObra(id){ return (db.fasesObra||[]).find(f=>f.id===id); }
 function fasesObraOrdenadas(){ return (db.fasesObra||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function faseOS(id){ return (db.fasesOS||[]).find(f=>f.id===id); }
+function fasesOSOrdenadas(){ return (db.fasesOS||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function fasePropTipo(tipo){ return db.fasesProposta.find(f=>f.tipo===tipo); }
 function propostaPerdida(p){ const f=faseProp(p.faseId); return !!(f && f.tipo==='perdida'); }
 function propostaPrincipal(cardId){ return db.propostas.find(p=>p.cardId===cardId && p.status==='aprovada' && !p.aditivo); }
@@ -2840,6 +2895,70 @@ function novaFaseObra(){
   save(); renderAll();
 }
 
+/* ===== O.S.: Fases da Ordem de Serviço ===== */
+function renderOSFases(){
+  const tb=document.getElementById('os-fases-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'os-fases')) return;
+  fasesOSOrdenadas().forEach(f=>{
+    const tc=textColor(f.cor);
+    const qtd=(db.ordensServico||[]).filter(o=>o.faseId===f.id).length;
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background=f.cor;
+    tr.style.color=tc;
+    tr.innerHTML=`
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td>${qtd}</td>
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema">🔒</small>`:(db.fasesOS.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const f=faseOS(+inp.dataset.id);
+      if(!f) return;
+      if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
+      else f[inp.dataset.campo]=inp.value;
+      registrarLog('editar','fase_os',f.id,`Fase da O.S. editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>{
+      const id=+btn.dataset.del;
+      if(db.fasesOS.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+      const fo=faseOS(id);
+      if(fo && fo.tipo){ alert('Esta fase de sistema não pode ser excluída.'); return; }
+      const qtd=(db.ordensServico||[]).filter(o=>o.faseId===id).length;
+      const outras=fasesOSOrdenadas().filter(f=>f.id!==id);
+      if(qtd>0){
+        if(!confirm(`Esta fase tem ${qtd} O.S. Elas serão movidas para "${outras[0].nome}". Continuar?`)) return;
+        (db.ordensServico||[]).forEach(o=>{ if(o.faseId===id) o.faseId=outras[0].id; });
+      } else if(!confirm('Excluir esta fase?')) return;
+      registrarLog('excluir','fase_os',id,`Fase da O.S. excluída: "${fo?fo.nome:id}"`);
+      db.fasesOS=db.fasesOS.filter(f=>f.id!==id);
+      save(); renderAll();
+    };
+  });
+}
+function novaFaseOS(){
+  if(!db.fasesOS) db.fasesOS=[];
+  const ordemMax=db.fasesOS.reduce((m,f)=>Math.max(m,f.ordem),0);
+  const nf={id:nextId(db.fasesOS), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fasesOS.push(nf);
+  registrarLog('criar','fase_os',nf.id,`Nova fase da O.S. criada: "${nf.nome}"`);
+  save(); renderAll();
+}
+
 function renderPropostas(){
   const tb=document.getElementById('propostas-tbody'); if(!tb) return;
   tb.innerHTML='';
@@ -3315,7 +3434,7 @@ function excluirGrupo(id){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderOSFases(); }
 load();
 atualizarMarca();
 (async function(){
