@@ -2023,9 +2023,15 @@ function optsFases(sel){ return fasesOrdenadas().map(f=>`<option value="${f.id}"
 
 function histHTML(c){
   if(!c || !c.historico.length) return '';
+  const hist = c.historico.slice().sort((a,b)=>{
+    if(!a.data && !b.data) return 0;
+    if(!a.data) return 1;
+    if(!b.data) return -1;
+    return b.data.localeCompare(a.data); // mais recente no topo
+  });
   return `
     <label>Histórico (${c.historico.length} registro${c.historico.length>1?'s':''})</label>
-    <div class="hist">${c.historico.map(h=>`
+    <div class="hist">${hist.map(h=>`
       <div class="hist-item">
         <div class="hist-data">${h.data?fmtData(h.data):'registro anterior (sem data)'}</div>
         <div>${h.texto}</div>
