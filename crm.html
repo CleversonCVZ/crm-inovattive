@@ -2071,7 +2071,12 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
   const cid = c ? c.clienteId : clienteIdInicial;
   return `
     <label>Nome da obra</label>
-    <select id="m-obra">${optsObras(cid, c?c.obraId:null)}</select>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="m-obra" style="flex:1" onchange="toggleBtnEditarObra()">${optsObras(cid, c?c.obraId:null)}</select>
+      <button type="button" id="btn-editar-obra" class="icon-btn" title="Editar dados desta obra"
+        onclick="editarObraDoCartao(${c?c.id:'null'},${cid})"
+        style="${c&&c.obraId?'':'display:none'}">✏️</button>
+    </div>
     <button class="link-btn" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
     <div class="novo-cliente-box" id="nova-obra-box">
       <label>Nome da nova obra</label><input id="no-nome" placeholder="Ex.: Residência Alphaville — Automação">
@@ -2270,8 +2275,12 @@ function abaObrasCartaoHTML(c){
   const ob = obraDe(c);
   return `
     ${ob?`
-      <div class="obra-item">
-        <div><b>${ob.nome}</b><br><small style="color:var(--muted)">${resumoEnd(ob.endereco)||'sem endereço cadastrado'}</small></div>
+      <div class="obra-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <b>${ob.nome}</b><br>
+          <small style="color:var(--muted)">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</small>
+        </div>
+        <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
       </div>`:'<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>'}
     <div class="empty" style="margin-top:24px">
       🏗️ Acompanhamento da obra em construção.<br>
@@ -2928,19 +2937,32 @@ function salvarEdicaoCliente(id){
 function irEditarObra(obraId, clienteId){ if(salvarClienteCampos(clienteId)) abrirObraModal(obraId, clienteId); }
 function irNovaObraCliente(clienteId){ if(salvarClienteCampos(clienteId)) abrirObraModal(null, clienteId); }
 
-function abrirObraModal(obraId, clienteId){
+/* Atalho de edição de obra a partir do cartão CRM */
+function toggleBtnEditarObra(){
+  const sel=document.getElementById('m-obra');
+  const btn=document.getElementById('btn-editar-obra');
+  if(btn) btn.style.display = (sel && sel.value) ? '' : 'none';
+}
+function editarObraDoCartao(cardId, clienteId){
+  const sel=document.getElementById('m-obra');
+  const obraId=sel ? parseInt(sel.value) : null;
+  if(!obraId){ alert('Selecione uma obra para editar.'); return; }
+  abrirObraModal(obraId, clienteId, cardId);
+}
+
+function abrirObraModal(obraId, clienteId, returnCardId=null){
   const o = obraId ? db.obras.find(x=>x.id===obraId) : null;
   abrirModal(`
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra')}
     <div class="actions">
-      ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId})">Excluir</button>`:''}
-      <button class="btn neutral" onclick="abrirEditarCliente(${clienteId})">← Voltar ao cliente</button>
-      <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId})">Salvar</button>
+      ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
+      <button class="btn neutral" onclick="${returnCardId?`abrirEditarCartao(${returnCardId},'obras')`:`abrirEditarCliente(${clienteId})`}">← Voltar ${returnCardId?'ao cartão':'ao cliente'}</button>
+      <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId},${returnCardId??'null'})">Salvar</button>
     </div>`);
 }
-function salvarObra(id, clienteId){
+function salvarObra(id, clienteId, returnCardId=null){
   const nome=document.getElementById('o-nome').value.trim();
   if(!nome){ alert('Informe o nome da obra.'); return; }
   const end=lerEndereco('o');
@@ -2953,16 +2975,20 @@ function salvarObra(id, clienteId){
     db.obras.push(novaObra);
     registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
-  save(); renderAll(); abrirEditarCliente(clienteId);
+  save(); renderAll();
+  if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
+  else abrirEditarCliente(clienteId);
 }
-function excluirObra(id, clienteId){
+function excluirObra(id, clienteId, returnCardId=null){
   const emUso=db.cards.filter(c=>c.obraId===id).length;
   const o=db.obras.find(x=>x.id===id);
   if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
   registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
   db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
   db.obras=db.obras.filter(x=>x.id!==id);
-  save(); renderAll(); abrirEditarCliente(clienteId);
+  save(); renderAll();
+  if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
+  else abrirEditarCliente(clienteId);
 }
 function excluirCliente(id){
   const qtd=db.cards.filter(x=>x.clienteId===id).length;
