@@ -933,14 +933,15 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
       sb.from('card_historico').select('*').order('id', {ascending:false}),
       sb.from('propostas').select('*').order('id'),
       sb.from('proposta_itens').select('*').order('id'),
-      sb.from('proposta_arquivos').select('*').order('id')
+      sb.from('proposta_arquivos').select('*').order('id'),
+      sb.from('ordens_servico').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -996,6 +997,23 @@ async function carregarDadosSupabase(){
           if(p) p.arquivos.push({id:a.id, nome:a.nome, path:a.storage_path});
         });
       }
+    }
+    if(ordensServico.data){
+      db.ordensServico = ordensServico.data.map(o=>({
+        id:o.id, numero:o.numero, cardId:o.card_id, clienteId:o.cliente_id, obraId:o.obra_id,
+        tipo:o.tipo||'avaliacao', faseId:o.fase_id, titulo:o.titulo||'',
+        responsavelId:o.responsavel_id||null,
+        dataAgend:  o.data_agend   ? o.data_agend.slice(0,10)  : '',
+        dataInicio: o.data_inicio  ? o.data_inicio.slice(0,16) : '',
+        dataTermino:o.data_termino ? o.data_termino.slice(0,16): '',
+        fechada:!!o.fechada,
+        imagens:   Array.isArray(o.imagens)             ? o.imagens             : [],
+        produtos:  Array.isArray(o.produtos)            ? o.produtos            : [],
+        pendencias:Array.isArray(o.pendencias)          ? o.pendencias          : [],
+        historico: Array.isArray(o.historico)           ? o.historico           : [],
+        arquivosArquiteto: Array.isArray(o.arquivos_arquiteto) ? o.arquivos_arquiteto : [],
+        arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : []
+      }));
     }
     save();
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1067,6 +1085,19 @@ function syncDadosSupabase(){
     }));
     await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
+    await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
+      id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
+      tipo:o.tipo||'avaliacao', fase_id:o.faseId||null, titulo:o.titulo||'',
+      responsavel_id:o.responsavelId||null,
+      data_agend:  o.dataAgend||null,
+      data_inicio: o.dataInicio||null,
+      data_termino:o.dataTermino||null,
+      fechada:!!o.fechada,
+      imagens:   o.imagens||[], produtos:o.produtos||[], pendencias:o.pendencias||[],
+      historico: o.historico||[],
+      arquivos_arquiteto: o.arquivosArquiteto||[],
+      arquivos_projeto:   o.arquivosProjeto||[]
+    }));
   }, 800);
 }
 
