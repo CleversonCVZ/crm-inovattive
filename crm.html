@@ -3480,6 +3480,12 @@ async function aprovarComExcel(cardId){
       if(stAE) stAE.textContent = `Lendo Excel: ${f.name}`;
       const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
       const itens=await importarItensComConferencia(dataURL, f.name, p);
+      if(itens===null){
+        // arquivo inválido — aborta sem fazer upload
+        if(btnAE){ btnAE.disabled=false; btnAE.textContent='✔ Confirmar Aprovação'; }
+        if(stAE) stAE.textContent='';
+        return;
+      }
       if(itens) p.itens=itens;
     }
     if(stAE) stAE.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
@@ -3531,6 +3537,7 @@ async function aprovarComExcel(cardId){
     </div>
 
     <div class="actions">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'aprovada')">Cancelar</button>
       <button class="btn primary" onclick="confirmarAprovacaoProposta(${cardId},${p.id})">✅ Confirmar aprovação</button>
     </div>`);
 }
