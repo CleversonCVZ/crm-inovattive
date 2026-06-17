@@ -1298,11 +1298,16 @@ function caminhoArquivo(propId, fid, nome){
   const limpo = (nome||'arquivo').replace(/[^a-zA-Z0-9.\-_]/g,'_');
   return `${propId}/${fid}_${limpo}`;
 }
-async function uploadArquivoProposta(propId, file){
+async function uploadArquivoProposta(propId, file, onProgress=null){
   const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
   const path=caminhoArquivo(propId, fid, file.name);
-  const {error}=await sb.storage.from('propostas').upload(path, file, {upsert:true});
-  if(error) throw error;
+  if(onProgress){
+    const {error}=await uploadOSArquivoXHR('propostas', path, file, onProgress);
+    if(error) throw new Error(error.message||'Erro no upload');
+  } else {
+    const {error}=await sb.storage.from('propostas').upload(path, file, {upsert:true});
+    if(error) throw error;
+  }
   return {id:fid, nome:file.name, path};
 }
 async function excluirArquivoStorage(path){
@@ -3361,6 +3366,10 @@ function propostaEditHTML(p){
         <button id="btn-salvar-proposta" class="btn primary" onclick="salvarEdicaoProposta(${p.id})">Salvar Proposta</button>
       </div>
       <div id="status-salvar-proposta" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>
+      <div id="progress-salvar-proposta" style="display:none;margin-top:4px">
+        <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="bar-salvar-proposta" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+        <div id="size-salvar-proposta" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
+      </div>
     </div>`;
 }
 
@@ -3384,11 +3393,22 @@ async function salvarEdicaoProposta(id){
         const f = files[i];
         if(f.size>15*1024*1024){ alert('Arquivo acima de 15MB: '+f.name); return; }
         if(stSP) stSP.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
-        p.arquivos.push(await uploadArquivoProposta(p.id, f));
+        const progSP = document.getElementById('progress-salvar-proposta');
+        const barSP  = document.getElementById('bar-salvar-proposta');
+        const sizeSP = document.getElementById('size-salvar-proposta');
+        if(progSP){ progSP.style.display=''; barSP.style.width='0%'; sizeSP.textContent=''; }
+        p.arquivos.push(await uploadArquivoProposta(p.id, f, (loaded, total)=>{
+          const pct=Math.round(loaded/total*100);
+          if(barSP) barSP.style.width=pct+'%';
+          if(sizeSP) sizeSP.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+        }));
+        if(progSP) progSP.style.display='none';
       }
     } finally {
       if(btnSP){ btnSP.disabled=false; btnSP.textContent='Salvar Proposta'; }
       if(stSP) stSP.textContent='';
+      const progSP2=document.getElementById('progress-salvar-proposta');
+      if(progSP2) progSP2.style.display='none';
     }
   }
   propEditandoId=null;
@@ -3421,7 +3441,11 @@ function abaPropostasHTML(c){
     <div class="actions" style="justify-content:flex-start">
       <button id="btn-nova-proposta" class="btn primary" onclick="novaProposta(${c.id})">＋ Adicionar Proposta</button>
     </div>
-    <div id="status-nova-proposta" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`;
+    <div id="status-nova-proposta" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>
+    <div id="progress-nova-proposta" style="display:none;margin-top:4px">
+      <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="bar-nova-proposta" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+      <div id="size-nova-proposta" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
+    </div>`;
 }
 
 function formAprovacaoHTML(c, candidatas, rotulo){
@@ -3437,7 +3461,11 @@ function formAprovacaoHTML(c, candidatas, rotulo){
     <div class="actions" style="justify-content:flex-start">
       <button id="btn-aprovar-excel" class="btn primary" onclick="aprovarComExcel(${c.id})">✔ Confirmar Aprovação</button>
     </div>
-    <div id="status-aprovar-excel" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`;
+    <div id="status-aprovar-excel" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>
+    <div id="progress-aprovar-excel" style="display:none;margin-top:4px">
+      <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="bar-aprovar-excel" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+      <div id="size-aprovar-excel" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
+    </div>`;
 }
 
 function abaAprovadaHTML(c){
@@ -3508,11 +3536,22 @@ async function novaProposta(cardId){
         }
       }
       if(stNP) stNP.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
-      arquivos.push(await uploadArquivoProposta(propId, f));
+      const progNP = document.getElementById('progress-nova-proposta');
+      const barNP  = document.getElementById('bar-nova-proposta');
+      const sizeNP = document.getElementById('size-nova-proposta');
+      if(progNP){ progNP.style.display=''; barNP.style.width='0%'; sizeNP.textContent=''; }
+      arquivos.push(await uploadArquivoProposta(propId, f, (loaded, total)=>{
+        const pct=Math.round(loaded/total*100);
+        if(barNP) barNP.style.width=pct+'%';
+        if(sizeNP) sizeNP.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+      }));
+      if(progNP) progNP.style.display='none';
     }
   } finally {
     if(btnNP){ btnNP.disabled=false; btnNP.textContent='＋ Adicionar Proposta'; }
     if(stNP) stNP.textContent='';
+    const progNP2=document.getElementById('progress-nova-proposta');
+    if(progNP2) progNP2.style.display='none';
   }
   const novaProp={
     id:propId, numero, cardId,
@@ -3557,7 +3596,16 @@ async function aprovarComExcel(cardId){
       if(itens) p.itens=itens;
     }
     if(stAE) stAE.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
-    p.arquivos.push(await uploadArquivoProposta(p.id, f));
+    const progAE = document.getElementById('progress-aprovar-excel');
+    const barAE  = document.getElementById('bar-aprovar-excel');
+    const sizeAE = document.getElementById('size-aprovar-excel');
+    if(progAE){ progAE.style.display=''; barAE.style.width='0%'; sizeAE.textContent=''; }
+    p.arquivos.push(await uploadArquivoProposta(p.id, f, (loaded, total)=>{
+      const pct=Math.round(loaded/total*100);
+      if(barAE) barAE.style.width=pct+'%';
+      if(sizeAE) sizeAE.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+    }));
+    if(progAE) progAE.style.display='none';
   }
   if(btnAE){ btnAE.disabled=false; btnAE.textContent='✔ Confirmar Aprovação'; }
   if(stAE) stAE.textContent='';
