@@ -1277,6 +1277,11 @@ function faseObra(id){ return (db.fasesObra||[]).find(f=>f.id===id); }
 function fasesObraOrdenadas(){ return (db.fasesObra||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function faseOS(id){ return (db.fasesOS||[]).find(f=>f.id===id); }
 function fasesOSOrdenadas(){ return (db.fasesOS||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function ostipoInfo(tipo){
+  if(tipo==='projeto')  return {label:'PRJ', cor:'#7b1fa2'};
+  if(tipo==='execucao') return {label:'OBR', cor:'#e65100'};
+  return {label:'AVL', cor:'#1565c0'};
+}
 function fasePropTipo(tipo){ return db.fasesProposta.find(f=>f.tipo===tipo); }
 function propostaPerdida(p){ const f=faseProp(p.faseId); return !!(f && f.tipo==='perdida'); }
 function propostaPrincipal(cardId){ return db.propostas.find(p=>p.cardId===cardId && p.status==='aprovada' && !p.aditivo); }
@@ -1314,13 +1319,13 @@ async function excluirArquivoStorage(path){
   if(!path) return;
   try{ await sb.storage.from('propostas').remove([path]); }catch(e){ console.error('Erro ao excluir arquivo do Storage:', e); }
 }
-async function baixarArquivo(path, nome){
+async function _baixarArquivoBucket(bucket, path, nome){
   const ehPdf=(nome||'').toLowerCase().endsWith('.pdf');
   // Safari: a janela precisa ser aberta DENTRO do clique (síncrono), senão vira popup bloqueado
   const win = ehPdf ? window.open('', '_blank') : null;
   if(win){ try{ win.document.write('<title>Abrindo...</title><p style="font-family:sans-serif">Carregando o arquivo...</p>'); }catch(e){} }
   try{
-    const {data, error} = await sb.storage.from('propostas').download(path);
+    const {data, error} = await sb.storage.from(bucket).download(path);
     if(error || !data){ if(win) win.close(); alert('Não foi possível baixar o arquivo: '+(error?error.message:'')); return; }
     const url=URL.createObjectURL(data);
     if(ehPdf){
@@ -1336,6 +1341,7 @@ async function baixarArquivo(path, nome){
     alert('Erro ao baixar arquivo: '+e.message);
   }
 }
+async function baixarArquivo(path, nome){ await _baixarArquivoBucket('propostas', path, nome); }
 
 /* Número controlado pelo sistema: código do cliente + nº do cartão CRM + data de emissão */
 function gerarNumeroProposta(c){
@@ -2061,6 +2067,7 @@ function renderVistaFases(k){
 /* --- Vista 2: perdidos & concluídos --- */
 function renderVistaArquivados(k){
   const fp = faseTipo('perdido'), fc = faseTipo('concluido');
+  if(!fp || !fc) return;
   k.appendChild(colEl(fp.nome, fp.cor, db.cards.filter(c=>c.perdido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
   k.appendChild(colEl(fc.nome, fc.cor, db.cards.filter(c=>c.concluido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
 }
@@ -2356,6 +2363,7 @@ function registrarRapido(id){
   const ta = document.getElementById('m-contato');
   if(!ta.value.trim()){ alert('Escreva o contato antes de registrar.'); ta.focus(); return; }
   registrarHist(c, ta.value);
+  registrarLog('criar','historico',c.id,`Registro rápido adicionado ao CRM #${c.num}`);
   save();
   ta.value='';
   document.getElementById('hist-wrap').innerHTML = histHTML(c);
@@ -2386,9 +2394,10 @@ function wireValidacao(){
   };
   cbP.onchange = ()=>{
     if(cbP.checked){
-      const f=faseTipo('perdido');
-      if(confirm(`Marcar como PERDIDO move o cartão para a fase "${f.nome}" e ele sai do painel. Confirmar?`)){
-        sel.value=f.id; cbC.checked=false; faseAnt=sel.value;
+      const fPerd = faseTipo('perdido');
+      if(!fPerd){ cbP.checked=false; alert('Fase "perdido" não encontrada.'); return; }
+      if(confirm(`Marcar como PERDIDO move o cartão para a fase "${fPerd.nome}" e ele sai do painel. Confirmar?`)){
+        sel.value=fPerd.id; cbC.checked=false; faseAnt=sel.value;
       } else cbP.checked=false;
     } else if(fase(+sel.value).tipo==='perdido'){
       alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
@@ -2396,9 +2405,10 @@ function wireValidacao(){
   };
   cbC.onchange = ()=>{
     if(cbC.checked){
-      const f=faseTipo('concluido');
-      if(confirm(`Marcar como CONCLUÍDO move o cartão para a fase "${f.nome}" e ele sai do painel. Confirmar?`)){
-        sel.value=f.id; cbP.checked=false; faseAnt=sel.value;
+      const fConc = faseTipo('concluido');
+      if(!fConc){ cbC.checked=false; alert('Fase "concluido" não encontrada.'); return; }
+      if(confirm(`Marcar como CONCLUÍDO move o cartão para a fase "${fConc.nome}" e ele sai do painel. Confirmar?`)){
+        sel.value=fConc.id; cbP.checked=false; faseAnt=sel.value;
       } else cbC.checked=false;
     } else if(fase(+sel.value).tipo==='concluido'){
       alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
@@ -2449,7 +2459,8 @@ function salvarNovoCartao(){
       id:clienteId, nome,
       tel:document.getElementById('nc-tel').value,
       email:document.getElementById('nc-email').value,
-      cidade:document.getElementById('nc-cidade').value
+      cidade:document.getElementById('nc-cidade').value,
+      endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:document.getElementById('nc-cidade').value,uf:''}
     });
   } else {
     clienteId = +document.getElementById('m-cliente').value;
@@ -2563,7 +2574,12 @@ function abaObrasCartaoHTML(c){
 /* ================= ORDENS DE SERVIÇO ================= */
 function osNumero(cardNum, tipo, osDoCard){
   const prefixo = tipo==='projeto'?'PRJ': tipo==='execucao'?'OBR':'AVL';
-  const seq = osDoCard.filter(o=>o.tipo===tipo).length + 1;
+  const existentes = osDoCard.filter(o=>o.tipo===tipo);
+  const maxSeq = existentes.reduce((m,o)=>{
+    const n = parseInt((o.numero||'').split('-').pop())||0;
+    return Math.max(m,n);
+  },0);
+  const seq = maxSeq + 1;
   return `OS-${cardNum}-${prefixo}-${String(seq).padStart(3,'0')}`;
 }
 
@@ -2584,8 +2600,7 @@ function osItemHTML(os, c){
   const f = faseOS(os.faseId);
   const resp = db.usuarios.find(u=>u.id===os.responsavelId);
   const pendAbertas = (os.pendencias||[]).filter(p=>!p.resolvida);
-  const tipoLabel = os.tipo==='projeto'?'PRJ':os.tipo==='execucao'?'OBR':'AVL';
-  const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+  const {label:tipoLabel, cor:tipoColor} = ostipoInfo(os.tipo);
   return `
     <div class="os-item" style="${os.fechada?'opacity:.75;border-color:#adb5bd':''}">
       <div class="os-item-header">
@@ -2699,7 +2714,7 @@ function abrirVerOS(osId, cardId){
   const propAprov = propostaPrincipal(cardId);
   const itensDisp = propAprov ? (propAprov.itens||[]) : [];
   const resp = db.usuarios.find(u=>u.id===os.responsavelId);
-  const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+  const tipoColor = ostipoInfo(os.tipo).cor;
   const tipoLabel = os.tipo==='projeto'?'Projeto (PRJ)':os.tipo==='execucao'?'Execução/Obra (OBR)':'Avulsa (AVL)';
   const isProjeto = os.tipo === 'projeto';
   const nArqArq  = (os.arquivosArquiteto||[]).length;
@@ -2725,7 +2740,7 @@ function abrirVerOS(osId, cardId){
     return b.data.localeCompare(a.data);
   });
   const dis = os.fechada ? 'disabled' : '';
-  const histHTML = hist.map(h=>{
+  const histRows = hist.map(h=>{
     const idx = os.historico.indexOf(h);
     const podeEditHist = podeUsar(usuarioAtual,'hist-os-editar');
     return `<div class="hist-item">
@@ -2880,7 +2895,7 @@ function abrirVerOS(osId, cardId){
         </div>
         <!-- histórico cresce para preencher o espaço restante -->
         <div style="flex:1;overflow-y:auto;min-height:80px;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;padding:8px">
-          ${hist.length ? histHTML : '<div style="font-size:13px;color:var(--muted);padding:8px">Sem registros no histórico.</div>'}
+          ${hist.length ? histRows : '<div style="font-size:13px;color:var(--muted);padding:8px">Sem registros no histórico.</div>'}
         </div>
       </div>
 
@@ -3064,12 +3079,14 @@ function adicionarPendOS(osId, cardId){
   if(!texto) return;
   if(!os.pendencias) os.pendencias=[];
   os.pendencias.push({id:Date.now(), texto, resolvida:false});
+  registrarLog('criar','os',osId,`Pendência adicionada à O.S. ${os.numero}: ${texto}`);
   save(); abrirVerOS(osId, cardId);
 }
 
 function removerPendOS(osId, idx, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   os.pendencias.splice(idx,1);
+  registrarLog('excluir','os',osId,`Pendência removida da O.S. ${os.numero}`);
   save(); abrirVerOS(osId, cardId);
 }
 
@@ -3092,37 +3109,20 @@ function adicionarProdOS(osId, cardId){
   const it = (propAprov.itens||[])[idx];
   if(!it) return;
   if(!os.produtos) os.produtos=[];
-  os.produtos.push({descricao:it.descricao||it.item, qtd:it.qtd, unit:it.tipo||'un', total:it.total, tipo:it.tipo||''});
+  const prod = {descricao:it.descricao||it.item, qtd:it.qtd, unit:it.tipo||'un', total:it.total, tipo:it.tipo||''};
+  os.produtos.push(prod);
+  registrarLog('criar','os',osId,`Produto adicionado à O.S. ${os.numero}: ${prod.nome||prod.descricao||'?'}`);
   save(); abrirVerOS(osId, cardId);
 }
 
 function removerProdOS(osId, idx, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   os.produtos.splice(idx,1);
+  registrarLog('excluir','os',osId,`Produto removido da O.S. ${os.numero}`);
   save(); abrirVerOS(osId, cardId);
 }
 
-async function baixarArquivoOS(path, nome){
-  const ehPdf = (nome||'').toLowerCase().endsWith('.pdf');
-  const win = ehPdf ? window.open('', '_blank') : null;
-  if(win){ try{ win.document.write('<title>Abrindo...</title><p style="font-family:sans-serif">Carregando arquivo...</p>'); }catch(e){} }
-  try{
-    const {data, error} = await sb.storage.from('os-arquivos').download(path);
-    if(error || !data){ if(win) win.close(); alert('Não foi possível baixar o arquivo: '+(error?error.message:'')); return; }
-    const url = URL.createObjectURL(data);
-    if(ehPdf){
-      if(win && !win.closed) win.location = url;
-      else window.open(url);
-    } else {
-      const a = document.createElement('a');
-      a.href = url; a.download = nome||'arquivo'; a.click();
-    }
-    setTimeout(()=>URL.revokeObjectURL(url), 120000);
-  }catch(e){
-    if(win) win.close();
-    alert('Erro ao baixar arquivo: '+e.message);
-  }
-}
+async function baixarArquivoOS(path, nome){ await _baixarArquivoBucket('os-arquivos', path, nome); }
 
 /* Upload com progresso real via XHR (o Supabase JS não expõe eventos de progresso) */
 async function uploadOSArquivoXHR(bucket, path, file, onProgress){
@@ -3330,7 +3330,9 @@ function marcarPerdida(id){
   const p=db.propostas.find(x=>x.id===id);
   if(!confirm(`Marcar a proposta ${p.numero} como PERDIDA/ABANDONADA?\nEla sai dos painéis por fase e por validade.`)) return;
   p.faseAnterior=p.faseId;
-  p.faseId=fasePropTipo('perdida').id;
+  const fpPerdida = fasePropTipo('perdida');
+  if(!fpPerdida){ alert('Fase "perdida" não encontrada. Verifique o cadastro de fases.'); return; }
+  p.faseId = fpPerdida.id;
   registrarLog('marcar_perdida', 'proposta', id, `Proposta marcada como perdida: ${p.numero}`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
@@ -3345,6 +3347,7 @@ function reativarProposta(id){
 
 /* ---- Edição de proposta emitida (inline na aba) ---- */
 let propEditandoId=null;
+let _itensAnteriorAprovacao = null;
 function editarProposta(id){
   propEditandoId=id;
   abrirEditarCartao(db.propostas.find(x=>x.id===id).cardId, 'emitidas');
@@ -3603,6 +3606,7 @@ async function aprovarComExcel(cardId){
         if(stAE) stAE.textContent='';
         return;
       }
+      _itensAnteriorAprovacao = p.itens !== undefined ? JSON.parse(JSON.stringify(p.itens||[])) : null;
       if(itens) p.itens=itens;
     }
     if(stAE) stAE.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
@@ -3663,9 +3667,17 @@ async function aprovarComExcel(cardId){
     </div>
 
     <div class="actions">
-      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'aprovada')">Cancelar</button>
+      <button class="btn neutral" onclick="cancelarAprovacaoFases(${cardId},${p.id})">Cancelar</button>
       <button class="btn primary" onclick="confirmarAprovacaoProposta(${cardId},${p.id})">✅ Confirmar aprovação</button>
     </div>`);
+}
+
+function cancelarAprovacaoFases(cardId, propId){
+  const p = db.propostas.find(x=>x.id===propId);
+  if(p && _itensAnteriorAprovacao !== null) p.itens = _itensAnteriorAprovacao;
+  _itensAnteriorAprovacao = null;
+  fecharModal();
+  abrirEditarCartao(cardId,'aprovada');
 }
 
 function confirmarAprovacaoProposta(cardId, propId){
@@ -3680,7 +3692,7 @@ function confirmarAprovacaoProposta(cardId, propId){
   if(novaFaseProp){
     p.faseId = novaFaseProp;
   } else {
-    const fAp = db.fasesProposta.find(f=>f.tipo==='aprovada');
+    const fAp = fasePropTipo('aprovada');
     if(fAp) p.faseId = fAp.id;
   }
 
@@ -3710,7 +3722,8 @@ async function reverterProposta(id){
   delete p.itens; // itens importados pertencem à aprovação
   p.status='emitida'; delete p.dataAprovacao;
   // fase volta para a anterior à aprovação
-  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior)) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
+  const fbFase = fasesPropOrdenadas().find(f=>!f.tipo);
+  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior)) ? p.faseAnterior : (fbFase ? fbFase.id : null);
   delete p.faseAnterior;
   recalcValorCartao(p.cardId);
   registrarLog('reverter', 'proposta', p.id, `Aprovação revertida para emitida: ${p.numero}`);
@@ -4077,9 +4090,21 @@ function salvarEdicaoCartao(id){
 async function excluirCartao(id){
   const c=db.cards.find(x=>x.id===id);
   const props=db.propostas.filter(p=>p.cardId===id);
-  if(!confirm(props.length?`Este cartão tem ${props.length} proposta(s), que serão excluídas junto. Continuar?`:'Excluir este cartão?')) return;
-  registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${props.length?` (+ ${props.length} proposta(s))`:''}`);
+  const oss=db.ordensServico.filter(o=>o.cardId===id);
+  const partes=[];
+  if(props.length) partes.push(`${props.length} proposta(s)`);
+  if(oss.length) partes.push(`${oss.length} O.S.`);
+  const aviso = partes.length ? `Este cartão tem ${partes.join(' e ')}, que serão excluídas junto. Continuar?` : 'Excluir este cartão?';
+  if(!confirm(aviso)) return;
+  registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
+  for(const os of oss){
+    const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+    if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+    const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+    if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+  }
+  db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
@@ -4169,13 +4194,15 @@ function salvarNovoCliente(){
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return; }
   const end=lerEndereco();
+  const clienteId = nextId(db.clientes);
   db.clientes.push({
-    id:nextId(db.clientes), nome,
+    id:clienteId, nome,
     tel:document.getElementById('m-tel').value,
     email:document.getElementById('m-email').value,
     cidade:end.cidade,
     endereco:end
   });
+  registrarLog('criar','cliente',clienteId,`Cliente criado: ${nome}`);
   save(); fecharModal(); renderAll();
 }
 
@@ -4311,13 +4338,22 @@ function excluirObra(id, clienteId, returnCardId=null){
   if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
   else abrirEditarCliente(clienteId);
 }
-function excluirCliente(id){
+async function excluirCliente(id){
   const qtd=db.cards.filter(x=>x.clienteId===id).length;
   const cl=db.clientes.find(x=>x.id===id);
   if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
   const qtdObras=db.obras.filter(o=>o.clienteId===id).length;
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
   registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
+  const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
+  const ossDoCliente = db.ordensServico.filter(o=>obraIds.includes(o.obraId)||o.clienteId===id);
+  for(const os of ossDoCliente){
+    const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+    if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+    const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+    if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+  }
+  db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
@@ -4531,13 +4567,13 @@ function renderOSLista(){
   const filtroFase   = selFase?.value || '';
   const filtroStatus = document.getElementById('os-filtro-status')?.value || '';
 
-  // popular select de fases (só na primeira vez ou quando vazio)
-  if(selFase && selFase.options.length <= 1){
-    fasesOSOrdenadas().forEach(f=>{
-      const o = document.createElement('option');
-      o.value = f.id; o.textContent = f.nome;
-      selFase.appendChild(o);
-    });
+  // popular select de fases (repopula sempre que o número de fases mudar)
+  if(selFase){
+    const fasesAtuais = fasesOSOrdenadas();
+    if(selFase.options.length - 1 !== fasesAtuais.length){
+      while(selFase.options.length > 1) selFase.remove(1);
+      fasesAtuais.forEach(f=>{ const o=document.createElement('option'); o.value=f.id; o.textContent=f.nome; selFase.appendChild(o); });
+    }
   }
 
   const t = termoBusca();
@@ -4582,8 +4618,7 @@ function renderOSLista(){
     const ob   = db.obras.find(o=>o.id===os.obraId);
     const resp = db.usuarios.find(u=>u.id===os.responsavelId);
     const f    = faseOS(os.faseId);
-    const tipoLabel = os.tipo==='projeto'?'PRJ':os.tipo==='execucao'?'OBR':'AVL';
-    const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+    const {label:tipoLabel, cor:tipoColor} = ostipoInfo(os.tipo);
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Clique para abrir o cartão';
