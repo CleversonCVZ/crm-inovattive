@@ -142,6 +142,26 @@
   .abas{display:flex;gap:2px;border-bottom:2px solid var(--border);margin-bottom:12px;flex-wrap:wrap}
   .aba{border:none;background:none;padding:8px 12px;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px}
   .aba.ativa{color:var(--blue-dark);border-bottom-color:var(--blue-dark)}
+  /* ===== OS (Ordens de Serviço) ===== */
+  .os-item{background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13.5px}
+  .os-item-header{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .os-numero{font-weight:800;font-size:13px;color:var(--blue-dark)}
+  .os-tag{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;color:#fff;margin-left:6px}
+  .os-fase-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;color:#fff;margin-top:4px}
+  .os-acoes{display:flex;gap:6px;flex-shrink:0;align-items:center}
+  .os-pendencias{margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
+  .os-pend-item{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:4px}
+  .os-pend-item input[type=checkbox]{accent-color:var(--green)}
+  .os-imagens{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .os-img-card{border:1px solid var(--border);border-radius:8px;overflow:hidden;width:120px;font-size:11px;cursor:pointer}
+  .os-arq-row{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:var(--surface)}
+  .os-arq-row .os-arq-nome{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .os-arq-secao-status{font-size:12px;font-weight:600;padding:2px 10px;border-radius:12px;background:#e8f5e9;color:#2e7d32}
+  .os-arq-secao-status.pendente{background:#fff3e0;color:#e65100}
+  .os-img-card img{width:120px;height:80px;object-fit:cover;display:block}
+  .os-img-card .os-img-leg{padding:4px 6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .os-produtos{margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:13px}
+  .os-prod-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0}
   .prop-item{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13.5px}
   .prop-item.aprovada{background:#f3ebf9;border-color:#d8c2ec}
   .prop-arqs{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px}
@@ -381,11 +401,42 @@
     <div class="bar">
       <h2>Ordens de Serviço</h2>
       <div class="spacer"></div>
+      <select id="os-filtro-tipo" onchange="renderOSLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os tipos</option>
+        <option value="projeto">Projeto (PRJ)</option>
+        <option value="execucao">Execução/Obra (OBR)</option>
+        <option value="avulsa">Avulsa (AVL)</option>
+      </select>
+      <select id="os-filtro-fase" onchange="renderOSLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todas as fases</option>
+      </select>
+      <select id="os-filtro-status" onchange="renderOSLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os status</option>
+        <option value="aberta">Abertas</option>
+        <option value="fechada">Fechadas</option>
+      </select>
     </div>
-    <div class="empty" style="padding:60px 20px;font-size:15px">
-      🔧 Lista de Ordens de Serviço em construção.<br>
-      <small style="color:var(--muted)">Aqui aparecerão todas as O.S. com número, fase, responsável, obra vinculada e status.</small>
-    </div>
+    <div class="stats" id="os-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As O.S. são criadas dentro do cartão CRM (abra o cartão → aba "O.S."). Clique numa linha para abrir o cartão correspondente.
+    </p>
+    <table class="lista">
+      <thead>
+        <tr>
+          <th>Número</th>
+          <th>Tipo</th>
+          <th>Título</th>
+          <th>Cliente</th>
+          <th>Obra</th>
+          <th>Cartão</th>
+          <th>Responsável</th>
+          <th>Agendado</th>
+          <th>Fase</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="os-lista-tbody"></tbody>
+    </table>
   </div>
 
   <!-- PROPOSTAS: PAINEL -->
@@ -657,6 +708,7 @@ const SEED = {
     {id:4, nome:'Concluída',     cor:'#2e7d32', ordem:4, tipo:'concluida'},
     {id:5, nome:'Cancelada',     cor:'#c62828', ordem:5, tipo:'cancelada'}
   ],
+  ordensServico: [],
   cards: [
     {id:1, num:7,  clienteId:1, obraId:1, faseId:9,  responsavel:'Cleverson', agenda:d(-11,'07:00'), valor:3500,
      historico:[{data:d(-12,'14:32'),texto:'Alterado a data para tornar a chamar em setembro.'},{data:d(-40,'09:15'),texto:'Cliente pediu para aguardar a obra avançar.'}]},
@@ -704,7 +756,10 @@ const TELAS = [
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
 const RECURSOS = [
   {id:'aba-propostas', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
-  {id:'aba-obras',     nome:'Cartão CRM — aba Obras'}
+  {id:'aba-obras',     nome:'Cartão CRM — aba Obras'},
+  {id:'aba-os',        nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
+  {id:'hist-card-editar', nome:'Histórico do Cartão CRM — Editar e Excluir registros'},
+  {id:'hist-os-editar',   nome:'Histórico da O.S. — Editar e Excluir registros'}
 ];
 
 /* Módulos: cada um tem seu menu horizontal próprio (sempre começando pelo Painel) */
@@ -762,6 +817,8 @@ function load(){
   // migração: grupos existentes começam com todos os recursos liberados (comportamento anterior)
   db.grupos.forEach(g=>{
     if(!Array.isArray(g.recursos)) g.recursos = RECURSOS.map(r=>r.id);
+    // garante que novos recursos sejam adicionados a grupos admin existentes
+    RECURSOS.forEach(r=>{ if(g.admin && !g.recursos.includes(r.id)) g.recursos.push(r.id); });
   });
   const gAdmin = db.grupos.find(g=>g.admin);
   db.usuarios.forEach(u=>{
@@ -812,6 +869,12 @@ function load(){
                   {id:3,nome:'Em Revisão',cor:'#f9a825',ordem:3},{id:4,nome:'Concluída',cor:'#2e7d32',ordem:4,tipo:'concluida'},
                   {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
+  if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
+  db.ordensServico.forEach(o=>{
+    if(!('fechada' in o)) o.fechada = false;
+    if(!Array.isArray(o.arquivosArquiteto)) o.arquivosArquiteto = [];
+    if(!Array.isArray(o.arquivosProjeto))   o.arquivosProjeto   = [];
+  });
   db.obras.forEach(o=>{
     if(!o.endereco) o.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
   });
@@ -2128,12 +2191,54 @@ function histHTML(c){
   });
   return `
     <label>Histórico (${c.historico.length} registro${c.historico.length>1?'s':''})</label>
-    <div class="hist">${hist.map(h=>`
+    <div class="hist">${hist.map(h=>{
+      const idx = c.historico.indexOf(h);
+      const podeEditHist = podeUsar(usuarioAtual,'hist-card-editar');
+      return `
       <div class="hist-item">
-        <div class="hist-data">${h.data?fmtData(h.data):'registro anterior (sem data)'}</div>
+        <div class="hist-data" style="display:flex;justify-content:space-between;align-items:center">
+          <span>${h.data?fmtData(h.data):'registro anterior (sem data)'}</span>
+          ${podeEditHist?`<span style="display:flex;gap:2px;flex-shrink:0">
+            <button class="icon-btn" style="font-size:11px;padding:1px 5px" title="Editar" onclick="editarHistCard(${c.id},${idx})">✏️</button>
+            <button class="icon-btn del" style="font-size:11px;padding:1px 5px" title="Excluir" onclick="excluirHistCard(${c.id},${idx})">🗑</button>
+          </span>`:''}
+        </div>
         <div>${h.texto}</div>
-      </div>`).join('')}
+      </div>`;
+    }).join('')}
     </div>`;
+}
+
+function editarHistCard(cardId, idx){
+  const c = db.cards.find(x=>x.id===cardId);
+  const h = c.historico[idx];
+  const novo = prompt('Editar registro do histórico:', h.texto);
+  if(novo === null || !novo.trim()) return;
+  h.texto = novo.trim();
+  save(); abrirEditarCartao(cardId, 'dados');
+}
+
+function excluirHistCard(cardId, idx){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!confirm('Excluir este registro do histórico? Esta ação não pode ser desfeita.')) return;
+  c.historico.splice(idx, 1);
+  save(); abrirEditarCartao(cardId, 'dados');
+}
+
+function editarHistOS(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const h = os.historico[idx];
+  const novo = prompt('Editar registro do histórico:', h.texto);
+  if(novo === null || !novo.trim()) return;
+  h.texto = novo.trim();
+  save(); abrirVerOS(osId, cardId);
+}
+
+function excluirHistOS(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!confirm('Excluir este registro do histórico?')) return;
+  os.historico.splice(idx, 1);
+  save(); abrirVerOS(osId, cardId);
 }
 
 function optsObras(clienteId, sel){
@@ -2339,11 +2444,13 @@ function abrirEditarCartao(id, aba='dados'){
   // permissões por aba (grupo do usuário logado)
   const verPropostas = podeUsar(usuarioAtual,'aba-propostas');
   const verObras = podeUsar(usuarioAtual,'aba-obras');
-  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras)) aba='dados';
+  const verOS = podeUsar(usuarioAtual,'aba-os');
+  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS)) aba='dados';
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
   const nEmit=db.propostas.filter(p=>p.cardId===id && p.status==='emitida').length;
   const nAprov=db.propostas.filter(p=>p.cardId===id && p.status==='aprovada').length;
+  const nOS=db.ordensServico.filter(o=>o.cardId===id).length;
   let corpo='';
   if(aba==='dados') corpo=`
     <div class="dados-grid">
@@ -2355,7 +2462,8 @@ function abrirEditarCartao(id, aba='dados'){
     </div>`;
   else if(aba==='emitidas') corpo=abaPropostasHTML(c);
   else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
-  else corpo=abaObrasCartaoHTML(c);
+  else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
+  else corpo=abaOSCartaoHTML(c);
   abrirModal(`
     <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
     <div class="abas">
@@ -2364,6 +2472,7 @@ function abrirEditarCartao(id, aba='dados'){
       <button class="aba ${aba==='emitidas'?'ativa':''}" onclick="abrirEditarCartao(${id},'emitidas')">Propostas Emitidas (${nEmit})</button>
       <button class="aba ${aba==='aprovada'?'ativa':''}" onclick="abrirEditarCartao(${id},'aprovada')">Proposta Aprovada${nAprov?' ✔':''}</button>`:''}
       ${verObras?`<button class="aba ${aba==='obras'?'ativa':''}" onclick="abrirEditarCartao(${id},'obras')">Obras</button>`:''}
+      ${verOS?`<button class="aba ${aba==='os'?'ativa':''}" onclick="abrirEditarCartao(${id},'os')">O.S.${nOS?' ('+nOS+')':''}</button>`:''}
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -2376,6 +2485,8 @@ function abrirEditarCartao(id, aba='dados'){
 
 function abaObrasCartaoHTML(c){
   const ob = obraDe(c);
+  // arquivos de projeto finalizado: vem das OS de tipo 'projeto' com arquivosProjeto preenchido
+  const osProjetos = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto' && (o.arquivosProjeto||[]).length);
   return `
     ${ob?`
       <div class="obra-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -2385,10 +2496,697 @@ function abaObrasCartaoHTML(c){
         </div>
         <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
       </div>`:'<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>'}
-    <div class="empty" style="margin-top:24px">
+
+    ${osProjetos.length ? `
+    <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
+    <label style="font-weight:700">⚡ Projetos de Automação Finalizados</label>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Arquivos dos projetos entregues pelas O.S. de Projeto deste cartão.</div>
+    ${osProjetos.map(os=>`
+      <div style="margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:#5c6bc0;margin-bottom:6px">📋 ${os.numero} — ${os.titulo}</div>
+        ${(os.arquivosProjeto||[]).map(a=>{
+          const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
+          const ps=a.path.replace(/'/g,"\\'"), ns=(a.nome||'').replace(/'/g,"\\'");
+          return `<div class="os-arq-row">
+            <span>${isPdf?'📄':'📐'}</span>
+            ${isPdf
+              ? `<span class="os-arq-nome" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" title="Clique para visualizar" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
+              : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
+            <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
+          </div>`;
+        }).join('')}
+      </div>`).join('')}` : ''}
+
+    <div class="empty" style="margin-top:${osProjetos.length?'14':'24'}px">
       🏗️ Acompanhamento da obra em construção.<br>
       <small style="color:var(--muted)">Aqui entrarão etapas, ordens de serviço e o andamento físico da obra vinculada.</small>
     </div>`;
+}
+
+/* ================= ORDENS DE SERVIÇO ================= */
+function osNumero(cardNum, tipo, osDoCard){
+  const prefixo = tipo==='projeto'?'PRJ': tipo==='execucao'?'OBR':'AVL';
+  const seq = osDoCard.filter(o=>o.tipo===tipo).length + 1;
+  return `OS-${cardNum}-${prefixo}-${String(seq).padStart(3,'0')}`;
+}
+
+function abaOSCartaoHTML(c){
+  const lista = db.ordensServico.filter(o=>o.cardId===c.id)
+    .sort((a,b)=>a.id-b.id);
+  const obra = obraDe(c);
+  return `
+    <div style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:13px;color:var(--muted)">Obra: <b>${obra?obra.nome:'<span style="color:#e53935">nenhuma vinculada</span>'}</b></span>
+      <button class="btn sm primary" onclick="abrirNovaOS(${c.id})" ${!obra?'disabled title="Vincule uma obra primeiro (aba Dados)"':''}>＋ Nova O.S.</button>
+    </div>
+    ${lista.length===0?'<div class="empty">Nenhuma Ordem de Serviço neste cartão.</div>':''}
+    ${lista.map(os=>osItemHTML(os,c)).join('')}`;
+}
+
+function osItemHTML(os, c){
+  const f = faseOS(os.faseId);
+  const resp = db.usuarios.find(u=>u.id===os.responsavelId);
+  const pendAbertas = (os.pendencias||[]).filter(p=>!p.resolvida);
+  const tipoLabel = os.tipo==='projeto'?'PRJ':os.tipo==='execucao'?'OBR':'AVL';
+  const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+  return `
+    <div class="os-item" style="${os.fechada?'opacity:.75;border-color:#adb5bd':''}">
+      <div class="os-item-header">
+        <div>
+          <span class="os-numero">${os.numero}</span>
+          <span class="os-tag" style="background:${tipoColor}">${tipoLabel}</span>
+          ${f?`<span class="os-fase-badge" style="background:${f.cor}">${f.nome}</span>`:''}
+          ${os.fechada?'<span class="os-tag" style="background:#555;margin-left:6px">🔒 Fechada</span>':''}
+          <div style="font-size:13px;margin-top:4px"><b>${os.titulo}</b></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            Responsável: ${resp?resp.nome:'—'} · ${os.dataInicio ? `Início: ${fmtDia2(os.dataInicio.slice(0,10))}` : `Agendado: ${os.dataAgend?fmtDia2(os.dataAgend):'—'}`}
+            ${os.dataTermino?` · Encerrada: ${fmtData(os.dataTermino)}`:''}
+          </div>
+          ${!os.fechada && pendAbertas.length?`<div style="font-size:12px;color:#e53935;margin-top:2px">⚠ ${pendAbertas.length} pendência${pendAbertas.length>1?'s':''} em aberto</div>`:''}
+        </div>
+        <div class="os-acoes">
+          <button class="icon-btn" title="${os.fechada?'Ver O.S.':'Editar O.S.'}" onclick="abrirVerOS(${os.id},${c.id})">${os.fechada?'👁':'✏️'}</button>
+          <button class="icon-btn del" title="Excluir O.S." onclick="excluirOS(${os.id},${c.id})">🗑</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function abrirNovaOS(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!obraDe(c)){ alert('Vincule uma obra a este cartão (aba Dados) antes de criar uma O.S.'); return; }
+  // pendências abertas de OS anteriores fechadas
+  const osPrev = db.ordensServico.filter(o=>o.cardId===cardId && o.fechada);
+  let pendTransf = [];
+  osPrev.forEach(o=>(o.pendencias||[]).filter(p=>!p.resolvida).forEach(p=>pendTransf.push({...p, _deOS:o.numero})));
+  const hasPend = pendTransf.length > 0;
+  abrirModal(`
+    <h3>Nova Ordem de Serviço — Cartão #${c.num}</h3>
+    <div class="form-row">
+      <div>
+        <label>Tipo de O.S.</label>
+        <select id="nos-tipo">
+          <option value="projeto">Projeto (PRJ)</option>
+          <option value="execucao">Execução/Obra (OBR)</option>
+          <option value="avulsa">Avulsa (AVL)</option>
+        </select>
+      </div>
+      <div>
+        <label>Fase inicial</label>
+        <select id="nos-fase">${fasesOSOrdenadas().map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}</select>
+      </div>
+    </div>
+    <label>Título da O.S.</label>
+    <input id="nos-titulo" placeholder="Ex.: Instalação da câmera frontal">
+    <label>Responsável</label>
+    <select id="nos-resp">
+      <option value="">— Selecione —</option>
+      ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}">${u.nome}</option>`).join('')}
+    </select>
+    <label>Data de agendamento</label>
+    <input id="nos-ai" type="date" style="max-width:200px">
+    ${hasPend?`
+    <div style="background:#fff8e1;border:1px solid #ffd54f;border-radius:8px;padding:10px 12px;margin-top:10px">
+      <label style="color:#f57f17">⚠ Existem ${pendTransf.length} pendência${pendTransf.length>1?'s':''} não resolvida${pendTransf.length>1?'s':''} de O.S. anteriores. Selecione as que deseja importar:</label>
+      ${pendTransf.map((p,i)=>`
+        <div class="os-pend-item">
+          <input type="checkbox" id="pend-imp-${i}" data-texto="${p.texto.replace(/"/g,'&quot;')}" checked>
+          <label for="pend-imp-${i}" style="cursor:pointer">${p.texto} <span style="color:var(--muted)">(${p._deOS})</span></label>
+        </div>`).join('')}
+    </div>`:''}
+    <label>Histórico inicial (opcional)</label>
+    <input id="nos-hist" placeholder="Ex.: O.S. criada para atender solicitação do cliente">
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
+      <button class="btn primary" onclick="salvarNovaOS(${cardId})">Criar O.S.</button>
+    </div>`, 'cartao');
+}
+
+function salvarNovaOS(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  const titulo = document.getElementById('nos-titulo').value.trim();
+  if(!titulo){ alert('Informe o título da O.S.'); return; }
+  const tipo  = document.getElementById('nos-tipo').value;
+  const faseId = +document.getElementById('nos-fase').value;
+  const respId = +document.getElementById('nos-resp').value || null;
+  const ai = document.getElementById('nos-ai').value||'';
+  const histTexto = document.getElementById('nos-hist').value.trim();
+  // importar pendências selecionadas (apenas para execucao e avulsa)
+  const pendencias = [];
+  if(tipo !== 'projeto'){
+    document.querySelectorAll('[id^="pend-imp-"]').forEach(cb=>{
+      if(cb.checked) pendencias.push({id: Date.now()+Math.random(), texto: cb.dataset.texto, resolvida:false});
+    });
+  }
+  const osDoCard = db.ordensServico.filter(o=>o.cardId===cardId);
+  const os = {
+    id: nextId(db.ordensServico),
+    numero: osNumero(c.num, tipo, osDoCard),
+    cardId, clienteId:c.clienteId, obraId:c.obraId,
+    tipo, faseId, titulo, responsavelId:respId,
+    dataAgend:ai,
+    dataInicio:'', dataTermino:'',
+    fechada: false,
+    historico: histTexto ? [{data:agoraISO(), texto:histTexto}] : [],
+    imagens: [], produtos: [], pendencias
+  };
+  db.ordensServico.push(os);
+  registrarLog('criar', 'os', os.id, `O.S. criada: ${os.numero} — ${titulo}`);
+  save(); renderAll(); abrirEditarCartao(cardId, 'os');
+}
+
+function abrirVerOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const c  = db.cards.find(x=>x.id===cardId);
+  const obra = db.obras.find(x=>x.id===os.obraId);
+  const propAprov = propostaPrincipal(cardId);
+  const itensDisp = propAprov ? (propAprov.itens||[]) : [];
+  const resp = db.usuarios.find(u=>u.id===os.responsavelId);
+  const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+  const tipoLabel = os.tipo==='projeto'?'Projeto (PRJ)':os.tipo==='execucao'?'Execução/Obra (OBR)':'Avulsa (AVL)';
+  const isProjeto = os.tipo === 'projeto';
+  const nArqArq  = (os.arquivosArquiteto||[]).length;
+  const nArqProj = (os.arquivosProjeto||[]).length;
+  const mkArqLista = (arr, tipo) => arr.map((a,i)=>{
+    const isPdf = (a.nome||'').toLowerCase().endsWith('.pdf');
+    const ps = a.path.replace(/'/g,"\\'");
+    const ns = (a.nome||'').replace(/'/g,"\\'");
+    return `<div class="os-arq-row">
+      <span>${isPdf?'📄':'📐'}</span>
+      ${isPdf
+        ? `<span class="os-arq-nome" title="Clique para visualizar" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
+        : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
+      <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
+      ${!os.fechada?`<button class="icon-btn del" onclick="excluirArquivoOSProjeto(${os.id},${i},'${tipo}',${cardId})">🗑</button>`:''}
+    </div>`;
+  }).join('') || '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Nenhum arquivo.</div>';
+  // histórico (mais recente no topo, com guard para data null)
+  const hist = (os.historico||[]).slice().sort((a,b)=>{
+    if(!a.data && !b.data) return 0;
+    if(!a.data) return 1;
+    if(!b.data) return -1;
+    return b.data.localeCompare(a.data);
+  });
+  const dis = os.fechada ? 'disabled' : '';
+  const histHTML = hist.map(h=>{
+    const idx = os.historico.indexOf(h);
+    const podeEditHist = podeUsar(usuarioAtual,'hist-os-editar');
+    return `<div class="hist-item">
+      <div class="hist-data" style="display:flex;justify-content:space-between;align-items:center">
+        <span>${fmtData(h.data)}</span>
+        ${podeEditHist?`<span style="display:flex;gap:2px;flex-shrink:0">
+          <button class="icon-btn" style="font-size:11px;padding:1px 5px" title="Editar" onclick="editarHistOS(${os.id},${idx},${cardId})">✏️</button>
+          <button class="icon-btn del" style="font-size:11px;padding:1px 5px" title="Excluir" onclick="excluirHistOS(${os.id},${idx},${cardId})">🗑</button>
+        </span>`:''}
+      </div>
+      <div>${h.texto}</div>
+    </div>`;
+  }).join('');
+
+  const colDir = isProjeto ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <label style="margin:0;font-weight:700">📐 Arquivos do Arquiteto</label>
+      <span class="os-arq-secao-status ${nArqArq?'':'pendente'}">${nArqArq?'✅ '+nArqArq+' arquivo(s)':'⏳ Aguardando'}</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">DWG/PDF recebidos do arquiteto — início formal do projeto.</div>
+    ${mkArqLista(os.arquivosArquiteto||[],'arquiteto')}
+    ${!os.fechada?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+      <input id="vos-arq-arq-file" type="file" multiple accept=".dwg,.DWG,.pdf,.PDF" style="flex:1;font-size:12px">
+      <button id="btn-upload-arq" class="btn sm primary" onclick="uploadArquivosOSProjeto(${os.id},${cardId},'arquiteto')">📎 Enviar</button>
+    </div>
+    <div id="vos-status-arquiteto" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`:''}
+
+    <div style="border-top:2px solid var(--border);margin:14px 0"></div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <label style="margin:0;font-weight:700">⚡ Projeto de Automação</label>
+      <span class="os-arq-secao-status ${nArqProj?'':'pendente'}">${nArqProj?'✅ '+nArqProj+' arquivo(s)':'⏳ Aguardando'}</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">DWG/PDF do nosso projeto finalizado. Obrigatório para encerrar a O.S.</div>
+    ${!nArqProj&&!os.fechada?'<div style="font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:7px 10px;margin-bottom:8px">⚠️ Faça o upload do projeto finalizado antes de encerrar esta O.S.</div>':''}
+    ${mkArqLista(os.arquivosProjeto||[],'projeto')}
+    ${!os.fechada?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+      <input id="vos-arq-proj-file" type="file" multiple accept=".dwg,.DWG,.pdf,.PDF" style="flex:1;font-size:12px">
+      <button id="btn-upload-proj" class="btn sm primary" onclick="uploadArquivosOSProjeto(${os.id},${cardId},'projeto')">📎 Enviar</button>
+    </div>
+    <div id="vos-status-projeto" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`:''}
+  ` : `
+    <label>Pendências</label>
+    <div id="vos-pend-lista">
+      ${(os.pendencias||[]).map((p,i)=>`
+        <div class="os-pend-item">
+          <input type="checkbox" id="vos-pend-${i}" ${p.resolvida?'checked':''} ${dis} onchange="togglePendOS(${os.id},${i},this.checked,${cardId})">
+          <label for="vos-pend-${i}" style="cursor:pointer;${p.resolvida?'text-decoration:line-through;color:var(--muted)':''}">${p.texto}</label>
+          ${!os.fechada?`<button class="icon-btn" style="font-size:11px;padding:2px 6px" onclick="removerPendOS(${os.id},${i},${cardId})">✖</button>`:''}
+        </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhuma pendência.</div>'}
+    </div>
+    ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px">
+      <input id="vos-pend-nova" placeholder="Nova pendência..." style="flex:1">
+      <button class="btn sm" onclick="adicionarPendOS(${os.id},${cardId})">＋ Adicionar</button>
+    </div>`:''}
+
+    ${itensDisp.length?`
+    <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+    <label>Produtos (proposta aprovada)</label>
+    <div class="os-produtos">
+      ${(os.produtos||[]).map((pr,i)=>`
+        <div class="os-prod-row">
+          <span>${pr.descricao} <small style="color:var(--muted)">(${pr.qtd} ${pr.unit})</small></span>
+          ${!os.fechada?`<button class="icon-btn" style="font-size:11px" onclick="removerProdOS(${os.id},${i},${cardId})">✖</button>`:''}
+        </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhum produto adicionado.</div>'}
+    </div>
+    ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px">
+      <select id="vos-prod-sel" style="flex:1">
+        <option value="">— Selecione item da proposta aprovada —</option>
+        ${itensDisp.map((it,i)=>`<option value="${i}">${it.descricao||it.item} (${it.qtd} ${it.tipo||'un'})</option>`).join('')}
+      </select>
+      <button class="btn sm" onclick="adicionarProdOS(${os.id},${cardId})">＋ Adicionar</button>
+    </div>`:''}` :''}
+
+    <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+    <label>Imagens da O.S.</label>
+    <div class="os-imagens" id="vos-imagens">
+      ${(os.imagens||[]).map((img,i)=>`
+        <div class="os-img-card">
+          <img src="${getOSImageUrl(img.path)}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
+          <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
+          ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirOSImagem(${os.id},${i},${cardId})">🗑 remover</button>`:''}
+        </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhuma imagem.</div>'}
+    </div>
+    ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+      <input id="vos-img-file" type="file" multiple accept="image/*" style="flex:1">
+      <input id="vos-img-leg" placeholder="Legenda/descrição" style="flex:1.2">
+      <button id="btn-upload-img" class="btn sm primary" onclick="uploadOSImagens(${os.id},${cardId})">📷 Upload</button>
+    </div>
+    <div id="vos-status-imagens" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`:''}
+  `;
+
+  abrirModal(`
+    <!-- Cabeçalho fixo -->
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>${os.numero}</span>
+        <span class="os-tag" style="background:${tipoColor}">${tipoLabel}</span>
+        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+      </h3>
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+      <div style="font-size:12px;color:var(--muted)">
+        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+      </div>
+    </div>
+
+    <!-- Corpo 2 colunas -->
+    <div style="flex:1;overflow:hidden;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+      <!-- COLUNA ESQUERDA: campos + histórico -->
+      <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden">
+        <div style="flex-shrink:0">
+          <div class="form-row">
+            <div>
+              <label>Fase da O.S.</label>
+              <select id="vos-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+            </div>
+            <div>
+              <label>Responsável</label>
+              <select id="vos-resp" ${dis}>
+                <option value="">— Selecione —</option>
+                ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <label>Agendamento</label>
+          <input id="vos-ai" type="date" value="${os.dataAgend||''}" style="max-width:180px" ${dis}>
+          <div class="form-row" style="margin-top:4px">
+            <div><label>Início real</label><input id="vos-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
+            <div><label>Término real</label><input id="vos-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+          </div>
+          <div style="border-top:1px solid var(--border);margin:12px 0"></div>
+          <label>Histórico ${hist.length?`(${hist.length} registro${hist.length>1?'s':''})`:''}
+          </label>
+          ${!os.fechada?`<div style="display:flex;gap:8px;margin-bottom:8px">
+            <input id="vos-hist-novo" placeholder="Descreva a atualização..." style="flex:1">
+            <button class="btn sm primary" onclick="adicionarHistOS(${os.id},${cardId})">＋ Registrar</button>
+          </div>`:''}
+        </div>
+        <!-- histórico cresce para preencher o espaço restante -->
+        <div style="flex:1;overflow-y:auto;min-height:80px;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;padding:8px">
+          ${hist.length ? histHTML : '<div style="font-size:13px;color:var(--muted);padding:8px">Sem registros no histórico.</div>'}
+        </div>
+      </div>
+
+      <!-- COLUNA DIREITA: específica por tipo -->
+      <div style="overflow-y:auto;border-left:1px solid var(--border);padding-left:20px;min-height:0">
+        ${colDir}
+      </div>
+    </div>
+
+    <!-- Rodapé fixo -->
+    <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
+      ${os.fechada
+        ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
+        : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>
+           <button class="btn primary" onclick="salvarDadosOS(${os.id},${cardId})">Salvar alterações</button>`}
+    </div>`, 'cartao');
+}
+
+function salvarDadosOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.faseId = +document.getElementById('vos-fase').value;
+  os.responsavelId = +document.getElementById('vos-resp').value || null;
+  os.dataAgend = document.getElementById('vos-ai').value||'';
+  os.dataInicio      = document.getElementById('vos-di').value||'';
+  os.dataTermino     = document.getElementById('vos-dt').value||'';
+  registrarLog('editar', 'os', osId, `O.S. atualizada: ${os.numero}`);
+  save(); renderAll(); abrirEditarCartao(cardId, 'os');
+}
+
+function fecharOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(os.tipo === 'projeto' && !(os.arquivosProjeto||[]).length){
+    alert(`Não é possível encerrar a O.S. ${os.numero}.\n\nO.S. de Projeto só pode ser concluída após o upload dos arquivos do projeto de automação finalizado.\n\nFaça o upload na seção "⚡ Projeto de Automação Finalizado" e tente novamente.`);
+    return;
+  }
+  const card = db.cards.find(x=>x.id===cardId);
+  const faseAtualCard = fasesOrdenadas().find(f=>f.id===card.faseId);
+  const faseAtualOS   = fasesOSOrdenadas().find(f=>f.id===os.faseId);
+  const fasesCardDisp = fasesOrdenadas().filter(f=>!f.tipo);
+  const fasesOSDisp   = fasesOSOrdenadas();
+  abrirModal(`
+    <h3>🔒 Fechar O.S. ${os.numero}</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      A O.S. ficará bloqueada para edição. Você poderá reabrir se necessário.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+
+      <!-- Fase da OS -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Fase da O.S.</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${faseAtualOS?faseAtualOS.cor:'#aaa'};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:700">${faseAtualOS?faseAtualOS.nome:'—'}</span>
+        </div>
+        <label>Definir fase ao fechar</label>
+        <select id="fechar-os-fase-os">
+          <option value="">— Manter fase atual —</option>
+          ${fasesOSDisp.map(f=>`<option value="${f.id}">${f.nome}${f.tipo==='concluida'?' ✅':''}</option>`).join('')}
+        </select>
+      </div>
+
+      <!-- Fase do Cartão CRM -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Fase do Cartão CRM</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${faseAtualCard?faseAtualCard.cor:'#aaa'};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:700">${faseAtualCard?faseAtualCard.nome:'—'}</span>
+        </div>
+        <label>Alterar fase (opcional)</label>
+        <select id="fechar-os-fase-card">
+          <option value="">— Manter fase atual —</option>
+          ${fasesCardDisp.map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}
+        </select>
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirVerOS(${osId},${cardId})">Cancelar</button>
+      <button class="btn danger" onclick="confirmarFecharOS(${osId},${cardId})">🔒 Confirmar fechamento</button>
+    </div>`);
+}
+
+function confirmarFecharOS(osId, cardId){
+  const os   = db.ordensServico.find(x=>x.id===osId);
+  const card = db.cards.find(x=>x.id===cardId);
+  const novaFaseOS   = +document.getElementById('fechar-os-fase-os').value   || null;
+  const novaFaseCard = +document.getElementById('fechar-os-fase-card').value || null;
+
+  // fase da OS
+  const faseOSAnterior = fasesOSOrdenadas().find(f=>f.id===os.faseId);
+  if(novaFaseOS) os.faseId = novaFaseOS;
+  else {
+    const faseConcluida = fasesOSOrdenadas().find(f=>f.tipo==='concluida');
+    if(faseConcluida) os.faseId = faseConcluida.id;
+  }
+  const faseOSNova = fasesOSOrdenadas().find(f=>f.id===os.faseId);
+
+  if(!os.dataTermino) os.dataTermino = agoraISO();
+  os.fechada = true;
+
+  let msgHist = `O.S. fechada. Fase: "${faseOSNova?faseOSNova.nome:'?'}"${faseOSAnterior&&faseOSAnterior.id!==os.faseId?` (era "${faseOSAnterior.nome}")`:''}.`;
+
+  // fase do cartão CRM
+  if(novaFaseCard && novaFaseCard !== card.faseId){
+    const faseCardAnterior = fasesOrdenadas().find(f=>f.id===card.faseId);
+    const faseCardNova     = fasesOrdenadas().find(f=>f.id===novaFaseCard);
+    card.faseId = novaFaseCard;
+    msgHist += ` Cartão CRM → "${faseCardNova?faseCardNova.nome:'?'}"${faseCardAnterior?` (era "${faseCardAnterior.nome}")`:''}.`;
+  }
+
+  os.historico.unshift({data:agoraISO(), texto:msgHist});
+  registrarLog('fechar', 'os', osId, `O.S. fechada: ${os.numero} | fase OS: ${faseOSNova?.nome}${novaFaseCard?' | fase cartão atualizada':''}`);
+  save(); renderAll(); abrirEditarCartao(cardId, 'os');
+}
+
+function reabrirOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  // Para OS de projeto com arquivos enviados, oferece escolha
+  if(os.tipo === 'projeto' && (os.arquivosProjeto||[]).length){
+    abrirModal(`
+      <h3>↩ Reabrir O.S. ${os.numero}</h3>
+      <p style="margin-bottom:6px;font-size:14px">Esta O.S. possui <b>${os.arquivosProjeto.length} arquivo(s) de projeto</b> enviados.</p>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">O que deseja fazer com eles?</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn primary" onclick="confirmarReabrirOS(${osId},${cardId},false)">
+          ↩ Reabrir e <b>manter</b> os arquivos
+        </button>
+        <button class="btn danger" onclick="confirmarReabrirOS(${osId},${cardId},true)">
+          ↩ Reabrir e <b>remover</b> os arquivos do projeto <small style="display:block;font-weight:400;margin-top:2px">(use quando o projeto precisar ser refeito)</small>
+        </button>
+        <button class="btn neutral" onclick="abrirVerOS(${osId},${cardId})">Cancelar</button>
+      </div>`);
+    return;
+  }
+  if(!confirm(`Reabrir a O.S. ${os.numero}?\nEla voltará ao status editável.`)) return;
+  _doReabrirOS(osId, cardId, false);
+}
+
+async function confirmarReabrirOS(osId, cardId, removerArquivos){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(removerArquivos){
+    const paths = (os.arquivosProjeto||[]).map(a=>a.path).filter(Boolean);
+    if(paths.length) await sb.storage.from('os-arquivos').remove(paths);
+    os.arquivosProjeto = [];
+  }
+  _doReabrirOS(osId, cardId, removerArquivos);
+}
+
+function _doReabrirOS(osId, cardId, removeuArquivos){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const faseInicial = fasesOSOrdenadas().find(f=>!f.tipo);
+  if(faseInicial) os.faseId = faseInicial.id;
+  os.dataTermino = '';
+  os.fechada = false;
+  const msg = removeuArquivos ? 'O.S. reaberta. Arquivos do projeto removidos para retrabalho.' : 'O.S. reaberta.';
+  os.historico.unshift({data:agoraISO(), texto:msg});
+  registrarLog('reabrir', 'os', osId, `O.S. reaberta: ${os.numero}${removeuArquivos?' (arquivos do projeto removidos)':''}`);
+  save(); renderAll(); abrirVerOS(osId, cardId);
+}
+
+function adicionarHistOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const texto = document.getElementById('vos-hist-novo').value.trim();
+  if(!texto){ alert('Informe o texto do histórico.'); return; }
+  os.historico.unshift({data:agoraISO(), texto});
+  registrarLog('historico', 'os', osId, `Histórico adicionado na O.S. ${os.numero}`);
+  save(); abrirVerOS(osId, cardId);
+}
+
+function adicionarPendOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const texto = document.getElementById('vos-pend-nova').value.trim();
+  if(!texto) return;
+  if(!os.pendencias) os.pendencias=[];
+  os.pendencias.push({id:Date.now(), texto, resolvida:false});
+  save(); abrirVerOS(osId, cardId);
+}
+
+function removerPendOS(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.pendencias.splice(idx,1);
+  save(); abrirVerOS(osId, cardId);
+}
+
+function togglePendOS(osId, idx, valor, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(os.pendencias[idx]) os.pendencias[idx].resolvida = valor;
+  save();
+  // atualizar visual sem reabrir o modal inteiro
+  const lbl = document.querySelector(`label[for="vos-pend-${idx}"]`);
+  if(lbl) lbl.style.cssText = valor?'text-decoration:line-through;color:var(--muted);cursor:pointer':'cursor:pointer';
+}
+
+function adicionarProdOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const sel = document.getElementById('vos-prod-sel');
+  const idx = +sel.value;
+  if(sel.value==='') return;
+  const propAprov = propostaPrincipal(cardId);
+  if(!propAprov) return;
+  const it = (propAprov.itens||[])[idx];
+  if(!it) return;
+  if(!os.produtos) os.produtos=[];
+  os.produtos.push({descricao:it.descricao||it.item, qtd:it.qtd, unit:it.tipo||'un', total:it.total, tipo:it.tipo||''});
+  save(); abrirVerOS(osId, cardId);
+}
+
+function removerProdOS(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.produtos.splice(idx,1);
+  save(); abrirVerOS(osId, cardId);
+}
+
+async function baixarArquivoOS(path, nome){
+  const ehPdf = (nome||'').toLowerCase().endsWith('.pdf');
+  const win = ehPdf ? window.open('', '_blank') : null;
+  if(win){ try{ win.document.write('<title>Abrindo...</title><p style="font-family:sans-serif">Carregando arquivo...</p>'); }catch(e){} }
+  try{
+    const {data, error} = await sb.storage.from('os-arquivos').download(path);
+    if(error || !data){ if(win) win.close(); alert('Não foi possível baixar o arquivo: '+(error?error.message:'')); return; }
+    const url = URL.createObjectURL(data);
+    if(ehPdf){
+      if(win && !win.closed) win.location = url;
+      else window.open(url);
+    } else {
+      const a = document.createElement('a');
+      a.href = url; a.download = nome||'arquivo'; a.click();
+    }
+    setTimeout(()=>URL.revokeObjectURL(url), 120000);
+  }catch(e){
+    if(win) win.close();
+    alert('Erro ao baixar arquivo: '+e.message);
+  }
+}
+
+async function uploadArquivosOSProjeto(osId, cardId, tipo){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const inputId = tipo==='arquiteto' ? 'vos-arq-arq-file' : 'vos-arq-proj-file';
+  const btnId   = tipo==='arquiteto' ? 'btn-upload-arq'   : 'btn-upload-proj';
+  const stId    = tipo==='arquiteto' ? 'vos-status-arquiteto' : 'vos-status-projeto';
+  const files = [...(document.getElementById(inputId)?.files||[])];
+  if(!files.length){ alert('Selecione ao menos um arquivo (DWG ou PDF).'); return; }
+
+  // feedback visual — loading
+  const btn = document.getElementById(btnId);
+  const st  = document.getElementById(stId);
+  if(btn){ btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+  if(st)  st.textContent = `Enviando ${files.length} arquivo(s)...`;
+
+  let enviados = 0, erros = 0;
+  for(let i=0; i<files.length; i++){
+    const f = files[i];
+    if(st) st.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
+    if(f.size > 50*1024*1024){
+      alert('Arquivo acima de 50 MB: '+f.name);
+      erros++; continue;
+    }
+    const ext  = f.name.split('.').pop().toLowerCase();
+    const path = `os/${osId}/${tipo}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {error} = await sb.storage.from('os-arquivos').upload(path, f, {cacheControl:'3600', upsert:false});
+    if(error){
+      console.error('Erro upload arquivo OS:', error);
+      alert('Erro ao enviar '+f.name+': '+error.message);
+      erros++; continue;
+    }
+    const arr = tipo==='arquiteto' ? os.arquivosArquiteto : os.arquivosProjeto;
+    arr.push({id: Date.now()+Math.random(), nome: f.name, path});
+    enviados++;
+  }
+
+  if(!enviados){ if(btn){ btn.disabled=false; btn.textContent='📎 Enviar'; } if(st) st.textContent=''; return; }
+  const label = tipo==='arquiteto' ? 'arquiteto' : 'projeto de automação';
+  os.historico.unshift({data:agoraISO(), texto:`${enviados} arquivo(s) de ${label} adicionado(s).`});
+  registrarLog('upload', 'os', osId, `${enviados} arquivo(s) de ${label} adicionado(s) à O.S. ${os.numero}`);
+  save(); abrirVerOS(osId, cardId);
+}
+
+async function excluirArquivoOSProjeto(osId, idx, tipo, cardId){
+  if(!confirm('Remover este arquivo?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const arr = tipo==='arquiteto' ? os.arquivosArquiteto : os.arquivosProjeto;
+  const arq = arr[idx];
+  if(arq?.path) await sb.storage.from('os-arquivos').remove([arq.path]);
+  arr.splice(idx, 1);
+  save(); abrirVerOS(osId, cardId);
+}
+
+function getOSImageUrl(path){
+  try{ return sb.storage.from('os-imagens').getPublicUrl(path).data.publicUrl; }
+  catch(e){ return path; }
+}
+
+async function uploadOSImagens(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const files = [...document.getElementById('vos-img-file').files];
+  if(!files.length){ alert('Selecione ao menos uma imagem.'); return; }
+  const legenda = document.getElementById('vos-img-leg').value.trim();
+  const btnUI = document.getElementById('btn-upload-img');
+  const stUI  = document.getElementById('vos-status-imagens');
+  if(btnUI){ btnUI.disabled=true; btnUI.textContent='⏳ Enviando...'; }
+  for(let i=0; i<files.length; i++){
+    const f = files[i];
+    if(f.size>10*1024*1024){ alert('Imagem acima de 10MB: '+f.name); continue; }
+    if(stUI) stUI.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
+    const ext = f.name.split('.').pop();
+    const path = `os/${osId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {error} = await sb.storage.from('os-imagens').upload(path, f, {cacheControl:'3600',upsert:false});
+    if(error){ console.error('Erro upload imagem OS:', error); alert('Erro ao enviar '+f.name); continue; }
+    if(!os.imagens) os.imagens=[];
+    os.imagens.push({id:Date.now()+Math.random(), nome:f.name, path, descricao:legenda});
+  }
+  if(btnUI){ btnUI.disabled=false; btnUI.textContent='📷 Upload'; }
+  if(stUI) stUI.textContent='';
+  registrarLog('upload', 'os', osId, `${files.length} imagem(ns) adicionada(s) à O.S. ${os.numero}`);
+  save(); abrirVerOS(osId, cardId);
+}
+
+async function excluirOSImagem(osId, idx, cardId){
+  if(!confirm('Remover esta imagem?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const img = os.imagens[idx];
+  if(img && img.path){
+    await sb.storage.from('os-imagens').remove([img.path]);
+  }
+  os.imagens.splice(idx,1);
+  save(); abrirVerOS(osId, cardId);
+}
+
+function verOSImagem(path, legenda){
+  const url = getOSImageUrl(path);
+  abrirModal(`
+    <div style="text-align:center">
+      <img src="${url}" style="max-width:100%;max-height:70vh;border-radius:8px">
+      ${legenda?`<p style="margin-top:10px;font-size:13px;color:var(--muted)">${legenda}</p>`:''}
+      <div class="actions" style="justify-content:center;margin-top:14px">
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+      </div>
+    </div>`);
+}
+
+function excluirOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!confirm(`Excluir a O.S. ${os.numero}? Esta ação não pode ser desfeita.`)) return;
+  // remover imagens do storage
+  const paths = (os.imagens||[]).map(i=>i.path).filter(Boolean);
+  if(paths.length) sb.storage.from('os-imagens').remove(paths);
+  // remover arquivos de projeto do storage
+  const pathsArq = [...(os.arquivosArquiteto||[]), ...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+  if(pathsArq.length) sb.storage.from('os-arquivos').remove(pathsArq);
+  db.ordensServico = db.ordensServico.filter(x=>x.id!==osId);
+  registrarLog('excluir', 'os', osId, `O.S. excluída: ${os.numero}`);
+  save(); renderAll(); abrirEditarCartao(cardId, 'os');
 }
 
 /* ================= PROPOSTAS ================= */
@@ -2461,8 +3259,9 @@ function propostaEditHTML(p){
       <input id="pe-arqs" type="file" multiple accept=".pdf">
       <div class="actions">
         <button class="btn neutral" onclick="cancelarEdicaoProposta(${p.cardId})">Cancelar</button>
-        <button class="btn primary" onclick="salvarEdicaoProposta(${p.id})">Salvar Proposta</button>
+        <button id="btn-salvar-proposta" class="btn primary" onclick="salvarEdicaoProposta(${p.id})">Salvar Proposta</button>
       </div>
+      <div id="status-salvar-proposta" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>
     </div>`;
 }
 
@@ -2477,9 +3276,21 @@ async function salvarEdicaoProposta(id){
   p.validadeDias=+document.getElementById('pe-validade').value||0;
   p.faseId=+document.getElementById('pe-fase').value;
   const files=[...document.getElementById('pe-arqs').files];
-  for(const f of files){
-    if(f.size>15*1024*1024){ alert('Arquivo acima de 15MB: '+f.name); return; }
-    p.arquivos.push(await uploadArquivoProposta(p.id, f));
+  if(files.length){
+    const btnSP = document.getElementById('btn-salvar-proposta');
+    const stSP  = document.getElementById('status-salvar-proposta');
+    if(btnSP){ btnSP.disabled=true; btnSP.textContent='⏳ Enviando...'; }
+    try {
+      for(let i=0; i<files.length; i++){
+        const f = files[i];
+        if(f.size>15*1024*1024){ alert('Arquivo acima de 15MB: '+f.name); return; }
+        if(stSP) stSP.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
+        p.arquivos.push(await uploadArquivoProposta(p.id, f));
+      }
+    } finally {
+      if(btnSP){ btnSP.disabled=false; btnSP.textContent='Salvar Proposta'; }
+      if(stSP) stSP.textContent='';
+    }
   }
   propEditandoId=null;
   registrarLog('editar', 'proposta', id, `Proposta editada: ${p.numero} (${fmtMoney(p.valor)||'sem valor'})`);
@@ -2509,8 +3320,9 @@ function abaPropostasHTML(c){
     <label>PDF da proposta (gerado da sua planilha)</label>
     <input id="pn-arqs" type="file" multiple accept=".pdf">
     <div class="actions" style="justify-content:flex-start">
-      <button class="btn primary" onclick="novaProposta(${c.id})">＋ Adicionar Proposta</button>
-    </div>`;
+      <button id="btn-nova-proposta" class="btn primary" onclick="novaProposta(${c.id})">＋ Adicionar Proposta</button>
+    </div>
+    <div id="status-nova-proposta" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`;
 }
 
 function formAprovacaoHTML(c, candidatas, rotulo){
@@ -2524,8 +3336,9 @@ function formAprovacaoHTML(c, candidatas, rotulo){
     <label>Excel (memória de cálculo)</label>
     <input id="pa-arq" type="file" multiple accept=".xlsx,.xls">
     <div class="actions" style="justify-content:flex-start">
-      <button class="btn primary" onclick="aprovarComExcel(${c.id})">✔ Confirmar Aprovação</button>
-    </div>`;
+      <button id="btn-aprovar-excel" class="btn primary" onclick="aprovarComExcel(${c.id})">✔ Confirmar Aprovação</button>
+    </div>
+    <div id="status-aprovar-excel" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>`;
 }
 
 function abaAprovadaHTML(c){
@@ -2570,27 +3383,37 @@ async function novaProposta(cardId){
   let dataEmissao=document.getElementById('pn-data').value||localDia(0);
   const propId=nextId(db.propostas);
   const arquivos=[];
-  for(const f of files){
-    // conferência automática no primeiro PDF
-    if(arquivos.length===0){
-      try{
-        const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
-        const texto=await extrairTextoPDF(dataURL);
-        const a=analisarPDFProposta(texto, numero);
-        let msg='Leitura do PDF "'+f.name+'":\n';
-        msg+= a.numeroOk ? '✓ Número da proposta confere\n' : '✗ ATENÇÃO: o número '+numero+' NÃO foi encontrado no PDF\n';
-        msg+= a.valor!==null ? '• Valor total lido: '+fmtMoney(a.valor)+'\n' : '• Valor total: não encontrado\n';
-        msg+= a.dataISO ? '• Data de emissão lida: '+fmtDia2(a.dataISO)+'\n' : '• Data de emissão: não encontrada\n';
-        msg+='\nContinuar com estes dados?';
-        if(!confirm(msg)) return;
-        if(a.valor!==null && (!valor || Math.abs(a.valor-valor)>0.01)) valor=a.valor;
-        if(a.dataISO) dataEmissao=a.dataISO;
-      }catch(e){
-        console.error('Leitura do PDF falhou:', e);
-        if(!confirm('Não consegui ler o PDF para conferência.\nMotivo: '+(e&&e.message?e.message:e)+'\n\nSubir mesmo assim, com os dados digitados?')) return;
+  const btnNP = document.getElementById('btn-nova-proposta');
+  const stNP  = document.getElementById('status-nova-proposta');
+  if(btnNP){ btnNP.disabled=true; btnNP.textContent='⏳ Aguarde...'; }
+  try {
+    for(let i=0; i<files.length; i++){
+      const f = files[i];
+      // conferência automática no primeiro PDF
+      if(i===0){
+        try{
+          const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+          const texto=await extrairTextoPDF(dataURL);
+          const a=analisarPDFProposta(texto, numero);
+          let msg='Leitura do PDF "'+f.name+'":\n';
+          msg+= a.numeroOk ? '✓ Número da proposta confere\n' : '✗ ATENÇÃO: o número '+numero+' NÃO foi encontrado no PDF\n';
+          msg+= a.valor!==null ? '• Valor total lido: '+fmtMoney(a.valor)+'\n' : '• Valor total: não encontrado\n';
+          msg+= a.dataISO ? '• Data de emissão lida: '+fmtDia2(a.dataISO)+'\n' : '• Data de emissão: não encontrada\n';
+          msg+='\nContinuar com estes dados?';
+          if(!confirm(msg)) return;
+          if(a.valor!==null && (!valor || Math.abs(a.valor-valor)>0.01)) valor=a.valor;
+          if(a.dataISO) dataEmissao=a.dataISO;
+        }catch(e){
+          console.error('Leitura do PDF falhou:', e);
+          if(!confirm('Não consegui ler o PDF para conferência.\nMotivo: '+(e&&e.message?e.message:e)+'\n\nSubir mesmo assim, com os dados digitados?')) return;
+        }
       }
+      if(stNP) stNP.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
+      arquivos.push(await uploadArquivoProposta(propId, f));
     }
-    arquivos.push(await uploadArquivoProposta(propId, f));
+  } finally {
+    if(btnNP){ btnNP.disabled=false; btnNP.textContent='＋ Adicionar Proposta'; }
+    if(stNP) stNP.textContent='';
   }
   const novaProp={
     id:propId, numero, cardId,
@@ -2617,21 +3440,94 @@ async function aprovarComExcel(cardId){
   if(files.some(f=>!/\.(xlsx|xls)$/i.test(f.name))){ alert('Aqui só entra o Excel (.xlsx/.xls) da proposta aprovada.'); return; }
   if(files.some(f=>f.size>15*1024*1024)){ alert('Arquivo acima de 15MB.'); return; }
   if(!confirm(`Confirmar a APROVAÇÃO d${p.aditivo?'o ADITIVO':'a proposta'} ${p.numero} (${fmtMoney(p.valor)||'sem valor'}) com o Excel anexado?`)) return;
-  let primeiro=true;
-  for(const f of files){
-    if(primeiro){ // importa os itens da aba Efetivo_Contratado do primeiro Excel
+  const btnAE = document.getElementById('btn-aprovar-excel');
+  const stAE  = document.getElementById('status-aprovar-excel');
+  if(btnAE){ btnAE.disabled=true; btnAE.textContent='⏳ Processando...'; }
+  for(let i=0; i<files.length; i++){
+    const f = files[i];
+    if(i===0){ // importa os itens da aba Efetivo_Contratado do primeiro Excel
+      if(stAE) stAE.textContent = `Lendo Excel: ${f.name}`;
       const dataURL=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
       const itens=await importarItensComConferencia(dataURL, f.name, p);
       if(itens) p.itens=itens;
-      primeiro=false;
     }
+    if(stAE) stAE.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
     p.arquivos.push(await uploadArquivoProposta(p.id, f));
   }
+  if(btnAE){ btnAE.disabled=false; btnAE.textContent='✔ Confirmar Aprovação'; }
+  if(stAE) stAE.textContent='';
+  // uploads concluídos — abre modal para seleção de fases
+  const card = db.cards.find(x=>x.id===cardId);
+  const faseAtualCard = fasesOrdenadas().find(f=>f.id===card.faseId);
+  const faseAtualProp = fasesPropOrdenadas().find(f=>f.id===p.faseId);
+  const fasesPropDisp = fasesPropOrdenadas().filter(f=>f.tipo!=='perdida');
+  const fasesCardDisp = fasesOrdenadas().filter(f=>!f.tipo);
+
+  abrirModal(`
+    <h3>✅ Aprovando ${p.aditivo?'Aditivo':'Proposta'} ${p.numero}</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      Excel importado com sucesso. Defina as fases antes de confirmar.
+    </p>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Fase da Proposta</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${faseAtualProp?faseAtualProp.cor:'#aaa'};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:700">${faseAtualProp?faseAtualProp.nome:'—'}</span>
+        </div>
+        <label>Definir fase ao aprovar</label>
+        <select id="aprovar-fase-prop">
+          <option value="">— Manter fase atual —</option>
+          ${fasesPropDisp.map(f=>`<option value="${f.id}">${f.nome}${f.tipo==='aprovada'?' ✅':''}</option>`).join('')}
+        </select>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Fase do Cartão CRM</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${faseAtualCard?faseAtualCard.cor:'#aaa'};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:700">${faseAtualCard?faseAtualCard.nome:'—'}</span>
+        </div>
+        <label>Alterar fase (opcional)</label>
+        <select id="aprovar-fase-card">
+          <option value="">— Manter fase atual —</option>
+          ${fasesCardDisp.map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}
+        </select>
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" onclick="confirmarAprovacaoProposta(${cardId},${p.id})">✅ Confirmar aprovação</button>
+    </div>`);
+}
+
+function confirmarAprovacaoProposta(cardId, propId){
+  const p    = db.propostas.find(x=>x.id===propId);
+  const card = db.cards.find(x=>x.id===cardId);
+  const novaFaseProp = +document.getElementById('aprovar-fase-prop').value || null;
+  const novaFaseCard = +document.getElementById('aprovar-fase-card').value || null;
+
   p.status='aprovada'; p.dataAprovacao=localDia(0);
-  p.faseAnterior=p.faseId; // guarda para o caso de reverter
-  const fAp=db.fasesProposta.find(f=>f.tipo==='aprovada');
-  if(fAp) p.faseId=fAp.id; // fase acompanha a aprovação
-  recalcValorCartao(p.cardId); // valor do cartão = principal + aditivos aprovados
+  p.faseAnterior=p.faseId; // guarda para reverter depois se necessário
+
+  if(novaFaseProp){
+    p.faseId = novaFaseProp;
+  } else {
+    const fAp = db.fasesProposta.find(f=>f.tipo==='aprovada');
+    if(fAp) p.faseId = fAp.id;
+  }
+
+  if(novaFaseCard && novaFaseCard !== card.faseId){
+    const fAnterior = fasesOrdenadas().find(f=>f.id===card.faseId);
+    const fNova     = fasesOrdenadas().find(f=>f.id===novaFaseCard);
+    card.faseId = novaFaseCard;
+    registrarLog('editar', 'card', cardId, `Fase do cartão CRM → "${fNova?.nome||'?'}"${fAnterior?` (era "${fAnterior.nome}")`:''} — aprovação de proposta.`);
+  }
+
+  recalcValorCartao(cardId);
   registrarLog('aprovar', 'proposta', p.id, `Proposta${p.aditivo?' (aditivo)':''} aprovada: ${p.numero} — ${fmtMoney(p.valor)||'sem valor'}`);
   save(); renderAll(); abrirEditarCartao(cardId,'aprovada');
 }
@@ -3026,7 +3922,7 @@ async function excluirCartao(id){
 }
 
 /* ---- Endereço da obra + busca por CEP (ViaCEP) ---- */
-function camposEndereco(e, p='e', titulo='Endereço da Obra'){
+function camposEndereco(e, p='e', titulo='Endereço da Obra', clienteIdParaCopiar=null){
   e = e || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
   return `
     <label style="margin-top:16px;color:var(--blue-dark)">— ${titulo} —</label>
@@ -3035,7 +3931,8 @@ function camposEndereco(e, p='e', titulo='Endereço da Obra'){
       <input id="${p}-cep" value="${e.cep}" placeholder="00000-000" maxlength="9" style="max-width:140px"
         oninput="this.value=this.value.replace(/\\D/g,'').replace(/(\\d{5})(\\d)/,'$1-$2')"
         onblur="buscarCEP('${p}')" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCEP('${p}');}">
-      <button class="btn sm" type="button" onclick="buscarCEP('${p}')">🔍 Buscar</button>
+      <button class="btn sm" type="button" onclick="buscarCEP('${p}')">🔍 Buscar CEP</button>
+      ${clienteIdParaCopiar!=null?`<button class="btn sm neutral" type="button" onclick="copiarEnderecoCliente(${clienteIdParaCopiar})" title="Preencher com o endereço cadastrado no cliente">📋 Usar end. do cliente</button>`:''}
     </div>
     <span class="cep-status" id="${p}-cep-status"></span>
     <label>Rua</label><input id="${p}-rua" value="${e.rua}">
@@ -3186,13 +4083,42 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
   abrirModal(`
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
-    ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra')}
+    ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
     <div class="actions">
       ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
       <button class="btn neutral" onclick="${returnCardId?`abrirEditarCartao(${returnCardId},'obras')`:`abrirEditarCliente(${clienteId})`}">← Voltar ${returnCardId?'ao cartão':'ao cliente'}</button>
       <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId},${returnCardId??'null'})">Salvar</button>
     </div>`);
 }
+function copiarEnderecoCliente(clienteId){
+  const cl = cliente(clienteId);
+  const ec = cl?.endereco || {};
+  const temEndereco = ec.rua || ec.cidade || ec.cep;
+  if(!temEndereco){
+    alert(`O cliente "${cl?.nome||'?'}" não tem endereço cadastrado.\nCadastre o endereço do cliente primeiro (menu Clientes → editar).`);
+    return;
+  }
+
+  // verifica se já há endereço preenchido na obra (nos campos do formulário)
+  const obraJaTem = ['o-rua','o-cidade','o-cep'].some(id=>(document.getElementById(id)?.value||'').trim());
+
+  const resumo = [ec.rua, ec.numero, ec.bairro, ec.cidade, ec.uf].filter(Boolean).join(', ');
+  let msg = `Isso irá preencher o endereço da obra com o endereço do cliente:\n\n"${resumo}"\n\n`;
+  if(obraJaTem) msg += '⚠️ O endereço atual da obra será substituído.\n\n';
+  msg += 'Confirmar?';
+
+  if(!confirm(msg)) return;
+
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('o-cep',   ec.cep);
+  set('o-rua',   ec.rua);
+  set('o-numero',ec.numero);
+  set('o-compl', ec.complemento);
+  set('o-bairro',ec.bairro);
+  set('o-cidade',ec.cidade);
+  const uf = document.getElementById('o-uf'); if(uf) uf.value=(ec.uf||'').toUpperCase();
+}
+
 function salvarObra(id, clienteId, returnCardId=null){
   const nome=document.getElementById('o-nome').value.trim();
   if(!nome){ alert('Informe o nome da obra.'); return; }
@@ -3433,8 +4359,88 @@ function excluirGrupo(id){
   save(); fecharModal(); renderAll();
 }
 
+function renderOSLista(){
+  const tb = document.getElementById('os-lista-tbody'); if(!tb) return;
+  const st = document.getElementById('os-stats');
+  const selFase = document.getElementById('os-filtro-fase');
+  const filtroTipo   = document.getElementById('os-filtro-tipo')?.value   || '';
+  const filtroFase   = selFase?.value || '';
+  const filtroStatus = document.getElementById('os-filtro-status')?.value || '';
+
+  // popular select de fases (só na primeira vez ou quando vazio)
+  if(selFase && selFase.options.length <= 1){
+    fasesOSOrdenadas().forEach(f=>{
+      const o = document.createElement('option');
+      o.value = f.id; o.textContent = f.nome;
+      selFase.appendChild(o);
+    });
+  }
+
+  const t = termoBusca();
+  const lista = (db.ordensServico||[])
+    .filter(os=>{
+      if(filtroTipo   && os.tipo !== filtroTipo) return false;
+      if(filtroFase   && String(os.faseId) !== filtroFase) return false;
+      if(filtroStatus === 'aberta'  &&  os.fechada) return false;
+      if(filtroStatus === 'fechada' && !os.fechada) return false;
+      if(t){
+        const cli = cliente(os.clienteId)?.nome || '';
+        const obra = db.obras.find(o=>o.id===os.obraId)?.nome || '';
+        if(!(os.numero+' '+os.titulo+' '+cli+' '+obra).toLowerCase().includes(t)) return false;
+      }
+      return true;
+    })
+    .sort((a,b)=>b.id - a.id);
+
+  // stats globais (sem filtros)
+  const todas   = db.ordensServico||[];
+  const abertas = todas.filter(o=>!o.fechada);
+  const fechadas= todas.filter(o=>o.fechada);
+  const nPRJ    = todas.filter(o=>o.tipo==='projeto').length;
+  const nOBR    = todas.filter(o=>o.tipo==='execucao').length;
+  const nAVL    = todas.filter(o=>o.tipo==='avulsa').length;
+  if(st) st.innerHTML=`
+    <div class="stat"><div class="n">${todas.length}</div><div class="l">Total de O.S.</div></div>
+    <div class="stat"><div class="n">${abertas.length}</div><div class="l">Abertas</div></div>
+    <div class="stat"><div class="n">${fechadas.length}</div><div class="l">Fechadas</div></div>
+    <div class="stat"><div class="n">${nPRJ}</div><div class="l" style="color:#5c6bc0">Projeto (PRJ)</div></div>
+    <div class="stat"><div class="n">${nOBR}</div><div class="l" style="color:#26a69a">Execução (OBR)</div></div>
+    <div class="stat"><div class="n">${nAVL}</div><div class="l" style="color:#f4a261">Avulsa (AVL)</div></div>`;
+
+  tb.innerHTML = '';
+  if(!lista.length){
+    tb.innerHTML = '<tr><td colspan="10" class="empty">Nenhuma O.S. encontrada.</td></tr>';
+    return;
+  }
+
+  lista.forEach(os=>{
+    const card = db.cards.find(c=>c.id===os.cardId);
+    const ob   = db.obras.find(o=>o.id===os.obraId);
+    const resp = db.usuarios.find(u=>u.id===os.responsavelId);
+    const f    = faseOS(os.faseId);
+    const tipoLabel = os.tipo==='projeto'?'PRJ':os.tipo==='execucao'?'OBR':'AVL';
+    const tipoColor = os.tipo==='projeto'?'#5c6bc0':os.tipo==='execucao'?'#26a69a':'#f4a261';
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.title = 'Clique para abrir o cartão';
+    tr.onclick = ()=> abrirEditarCartao(os.cardId, 'os');
+    tr.innerHTML = `
+      <td><b>${os.numero}</b></td>
+      <td><span class="os-tag" style="background:${tipoColor}">${tipoLabel}</span></td>
+      <td>${os.titulo}</td>
+      <td>${cliente(os.clienteId)?.nome||'—'}</td>
+      <td>${ob?ob.nome:'—'}</td>
+      <td style="text-align:center">#${card?card.num:'?'}</td>
+      <td>${resp?resp.nome:'—'}</td>
+      <td>${os.dataAgend?fmtDia2(os.dataAgend):'—'}</td>
+      <td>${f?`<span style="color:${f.cor};font-weight:700">● ${f.nome}</span>`:'—'}</td>
+      <td><span class="badge-status ${os.fechada?'perdida':'emitida'}">${os.fechada?'🔒 Fechada':'🔓 Aberta'}</span></td>`;
+    tb.appendChild(tr);
+  });
+}
+
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderOSFases(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderOSFases(); renderOSLista(); }
 load();
 atualizarMarca();
 (async function(){
