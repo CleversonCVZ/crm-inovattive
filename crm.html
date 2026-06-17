@@ -3025,8 +3025,13 @@ function reabrirOS(osId, cardId){
 async function confirmarReabrirOS(osId, cardId, removerArquivos){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(removerArquivos){
-    const paths = (os.arquivosProjeto||[]).map(a=>a.path).filter(Boolean);
+    const arquivosRemovidos = os.arquivosProjeto||[];
+    const paths = arquivosRemovidos.map(a=>a.path).filter(Boolean);
     if(paths.length) await sb.storage.from('os-arquivos').remove(paths);
+    if(arquivosRemovidos.length){
+      os.historico.unshift({data:agoraISO(), texto:`${arquivosRemovidos.length} arquivo(s) de projeto removido(s) ao reabrir a O.S.`});
+      registrarLog('excluir', 'os', osId, `${arquivosRemovidos.length} arquivo(s) de projeto removido(s) ao reabrir a O.S. ${os.numero}`);
+    }
     os.arquivosProjeto = [];
   }
   _doReabrirOS(osId, cardId, removerArquivos);
@@ -3207,8 +3212,11 @@ async function excluirArquivoOSProjeto(osId, idx, tipo, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   const arr = tipo==='arquiteto' ? os.arquivosArquiteto : os.arquivosProjeto;
   const arq = arr[idx];
+  const label = tipo==='arquiteto' ? 'arquiteto' : 'projeto de automação';
   if(arq?.path) await sb.storage.from('os-arquivos').remove([arq.path]);
   arr.splice(idx, 1);
+  os.historico.unshift({data:agoraISO(), texto:`Arquivo de ${label} removido: ${arq?.nome||'?'}.`});
+  registrarLog('excluir', 'os', osId, `Arquivo de ${label} removido da O.S. ${os.numero}: ${arq?.nome||'?'}`);
   save(); abrirVerOS(osId, cardId);
 }
 
@@ -3264,6 +3272,8 @@ async function excluirOSImagem(osId, idx, cardId){
     await sb.storage.from('os-imagens').remove([img.path]);
   }
   os.imagens.splice(idx,1);
+  os.historico.unshift({data:agoraISO(), texto:`Imagem removida: ${img?.nome||'?'}.`});
+  registrarLog('excluir', 'os', osId, `Imagem removida da O.S. ${os.numero}: ${img?.nome||'?'}`);
   save(); abrirVerOS(osId, cardId);
 }
 
