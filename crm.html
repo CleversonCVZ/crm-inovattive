@@ -2503,7 +2503,11 @@ function abrirEditarCartao(id, aba='dados'){
   if(aba==='dados') corpo=`
     <div class="dados-grid">
       <div>
-        <label>Cliente</label><select id="m-cliente" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
+        <label>Cliente</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="m-cliente" style="flex:1" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
+          <button type="button" class="icon-btn" title="Editar dados deste cliente" onclick="abrirEditarClienteDoCartao(+document.getElementById('m-cliente').value,${c.id})">✏️</button>
+        </div>
         ${camposCartaoForm(c)}
       </div>
       <div class="col-hist">${camposCartaoContato(c)}</div>
@@ -4250,6 +4254,28 @@ function salvarEdicaoCliente(id){
   const c=db.clientes.find(x=>x.id===id);
   registrarLog('editar', 'cliente', id, `Cliente editado: "${c?c.nome:'?'}"`);
   fecharModal(); renderAll();
+}
+
+/* Edição de cliente a partir do cartão CRM — retorna ao cartão ao salvar/voltar */
+function abrirEditarClienteDoCartao(clienteId, cardId){
+  const c=db.clientes.find(x=>x.id===clienteId);
+  if(!c){ alert('Cliente não encontrado.'); return; }
+  abrirModal(`
+    <h3>Cliente — ${c.nome}</h3>
+    <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
+    <label>Telefone</label><input id="m-tel" value="${c.tel||''}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <label>E-mail</label><input id="m-email" value="${c.email||''}">
+    ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'dados')">← Voltar ao cartão</button>
+      <button class="btn primary" onclick="salvarEdicaoClienteDoCartao(${clienteId},${cardId})">Salvar</button>
+    </div>`);
+}
+function salvarEdicaoClienteDoCartao(clienteId, cardId){
+  if(!salvarClienteCampos(clienteId)) return;
+  const c=db.clientes.find(x=>x.id===clienteId);
+  registrarLog('editar','cliente',clienteId,`Cliente editado via cartão CRM: "${c?c.nome:'?'}"`);
+  renderAll(); abrirEditarCartao(cardId,'dados');
 }
 
 /* ---- Obras do cliente (cada obra com endereço próprio) ---- */
