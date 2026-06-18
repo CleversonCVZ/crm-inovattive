@@ -4271,6 +4271,8 @@ async function uploadArquivosOSProjeto(osId, cardId, tipo){
       alert('Erro ao enviar '+f.name+': '+(error.message||JSON.stringify(error)));
       erros++; continue;
     }
+    if(!Array.isArray(os.arquivosArquiteto)) os.arquivosArquiteto = [];
+    if(!Array.isArray(os.arquivosProjeto))   os.arquivosProjeto   = [];
     const arr = tipo==='arquiteto' ? os.arquivosArquiteto : os.arquivosProjeto;
     arr.push({id: Date.now()+Math.random(), nome: f.name, path});
     enviados++;
