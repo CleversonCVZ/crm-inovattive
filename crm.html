@@ -2984,9 +2984,10 @@ function abaObraCompras(c, ob){
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--muted)">PDF do Pedido (opcional)</label>
         <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-          <input type="file" id="compra-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1">
+          <input type="file" id="compra-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1" onchange="previewArquivoCompra(this,${c.id})">
           <button class="btn-sm" onclick="processarPdfCompra(${c.id},${ob.id})">🔍 Ler PDF</button>
         </div>
+        <div id="compra-pdf-preview-${c.id}" style="display:none;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px"></div>
         <div id="compra-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
       </div>
 
@@ -3025,9 +3026,10 @@ function abaObraCompras(c, ob){
       <div style="margin-bottom:8px">
         <label style="font-size:11px;color:var(--muted)">PDF da NF (opcional)</label>
         <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-          <input type="file" id="nf-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1">
+          <input type="file" id="nf-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1" onchange="previewArquivoNf(this,${c.id})">
           <button class="btn-sm" onclick="processarPdfNf(${c.id},${ob.id})">🔍 Ler PDF</button>
         </div>
+        <div id="nf-pdf-preview-${c.id}" style="display:none;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px"></div>
         <div id="nf-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
@@ -3065,6 +3067,38 @@ function abaObraCompras(c, ob){
 }
 
 /* ================= COMPRAS DA OBRA ================= */
+function _mostrarPreviewPdf(file, previewId, limparFn){
+  const bar = document.getElementById(previewId);
+  if(!bar) return;
+  if(!file){ bar.style.display='none'; bar.innerHTML=''; return; }
+  const url = URL.createObjectURL(file);
+  bar.innerHTML = `
+    <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${file.name}">📄 ${file.name}</span>
+    <button class="btn-xs" onclick="window.open('${url}','_blank')">👁 Visualizar</button>
+    <button class="btn-xs btn-danger" title="Remover arquivo" onclick="${limparFn}">🗑</button>`;
+  bar.style.display='flex';
+}
+function previewArquivoCompra(input, cardId){
+  _mostrarPreviewPdf(input.files[0]||null, 'compra-pdf-preview-'+cardId, `limparArquivoCompra(${cardId})`);
+}
+function limparArquivoCompra(cardId){
+  const inp = document.getElementById('compra-pdf-'+cardId);
+  if(inp) inp.value='';
+  _mostrarPreviewPdf(null, 'compra-pdf-preview-'+cardId, '');
+  const st = document.getElementById('compra-pdf-status-'+cardId);
+  if(st) st.textContent='';
+}
+function previewArquivoNf(input, cardId){
+  _mostrarPreviewPdf(input.files[0]||null, 'nf-pdf-preview-'+cardId, `limparArquivoNf(${cardId})`);
+}
+function limparArquivoNf(cardId){
+  const inp = document.getElementById('nf-pdf-'+cardId);
+  if(inp) inp.value='';
+  _mostrarPreviewPdf(null, 'nf-pdf-preview-'+cardId, '');
+  const st = document.getElementById('nf-pdf-status-'+cardId);
+  if(st) st.textContent='';
+}
+
 function abrirFormNovaCompra(cardId, obraId){
   const el = document.getElementById('form-nova-compra-'+cardId);
   if(el){ el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
