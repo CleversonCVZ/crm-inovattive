@@ -2735,7 +2735,44 @@ function abaObraInformacoes(c, ob){
 
 function abaObraContatos(c, ob){
   const cts = (db.obraContatos||[]).filter(ct=>ct.obraId===ob.id);
+
+  // --- Equipe Interna ---
+  const nomeUser = id => (db.usuarios||[]).find(u=>u.id===id)?.nome || '—';
+
+  // Projetista: responsável das OS de projeto deste cartão (únicos)
+  const osProjeto = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto');
+  const projetistas = [...new Map(osProjeto.filter(o=>o.responsavelId).map(o=>[o.responsavelId, {nome: nomeUser(o.responsavelId), os: o.numero}])).values()];
+
+  // Comercial: responsavel do cartão CRM (texto livre)
+  const comercial = (c.responsavel||'').trim();
+
+  // Técnicos: responsáveis das OS de execução deste cartão (únicos)
+  const osExec = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='execucao');
+  const tecnicos = [...new Map(osExec.filter(o=>o.responsavelId).map(o=>[o.responsavelId, {nome: nomeUser(o.responsavelId)}])).values()];
+
+  const linhaEquipe = (papel, valor, obs) => `
+    <tr style="border-top:1px solid var(--border)">
+      <td style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;white-space:nowrap">${papel}</td>
+      <td style="padding:7px 8px;font-weight:600;font-size:13px">${valor||'<span style="color:var(--muted);font-weight:400">—</span>'}</td>
+      <td style="padding:7px 8px;font-size:11px;color:var(--muted)">${obs||''}</td>
+    </tr>`;
+
+  const equipeHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Equipe Interna</div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px">
+      <tbody>
+        ${linhaEquipe('Comercial', comercial, 'Cartão CRM')}
+        ${projetistas.length
+          ? projetistas.map(p=>linhaEquipe('Projetista', p.nome, p.os)).join('')
+          : linhaEquipe('Projetista', '', 'Nenhuma OS de projeto')}
+        ${tecnicos.length
+          ? tecnicos.map(t=>linhaEquipe('Técnico', t.nome, 'OS de execução')).join('')
+          : linhaEquipe('Técnico', '', 'Nenhuma OS de execução')}
+      </tbody>
+    </table>`;
+
   return `
+    ${equipeHTML}
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos da Obra</div>
     ${cts.length ? `
     <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px">
