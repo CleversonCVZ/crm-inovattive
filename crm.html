@@ -853,7 +853,8 @@ function load(){
     }
   });
   if(!Array.isArray(db.obras)) db.obras=[];
-  if(!Array.isArray(db.obraContatos)) db.obraContatos=[];
+  if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
+  if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -960,7 +961,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -969,7 +970,8 @@ async function carregarDadosSupabase(){
       sb.from('proposta_itens').select('*').order('id'),
       sb.from('proposta_arquivos').select('*').order('id'),
       sb.from('ordens_servico').select('*').order('id'),
-      sb.from('obra_contatos').select('*').order('id')
+      sb.from('obra_contatos').select('*').order('id'),
+      sb.from('obra_equipamentos').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1047,6 +1049,10 @@ async function carregarDadosSupabase(){
       db.obraContatos = obraContatos.data.map(c=>({
         id:c.id, obraId:c.obra_id, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
       }));
+    if(obraEquipamentos.data)
+      db.obraEquipamentos = obraEquipamentos.data.map(e=>({
+        id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||''
+      }));
     save();
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -1121,6 +1127,9 @@ function syncDadosSupabase(){
     await sincronizarArquivosPropostas();
     await sincronizarTabela('obra_contatos', db.obraContatos||[], c=>({
       id:c.id, obra_id:c.obraId, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
+    }));
+    await sincronizarTabela('obra_equipamentos', db.obraEquipamentos||[], e=>({
+      id:e.id, obra_id:e.obraId, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||''
     }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
@@ -2693,6 +2702,7 @@ function abaObraConteudo(c, ob, aba){
 
 function abaObraInformacoes(c, ob){
   const osProjetos = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto' && (o.arquivosProjeto||[]).length);
+  const eqs = (db.obraEquipamentos||[]).filter(e=>e.obraId===ob.id);
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Dados da Obra</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px">
@@ -2700,6 +2710,51 @@ function abaObraInformacoes(c, ob){
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</div>
       <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
     </div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Equipamentos / Logins</div>
+    ${eqs.length ? `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
+      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="text-align:left;padding:4px 6px">Equipamento</th>
+        <th style="text-align:left;padding:4px 6px">Login</th>
+        <th style="text-align:left;padding:4px 6px">Senha</th>
+        <th style="text-align:left;padding:4px 6px">Obs</th>
+        <th style="width:32px"></th>
+      </tr></thead>
+      <tbody>
+        ${eqs.map(e=>`
+        <tr style="border-top:1px solid var(--border)">
+          <td style="padding:7px 6px;font-weight:600">${e.equipamento}</td>
+          <td style="padding:7px 6px;color:var(--muted)">${e.login||'—'}</td>
+          <td style="padding:7px 6px">
+            <span style="font-family:monospace;letter-spacing:2px" id="eq-senha-${e.id}">••••••</span>
+            <button class="btn sm neutral" style="padding:1px 5px;margin-left:4px;font-size:11px" title="Mostrar/ocultar senha"
+              onclick="toggleEqSenha(${e.id},'${(e.senha||'').replace(/'/g,'\\&#39;')}')">👁</button>
+          </td>
+          <td style="padding:7px 6px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.observacao||''}">${e.observacao||'—'}</td>
+          <td style="padding:7px 4px;text-align:center;white-space:nowrap">
+            <button class="btn sm neutral" title="Editar" onclick="editarEquipamento(${e.id},${ob.id},${c.id})">✏️</button>
+            <button class="btn sm neutral" title="Remover" onclick="excluirEquipamento(${e.id},${ob.id},${c.id})">🗑</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum equipamento cadastrado.</div>`}
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo equipamento</div>
+      <input id="eq-novo-equip" placeholder="Equipamento *  ex: Multiroom, Alarme, WiFi">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="eq-novo-login" placeholder="Login (opcional)">
+        <div style="position:relative">
+          <input id="eq-novo-senha" type="password" placeholder="Senha (opcional)" style="width:100%;padding-right:34px">
+          <button class="btn sm neutral" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);padding:2px 6px"
+            onclick="toggleInputSenha('eq-novo-senha')" title="Mostrar/ocultar">👁</button>
+        </div>
+      </div>
+      <input id="eq-novo-obs" placeholder="Observação (opcional)">
+      <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarEquipamento(${ob.id},${c.id})">＋ Adicionar</button>
+    </div>
+
     ${osProjetos.length ? `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Projetos Finalizados</div>
     ${osProjetos.map(os=>`
@@ -2758,6 +2813,84 @@ function abaObraCompras(c, ob){
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Compras da Obra</div>
     <div class="empty">Em breve — controle de compras e materiais desta obra.</div>`;
+}
+
+/* ================= EQUIPAMENTOS DA OBRA ================= */
+function toggleEqSenha(id, senha){
+  const el = document.getElementById('eq-senha-'+id);
+  if(!el) return;
+  el.textContent = el.textContent.includes('•') ? senha||'—' : '••••••';
+}
+
+function toggleInputSenha(inputId){
+  const el = document.getElementById(inputId);
+  if(!el) return;
+  el.type = el.type==='password' ? 'text' : 'password';
+}
+
+function adicionarEquipamento(obraId, cardId){
+  const equipamento = (document.getElementById('eq-novo-equip')?.value||'').trim();
+  if(!equipamento){ alert('Informe o nome do equipamento.'); return; }
+  const login     = (document.getElementById('eq-novo-login')?.value||'').trim();
+  const senha     = (document.getElementById('eq-novo-senha')?.value||'').trim();
+  const observacao= (document.getElementById('eq-novo-obs')?.value||'').trim();
+  const ob = db.obras.find(x=>x.id===obraId);
+  if(!db.obraEquipamentos) db.obraEquipamentos=[];
+  const novo = {id: nextId(db.obraEquipamentos), obraId, equipamento, login, senha, observacao};
+  db.obraEquipamentos.push(novo);
+  registrarLog('criar','obra_equipamento',novo.id,`Equipamento adicionado à obra "${ob?.nome||'?'}": ${equipamento}`);
+  save(); voltarParaInformacoes(cardId);
+}
+
+function editarEquipamento(id, obraId, cardId){
+  const e = db.obraEquipamentos.find(x=>x.id===id);
+  if(!e){ alert('Equipamento não encontrado.'); return; }
+  abrirModal(`
+    <h3>Editar Equipamento</h3>
+    <label>Equipamento</label>
+    <input id="ee-equip" value="${(e.equipamento||'').replace(/"/g,'&quot;')}">
+    <label>Login</label>
+    <input id="ee-login" value="${(e.login||'').replace(/"/g,'&quot;')}" placeholder="Login (opcional)">
+    <label>Senha</label>
+    <div style="position:relative">
+      <input id="ee-senha" type="password" value="${(e.senha||'').replace(/"/g,'&quot;')}" placeholder="Senha (opcional)" style="width:100%;padding-right:36px">
+      <button class="btn sm neutral" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);padding:2px 6px"
+        onclick="toggleInputSenha('ee-senha')" title="Mostrar/ocultar">👁</button>
+    </div>
+    <label>Observação</label>
+    <input id="ee-obs" value="${(e.observacao||'').replace(/"/g,'&quot;')}" placeholder="Observação (opcional)">
+    <div class="actions">
+      <button class="btn neutral" onclick="voltarParaInformacoes(${cardId})">← Voltar</button>
+      <button class="btn primary" onclick="salvarEdicaoEquipamento(${id},${obraId},${cardId})">Salvar</button>
+    </div>`);
+}
+
+function salvarEdicaoEquipamento(id, obraId, cardId){
+  const equipamento = (document.getElementById('ee-equip')?.value||'').trim();
+  if(!equipamento){ alert('Informe o nome do equipamento.'); return; }
+  const e  = db.obraEquipamentos.find(x=>x.id===id);
+  const ob = db.obras.find(x=>x.id===obraId);
+  if(!e){ alert('Equipamento não encontrado.'); return; }
+  e.equipamento = equipamento;
+  e.login       = (document.getElementById('ee-login')?.value||'').trim();
+  e.senha       = (document.getElementById('ee-senha')?.value||'').trim();
+  e.observacao  = (document.getElementById('ee-obs')?.value||'').trim();
+  registrarLog('editar','obra_equipamento',id,`Equipamento editado na obra "${ob?.nome||'?'}": ${equipamento}`);
+  save(); voltarParaInformacoes(cardId);
+}
+
+function excluirEquipamento(id, obraId, cardId){
+  const e  = db.obraEquipamentos.find(x=>x.id===id);
+  const ob = db.obras.find(x=>x.id===obraId);
+  if(!confirm(`Remover o equipamento "${e?.equipamento||'?'}"?`)) return;
+  registrarLog('excluir','obra_equipamento',id,`Equipamento removido da obra "${ob?.nome||'?'}": ${e?.equipamento||'?'}`);
+  db.obraEquipamentos = db.obraEquipamentos.filter(x=>x.id!==id);
+  save(); voltarParaInformacoes(cardId);
+}
+
+function voltarParaInformacoes(cardId){
+  abrirEditarCartao(cardId,'obras');
+  setTimeout(()=>trocarAbaObra(cardId,'informacoes'),0);
 }
 
 /* ================= ORDENS DE SERVIÇO ================= */
