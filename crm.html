@@ -2955,7 +2955,37 @@ function abaObraCompras(c, ob){
               ${['pendente','parcial','entregue','cancelado'].map(s=>`<option value="${s}"${cp.status===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
             </select>
             ${cp.pdfPath ? `<button class="btn-xs" onclick="baixarCompraPDF('${cp.pdfPath}','${cp.pdfNome||'pedido.pdf'}')">📄 Abrir Pedido</button>` : ''}
+            <button class="btn-xs" onclick="abrirEditarCompra(${cp.id},${c.id})">✏️</button>
             <button class="btn-xs btn-danger" onclick="excluirCompra(${cp.id},${c.id})">✕</button>
+          </div>
+        </div>
+        <div id="form-editar-compra-${cp.id}" style="display:none;padding:14px;border-bottom:1px solid var(--border);background:var(--bg)">
+          <div style="font-size:12px;font-weight:700;margin-bottom:10px">Editar Pedido</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:11px;color:var(--muted)">Fornecedor *</label>
+              <input id="edit-compra-forn-${cp.id}" type="text" class="input-field" value="${(cp.fornecedor||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted)">Nº do Pedido</label>
+              <input id="edit-compra-num-${cp.id}" type="text" class="input-field" value="${(cp.numeroPedido||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted)">Data</label>
+              <input id="edit-compra-data-${cp.id}" type="date" class="input-field" value="${cp.dataPedido||''}" style="margin-top:3px">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+              <input id="edit-compra-valor-${cp.id}" type="text" inputmode="decimal" class="input-field" value="${cp.valorPedido!=null?String(cp.valorPedido).replace('.',','):''}" placeholder="Ex: 1.500,00" style="margin-top:3px">
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label style="font-size:11px;color:var(--muted)">Descrição / Observação</label>
+            <textarea id="edit-compra-desc-${cp.id}" class="input-field" rows="2" style="margin-top:3px;resize:vertical">${cp.descricao||''}</textarea>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" onclick="salvarEdicaoCompra(${cp.id},${c.id})">Salvar</button>
+            <button class="btn-sm" onclick="fecharEditarCompra(${cp.id})">Cancelar</button>
           </div>
         </div>
         ${cp.descricao ? `<div style="padding:6px 14px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${cp.descricao}</div>` : ''}
@@ -3187,6 +3217,31 @@ async function salvarNovaCompra(cardId, obraId){
   db.obraCompras.push(novo);
   save();
   fecharFormNovaCompra(cardId);
+  trocarAbaObra(cardId,'compras');
+}
+
+function abrirEditarCompra(compraId, cardId){
+  const el = document.getElementById('form-editar-compra-'+compraId);
+  if(!el) return;
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+  if(el.style.display==='block') el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function fecharEditarCompra(compraId){
+  const el = document.getElementById('form-editar-compra-'+compraId);
+  if(el) el.style.display='none';
+}
+function salvarEdicaoCompra(compraId, cardId){
+  const cp = (db.obraCompras||[]).find(x=>x.id===compraId);
+  if(!cp) return;
+  const forn  = (document.getElementById('edit-compra-forn-'+compraId)||{}).value||'';
+  if(!forn.trim()){ alert('Preencha o fornecedor.'); return; }
+  cp.fornecedor   = forn.trim();
+  cp.numeroPedido = ((document.getElementById('edit-compra-num-'+compraId)||{}).value||'').trim();
+  cp.dataPedido   = (document.getElementById('edit-compra-data-'+compraId)||{}).value||null;
+  const v = parseValorBR((document.getElementById('edit-compra-valor-'+compraId)||{}).value||'');
+  cp.valorPedido  = v > 0 ? v : null;
+  cp.descricao    = ((document.getElementById('edit-compra-desc-'+compraId)||{}).value||'').trim();
+  save();
   trocarAbaObra(cardId,'compras');
 }
 
