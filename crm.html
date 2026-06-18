@@ -2936,7 +2936,35 @@ function abaObraCompras(c, ob){
           <td style="padding:5px 8px">${n.fornecedor||'—'}</td>
           <td style="padding:5px 8px">
             ${n.pdfPath ? `<button class="btn-xs" onclick="baixarNfPDF('${n.pdfPath}','${n.pdfNome||'nf.pdf'}')">📄 Abrir NF</button>` : ''}
+            <button class="btn-xs" onclick="abrirEditarNf(${n.id})">✏️</button>
             <button class="btn-xs btn-danger" onclick="excluirNf(${n.id},${cp.id},${c.id})">✕</button>
+          </td>
+        </tr>
+        <tr id="form-editar-nf-${n.id}" style="display:none;background:var(--bg)">
+          <td colspan="6" style="padding:12px 14px">
+            <div style="font-size:12px;font-weight:700;margin-bottom:10px">Editar Nota Fiscal</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+              <div>
+                <label style="font-size:11px;color:var(--muted)">Nº da NF</label>
+                <input id="edit-nf-numero-${n.id}" type="text" class="input-field" value="${(n.numeroNf||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--muted)">Fornecedor</label>
+                <input id="edit-nf-forn-${n.id}" type="text" class="input-field" value="${(n.fornecedor||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--muted)">Data da NF</label>
+                <input id="edit-nf-data-${n.id}" type="date" class="input-field" value="${n.dataNf||''}" style="margin-top:3px">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+                <input id="edit-nf-valor-${n.id}" type="text" inputmode="decimal" class="input-field" value="${n.valorNf!=null?String(n.valorNf).replace('.',','):''}" placeholder="Ex: 1.500,00" style="margin-top:3px">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-primary" onclick="salvarEdicaoNf(${n.id},${cp.id},${c.id})">Salvar</button>
+              <button class="btn-sm" onclick="fecharEditarNf(${n.id})">Cancelar</button>
+            </div>
           </td>
         </tr>`).join('');
 
@@ -3358,6 +3386,27 @@ async function salvarNovaNf(cardId, obraId){
   if(cp && cp.status==='pendente') cp.status='parcial';
   save();
   fecharFormNovaNf(cardId);
+  trocarAbaObra(cardId,'compras');
+}
+
+function abrirEditarNf(nfId){
+  const el = document.getElementById('form-editar-nf-'+nfId);
+  if(!el) return;
+  el.style.display = el.style.display==='none' ? 'table-row' : 'none';
+}
+function fecharEditarNf(nfId){
+  const el = document.getElementById('form-editar-nf-'+nfId);
+  if(el) el.style.display='none';
+}
+function salvarEdicaoNf(nfId, compraId, cardId){
+  const n = (db.obraNfs||[]).find(x=>x.id===nfId);
+  if(!n) return;
+  n.numeroNf  = ((document.getElementById('edit-nf-numero-'+nfId)||{}).value||'').trim();
+  n.fornecedor= ((document.getElementById('edit-nf-forn-'+nfId)||{}).value||'').trim();
+  n.dataNf    = (document.getElementById('edit-nf-data-'+nfId)||{}).value||null;
+  const v = parseValorBR((document.getElementById('edit-nf-valor-'+nfId)||{}).value||'');
+  n.valorNf   = v > 0 ? v : null;
+  save();
   trocarAbaObra(cardId,'compras');
 }
 
