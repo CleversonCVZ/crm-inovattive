@@ -833,6 +833,7 @@ function load(){
     }
   });
   if(!Array.isArray(db.obras)) db.obras=[];
+  if(!Array.isArray(db.obraContatos)) db.obraContatos=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -933,7 +934,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -941,7 +942,8 @@ async function carregarDadosSupabase(){
       sb.from('propostas').select('*').order('id'),
       sb.from('proposta_itens').select('*').order('id'),
       sb.from('proposta_arquivos').select('*').order('id'),
-      sb.from('ordens_servico').select('*').order('id')
+      sb.from('ordens_servico').select('*').order('id'),
+      sb.from('obra_contatos').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1015,6 +1017,10 @@ async function carregarDadosSupabase(){
         arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : []
       }));
     }
+    if(obraContatos.data)
+      db.obraContatos = obraContatos.data.map(c=>({
+        id:c.id, obraId:c.obra_id, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
+      }));
     save();
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -1085,6 +1091,9 @@ function syncDadosSupabase(){
     }));
     await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
+    await sincronizarTabela('obra_contatos', db.obraContatos||[], c=>({
+      id:c.id, obra_id:c.obraId, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
+    }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
       tipo:o.tipo||'avaliacao', fase_id:o.faseId||null, titulo:o.titulo||'',
@@ -2547,7 +2556,21 @@ function abaObrasCartaoHTML(c){
           <small style="color:var(--muted)">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</small>
         </div>
         <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
-      </div>`:'<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>'}
+      </div>
+      ${(()=>{
+        const cts=(db.obraContatos||[]).filter(ct=>ct.obraId===ob.id);
+        if(!cts.length) return '';
+        return `<div style="margin-top:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Contatos da Obra</div>
+          ${cts.map(ct=>`
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;font-size:13px">
+              <span style="font-weight:600;flex:1.2">${ct.nome}</span>
+              <span style="color:var(--muted);flex:1">${ct.funcao||''}</span>
+              <span style="flex:1.4">${ct.tel?`<a href="tel:${ct.tel.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${ct.tel}</a>`:'—'}</span>
+            </div>`).join('')}
+        </div>`;
+      })()}`
+      :'<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>'}
 
     ${osProjetos.length ? `
     <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
@@ -4335,11 +4358,78 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
+    ${o ? contatosObraHTML(o.id, returnCardId) : '<p style="font-size:12px;color:var(--muted);margin-top:12px">Salve a obra primeiro para poder cadastrar contatos.</p>'}
     <div class="actions">
       ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
       <button class="btn neutral" onclick="${returnCardId?`abrirEditarCartao(${returnCardId},'obras')`:`abrirEditarCliente(${clienteId})`}">← Voltar ${returnCardId?'ao cartão':'ao cliente'}</button>
       <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId},${returnCardId??'null'})">Salvar</button>
     </div>`);
+}
+
+function contatosObraHTML(obraId, returnCardId){
+  const contatos = (db.obraContatos||[]).filter(c=>c.obraId===obraId);
+  const rcParam = returnCardId??'null';
+  return `
+  <datalist id="dl-funcoes-obra">
+    <option>Proprietário</option><option>Esposa</option><option>Esposo</option>
+    <option>Arquiteto</option><option>Arquiteta</option><option>Decorador</option>
+    <option>Empreiteiro</option><option>Mestre de Obras</option><option>Encarregado</option>
+    <option>Eletricista</option><option>Encanador</option><option>Engenheiro</option>
+    <option>Gerente de Obra</option><option>Síndico</option><option>Administrador</option>
+  </datalist>
+  <div style="margin-top:18px">
+    <label style="font-weight:700;color:var(--blue-dark)">— Contatos da Obra —</label>
+    ${contatos.length ? `
+    <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
+      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="text-align:left;padding:4px 6px">Nome</th>
+        <th style="text-align:left;padding:4px 6px">Função</th>
+        <th style="text-align:left;padding:4px 6px">Telefone</th>
+        <th style="width:32px"></th>
+      </tr></thead>
+      <tbody>
+        ${contatos.map(c=>`
+        <tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 6px">${c.nome}</td>
+          <td style="padding:6px 6px;color:var(--muted)">${c.funcao||'—'}</td>
+          <td style="padding:6px 6px">
+            ${c.tel ? `<a href="tel:${c.tel.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${c.tel}</a>` : '—'}
+          </td>
+          <td style="padding:6px 4px;text-align:center">
+            <button class="btn sm neutral" title="Remover contato" onclick="excluirContatoObra(${c.id},${obraId},${rcParam})">🗑</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : '<div style="font-size:12px;color:var(--muted);margin-top:6px">Nenhum contato cadastrado.</div>'}
+    <div style="display:flex;gap:6px;margin-top:10px;align-items:flex-end">
+      <div style="flex:2"><label style="font-size:11px">Nome</label><input id="nc-nome" placeholder="Ex.: Maria Silva"></div>
+      <div style="flex:1.2"><label style="font-size:11px">Função</label><input id="nc-funcao" list="dl-funcoes-obra" placeholder="Ex.: Arquiteta"></div>
+      <div style="flex:1.4"><label style="font-size:11px">Telefone</label><input id="nc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)"></div>
+      <button class="btn sm primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarContatoObra(${obraId},${rcParam})">＋ Adicionar</button>
+    </div>
+  </div>`;
+}
+
+function adicionarContatoObra(obraId, returnCardId){
+  const nome = (document.getElementById('nc-nome')?.value||'').trim();
+  if(!nome){ alert('Informe o nome do contato.'); return; }
+  const funcao = (document.getElementById('nc-funcao')?.value||'').trim();
+  const tel    = (document.getElementById('nc-tel')?.value||'').trim();
+  const o = db.obras.find(x=>x.id===obraId);
+  if(!db.obraContatos) db.obraContatos=[];
+  const novo = {id: nextId(db.obraContatos), obraId, nome, funcao, tel};
+  db.obraContatos.push(novo);
+  registrarLog('criar','obra_contato',novo.id,`Contato adicionado à obra "${o?.nome||'?'}": ${nome}${funcao?' ('+funcao+')':''}`);
+  save(); abrirObraModal(obraId, o?.clienteId, returnCardId===null?null:returnCardId);
+}
+
+function excluirContatoObra(id, obraId, returnCardId){
+  const c = db.obraContatos.find(x=>x.id===id);
+  const o = db.obras.find(x=>x.id===obraId);
+  if(!confirm(`Remover o contato "${c?.nome||'?'}"?`)) return;
+  registrarLog('excluir','obra_contato',id,`Contato removido da obra "${o?.nome||'?'}": ${c?.nome||'?'}`);
+  db.obraContatos = db.obraContatos.filter(x=>x.id!==id);
+  save(); abrirObraModal(obraId, o?.clienteId, returnCardId===null?null:returnCardId);
 }
 function copiarEnderecoCliente(clienteId){
   const cl = cliente(clienteId);
