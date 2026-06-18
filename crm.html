@@ -4263,7 +4263,9 @@ async function uploadArquivosOSProjeto(osId, cardId, tipo){
       const pct = Math.round(loaded/total*100);
       if(bar) bar.style.width = pct+'%';
       if(size) size.textContent = `${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+      if(pct===100 && st) st.textContent = '⏳ Aguardando confirmação do servidor...';
     });
+    if(st) st.textContent='';
     if(error){
       console.error('Erro upload arquivo OS:', error);
       alert('Erro ao enviar '+f.name+': '+(error.message||JSON.stringify(error)));
@@ -4327,7 +4329,9 @@ async function uploadOSImagens(osId, cardId){
       const pct = Math.round(loaded/total*100);
       if(bar) bar.style.width = pct+'%';
       if(size) size.textContent = `${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+      if(pct===100 && st) st.textContent = '⏳ Aguardando confirmação do servidor...';
     });
+    if(st) st.textContent='';
     if(error){ console.error('Erro upload imagem OS:', error); alert('Erro ao enviar '+f.name+': '+(error.message||'')); continue; }
     if(!os.imagens) os.imagens=[];
     os.imagens.push({id:Date.now()+Math.random(), nome:f.name, path, descricao:legenda});
