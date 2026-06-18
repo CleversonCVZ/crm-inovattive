@@ -2824,7 +2824,7 @@ function abaObraSenhas(c, ob){
         <tr style="border-top:1px solid var(--border)">
           <td style="padding:7px 6px;font-weight:600">
             ${e.equipamento}
-            ${(e.arquivos||[]).length ? `<span title="${e.arquivos.length} arquivo${e.arquivos.length>1?'s':''} anexado${e.arquivos.length>1?'s':''}" style="margin-left:5px;font-size:12px;color:var(--muted)">📎${e.arquivos.length>1?'<sup style="font-size:10px">'+e.arquivos.length+'</sup>':''}</span>` : ''}
+            ${(e.arquivos||[]).length ? `<span title="Baixar ${e.arquivos.length} arquivo${e.arquivos.length>1?'s':''}" style="margin-left:5px;font-size:12px;color:var(--blue-dark);cursor:pointer" onclick="baixarTodosEquipArquivos(${e.id})">📎${e.arquivos.length>1?'<sup style="font-size:10px">'+e.arquivos.length+'</sup>':''}</span>` : ''}
           </td>
           <td style="padding:7px 6px;color:var(--muted)">${e.login||'—'}</td>
           <td style="padding:7px 6px">
@@ -2992,6 +2992,13 @@ function excluirEquipamento(id, obraId, cardId){
 
 async function baixarEquipArquivo(path, nome){
   await _baixarArquivoBucket('equip-arquivos', path, nome);
+}
+async function baixarTodosEquipArquivos(equipId){
+  const e = (db.obraEquipamentos||[]).find(x=>x.id===equipId);
+  if(!e || !(e.arquivos||[]).length) return;
+  for(const a of e.arquivos){
+    await baixarEquipArquivo(a.path, a.nome);
+  }
 }
 
 async function uploadEquipArquivo(equipId, obraId, cardId, input){
