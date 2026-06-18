@@ -855,6 +855,8 @@ function load(){
   if(!Array.isArray(db.obras)) db.obras=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
+  if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
+  if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -962,7 +964,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -972,7 +974,9 @@ async function carregarDadosSupabase(){
       sb.from('proposta_arquivos').select('*').order('id'),
       sb.from('ordens_servico').select('*').order('id'),
       sb.from('obra_contatos').select('*').order('id'),
-      sb.from('obra_equipamentos').select('*').order('id')
+      sb.from('obra_equipamentos').select('*').order('id'),
+      sb.from('obra_compras').select('*').order('id'),
+      sb.from('obra_nfs').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1055,6 +1059,23 @@ async function carregarDadosSupabase(){
         id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
         arquivos: Array.isArray(e.arquivos) ? e.arquivos : []
       }));
+    if(obraCompras.data)
+      db.obraCompras = obraCompras.data.map(c=>({
+        id:c.id, obraId:c.obra_id, cardId:c.card_id,
+        fornecedor:c.fornecedor||'', numeroPedido:c.numero_pedido||'',
+        dataPedido:c.data_pedido ? c.data_pedido.slice(0,10) : '',
+        valorPedido:c.valor_pedido!=null ? Number(c.valor_pedido) : null,
+        descricao:c.descricao||'', status:c.status||'pendente',
+        pdfPath:c.pdf_path||'', pdfNome:c.pdf_nome||''
+      }));
+    if(obraNfs.data)
+      db.obraNfs = obraNfs.data.map(n=>({
+        id:n.id, compraId:n.compra_id, obraId:n.obra_id,
+        numeroNf:n.numero_nf||'', fornecedor:n.fornecedor||'',
+        valorNf:n.valor_nf!=null ? Number(n.valor_nf) : null,
+        dataNf:n.data_nf ? n.data_nf.slice(0,10) : '',
+        pdfPath:n.pdf_path||'', pdfNome:n.pdf_nome||''
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -1133,6 +1154,19 @@ function syncDadosSupabase(){
     await sincronizarTabela('obra_equipamentos', db.obraEquipamentos||[], e=>({
       id:e.id, obra_id:e.obraId, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
       arquivos: e.arquivos||[]
+    }));
+    await sincronizarTabela('obra_compras', db.obraCompras||[], c=>({
+      id:c.id, obra_id:c.obraId, card_id:c.cardId,
+      fornecedor:c.fornecedor||'', numero_pedido:c.numeroPedido||'',
+      data_pedido:c.dataPedido||null, valor_pedido:c.valorPedido!=null?c.valorPedido:null,
+      descricao:c.descricao||'', status:c.status||'pendente',
+      pdf_path:c.pdfPath||'', pdf_nome:c.pdfNome||''
+    }));
+    await sincronizarTabela('obra_nfs', db.obraNfs||[], n=>({
+      id:n.id, compra_id:n.compraId, obra_id:n.obraId,
+      numero_nf:n.numeroNf||'', fornecedor:n.fornecedor||'',
+      valor_nf:n.valorNf!=null?n.valorNf:null, data_nf:n.dataNf||null,
+      pdf_path:n.pdfPath||'', pdf_nome:n.pdfNome||''
     }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
@@ -2864,9 +2898,393 @@ function abaObraSenhas(c, ob){
 }
 
 function abaObraCompras(c, ob){
+  const compras = (db.obraCompras||[]).filter(x=>x.obraId===ob.id);
+  const nfs     = db.obraNfs||[];
+
+  const fmtR = v => v!=null ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  const fmtD = d => d ? d.split('-').reverse().join('/') : '—';
+
+  const statusBadge = s => {
+    const map = {pendente:'#f59e0b',entregue:'#22c55e',parcial:'#3b82f6',cancelado:'#ef4444'};
+    const label = {pendente:'Pendente',entregue:'Entregue',parcial:'Parcial',cancelado:'Cancelado'};
+    return `<span style="background:${map[s]||'#6b7280'}22;color:${map[s]||'#6b7280'};border:1px solid ${map[s]||'#6b7280'}44;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">${label[s]||s}</span>`;
+  };
+
+  // totalizadores
+  const totalPedidos = compras.reduce((s,x)=>s+(x.valorPedido||0),0);
+  const totalNfs     = nfs.filter(n=>compras.some(c=>c.id===n.compraId)).reduce((s,n)=>s+(n.valorNf||0),0);
+  const dif          = totalPedidos - totalNfs;
+
+  let rows = '';
+  if(!compras.length){
+    rows = `<div class="empty" style="margin-top:12px">Nenhum pedido de compra cadastrado para esta obra.</div>`;
+  } else {
+    rows = compras.map(cp=>{
+      const cpNfs = nfs.filter(n=>n.compraId===cp.id);
+      const somaНФ = cpNfs.reduce((s,n)=>s+(n.valorNf||0),0);
+      const difCP  = (cp.valorPedido||0) - somaНФ;
+      const indicador = cp.valorPedido!=null
+        ? (somaНФ===0 ? '' : somaНФ < (cp.valorPedido||0) ? `<span style="color:#f59e0b;font-size:11px" title="NFs parciais">⚠ parcial</span>` : somaНФ > (cp.valorPedido||0) ? `<span style="color:#ef4444;font-size:11px" title="NFs superam o pedido">⛔ divergência</span>` : `<span style="color:#22c55e;font-size:11px" title="NFs batem com o pedido">✅ ok</span>`)
+        : '';
+
+      const nfRows = cpNfs.map(n=>`
+        <tr style="font-size:12px;background:var(--surface)">
+          <td style="padding:5px 8px;color:var(--muted)">NF</td>
+          <td style="padding:5px 8px">${n.numeroNf||'—'}</td>
+          <td style="padding:5px 8px">${fmtD(n.dataNf)}</td>
+          <td style="padding:5px 8px;font-weight:600">${fmtR(n.valorNf)}</td>
+          <td style="padding:5px 8px">${n.fornecedor||'—'}</td>
+          <td style="padding:5px 8px">
+            ${n.pdfPath ? `<button class="btn-xs" onclick="baixarNfPDF('${n.pdfPath}','${n.pdfNome||'nf.pdf'}')">⬇ PDF</button>` : ''}
+            <button class="btn-xs btn-danger" onclick="excluirNf(${n.id},${cp.id},${c.id})">✕</button>
+          </td>
+        </tr>`).join('');
+
+      return `
+      <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">
+        <div style="padding:10px 14px;background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ${statusBadge(cp.status)}
+          <span style="font-weight:700;flex:1;min-width:120px">${cp.fornecedor||'Sem fornecedor'}</span>
+          <span style="font-size:12px;color:var(--muted)">${cp.numeroPedido ? 'Pedido #'+cp.numeroPedido : ''}</span>
+          <span style="font-size:12px;color:var(--muted)">${fmtD(cp.dataPedido)}</span>
+          <span style="font-weight:700;color:var(--primary)">${fmtR(cp.valorPedido)}</span>
+          ${indicador}
+          <div style="display:flex;gap:6px;margin-left:auto">
+            <select style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg)"
+              onchange="atualizarStatusCompra(${cp.id},${c.id},this.value)">
+              ${['pendente','parcial','entregue','cancelado'].map(s=>`<option value="${s}"${cp.status===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
+            </select>
+            ${cp.pdfPath ? `<button class="btn-xs" onclick="baixarCompraPDF('${cp.pdfPath}','${cp.pdfNome||'pedido.pdf'}')">⬇ PDF</button>` : ''}
+            <button class="btn-xs btn-danger" onclick="excluirCompra(${cp.id},${c.id})">✕</button>
+          </div>
+        </div>
+        ${cp.descricao ? `<div style="padding:6px 14px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${cp.descricao}</div>` : ''}
+        <table style="width:100%;border-collapse:collapse">
+          ${nfRows}
+          <tr>
+            <td colspan="6" style="padding:6px 10px">
+              <button class="btn-xs" onclick="abrirFormNovaNf(${cp.id},${c.id},${ob.id})">+ Nota Fiscal</button>
+              ${cpNfs.length && cp.valorPedido!=null ? `<span style="float:right;font-size:11px;color:var(--muted);line-height:22px">Saldo: <b style="color:${difCP>0?'#f59e0b':difCP<0?'#ef4444':'#22c55e'}">${fmtR(difCP)}</b></span>` : ''}
+            </td>
+          </tr>
+        </table>
+      </div>`;
+    }).join('');
+  }
+
   return `
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Compras da Obra</div>
-    <div class="empty">Em breve — controle de compras e materiais desta obra.</div>`;
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Pedidos de Compra</span>
+      <button class="btn-sm" style="margin-left:auto" onclick="abrirFormNovaCompra(${c.id},${ob.id})">+ Novo Pedido</button>
+    </div>
+
+    <div id="form-nova-compra-${c.id}" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--surface)">
+      <div style="font-size:12px;font-weight:700;margin-bottom:10px">Novo Pedido de Compra</div>
+
+      <div style="margin-bottom:8px">
+        <label style="font-size:11px;color:var(--muted)">PDF do Pedido (opcional)</label>
+        <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
+          <input type="file" id="compra-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1">
+          <button class="btn-sm" onclick="processarPdfCompra(${c.id},${ob.id})">🔍 Ler PDF</button>
+        </div>
+        <div id="compra-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Fornecedor *</label>
+          <input id="compra-forn-${c.id}" type="text" class="input-field" placeholder="Nome do fornecedor" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Nº do Pedido</label>
+          <input id="compra-num-${c.id}" type="text" class="input-field" placeholder="Ex: PC-001" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Data</label>
+          <input id="compra-data-${c.id}" type="date" class="input-field" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+          <input id="compra-valor-${c.id}" type="number" step="0.01" class="input-field" placeholder="0,00" style="margin-top:3px">
+        </div>
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:11px;color:var(--muted)">Descrição / Observação</label>
+        <textarea id="compra-desc-${c.id}" class="input-field" rows="2" placeholder="Itens do pedido, materiais, etc." style="margin-top:3px;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="salvarNovaCompra(${c.id},${ob.id})">Salvar Pedido</button>
+        <button class="btn-sm" onclick="fecharFormNovaCompra(${c.id})">Cancelar</button>
+      </div>
+    </div>
+
+    <!-- form nova NF (oculto, aparece via JS) -->
+    <div id="form-nova-nf-${c.id}" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--surface)">
+      <div style="font-size:12px;font-weight:700;margin-bottom:10px">Adicionar Nota Fiscal</div>
+      <input type="hidden" id="nf-compra-id-${c.id}">
+      <div style="margin-bottom:8px">
+        <label style="font-size:11px;color:var(--muted)">PDF da NF (opcional)</label>
+        <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
+          <input type="file" id="nf-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1">
+          <button class="btn-sm" onclick="processarPdfNf(${c.id},${ob.id})">🔍 Ler PDF</button>
+        </div>
+        <div id="nf-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Nº da NF</label>
+          <input id="nf-numero-${c.id}" type="text" class="input-field" placeholder="Ex: 000123" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Fornecedor</label>
+          <input id="nf-forn-${c.id}" type="text" class="input-field" placeholder="Nome do emitente" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Data da NF</label>
+          <input id="nf-data-${c.id}" type="date" class="input-field" style="margin-top:3px">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--muted)">Valor da NF (R$)</label>
+          <input id="nf-valor-${c.id}" type="number" step="0.01" class="input-field" placeholder="0,00" style="margin-top:3px">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="salvarNovaNf(${c.id},${ob.id})">Salvar NF</button>
+        <button class="btn-sm" onclick="fecharFormNovaNf(${c.id})">Cancelar</button>
+      </div>
+    </div>
+
+    ${rows}
+
+    ${compras.length ? `
+    <div style="border-top:2px solid var(--border);padding-top:12px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap">
+      <div style="font-size:12px"><span style="color:var(--muted)">Total Pedidos:</span> <b>${fmtR(totalPedidos)}</b></div>
+      <div style="font-size:12px"><span style="color:var(--muted)">Total NFs Recebidas:</span> <b>${fmtR(totalNfs)}</b></div>
+      <div style="font-size:12px"><span style="color:var(--muted)">Saldo a Receber:</span> <b style="color:${dif>0?'#f59e0b':dif<0?'#ef4444':'#22c55e'}">${fmtR(dif)}</b></div>
+    </div>` : ''}`;
+}
+
+/* ================= COMPRAS DA OBRA ================= */
+function abrirFormNovaCompra(cardId, obraId){
+  const el = document.getElementById('form-nova-compra-'+cardId);
+  if(el){ el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
+function fecharFormNovaCompra(cardId){
+  const el = document.getElementById('form-nova-compra-'+cardId);
+  if(el) el.style.display='none';
+  ['compra-forn','compra-num','compra-data','compra-valor','compra-desc','compra-pdf'].forEach(f=>{
+    const inp = document.getElementById(f+'-'+cardId);
+    if(inp) inp.value='';
+  });
+  const st = document.getElementById('compra-pdf-status-'+cardId);
+  if(st) st.textContent='';
+}
+
+async function processarPdfCompra(cardId, obraId){
+  const input = document.getElementById('compra-pdf-'+cardId);
+  const status = document.getElementById('compra-pdf-status-'+cardId);
+  if(!input||!input.files.length){ if(status) status.textContent='Selecione um arquivo PDF primeiro.'; return; }
+  status.textContent = '⏳ Lendo PDF...';
+  try{
+    const file = input.files[0];
+    const reader = new FileReader();
+    const dataURL = await new Promise(r=>{ reader.onload=e=>r(e.target.result); reader.readAsDataURL(file); });
+    const texto = await extrairTextoPDF(dataURL);
+    const dados = extrairDadosPedidoBR(texto);
+    if(dados.fornecedor){ const el=document.getElementById('compra-forn-'+cardId); if(el&&!el.value) el.value=dados.fornecedor; }
+    if(dados.numeroPedido){ const el=document.getElementById('compra-num-'+cardId); if(el&&!el.value) el.value=dados.numeroPedido; }
+    if(dados.data){ const el=document.getElementById('compra-data-'+cardId); if(el&&!el.value) el.value=dados.data; }
+    if(dados.valor!=null){ const el=document.getElementById('compra-valor-'+cardId); if(el&&!el.value) el.value=dados.valor; }
+    const achou = [dados.fornecedor,dados.numeroPedido,dados.data,dados.valor].filter(Boolean).length;
+    status.textContent = achou ? `✅ Encontrei ${achou} campo(s) — confira e ajuste se necessário.` : '⚠ Não consegui extrair dados automaticamente. Preencha manualmente.';
+  }catch(e){
+    status.textContent = '⚠ Falha ao ler PDF: '+e.message;
+  }
+}
+
+function extrairDadosPedidoBR(texto){
+  const dados = {};
+  // Valor — procura R$ seguido de número
+  const mValor = texto.match(/R\$\s*([\d.,]+(?:\.\d{2})?)/i);
+  if(mValor){
+    const s = mValor[1].replace(/\./g,'').replace(',','.');
+    const v = parseFloat(s);
+    if(!isNaN(v) && v > 0) dados.valor = v;
+  }
+  // Número do pedido — padrões comuns
+  const mNum = texto.match(/(?:pedido|ordem\s*de\s*compra|o\.?c\.?|p\.?c\.?)\s*[nN°º#:]*\s*(\d[\d\-./]*)/i);
+  if(mNum) dados.numeroPedido = mNum[1].trim().replace(/\s+/g,' ');
+  // Data — dd/mm/yyyy
+  const mData = texto.match(/(?:data|emiss[aã]o|emitido)\s*:?\s*(\d{2})\/(\d{2})\/(\d{4})/i)
+             || texto.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(mData) dados.data = `${mData[3]}-${mData[2]}-${mData[1]}`;
+  // Fornecedor — tenta linhas com "Fornecedor:", "Para:", "Razão Social:"
+  const mForn = texto.match(/(?:fornecedor|para|raz[aã]o\s*social|emitente)\s*:?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ][^\n\r]{4,60})/i);
+  if(mForn) dados.fornecedor = mForn[1].trim().replace(/\s+/g,' ').slice(0,80);
+  return dados;
+}
+
+async function salvarNovaCompra(cardId, obraId){
+  const forn  = (document.getElementById('compra-forn-'+cardId)||{}).value||'';
+  const num   = (document.getElementById('compra-num-'+cardId)||{}).value||'';
+  const data  = (document.getElementById('compra-data-'+cardId)||{}).value||'';
+  const valor = parseFloat((document.getElementById('compra-valor-'+cardId)||{}).value||'');
+  const desc  = (document.getElementById('compra-desc-'+cardId)||{}).value||'';
+  const input = document.getElementById('compra-pdf-'+cardId);
+  if(!forn.trim()){ alert('Preencha o fornecedor.'); return; }
+  if(!db.obraCompras) db.obraCompras=[];
+  const novo = {
+    id: nextId(db.obraCompras), obraId, cardId,
+    fornecedor:forn.trim(), numeroPedido:num.trim(),
+    dataPedido:data||null, valorPedido:isNaN(valor)?null:valor,
+    descricao:desc.trim(), status:'pendente',
+    pdfPath:'', pdfNome:''
+  };
+  // upload PDF se houver
+  if(input && input.files.length){
+    const file = input.files[0];
+    const path = `obra_${obraId}/compra_${novo.id}_${Date.now()}.pdf`;
+    try{
+      await uploadOSArquivoXHR('compras-pdfs', path, file, ()=>{});
+      novo.pdfPath = path;
+      novo.pdfNome = file.name;
+    }catch(e){ console.warn('Upload PDF compra falhou:', e); }
+  }
+  db.obraCompras.push(novo);
+  save();
+  fecharFormNovaCompra(cardId);
+  trocarAbaObra(cardId,'compras');
+}
+
+function excluirCompra(compraId, cardId){
+  if(!confirm('Excluir este pedido de compra e todas as NFs vinculadas?')) return;
+  db.obraCompras = (db.obraCompras||[]).filter(x=>x.id!==compraId);
+  db.obraNfs     = (db.obraNfs||[]).filter(x=>x.compraId!==compraId);
+  save();
+  trocarAbaObra(cardId,'compras');
+}
+
+function atualizarStatusCompra(compraId, cardId, novoStatus){
+  const cp = (db.obraCompras||[]).find(x=>x.id===compraId);
+  if(!cp) return;
+  cp.status = novoStatus;
+  save();
+  trocarAbaObra(cardId,'compras');
+}
+
+async function baixarCompraPDF(path, nome){
+  await _baixarArquivoBucket('compras-pdfs', path, nome);
+}
+
+// --- Notas Fiscais ---
+function abrirFormNovaNf(compraId, cardId, obraId){
+  const el = document.getElementById('form-nova-nf-'+cardId);
+  const hiddenId = document.getElementById('nf-compra-id-'+cardId);
+  if(hiddenId) hiddenId.value = compraId;
+  if(el){ el.style.display='block'; el.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+}
+function fecharFormNovaNf(cardId){
+  const el = document.getElementById('form-nova-nf-'+cardId);
+  if(el) el.style.display='none';
+  ['nf-numero','nf-forn','nf-data','nf-valor','nf-pdf'].forEach(f=>{
+    const inp = document.getElementById(f+'-'+cardId);
+    if(inp) inp.value='';
+  });
+  const st = document.getElementById('nf-pdf-status-'+cardId);
+  if(st) st.textContent='';
+}
+
+async function processarPdfNf(cardId, obraId){
+  const input  = document.getElementById('nf-pdf-'+cardId);
+  const status = document.getElementById('nf-pdf-status-'+cardId);
+  if(!input||!input.files.length){ if(status) status.textContent='Selecione um arquivo PDF primeiro.'; return; }
+  status.textContent = '⏳ Lendo PDF...';
+  try{
+    const file = input.files[0];
+    const reader = new FileReader();
+    const dataURL = await new Promise(r=>{ reader.onload=e=>r(e.target.result); reader.readAsDataURL(file); });
+    const texto = await extrairTextoPDF(dataURL);
+    const dados = extrairDadosNfBR(texto);
+    if(dados.numeroNf){ const el=document.getElementById('nf-numero-'+cardId); if(el&&!el.value) el.value=dados.numeroNf; }
+    if(dados.fornecedor){ const el=document.getElementById('nf-forn-'+cardId); if(el&&!el.value) el.value=dados.fornecedor; }
+    if(dados.data){ const el=document.getElementById('nf-data-'+cardId); if(el&&!el.value) el.value=dados.data; }
+    if(dados.valor!=null){ const el=document.getElementById('nf-valor-'+cardId); if(el&&!el.value) el.value=dados.valor; }
+    const achou = [dados.numeroNf,dados.fornecedor,dados.data,dados.valor].filter(v=>v!=null).length;
+    status.textContent = achou ? `✅ Encontrei ${achou} campo(s).` : '⚠ Não consegui extrair dados automaticamente. Preencha manualmente.';
+  }catch(e){
+    status.textContent = '⚠ Falha ao ler PDF: '+e.message;
+  }
+}
+
+function extrairDadosNfBR(texto){
+  const dados = {};
+  // Número da NF
+  const mNf = texto.match(/(?:n[uú]mero\s*da\s*nota|nota\s*fiscal|n\.?\s*f\.?|nf[eE]?)\s*[nN°º#:]*\s*(\d+)/i);
+  if(mNf) dados.numeroNf = mNf[1].trim();
+  // Valor total
+  const mValor = texto.match(/(?:valor\s*total|total\s*da\s*nota|total\s*do\s*documento|total\s*a\s*pagar)\s*[:\s]*R?\$?\s*([\d.,]+)/i)
+               || texto.match(/R\$\s*([\d.,]+(?:\.\d{2})?)/i);
+  if(mValor){
+    const s = mValor[1].replace(/\./g,'').replace(',','.');
+    const v = parseFloat(s);
+    if(!isNaN(v) && v > 0) dados.valor = v;
+  }
+  // Data de emissão
+  const mData = texto.match(/(?:data\s*de\s*emiss[aã]o|emiss[aã]o|data)\s*:?\s*(\d{2})\/(\d{2})\/(\d{4})/i)
+             || texto.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(mData) dados.data = `${mData[3]}-${mData[2]}-${mData[1]}`;
+  // Emitente / fornecedor
+  const mForn = texto.match(/(?:emitente|raz[aã]o\s*social|empresa)\s*:?\s*([A-ZÁÉÍÓÚÂÊÔÃÕÇ][^\n\r]{4,60})/i);
+  if(mForn) dados.fornecedor = mForn[1].trim().replace(/\s+/g,' ').slice(0,80);
+  return dados;
+}
+
+async function salvarNovaNf(cardId, obraId){
+  const compraId = parseInt((document.getElementById('nf-compra-id-'+cardId)||{}).value||'0');
+  if(!compraId){ alert('Erro: pedido não identificado.'); return; }
+  const numNf  = (document.getElementById('nf-numero-'+cardId)||{}).value||'';
+  const forn   = (document.getElementById('nf-forn-'+cardId)||{}).value||'';
+  const data   = (document.getElementById('nf-data-'+cardId)||{}).value||'';
+  const valor  = parseFloat((document.getElementById('nf-valor-'+cardId)||{}).value||'');
+  const input  = document.getElementById('nf-pdf-'+cardId);
+  if(!db.obraNfs) db.obraNfs=[];
+  const nova = {
+    id: nextId(db.obraNfs), compraId, obraId,
+    numeroNf:numNf.trim(), fornecedor:forn.trim(),
+    valorNf:isNaN(valor)?null:valor, dataNf:data||null,
+    pdfPath:'', pdfNome:''
+  };
+  if(input && input.files.length){
+    const file = input.files[0];
+    const path = `obra_${obraId}/nf_${nova.id}_${Date.now()}.pdf`;
+    try{
+      await uploadOSArquivoXHR('nfs-pdfs', path, file, ()=>{});
+      nova.pdfPath = path;
+      nova.pdfNome = file.name;
+    }catch(e){ console.warn('Upload PDF NF falhou:', e); }
+  }
+  db.obraNfs.push(nova);
+  // Atualiza status da compra automaticamente
+  const cp = (db.obraCompras||[]).find(x=>x.id===compraId);
+  if(cp && cp.status==='pendente') cp.status='parcial';
+  save();
+  fecharFormNovaNf(cardId);
+  trocarAbaObra(cardId,'compras');
+}
+
+function excluirNf(nfId, compraId, cardId){
+  if(!confirm('Excluir esta nota fiscal?')) return;
+  db.obraNfs = (db.obraNfs||[]).filter(x=>x.id!==nfId);
+  // se não sobrar NF, volta p/ pendente
+  const cpNfs = (db.obraNfs||[]).filter(x=>x.compraId===compraId);
+  const cp = (db.obraCompras||[]).find(x=>x.id===compraId);
+  if(cp && cpNfs.length===0 && cp.status==='parcial') cp.status='pendente';
+  save();
+  trocarAbaObra(cardId,'compras');
+}
+
+async function baixarNfPDF(path, nome){
+  await _baixarArquivoBucket('nfs-pdfs', path, nome);
 }
 
 /* ================= EQUIPAMENTOS DA OBRA ================= */
