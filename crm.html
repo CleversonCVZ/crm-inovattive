@@ -2403,7 +2403,7 @@ function registrarRapido(id){
 }
 
 /* Dupla validação fase ↔ marcadores */
-function wireValidacao(){
+function wireValidacao(cardId){
   const sel=document.getElementById('m-fase'),
         cbP=document.getElementById('m-perdido'),
         cbC=document.getElementById('m-concluido');
@@ -2411,7 +2411,10 @@ function wireValidacao(){
   sel.onchange = ()=>{
     const f = fase(+sel.value);
     if(f.tipo==='perdido' && !cbP.checked){
-      if(confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)){
+      if(cardId){
+        sel.value=faseAnt;
+        abrirModalPerdido(cardId);
+      } else if(confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)){
         cbP.checked=true; cbC.checked=false; faseAnt=sel.value;
       } else sel.value=faseAnt;
     } else if(f.tipo==='concluido' && !cbC.checked){
@@ -2427,9 +2430,14 @@ function wireValidacao(){
     if(cbP.checked){
       const fPerd = faseTipo('perdido');
       if(!fPerd){ cbP.checked=false; alert('Fase "perdido" não encontrada.'); return; }
-      if(confirm(`Marcar como PERDIDO move o cartão para a fase "${fPerd.nome}" e ele sai do painel. Confirmar?`)){
-        sel.value=fPerd.id; cbC.checked=false; faseAnt=sel.value;
-      } else cbP.checked=false;
+      if(cardId){
+        cbP.checked=false; // desfaz até confirmar no modal
+        abrirModalPerdido(cardId);
+      } else {
+        if(confirm(`Marcar como PERDIDO move o cartão para a fase "${fPerd.nome}" e ele sai do painel. Confirmar?`)){
+          sel.value=fPerd.id; cbC.checked=false; faseAnt=sel.value;
+        } else cbP.checked=false;
+      }
     } else if(fase(+sel.value).tipo==='perdido'){
       alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
     }
@@ -2445,6 +2453,63 @@ function wireValidacao(){
       alert('Para o cartão voltar ao painel, escolha também uma nova fase.');
     }
   };
+}
+
+function abrirModalPerdido(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  const cli = cliente(c.clienteId);
+  const fPerd = faseTipo('perdido');
+  const propAbiertas = db.propostas.filter(p=>p.cardId===cardId && p.status==='emitida' && !propostaPerdida(p));
+  const optsF = fasesOrdenadas().map(f=>`<option value="${f.id}" ${fPerd&&f.id===fPerd.id?'selected':''}>${f.nome}</option>`).join('');
+
+  const propsHtml = propAbiertas.length ? `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin:18px 0 6px">Propostas em aberto (${propAbiertas.length})</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Marque as que devem ser registradas como perdidas:</div>
+    ${propAbiertas.map(p=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:13px">
+        <input type="checkbox" name="prop-perd" value="${p.id}" checked style="width:auto;accent-color:var(--red);flex-shrink:0">
+        <span style="flex:1"><b>${p.numero}</b>${p.aditivo?' <span style="font-size:10px;background:#fff3cd;color:#9a6700;padding:1px 6px;border-radius:4px">ADITIVO</span>':''} · <span style="color:var(--blue-dark);font-weight:700">${fmtMoney(p.valor)||'—'}</span></span>
+        <span style="font-size:11px;color:var(--muted)">${p.dataEmissao?fmtDia2(p.dataEmissao.slice(0,10)):''}</span>
+      </label>`).join('')}
+  ` : `<div style="font-size:13px;color:var(--muted);margin-top:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">Nenhuma proposta em aberto para este cartão.</div>`;
+
+  abrirModal(`
+    <h3 style="color:var(--red)">✖ Registrar Perda — Cartão #${c.num}</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px">O cartão de <b>${cli.nome}</b> sairá do painel e ficará visível apenas em "Perdidos & Concluídos".</p>
+
+    <label>Fase final do CRM</label>
+    <select id="mp-fase">${optsF}</select>
+
+    ${propsHtml}
+
+    <div class="actions" style="margin-top:20px">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'dados')">← Cancelar</button>
+      <button class="btn danger" onclick="confirmarPerdido(${cardId})">✖ Confirmar Perda</button>
+    </div>`);
+}
+
+function confirmarPerdido(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  const faseId = +document.getElementById('mp-fase').value;
+  const fpPerdida = fasePropTipo('perdida');
+  let propsMarcadas = 0;
+  document.querySelectorAll('input[name="prop-perd"]:checked').forEach(cb=>{
+    const p = db.propostas.find(x=>x.id===+cb.value);
+    if(p && fpPerdida){
+      p.faseAnterior = p.faseId;
+      p.faseId = fpPerdida.id;
+      registrarLog('marcar_perdida','proposta',p.id,`Proposta marcada como perdida ao registrar perda do cartão #${c.num}: ${p.numero}`);
+      propsMarcadas++;
+    }
+  });
+  c.perdido   = true;
+  c.concluido = false;
+  c.faseId    = faseId;
+  const fNome = fase(faseId)?.nome||'?';
+  registrarLog('marcar_perdida','card',cardId,`Cartão #${c.num} marcado como perdido. Fase: "${fNome}". ${propsMarcadas} proposta(s) marcada(s) como perdida(s).`);
+  save(); fecharModal(); renderAll();
 }
 
 function abrirNovoCartao(faseIdInicial){
@@ -2563,7 +2628,7 @@ function abrirEditarCartao(id, aba='dados'){
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       <button class="btn primary" style="${aba==='dados'?'':'visibility:hidden'}" ${aba==='dados'?`onclick="salvarEdicaoCartao(${c.id})"`:'disabled'}>Salvar</button>
     </div>`, 'cartao');
-  if(aba==='dados') wireValidacao();
+  if(aba==='dados') wireValidacao(c.id);
 }
 
 function abaObrasCartaoHTML(c){
