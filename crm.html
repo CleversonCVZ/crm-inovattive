@@ -3132,14 +3132,28 @@ async function baixarArquivoOS(path, nome){ await _baixarArquivoBucket('os-arqui
 async function uploadOSArquivoXHR(bucket, path, file, onProgress){
   const {data:{session}} = await sb.auth.getSession();
   if(!session) return {error:{message:'Sessão expirada — faça login novamente.'}};
-  return new Promise(resolve=>{
+
+  // Safari tem bug com xhr.send(File) — converte para ArrayBuffer antes de enviar
+  let body;
+  try { body = await file.arrayBuffer(); }
+  catch(e) { body = file; } // fallback se arrayBuffer() não estiver disponível
+
+  const contentType = file.type || 'application/octet-stream';
+  const url = `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`;
+  const headers = {
+    'Authorization': `Bearer ${session.access_token}`,
+    'apikey': SUPABASE_KEY,
+    'x-upsert': 'true',          // evita 409 se o path já existir
+    'Content-Type': contentType
+    // cache-control removido do request — desnecessário e agrava CORS preflight no Safari
+  };
+
+  // Tenta via XHR (com progresso); se "Load failed" cai no fallback Fetch
+  const resultado = await new Promise(resolve=>{
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`);
-    xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-    xhr.setRequestHeader('apikey', SUPABASE_KEY);
-    xhr.setRequestHeader('x-upsert', 'false');
-    xhr.setRequestHeader('cache-control', 'max-age=3600');
-    xhr.setRequestHeader('Content-Type', file.type||'application/octet-stream');
+    xhr.open('POST', url);
+    Object.entries(headers).forEach(([k,v])=>xhr.setRequestHeader(k,v));
+    xhr.timeout = 300000; // 5 minutos — evita travamento infinito no Safari
     if(onProgress){
       xhr.upload.addEventListener('progress', e=>{
         if(e.lengthComputable) onProgress(e.loaded, e.total);
@@ -3147,12 +3161,32 @@ async function uploadOSArquivoXHR(bucket, path, file, onProgress){
     }
     xhr.addEventListener('load', ()=>{
       if(xhr.status>=200 && xhr.status<300) resolve({error:null});
-      else { try{ resolve({error:JSON.parse(xhr.responseText)}); }catch(e){ resolve({error:{message:`HTTP ${xhr.status}`}}); } }
+      else {
+        try{ resolve({error:JSON.parse(xhr.responseText)}); }
+        catch(e){ resolve({error:{message:`HTTP ${xhr.status}`}}); }
+      }
     });
-    xhr.addEventListener('error', ()=>resolve({error:{message:'Load failed'}}));
+    xhr.addEventListener('error', ()=>resolve({error:{message:'__xhr_load_failed__'}}));
     xhr.addEventListener('abort', ()=>resolve({error:{message:'Upload cancelado'}}));
-    xhr.send(file);
+    xhr.addEventListener('timeout', ()=>resolve({error:{message:'Timeout: o arquivo demorou demais para subir. Verifique sua conexão e tente novamente.'}}));
+    xhr.send(body);
   });
+
+  // Fallback Fetch (sem progresso) — ativado quando XHR falha com "Load failed"
+  // Isso ocorre no Safari por restrições internas do browser
+  if(resultado?.error?.message === '__xhr_load_failed__'){
+    console.warn('[upload] XHR falhou (possível restrição Safari) — tentando via Fetch...');
+    try{
+      const res = await fetch(url, { method:'POST', headers, body: body instanceof ArrayBuffer ? new Blob([body],{type:contentType}) : file });
+      if(res.ok) return {error:null};
+      const txt = await res.text();
+      try{ return {error:JSON.parse(txt)}; }catch(e){ return {error:{message:`HTTP ${res.status}`}}; }
+    }catch(e){
+      return {error:{message:`Falha no upload: ${e.message||e}. Verifique sua conexão e tente novamente.`}};
+    }
+  }
+
+  return resultado;
 }
 
 async function uploadArquivosOSProjeto(osId, cardId, tipo){
