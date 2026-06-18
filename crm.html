@@ -2546,18 +2546,10 @@ function abrirEditarCartao(id, aba='dados'){
 
 function abaObrasCartaoHTML(c){
   const ob = obraDe(c);
-  const osProjetos = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto' && (o.arquivosProjeto||[]).length);
   if(!ob) return '<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>';
+  const osProjetos = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto' && (o.arquivosProjeto||[]).length);
   const cts = (db.obraContatos||[]).filter(ct=>ct.obraId===ob.id);
   return `
-    <div class="obra-item" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <div>
-        <b>${ob.nome}</b><br>
-        <small style="color:var(--muted)">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</small>
-      </div>
-      <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
-    </div>
-
     <datalist id="dl-funcoes-obra">
       <option>Proprietário</option><option>Esposa</option><option>Esposo</option>
       <option>Arquiteto</option><option>Arquiteta</option><option>Decorador</option>
@@ -2566,60 +2558,73 @@ function abaObrasCartaoHTML(c){
       <option>Gerente de Obra</option><option>Síndico</option><option>Administrador</option>
     </datalist>
 
-    <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos da Obra</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
 
-    ${cts.length ? `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
-      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
-        <th style="text-align:left;padding:4px 6px">Nome</th>
-        <th style="text-align:left;padding:4px 6px">Função</th>
-        <th style="text-align:left;padding:4px 6px">Telefone</th>
-        <th style="width:32px"></th>
-      </tr></thead>
-      <tbody>
-        ${cts.map(ct=>`
-        <tr style="border-top:1px solid var(--border)">
-          <td style="padding:7px 6px;font-weight:600">${ct.nome}</td>
-          <td style="padding:7px 6px;color:var(--muted)">${ct.funcao||'—'}</td>
-          <td style="padding:7px 6px">${ct.tel?`<a href="tel:${ct.tel.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${ct.tel}</a>`:'—'}</td>
-          <td style="padding:7px 4px;text-align:center">
-            <button class="btn sm neutral" title="Remover" onclick="excluirContatoObra(${ct.id},${ob.id},${c.id})">🗑</button>
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Nenhum contato cadastrado.</div>`}
+      <!-- COLUNA ESQUERDA: Dados da Obra -->
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Dados da Obra</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">${ob.nome}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</div>
+          <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
+        </div>
 
-    <div style="display:flex;gap:6px;align-items:flex-end">
-      <div style="flex:2"><label style="font-size:11px">Nome</label><input id="nc-nome" placeholder="Ex.: Maria Silva"></div>
-      <div style="flex:1.2"><label style="font-size:11px">Função</label><input id="nc-funcao" list="dl-funcoes-obra" placeholder="Ex.: Arquiteta"></div>
-      <div style="flex:1.4"><label style="font-size:11px">Telefone</label><input id="nc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)"></div>
-      <button class="btn sm primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarContatoObra(${ob.id},${c.id})">＋ Adicionar</button>
-    </div>
+        ${osProjetos.length ? `
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Projetos Finalizados</div>
+        ${osProjetos.map(os=>`
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
+            <div style="font-size:12px;font-weight:700;color:#5c6bc0;margin-bottom:8px">📋 ${os.numero} — ${os.titulo}</div>
+            ${(os.arquivosProjeto||[]).map(a=>{
+              const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
+              const ps=a.path.replace(/'/g,"\\'"), ns=(a.nome||'').replace(/'/g,"\\'");
+              return `<div class="os-arq-row">
+                <span>${isPdf?'📄':'📐'}</span>
+                ${isPdf
+                  ? `<span class="os-arq-nome" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" title="Clique para visualizar" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
+                  : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
+                <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
+              </div>`;
+            }).join('')}
+          </div>`).join('')}
+        ` : ''}
+      </div>
 
-    ${osProjetos.length ? `
-    <hr style="margin:14px 0;border:none;border-top:1px solid var(--border)">
-    <label style="font-weight:700">⚡ Projetos de Automação Finalizados</label>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Arquivos dos projetos entregues pelas O.S. de Projeto deste cartão.</div>
-    ${osProjetos.map(os=>`
-      <div style="margin-bottom:12px">
-        <div style="font-size:13px;font-weight:700;color:#5c6bc0;margin-bottom:6px">📋 ${os.numero} — ${os.titulo}</div>
-        ${(os.arquivosProjeto||[]).map(a=>{
-          const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
-          const ps=a.path.replace(/'/g,"\\'"), ns=(a.nome||'').replace(/'/g,"\\'");
-          return `<div class="os-arq-row">
-            <span>${isPdf?'📄':'📐'}</span>
-            ${isPdf
-              ? `<span class="os-arq-nome" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" title="Clique para visualizar" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
-              : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
-            <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
-          </div>`;
-        }).join('')}
-      </div>`).join('')}` : ''}
+      <!-- COLUNA DIREITA: Contatos da Obra -->
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos da Obra</div>
 
-    <div class="empty" style="margin-top:${osProjetos.length?'14':'24'}px">
-      🏗️ Acompanhamento da obra em construção.<br>
-      <small style="color:var(--muted)">Aqui entrarão etapas, ordens de serviço e o andamento físico da obra vinculada.</small>
+        ${cts.length ? `
+        <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
+          <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+            <th style="text-align:left;padding:4px 6px">Nome</th>
+            <th style="text-align:left;padding:4px 6px">Função</th>
+            <th style="text-align:left;padding:4px 6px">Telefone</th>
+            <th style="width:32px"></th>
+          </tr></thead>
+          <tbody>
+            ${cts.map(ct=>`
+            <tr style="border-top:1px solid var(--border)">
+              <td style="padding:7px 6px;font-weight:600">${ct.nome}</td>
+              <td style="padding:7px 6px;color:var(--muted)">${ct.funcao||'—'}</td>
+              <td style="padding:7px 6px">${ct.tel?`<a href="tel:${ct.tel.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${ct.tel}</a>`:'—'}</td>
+              <td style="padding:7px 4px;text-align:center">
+                <button class="btn sm neutral" title="Remover" onclick="excluirContatoObra(${ct.id},${ob.id},${c.id})">🗑</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato cadastrado.</div>`}
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
+          <input id="nc-nome" placeholder="Nome *">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <input id="nc-funcao" list="dl-funcoes-obra" placeholder="Função">
+            <input id="nc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+          </div>
+          <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoObra(${ob.id},${c.id})">＋ Adicionar</button>
+        </div>
+      </div>
+
     </div>`;
 }
 
