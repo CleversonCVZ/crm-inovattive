@@ -2935,7 +2935,7 @@ function abaObraCompras(c, ob){
           <td style="padding:5px 8px;font-weight:600">${fmtR(n.valorNf)}</td>
           <td style="padding:5px 8px">${n.fornecedor||'—'}</td>
           <td style="padding:5px 8px">
-            ${n.pdfPath ? `<button class="btn-xs" onclick="baixarNfPDF('${n.pdfPath}','${n.pdfNome||'nf.pdf'}')">⬇ PDF</button>` : ''}
+            ${n.pdfPath ? `<button class="btn-xs" onclick="baixarNfPDF('${n.pdfPath}','${n.pdfNome||'nf.pdf'}')">📄 Abrir NF</button>` : ''}
             <button class="btn-xs btn-danger" onclick="excluirNf(${n.id},${cp.id},${c.id})">✕</button>
           </td>
         </tr>`).join('');
@@ -2954,7 +2954,7 @@ function abaObraCompras(c, ob){
               onchange="atualizarStatusCompra(${cp.id},${c.id},this.value)">
               ${['pendente','parcial','entregue','cancelado'].map(s=>`<option value="${s}"${cp.status===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
             </select>
-            ${cp.pdfPath ? `<button class="btn-xs" onclick="baixarCompraPDF('${cp.pdfPath}','${cp.pdfNome||'pedido.pdf'}')">⬇ PDF</button>` : ''}
+            ${cp.pdfPath ? `<button class="btn-xs" onclick="baixarCompraPDF('${cp.pdfPath}','${cp.pdfNome||'pedido.pdf'}')">📄 Abrir Pedido</button>` : ''}
             <button class="btn-xs btn-danger" onclick="excluirCompra(${cp.id},${c.id})">✕</button>
           </div>
         </div>
@@ -3005,7 +3005,7 @@ function abaObraCompras(c, ob){
         </div>
         <div>
           <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
-          <input id="compra-valor-${c.id}" type="number" step="0.01" class="input-field" placeholder="0,00" style="margin-top:3px">
+          <input id="compra-valor-${c.id}" type="text" inputmode="decimal" class="input-field" placeholder="Ex: 1.500,00" style="margin-top:3px">
         </div>
       </div>
       <div style="margin-bottom:10px">
@@ -3045,7 +3045,7 @@ function abaObraCompras(c, ob){
         </div>
         <div>
           <label style="font-size:11px;color:var(--muted)">Valor da NF (R$)</label>
-          <input id="nf-valor-${c.id}" type="number" step="0.01" class="input-field" placeholder="0,00" style="margin-top:3px">
+          <input id="nf-valor-${c.id}" type="text" inputmode="decimal" class="input-field" placeholder="Ex: 1.500,00" style="margin-top:3px">
         </div>
       </div>
       <div style="display:flex;gap:8px">
@@ -3060,7 +3060,7 @@ function abaObraCompras(c, ob){
     <div style="border-top:2px solid var(--border);padding-top:12px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap">
       <div style="font-size:12px"><span style="color:var(--muted)">Total Pedidos:</span> <b>${fmtR(totalPedidos)}</b></div>
       <div style="font-size:12px"><span style="color:var(--muted)">Total NFs Recebidas:</span> <b>${fmtR(totalNfs)}</b></div>
-      <div style="font-size:12px"><span style="color:var(--muted)">Saldo a Receber:</span> <b style="color:${dif>0?'#f59e0b':dif<0?'#ef4444':'#22c55e'}">${fmtR(dif)}</b></div>
+      <div style="font-size:12px"><span style="color:var(--muted)">Diferença entre Pedido e NF:</span> <b style="color:${dif>0?'#f59e0b':dif<0?'#ef4444':'#22c55e'}">${fmtR(dif)}</b></div>
     </div>` : ''}`;
 }
 
@@ -3128,7 +3128,7 @@ async function salvarNovaCompra(cardId, obraId){
   const forn  = (document.getElementById('compra-forn-'+cardId)||{}).value||'';
   const num   = (document.getElementById('compra-num-'+cardId)||{}).value||'';
   const data  = (document.getElementById('compra-data-'+cardId)||{}).value||'';
-  const valor = parseFloat((document.getElementById('compra-valor-'+cardId)||{}).value||'');
+  const valor = parseValorBR((document.getElementById('compra-valor-'+cardId)||{}).value||'');
   const desc  = (document.getElementById('compra-desc-'+cardId)||{}).value||'';
   const input = document.getElementById('compra-pdf-'+cardId);
   if(!forn.trim()){ alert('Preencha o fornecedor.'); return; }
@@ -3136,7 +3136,7 @@ async function salvarNovaCompra(cardId, obraId){
   const novo = {
     id: nextId(db.obraCompras), obraId, cardId,
     fornecedor:forn.trim(), numeroPedido:num.trim(),
-    dataPedido:data||null, valorPedido:isNaN(valor)?null:valor,
+    dataPedido:data||null, valorPedido:valor>0?valor:null,
     descricao:desc.trim(), status:'pendente',
     pdfPath:'', pdfNome:''
   };
@@ -3245,13 +3245,13 @@ async function salvarNovaNf(cardId, obraId){
   const numNf  = (document.getElementById('nf-numero-'+cardId)||{}).value||'';
   const forn   = (document.getElementById('nf-forn-'+cardId)||{}).value||'';
   const data   = (document.getElementById('nf-data-'+cardId)||{}).value||'';
-  const valor  = parseFloat((document.getElementById('nf-valor-'+cardId)||{}).value||'');
+  const valor  = parseValorBR((document.getElementById('nf-valor-'+cardId)||{}).value||'');
   const input  = document.getElementById('nf-pdf-'+cardId);
   if(!db.obraNfs) db.obraNfs=[];
   const nova = {
     id: nextId(db.obraNfs), compraId, obraId,
     numeroNf:numNf.trim(), fornecedor:forn.trim(),
-    valorNf:isNaN(valor)?null:valor, dataNf:data||null,
+    valorNf:valor>0?valor:null, dataNf:data||null,
     pdfPath:'', pdfNome:''
   };
   if(input && input.files.length){
