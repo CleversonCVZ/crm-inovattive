@@ -913,7 +913,8 @@ function ultimoHist(c){ return (c.historico&&c.historico[0]) ? c.historico[0].te
 function registrarHist(c, texto){ if(texto && texto.trim()) c.historico.unshift({data:agoraISO(), texto:texto.trim()}); }
 function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
 function cardAtivo(c){ return !c.perdido && !c.concluido; }
-function save(){ localStorage.setItem('crmDB', JSON.stringify(db)); syncConfigSupabase(); syncDadosSupabase(); }
+function saveLocal(){ localStorage.setItem('crmDB', JSON.stringify(db)); }
+function save(){ saveLocal(); syncConfigSupabase(); syncDadosSupabase(); }
 function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:cidade||'',uf:''}; }
 
 /* Busca as entidades de configuração no Supabase (após login) e
@@ -953,7 +954,7 @@ async function carregarConfigSupabase(){
         logRetencaoDias: empresa.data.log_retencao_dias || 90
       };
     }
-    save();
+    saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar configurações do Supabase:', e); }
 }
 
@@ -1054,7 +1055,7 @@ async function carregarDadosSupabase(){
         id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
         arquivos: Array.isArray(e.arquivos) ? e.arquivos : []
       }));
-    save();
+    saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
 
