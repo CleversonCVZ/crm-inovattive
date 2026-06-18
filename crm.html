@@ -2653,6 +2653,7 @@ function abaObrasCartaoHTML(c, abaAtiva){
   const navItens = [
     {id:'informacoes', icon:'🏗', label:'Informações'},
     {id:'contatos',    icon:'👥', label:'Contatos'},
+    {id:'senhas',      icon:'🔑', label:'Senhas'},
     {id:'compras',     icon:'🛒', label:'Compras'},
   ];
   return `
@@ -2696,63 +2697,19 @@ function trocarAbaObra(cardId, aba){
 function abaObraConteudo(c, ob, aba){
   if(aba==='informacoes') return abaObraInformacoes(c, ob);
   if(aba==='contatos')    return abaObraContatos(c, ob);
+  if(aba==='senhas')      return abaObraSenhas(c, ob);
   if(aba==='compras')     return abaObraCompras(c, ob);
   return '';
 }
 
 function abaObraInformacoes(c, ob){
   const osProjetos = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='projeto' && (o.arquivosProjeto||[]).length);
-  const eqs = (db.obraEquipamentos||[]).filter(e=>e.obraId===ob.id);
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Dados da Obra</div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:18px">
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ob.nome}">${ob.nome}</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</div>
       <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
-    </div>
-
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Equipamentos / Logins</div>
-    ${eqs.length ? `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
-      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
-        <th style="text-align:left;padding:4px 6px">Equipamento</th>
-        <th style="text-align:left;padding:4px 6px">Login</th>
-        <th style="text-align:left;padding:4px 6px">Senha</th>
-        <th style="text-align:left;padding:4px 6px">Obs</th>
-        <th style="width:32px"></th>
-      </tr></thead>
-      <tbody>
-        ${eqs.map(e=>`
-        <tr style="border-top:1px solid var(--border)">
-          <td style="padding:7px 6px;font-weight:600">${e.equipamento}</td>
-          <td style="padding:7px 6px;color:var(--muted)">${e.login||'—'}</td>
-          <td style="padding:7px 6px">
-            <span style="font-family:monospace;letter-spacing:2px" id="eq-senha-${e.id}">••••••</span>
-            <button class="btn sm neutral" style="padding:1px 5px;margin-left:4px;font-size:11px" title="Mostrar/ocultar senha"
-              onclick="toggleEqSenha(${e.id},'${(e.senha||'').replace(/'/g,'\\&#39;')}')">👁</button>
-          </td>
-          <td style="padding:7px 6px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.observacao||''}">${e.observacao||'—'}</td>
-          <td style="padding:7px 4px;text-align:center;white-space:nowrap">
-            <button class="btn sm neutral" title="Editar" onclick="editarEquipamento(${e.id},${ob.id},${c.id})">✏️</button>
-            <button class="btn sm neutral" title="Remover" onclick="excluirEquipamento(${e.id},${ob.id},${c.id})">🗑</button>
-          </td>
-        </tr>`).join('')}
-      </tbody>
-    </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum equipamento cadastrado.</div>`}
-
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:18px">
-      <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo equipamento</div>
-      <input id="eq-novo-equip" placeholder="Equipamento *  ex: Multiroom, Alarme, WiFi">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <input id="eq-novo-login" placeholder="Login (opcional)">
-        <div style="position:relative">
-          <input id="eq-novo-senha" type="password" placeholder="Senha (opcional)" style="width:100%;padding-right:34px">
-          <button class="btn sm neutral" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);padding:2px 6px"
-            onclick="toggleInputSenha('eq-novo-senha')" title="Mostrar/ocultar">👁</button>
-        </div>
-      </div>
-      <input id="eq-novo-obs" placeholder="Observação (opcional)">
-      <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarEquipamento(${ob.id},${c.id})">＋ Adicionar</button>
     </div>
 
     ${osProjetos.length ? `
@@ -2806,6 +2763,53 @@ function abaObraContatos(c, ob){
         <input id="nc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
       </div>
       <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoObra(${ob.id},${c.id})">＋ Adicionar</button>
+    </div>`;
+}
+
+function abaObraSenhas(c, ob){
+  const eqs = (db.obraEquipamentos||[]).filter(e=>e.obraId===ob.id);
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Equipamentos & Senhas</div>
+    ${eqs.length ? `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
+      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="text-align:left;padding:4px 6px">Equipamento</th>
+        <th style="text-align:left;padding:4px 6px">Login</th>
+        <th style="text-align:left;padding:4px 6px">Senha</th>
+        <th style="text-align:left;padding:4px 6px">Obs</th>
+        <th style="width:32px"></th>
+      </tr></thead>
+      <tbody>
+        ${eqs.map(e=>`
+        <tr style="border-top:1px solid var(--border)">
+          <td style="padding:7px 6px;font-weight:600">${e.equipamento}</td>
+          <td style="padding:7px 6px;color:var(--muted)">${e.login||'—'}</td>
+          <td style="padding:7px 6px">
+            <span style="font-family:monospace;letter-spacing:2px" id="eq-senha-${e.id}">••••••</span>
+            <button class="btn sm neutral" style="padding:1px 5px;margin-left:4px;font-size:11px" title="Mostrar/ocultar senha"
+              onclick="toggleEqSenha(${e.id},'${(e.senha||'').replace(/'/g,'\\&#39;')}')">👁</button>
+          </td>
+          <td style="padding:7px 6px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.observacao||''}">${e.observacao||'—'}</td>
+          <td style="padding:7px 4px;text-align:center;white-space:nowrap">
+            <button class="btn sm neutral" title="Editar" onclick="editarEquipamento(${e.id},${ob.id},${c.id})">✏️</button>
+            <button class="btn sm neutral" title="Remover" onclick="excluirEquipamento(${e.id},${ob.id},${c.id})">🗑</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<div style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum item cadastrado.</div>`}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo item</div>
+      <input id="eq-novo-equip" placeholder="Equipamento *  ex: Multiroom, Alarme, WiFi">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="eq-novo-login" placeholder="Login (opcional)">
+        <div style="position:relative">
+          <input id="eq-novo-senha" type="password" placeholder="Senha (opcional)" style="width:100%;padding-right:34px">
+          <button class="btn sm neutral" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);padding:2px 6px"
+            onclick="toggleInputSenha('eq-novo-senha')" title="Mostrar/ocultar">👁</button>
+        </div>
+      </div>
+      <input id="eq-novo-obs" placeholder="Observação (opcional)">
+      <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarEquipamento(${ob.id},${c.id})">＋ Adicionar</button>
     </div>`;
 }
 
@@ -2890,7 +2894,7 @@ function excluirEquipamento(id, obraId, cardId){
 
 function voltarParaInformacoes(cardId){
   abrirEditarCartao(cardId,'obras');
-  setTimeout(()=>trocarAbaObra(cardId,'informacoes'),0);
+  setTimeout(()=>trocarAbaObra(cardId,'senhas'),0);
 }
 
 /* ================= ORDENS DE SERVIÇO ================= */
