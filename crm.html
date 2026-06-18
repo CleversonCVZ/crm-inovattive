@@ -900,9 +900,11 @@ function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',b
    db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
 async function carregarConfigSupabase(){
   try{
-    const [fasesCrm, fasesProp, origens, funcoes, grupos, empresa] = await Promise.all([
+    const [fasesCrm, fasesProp, fasesObra, fasesOS, origens, funcoes, grupos, empresa] = await Promise.all([
       sb.from('fases_crm').select('*').order('ordem'),
       sb.from('fases_proposta').select('*').order('ordem'),
+      sb.from('fases_obra').select('*').order('ordem'),
+      sb.from('fases_os').select('*').order('ordem'),
       sb.from('origens').select('*').order('id'),
       sb.from('funcoes').select('*').order('id'),
       sb.from('grupos').select('*').order('id'),
@@ -912,6 +914,10 @@ async function carregarConfigSupabase(){
       db.fases = fasesCrm.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(fasesProp.data && fasesProp.data.length)
       db.fasesProposta = fasesProp.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(fasesObra.data && fasesObra.data.length)
+      db.fasesObra = fasesObra.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(fasesOS.data && fasesOS.data.length)
+      db.fasesOS = fasesOS.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(origens.data && origens.data.length)
       db.origens = origens.data.map(o=>({id:o.id, nome:o.nome}));
     if(funcoes.data && funcoes.data.length)
@@ -1052,6 +1058,8 @@ function syncConfigSupabase(){
   _syncConfigTimer = setTimeout(()=>{
     sincronizarTabela('fases_crm', db.fases, f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('fases_proposta', db.fasesProposta, f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('fases_obra', db.fasesObra||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
     sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[]}));
