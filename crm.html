@@ -2558,31 +2558,29 @@ function abaObrasCartaoHTML(c){
       <option>Gerente de Obra</option><option>Síndico</option><option>Administrador</option>
     </datalist>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;overflow:hidden">
 
       <!-- COLUNA ESQUERDA: Dados da Obra -->
-      <div>
+      <div style="min-width:0">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Dados da Obra</div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
-          <div style="font-weight:700;font-size:14px;margin-bottom:4px">${ob.nome}</div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</div>
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ob.nome}">${ob.nome}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${resumoEnd(ob.endereco)||'<span style="color:#e53935">sem endereço cadastrado</span>'}</div>
           <button class="btn sm neutral" onclick="abrirObraModal(${ob.id},${c.clienteId},${c.id})" title="Editar dados desta obra">✏️ Editar obra</button>
         </div>
 
         ${osProjetos.length ? `
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Projetos Finalizados</div>
         ${osProjetos.map(os=>`
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px">
-            <div style="font-size:12px;font-weight:700;color:#5c6bc0;margin-bottom:8px">📋 ${os.numero} — ${os.titulo}</div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;min-width:0">
+            <div style="font-size:11px;font-weight:700;color:#5c6bc0;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${os.numero} — ${os.titulo}">📋 ${os.numero} — ${os.titulo}</div>
             ${(os.arquivosProjeto||[]).map(a=>{
               const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
               const ps=a.path.replace(/'/g,"\\'"), ns=(a.nome||'').replace(/'/g,"\\'");
-              return `<div class="os-arq-row">
-                <span>${isPdf?'📄':'📐'}</span>
-                ${isPdf
-                  ? `<span class="os-arq-nome" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" title="Clique para visualizar" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
-                  : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
-                <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
+              return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-top:1px solid var(--border);min-width:0">
+                <span style="flex-shrink:0">${isPdf?'📄':'📐'}</span>
+                <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${isPdf?'cursor:pointer;color:var(--blue-dark);text-decoration:underline':''}" title="${a.nome}" ${isPdf?`onclick="baixarArquivoOS('${ps}','${ns}')"`:''}>${a.nome}</span>
+                <button class="btn sm neutral" style="flex-shrink:0" title="${isPdf?'Visualizar':'Baixar'} ${a.nome}" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁':'⬇'}</button>
               </div>`;
             }).join('')}
           </div>`).join('')}
@@ -2590,7 +2588,7 @@ function abaObrasCartaoHTML(c){
       </div>
 
       <!-- COLUNA DIREITA: Contatos da Obra -->
-      <div>
+      <div style="min-width:0">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos da Obra</div>
 
         ${cts.length ? `
