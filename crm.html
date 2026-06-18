@@ -2792,7 +2792,7 @@ function abrirVerOS(osId, cardId){
       ${isPdf
         ? `<span class="os-arq-nome" title="Clique para visualizar" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
         : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
-      <button class="btn sm neutral" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁 Visualizar':'⬇ Baixar'}</button>
+      <button class="btn sm neutral" title="${isPdf?'Visualizar':'Baixar'} ${a.nome}" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁':'⬇'}</button>
       ${!os.fechada?`<button class="icon-btn del" onclick="excluirArquivoOSProjeto(${os.id},${i},'${tipo}',${cardId})">🗑</button>`:''}
     </div>`;
   }).join('') || '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Nenhum arquivo.</div>';
