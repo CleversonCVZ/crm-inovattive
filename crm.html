@@ -2693,6 +2693,7 @@ function abaObrasCartaoHTML(c, abaAtiva){
     {id:'senhas',      icon:'🔑', label:'Senhas'},
     {id:'compras',     icon:'🛒', label:'Compras'},
     {id:'custoMobra',  icon:'👷', label:'Custo M.Obra'},
+    {id:'outrosCustos', icon:'💰', label:'Outros Custos'},
   ];
   return `
     <datalist id="dl-funcoes-obra">
@@ -2738,6 +2739,7 @@ function abaObraConteudo(c, ob, aba){
   if(aba==='senhas')      return abaObraSenhas(c, ob);
   if(aba==='compras')     return abaObraCompras(c, ob);
   if(aba==='custoMobra')  return abaObraCustoMobra(c, ob);
+  if(aba==='outrosCustos') return abaObraOutrosCustos(c, ob);
   return '';
 }
 
@@ -3131,6 +3133,12 @@ function abaObraCustoMobra(c, ob){
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Custo Mão de Obra</div>
     <div class="empty">Em breve — lançamento e controle de custos de mão de obra desta obra.</div>`;
+}
+
+function abaObraOutrosCustos(c, ob){
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Outros Custos</div>
+    <div class="empty">Em breve — lançamento de outros custos avulsos desta obra.</div>`;
 }
 
 /* ================= COMPRAS DA OBRA ================= */
