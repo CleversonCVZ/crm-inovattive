@@ -1051,7 +1051,8 @@ async function carregarDadosSupabase(){
       }));
     if(obraEquipamentos.data)
       db.obraEquipamentos = obraEquipamentos.data.map(e=>({
-        id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||''
+        id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
+        arquivos: Array.isArray(e.arquivos) ? e.arquivos : []
       }));
     save();
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1129,7 +1130,8 @@ function syncDadosSupabase(){
       id:c.id, obra_id:c.obraId, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
     }));
     await sincronizarTabela('obra_equipamentos', db.obraEquipamentos||[], e=>({
-      id:e.id, obra_id:e.obraId, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||''
+      id:e.id, obra_id:e.obraId, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
+      arquivos: e.arquivos||[]
     }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
@@ -2849,6 +2851,15 @@ function adicionarEquipamento(obraId, cardId){
 function editarEquipamento(id, obraId, cardId){
   const e = db.obraEquipamentos.find(x=>x.id===id);
   if(!e){ alert('Equipamento não encontrado.'); return; }
+  const arqs = e.arquivos||[];
+  const arqsHtml = arqs.length ? arqs.map((a,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+      <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${a.nome}">📎 ${a.nome}</span>
+      <button class="btn sm neutral" title="Baixar" onclick="baixarEquipArquivo('${a.path.replace(/'/g,"\\'")}','${a.nome.replace(/'/g,"\\'")}')">⬇</button>
+      <button class="btn sm neutral" title="Remover" onclick="removerEquipArquivo(${id},${obraId},${cardId},${i})">🗑</button>
+    </div>`).join('')
+  : `<div style="font-size:12px;color:var(--muted);padding:6px 0">Nenhum arquivo anexado.</div>`;
+
   abrirModal(`
     <h3>Editar Equipamento</h3>
     <label>Equipamento</label>
@@ -2863,7 +2874,20 @@ function editarEquipamento(id, obraId, cardId){
     </div>
     <label>Observação</label>
     <input id="ee-obs" value="${(e.observacao||'').replace(/"/g,'&quot;')}" placeholder="Observação (opcional)">
-    <div class="actions">
+
+    <div style="margin-top:18px;padding-top:14px;border-top:2px solid var(--border)">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Arquivos de configuração / backup</div>
+      ${arqsHtml}
+      <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <label class="btn sm neutral" style="cursor:pointer;margin:0">
+          📎 Anexar arquivo
+          <input type="file" style="display:none" onchange="uploadEquipArquivo(${id},${obraId},${cardId},this)">
+        </label>
+        <span id="equip-upload-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:18px">
       <button class="btn neutral" onclick="voltarParaInformacoes(${cardId})">← Voltar</button>
       <button class="btn primary" onclick="salvarEdicaoEquipamento(${id},${obraId},${cardId})">Salvar</button>
     </div>`);
@@ -2890,6 +2914,45 @@ function excluirEquipamento(id, obraId, cardId){
   registrarLog('excluir','obra_equipamento',id,`Equipamento removido da obra "${ob?.nome||'?'}": ${e?.equipamento||'?'}`);
   db.obraEquipamentos = db.obraEquipamentos.filter(x=>x.id!==id);
   save(); voltarParaInformacoes(cardId);
+}
+
+async function baixarEquipArquivo(path, nome){
+  await _baixarArquivoBucket('equip-arquivos', path, nome);
+}
+
+async function uploadEquipArquivo(equipId, obraId, cardId, input){
+  const file = input.files?.[0];
+  if(!file) return;
+  const e = db.obraEquipamentos.find(x=>x.id===equipId);
+  if(!e){ alert('Equipamento não encontrado.'); return; }
+  const statusEl = document.getElementById('equip-upload-status');
+  if(statusEl) statusEl.textContent = 'Enviando…';
+  const ext  = file.name.includes('.') ? file.name.split('.').pop() : '';
+  const safe = file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path = `${obraId}/${equipId}/${Date.now()}_${safe}`;
+  const ok = await uploadOSArquivoXHR('equip-arquivos', path, file, pct=>{
+    if(statusEl) statusEl.textContent = `Enviando… ${pct}%`;
+  });
+  if(!ok){ if(statusEl) statusEl.textContent = 'Erro no envio.'; return; }
+  if(!Array.isArray(e.arquivos)) e.arquivos=[];
+  e.arquivos.push({nome: file.name, path});
+  registrarLog('upload','obra_equipamento',equipId,`Arquivo "${file.name}" adicionado ao equipamento "${e.equipamento}"`);
+  save();
+  if(statusEl) statusEl.textContent = '';
+  input.value='';
+  editarEquipamento(equipId, obraId, cardId);
+}
+
+function removerEquipArquivo(equipId, obraId, cardId, idx){
+  const e = db.obraEquipamentos.find(x=>x.id===equipId);
+  if(!e) return;
+  const arq = (e.arquivos||[])[idx];
+  if(!arq || !confirm(`Remover o arquivo "${arq.nome}"?`)) return;
+  sb.storage.from('equip-arquivos').remove([arq.path]);
+  e.arquivos.splice(idx,1);
+  registrarLog('remover','obra_equipamento',equipId,`Arquivo "${arq.nome}" removido do equipamento "${e.equipamento}"`);
+  save();
+  editarEquipamento(equipId, obraId, cardId);
 }
 
 function voltarParaInformacoes(cardId){
