@@ -217,23 +217,19 @@
   .user-menu button:hover{background:#f1f3f5}
 
   /* ===== Login ===== */
-  .login-bg{position:fixed;inset:0;display:flex;z-index:100}
-  .login-left{width:42%;background:#2a2a28;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 40px;gap:14px}
-  .login-left-logo{text-align:center}
-  .login-left-logo img{max-height:90px;max-width:210px;border-radius:10px}
-  .login-left-tagline{font-size:13px;color:#7a7a74;text-align:center;line-height:1.5;letter-spacing:.2px}
-  .login-right{flex:1;background:#fff;display:flex;align-items:center;justify-content:center;padding:48px 40px}
-  .login-box{width:100%;max-width:380px}
-  .login-box h2{font-size:22px;font-weight:800;color:#2a2a28;margin-bottom:4px}
-  .login-box .login-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+  .login-bg{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#7B2D2D;z-index:100}
+  .login-box{background:#fff;border-radius:16px;padding:36px 32px;width:380px;max-width:92vw;box-shadow:0 12px 48px rgba(0,0,0,.35)}
+  .login-box .login-logo{text-align:center;margin-bottom:20px}
+  .login-box .login-logo img{max-height:80px;max-width:200px;border-radius:8px;display:block;margin:0 auto}
+  .login-box h2{font-size:20px;font-weight:800;color:#2a2a28;margin-bottom:4px;text-align:center}
+  .login-box .login-sub{font-size:13px;color:var(--muted);margin-bottom:20px;text-align:center}
   .login-box label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:14px 0 4px;text-transform:uppercase}
   .login-box input[type=text],.login-box input:not([type]),.login-box input[type=password],.login-box input[type=email]{width:100%;padding:11px 13px;border:1px solid var(--border);border-radius:8px;font-size:15px}
   .login-box .lembrar{display:flex;align-items:center;gap:8px;text-transform:none;font-size:13.5px;color:var(--text);margin-top:14px;cursor:pointer}
-  .login-box .lembrar input{width:auto;accent-color:#7B2D2D}
-  .login-box .btn.primary{background:#7B2D2D;border-color:#7B2D2D;color:#fff}
-  .login-box .btn.primary:hover{background:#5e2020;border-color:#5e2020}
+  .login-box .lembrar input{width:auto;accent-color:#2a2a28}
+  .login-box .btn.primary{background:#2a2a28;border-color:#2a2a28;color:#fff}
+  .login-box .btn.primary:hover{background:#111;border-color:#111}
   .lg-erro{color:var(--red);font-size:13px;font-weight:600;margin-top:8px;min-height:18px}
-  @media(max-width:640px){.login-bg{flex-direction:column}.login-left{width:100%;padding:28px 20px;gap:10px}.login-right{padding:28px 20px}}
 
   /* ===== Permissões ===== */
   .perm-box{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#f8f9fa}
@@ -626,31 +622,24 @@
 
 <!-- LOGIN -->
 <div class="login-bg" id="login-bg" style="display:none">
-  <!-- Painel esquerdo: marca -->
-  <div class="login-left">
-    <div class="login-left-logo" id="login-logo">
-      <svg width="64" height="64" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 14px">
-        <rect width="64" height="64" rx="14" fill="#7B2D2D"/>
+  <div class="login-box">
+    <div class="login-logo" id="login-logo">
+      <svg width="56" height="56" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 10px">
+        <rect width="64" height="64" rx="14" fill="#2a2a28"/>
         <path d="M12 34L32 16L52 34V52H40V40H24V52H12V34Z" fill="white"/>
       </svg>
-      <div style="font-size:20px;font-weight:800;color:#fff;letter-spacing:.6px">INOVATTIVE</div>
-      <div style="font-size:11px;font-weight:400;color:#7a7a74;letter-spacing:3px;margin-top:3px">HOME</div>
+      <div style="font-size:17px;font-weight:800;color:#2a2a28;letter-spacing:.6px">INOVATTIVE</div>
+      <div style="font-size:10px;color:#888;letter-spacing:3px;margin-top:2px">HOME</div>
     </div>
-    <p class="login-left-tagline">CRM + Controle de Obras</p>
-  </div>
-  <!-- Painel direito: formulário -->
-  <div class="login-right">
-    <div class="login-box">
-      <h2>Bem-vindo</h2>
-      <p class="login-sub">Acesse com seu e-mail e senha</p>
-      <label>E-mail</label>
-      <input id="lg-login" type="email" autocomplete="username">
-      <label>Senha</label>
-      <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
-      <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
-      <div id="lg-erro" class="lg-erro"></div>
-      <button class="btn primary" id="lg-btn" style="width:100%;margin-top:16px;padding:12px;font-size:15px" onclick="fazerLogin()">Entrar</button>
-    </div>
+    <h2>Bem-vindo</h2>
+    <p class="login-sub">Acesse com seu e-mail e senha</p>
+    <label>E-mail</label>
+    <input id="lg-login" type="email" autocomplete="username">
+    <label>Senha</label>
+    <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
+    <div id="lg-erro" class="lg-erro"></div>
+    <button class="btn primary" id="lg-btn" style="width:100%;margin-top:16px;padding:12px;font-size:15px" onclick="fazerLogin()">Entrar</button>
   </div>
 </div>
 
@@ -1762,8 +1751,8 @@ function atualizarMarca(){
     (e.logo?`<img src="${e.logo}" alt="logo">`:'') + (nome?`<span>${nome}</span>`:'');
   const elLogin = document.getElementById('login-logo');
   if(elLogin) elLogin.innerHTML = e.logo
-    ? `<img src="${e.logo}" alt="logo" style="max-height:90px;max-width:210px;border-radius:10px;display:block;margin:0 auto">${nome?`<div style="font-size:15px;font-weight:700;color:#fff;text-align:center;margin-top:12px">${nome}</div>`:''}`
-    : `<svg width="64" height="64" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 14px"><rect width="64" height="64" rx="14" fill="#7B2D2D"/><path d="M12 34L32 16L52 34V52H40V40H24V52H12V34Z" fill="white"/></svg><div style="font-size:20px;font-weight:800;color:#fff;letter-spacing:.6px">${nome||'INOVATTIVE'}</div>${!nome?'<div style="font-size:11px;color:#7a7a74;letter-spacing:3px;margin-top:3px">HOME</div>':''}`;
+    ? `<img src="${e.logo}" alt="logo" style="max-height:80px;max-width:200px;border-radius:8px;display:block;margin:0 auto">${nome?`<div style="font-size:15px;font-weight:700;color:#2a2a28;text-align:center;margin-top:10px">${nome}</div>`:''}`
+    : `<svg width="56" height="56" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 10px"><rect width="64" height="64" rx="14" fill="#2a2a28"/><path d="M12 34L32 16L52 34V52H40V40H24V52H12V34Z" fill="white"/></svg><div style="font-size:17px;font-weight:800;color:#2a2a28;letter-spacing:.6px">${nome||'INOVATTIVE'}</div>${!nome?'<div style="font-size:10px;color:#888;letter-spacing:3px;margin-top:2px">HOME</div>':''}`;
 }
 
 /* ===== Configurações do próprio usuário ===== */
