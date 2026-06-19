@@ -1089,12 +1089,19 @@ async function sincronizarTabela(tabela, linhas, mapear){
       const {error:errUp} = await sb.from(tabela).upsert(rows);
       if(errUp){ console.error(`Erro ao sincronizar ${tabela}:`, errUp); return; }
     }
-    const ids = rows.map(r=>r.id);
-    const {error:errDel} = ids.length
-      ? await sb.from(tabela).delete().not('id','in', `(${ids.join(',')})`)
-      : await sb.from(tabela).delete().neq('id', -1); // lista local vazia: remove tudo
-    if(errDel) console.error(`Erro ao limpar ${tabela}:`, errDel);
+    // NOTA: deleções são feitas explicitamente em cada função de exclusão.
+    // Nunca deletamos "o que não está na memória local" — isso causaria
+    // perda de dados de outros usuários logados simultaneamente.
   }catch(e){ console.error(`Falha ao sincronizar ${tabela}:`, e); }
+}
+
+/* Exclui um registro do Supabase pelo id. Chamado explicitamente
+   antes de remover do array local em cada função de exclusão. */
+async function excluirDoSupabase(tabela, id){
+  try{
+    const {error} = await sb.from(tabela).delete().eq('id', id);
+    if(error) console.error(`Erro ao excluir de ${tabela} id=${id}:`, error);
+  }catch(e){ console.error(`Falha ao excluir de ${tabela}:`, e); }
 }
 
 /* Sincroniza as entidades de configuração com o Supabase (em segundo plano,
@@ -1918,6 +1925,7 @@ function renderFuncoes(){
       const emUso=db.usuarios.filter(u=>(u.funcao||'').toLowerCase()===f.nome.toLowerCase()).length;
       if(!confirm(emUso?`A função "${f.nome}" está em uso por ${emUso} usuário(s) — eles mantêm o texto, mas a sugestão some. Excluir?`:`Excluir a função "${f.nome}"?`)) return;
       registrarLog('excluir', 'funcao', f.id, `Função excluída: "${f.nome}"`);
+      excluirDoSupabase('funcoes', f.id);
       db.funcoes=db.funcoes.filter(x=>x.id!==f.id);
       save(); renderAll();
     };
@@ -1956,6 +1964,7 @@ function renderOrigens(){
       const emUso=db.cards.filter(c=>c.origemId===o.id).length;
       if(!confirm(emUso?`A origem "${o.nome}" está em uso em ${emUso} CRM(s) — eles ficarão sem origem. Excluir?`:`Excluir a origem "${o.nome}"?`)) return;
       registrarLog('excluir', 'origem', o.id, `Origem excluída: "${o.nome}"`);
+      excluirDoSupabase('origens', o.id);
       db.cards.forEach(c=>{ if(c.origemId===o.id) c.origemId=null; });
       db.origens=db.origens.filter(x=>x.id!==o.id);
       save(); renderAll();
@@ -2291,6 +2300,7 @@ function excluirFase(id){
   }
   registrarLog('excluir', 'fase_crm', id, `Fase CRM excluída: "${f?f.nome:id}"`);
   db.fases = db.fases.filter(f=>f.id!==id);
+  excluirDoSupabase('fases_crm', id);
   save(); renderAll();
 }
 
@@ -3370,6 +3380,9 @@ function salvarEdicaoCompra(compraId, cardId){
 
 function excluirCompra(compraId, cardId){
   if(!confirm('Excluir este pedido de compra e todas as NFs vinculadas?')) return;
+  const nfsVinculadas = (db.obraNfs||[]).filter(x=>x.compraId===compraId);
+  nfsVinculadas.forEach(nf => excluirDoSupabase('obra_nfs', nf.id));
+  excluirDoSupabase('obra_compras', compraId);
   db.obraCompras = (db.obraCompras||[]).filter(x=>x.id!==compraId);
   db.obraNfs     = (db.obraNfs||[]).filter(x=>x.compraId!==compraId);
   save();
@@ -3507,6 +3520,7 @@ function salvarEdicaoNf(nfId, compraId, cardId){
 
 function excluirNf(nfId, compraId, cardId){
   if(!confirm('Excluir esta nota fiscal?')) return;
+  excluirDoSupabase('obra_nfs', nfId);
   db.obraNfs = (db.obraNfs||[]).filter(x=>x.id!==nfId);
   // se não sobrar NF, volta p/ pendente
   const cpNfs = (db.obraNfs||[]).filter(x=>x.compraId===compraId);
@@ -3637,6 +3651,7 @@ function excluirEquipamento(id, obraId, cardId){
   const ob = db.obras.find(x=>x.id===obraId);
   if(!confirm(`Remover o equipamento "${e?.equipamento||'?'}"?`)) return;
   registrarLog('excluir','obra_equipamento',id,`Equipamento removido da obra "${ob?.nome||'?'}": ${e?.equipamento||'?'}`);
+  excluirDoSupabase('obra_equipamentos', id);
   db.obraEquipamentos = db.obraEquipamentos.filter(x=>x.id!==id);
   save(); voltarParaInformacoes(cardId);
 }
@@ -4459,6 +4474,7 @@ function excluirOS(osId, cardId){
   // remover arquivos de projeto do storage
   const pathsArq = [...(os.arquivosArquiteto||[]), ...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
   if(pathsArq.length) sb.storage.from('os-arquivos').remove(pathsArq);
+  excluirDoSupabase('ordens_servico', osId);
   db.ordensServico = db.ordensServico.filter(x=>x.id!==osId);
   registrarLog('excluir', 'os', osId, `O.S. excluída: ${os.numero}`);
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
@@ -4903,6 +4919,8 @@ async function excluirProposta(id){
   if(!confirm(`Excluir ${p.aditivo?'o aditivo':'a proposta'} ${p.numero} e seus arquivos?`)) return;
   registrarLog('excluir', 'proposta', id, `Proposta${p.aditivo?' (aditivo)':''} excluída: ${p.numero} — status: ${p.status}`);
   for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
+  await sb.from('proposta_arquivos').delete().eq('proposta_id', id);
+  await excluirDoSupabase('propostas', id);
   const aba=p.status==='aprovada'?'aprovada':'emitidas';
   db.propostas=db.propostas.filter(x=>x.id!==id);
   recalcValorCartao(p.cardId);
@@ -5267,7 +5285,14 @@ async function excluirCartao(id){
     if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
     const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
     if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+    await excluirDoSupabase('ordens_servico', os.id);
   }
+  for(const p of props){
+    await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
+    await excluirDoSupabase('propostas', p.id);
+  }
+  await sb.from('card_historico').delete().eq('card_id', id);
+  await excluirDoSupabase('cards', id);
   db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
@@ -5525,6 +5550,7 @@ function excluirContatoObra(id, obraId, cardId){
   const o  = db.obras.find(x=>x.id===obraId);
   if(!confirm(`Remover o contato "${ct?.nome||'?'}"?`)) return;
   registrarLog('excluir','obra_contato',id,`Contato removido da obra "${o?.nome||'?'}": ${ct?.nome||'?'}`);
+  excluirDoSupabase('obra_contatos', id);
   db.obraContatos = db.obraContatos.filter(x=>x.id!==id);
   save(); voltarParaContatos(cardId);
 }
@@ -5579,6 +5605,7 @@ function excluirObra(id, clienteId, returnCardId=null){
   const o=db.obras.find(x=>x.id===id);
   if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
   registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
+  excluirDoSupabase('obras', id);
   db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
   db.obras=db.obras.filter(x=>x.id!==id);
   save(); renderAll();
@@ -5600,6 +5627,10 @@ async function excluirCliente(id){
     const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
     if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
   }
+  const ossIds = ossDoCliente.map(o=>o.id);
+  for(const osId of ossIds) await excluirDoSupabase('ordens_servico', osId);
+  for(const obraId of obraIds) await excluirDoSupabase('obras', obraId);
+  await excluirDoSupabase('clientes', id);
   db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
@@ -5802,6 +5833,7 @@ function excluirGrupo(id){
   if(qtd>0){ alert(`Este grupo tem ${qtd} usuário(s). Mova-os para outro grupo antes de excluir.`); return; }
   if(!confirm(`Excluir o grupo "${g.nome}"?`)) return;
   registrarLog('excluir', 'grupo', id, `Grupo excluído: "${g.nome}"`);
+  excluirDoSupabase('grupos', id);
   db.grupos=db.grupos.filter(x=>x.id!==id);
   save(); fecharModal(); renderAll();
 }
