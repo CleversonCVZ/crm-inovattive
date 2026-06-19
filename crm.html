@@ -1187,11 +1187,11 @@ function syncDadosSupabase(){
       id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'', endereco:c.endereco||{}
     }));
     await sincronizarTabela('obras', db.obras, o=>({
-      id:o.id, cliente_id:o.clienteId, nome:o.nome, endereco:o.endereco||{}
+      id:o.id, cliente_id:Number(o.clienteId)||null, nome:o.nome, endereco:o.endereco||{}
     }));
     await sincronizarTabela('cards', db.cards, c=>({
-      id:c.id, num:c.num, cliente_id:c.clienteId, obra_id:c.obraId||null, origem_id:c.origemId||null,
-      fase_id:c.faseId, responsavel:c.responsavel||'', agenda:c.agenda||null,
+      id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null, origem_id:Number(c.origemId)||null,
+      fase_id:Number(c.faseId)||null, responsavel:c.responsavel||'', agenda:c.agenda||null,
       valor:c.valor||0, perdido:!!c.perdido, concluido:!!c.concluido
     }));
     await sincronizarHistoricos();
@@ -1205,29 +1205,29 @@ function syncDadosSupabase(){
     await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
     await sincronizarTabela('obra_contatos', db.obraContatos||[], c=>({
-      id:c.id, obra_id:c.obraId, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
+      id:c.id, obra_id:Number(c.obraId)||null, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
     }));
     await sincronizarTabela('obra_equipamentos', db.obraEquipamentos||[], e=>({
-      id:e.id, obra_id:e.obraId, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
+      id:e.id, obra_id:Number(e.obraId)||null, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
       arquivos: e.arquivos||[]
     }));
     await sincronizarTabela('obra_compras', db.obraCompras||[], c=>({
-      id:c.id, obra_id:c.obraId, card_id:c.cardId,
+      id:c.id, obra_id:Number(c.obraId)||null, card_id:Number(c.cardId)||null,
       fornecedor:c.fornecedor||'', numero_pedido:c.numeroPedido||'',
-      data_pedido:c.dataPedido||null, valor_pedido:c.valorPedido!=null?c.valorPedido:null,
+      data_pedido:toISO(c.dataPedido)||null, valor_pedido:c.valorPedido!=null?c.valorPedido:null,
       descricao:c.descricao||'', status:c.status||'pendente',
       pdf_path:c.pdfPath||'', pdf_nome:c.pdfNome||''
     }));
     await sincronizarTabela('obra_nfs', db.obraNfs||[], n=>({
-      id:n.id, compra_id:n.compraId, obra_id:n.obraId,
+      id:n.id, compra_id:Number(n.compraId)||null, obra_id:Number(n.obraId)||null,
       numero_nf:n.numeroNf||'', fornecedor:n.fornecedor||'',
-      valor_nf:n.valorNf!=null?n.valorNf:null, data_nf:n.dataNf||null,
+      valor_nf:n.valorNf!=null?n.valorNf:null, data_nf:toISO(n.dataNf)||null,
       pdf_path:n.pdfPath||'', pdf_nome:n.pdfNome||''
     }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
-      id:o.id, numero:o.numero, card_id:o.cardId, cliente_id:o.clienteId, obra_id:o.obraId||null,
-      tipo:o.tipo||'avaliacao', fase_id:o.faseId||null, titulo:o.titulo||'',
-      responsavel_id:o.responsavelId||null,
+      id:o.id, numero:o.numero, card_id:Number(o.cardId)||null, cliente_id:Number(o.clienteId)||null, obra_id:Number(o.obraId)||null,
+      tipo:o.tipo||'avaliacao', fase_id:Number(o.faseId)||null, titulo:o.titulo||'',
+      responsavel_id:Number(o.responsavelId)||null,
       data_agend:  o.dataAgend||null,
       data_inicio: o.dataInicio||null,
       data_termino:o.dataTermino||null,
@@ -1241,7 +1241,7 @@ function syncDadosSupabase(){
       id:c.id, nome:c.nome, ordem:c.ordem||0
     }));
     await sincronizarTabela('download_arquivos', db.downloadArquivos||[], a=>({
-      id:a.id, categoria_id:a.categoriaId, nome:a.nome, descricao:a.descricao||'',
+      id:a.id, categoria_id:Number(a.categoriaId)||null, nome:a.nome, descricao:a.descricao||'',
       storage_path:a.storagePath, tamanho:Number(a.tamanho)||0,
       criado_em:a.criadoEm||new Date().toISOString(), criado_por:a.criadoPor||''
     }));
