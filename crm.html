@@ -1962,21 +1962,21 @@ function renderOrigens(){
     };
   });
 }
-function novaOrigem(){
+async function novaOrigem(){
   const nome=prompt('Nome da nova origem:');
   if(!nome || !nome.trim()) return;
   if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
-  const no={id:nextId(db.origens), nome:nome.trim()};
+  const no={id: await proximoIdSeguro('origens', db.origens), nome:nome.trim()};
   db.origens.push(no);
   registrarLog('criar', 'origem', no.id, `Nova origem do lead criada: "${no.nome}"`);
   save(); renderAll();
 }
 
-function novaFuncao(){
+async function novaFuncao(){
   const nome=prompt('Nome da nova função:');
   if(!nome || !nome.trim()) return;
   if(db.funcoes.some(f=>f.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa função já existe.'); return; }
-  const nf={id:nextId(db.funcoes), nome:nome.trim()};
+  const nf={id: await proximoIdSeguro('funcoes', db.funcoes), nome:nome.trim()};
   db.funcoes.push(nf);
   registrarLog('criar', 'funcao', nf.id, `Nova função criada: "${nf.nome}"`);
   save(); renderAll();
@@ -2270,9 +2270,9 @@ function renderFases(){
   });
 }
 
-function novaFase(){
+async function novaFase(){
   const ordemMax = db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
-  const nf = {id:nextId(db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  const nf = {id: await proximoIdSeguro('fases_crm', db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fases.push(nf);
   registrarLog('criar', 'fase_crm', nf.id, `Nova fase CRM criada: "${nf.nome}"`);
   save(); renderAll();
@@ -3321,7 +3321,7 @@ async function salvarNovaCompra(cardId, obraId){
   if(!forn.trim()){ alert('Preencha o fornecedor.'); return; }
   if(!db.obraCompras) db.obraCompras=[];
   const novo = {
-    id: nextId(db.obraCompras), obraId, cardId,
+    id: await proximoIdSeguro('obra_compras', db.obraCompras), obraId, cardId,
     fornecedor:forn.trim(), numeroPedido:num.trim(),
     dataPedido:data||null, valorPedido:valor>0?valor:null,
     descricao:desc.trim(), status:'pendente',
@@ -3461,7 +3461,7 @@ async function salvarNovaNf(cardId, obraId){
   const input  = document.getElementById('nf-pdf-'+cardId);
   if(!db.obraNfs) db.obraNfs=[];
   const nova = {
-    id: nextId(db.obraNfs), compraId, obraId,
+    id: await proximoIdSeguro('obra_nfs', db.obraNfs), compraId, obraId,
     numeroNf:numNf.trim(), fornecedor:forn.trim(),
     valorNf:valor>0?valor:null, dataNf:data||null,
     pdfPath:'', pdfNome:''
@@ -3542,7 +3542,7 @@ async function adicionarEquipamento(obraId, cardId){
   const files     = Array.from(document.getElementById('eq-novo-arquivo')?.files||[]);
   const ob = db.obras.find(x=>x.id===obraId);
   if(!db.obraEquipamentos) db.obraEquipamentos=[];
-  const novo = {id: nextId(db.obraEquipamentos), obraId, equipamento, login, senha, observacao, arquivos:[]};
+  const novo = {id: await proximoIdSeguro('obra_equipamentos', db.obraEquipamentos), obraId, equipamento, login, senha, observacao, arquivos:[]};
   db.obraEquipamentos.push(novo);
   registrarLog('criar','obra_equipamento',novo.id,`Equipamento adicionado à obra "${ob?.nome||'?'}": ${equipamento}`);
   // upload de arquivos selecionados (se houver)
@@ -3795,7 +3795,7 @@ function abrirNovaOS(cardId){
     </div>`, 'cartao');
 }
 
-function salvarNovaOS(cardId){
+async function salvarNovaOS(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   const titulo = document.getElementById('nos-titulo').value.trim();
   if(!titulo){ alert('Informe o título da O.S.'); return; }
@@ -3813,7 +3813,7 @@ function salvarNovaOS(cardId){
   }
   const osDoCard = db.ordensServico.filter(o=>o.cardId===cardId);
   const os = {
-    id: nextId(db.ordensServico),
+    id: await proximoIdSeguro('ordens_servico', db.ordensServico),
     numero: osNumero(c.num, tipo, osDoCard),
     cardId, clienteId:c.clienteId, obraId:c.obraId,
     tipo, faseId, titulo, responsavelId:respId,
@@ -5060,9 +5060,9 @@ function renderPropFases(){
     };
   });
 }
-function novaFaseProposta(){
+async function novaFaseProposta(){
   const ordemMax=db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0);
-  const nf={id:nextId(db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  const nf={id: await proximoIdSeguro('fases_proposta', db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fasesProposta.push(nf);
   registrarLog('criar', 'fase_proposta', nf.id, `Nova fase da proposta criada: "${nf.nome}"`);
   save(); renderAll();
@@ -5123,10 +5123,10 @@ function renderObrasFases(){
     };
   });
 }
-function novaFaseObra(){
+async function novaFaseObra(){
   if(!db.fasesObra) db.fasesObra=[];
   const ordemMax=db.fasesObra.reduce((m,f)=>Math.max(m,f.ordem),0);
-  const nf={id:nextId(db.fasesObra), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  const nf={id: await proximoIdSeguro('fases_obra', db.fasesObra), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fasesObra.push(nf);
   registrarLog('criar','fase_obra',nf.id,`Nova fase da obra criada: "${nf.nome}"`);
   save(); renderAll();
@@ -5187,10 +5187,10 @@ function renderOSFases(){
     };
   });
 }
-function novaFaseOS(){
+async function novaFaseOS(){
   if(!db.fasesOS) db.fasesOS=[];
   const ordemMax=db.fasesOS.reduce((m,f)=>Math.max(m,f.ordem),0);
-  const nf={id:nextId(db.fasesOS), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  const nf={id: await proximoIdSeguro('fases_os', db.fasesOS), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fasesOS.push(nf);
   registrarLog('criar','fase_os',nf.id,`Nova fase da O.S. criada: "${nf.nome}"`);
   save(); renderAll();
@@ -5470,14 +5470,14 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
 
 
 
-function adicionarContatoObra(obraId, cardId){
+async function adicionarContatoObra(obraId, cardId){
   const nome = (document.getElementById('nc-nome')?.value||'').trim();
   if(!nome){ alert('Informe o nome do contato.'); return; }
   const funcao = (document.getElementById('nc-funcao')?.value||'').trim();
   const tel    = (document.getElementById('nc-tel')?.value||'').trim();
   const o = db.obras.find(x=>x.id===obraId);
   if(!db.obraContatos) db.obraContatos=[];
-  const novo = {id: nextId(db.obraContatos), obraId, nome, funcao, tel};
+  const novo = {id: await proximoIdSeguro('obra_contatos', db.obraContatos), obraId, nome, funcao, tel};
   db.obraContatos.push(novo);
   registrarLog('criar','obra_contato',novo.id,`Contato adicionado à obra "${o?.nome||'?'}": ${nome}${funcao?' ('+funcao+')':''}`);
   save(); voltarParaContatos(cardId);
@@ -5774,7 +5774,7 @@ function abrirEditarGrupo(id){
     </div>`);
 }
 
-function salvarGrupo(id){
+async function salvarGrupo(id){
   const nome=document.getElementById('g-nome').value.trim();
   if(!nome){ alert('Informe o nome do grupo.'); return; }
   if(db.grupos.some(g=>g.nome.toLowerCase()===nome.toLowerCase() && g.id!==id)){ alert('Já existe um grupo com esse nome.'); return; }
@@ -5786,7 +5786,7 @@ function salvarGrupo(id){
     if(!g.admin){ g.telas=telas; g.recursos=recursos; }
     registrarLog('editar', 'grupo', id, `Grupo editado: "${nome}"`);
   } else {
-    const ng={id:nextId(db.grupos), nome, admin:false, telas, recursos};
+    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos};
     db.grupos.push(ng);
     registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
