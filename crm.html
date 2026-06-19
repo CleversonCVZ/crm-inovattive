@@ -213,6 +213,24 @@
   .gear-menu button:hover{background:#f1f3f5}
   .gear-menu hr{border:none;border-top:1px solid var(--border);margin:5px 8px}
 
+  /* ===== Downloads ===== */
+  .dl-layout{display:grid;grid-template-columns:220px 1fr;gap:0;height:calc(100vh - 130px);overflow:hidden}
+  .dl-cats{border-right:1px solid var(--border);overflow-y:auto;padding:10px 0}
+  .dl-cats .dl-cat-item{display:flex;align-items:center;gap:6px;padding:10px 16px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text);border-radius:0;transition:background .15s;user-select:none}
+  .dl-cats .dl-cat-item:hover{background:#f1f3f5}
+  .dl-cats .dl-cat-item.ativa{background:var(--blue-light);color:var(--blue-dark)}
+  .dl-cats .dl-cat-item .dl-cat-acoes{margin-left:auto;display:flex;gap:2px;opacity:0}
+  .dl-cats .dl-cat-item:hover .dl-cat-acoes{opacity:1}
+  .dl-files{overflow-y:auto;padding:20px}
+  .dl-file-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px;background:#fff}
+  .dl-file-info{flex:1;min-width:0}
+  .dl-file-info b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl-file-info span{font-size:12px;color:var(--muted)}
+  .dl-file-acoes{display:flex;gap:6px;flex-shrink:0}
+  .dl-upload-area{border:2px dashed var(--border);border-radius:10px;padding:20px;text-align:center;color:var(--muted);font-size:13px;margin-bottom:16px;cursor:pointer;transition:border-color .2s}
+  .dl-upload-area:hover{border-color:var(--blue)}
+  .dl-bloqueado{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:4px}
+
   /* ===== Menu do usuário (nome no canto superior direito) ===== */
   .user-wrap{position:relative}
   .user-btn{border:none;background:none;font-size:13px;color:var(--muted);white-space:nowrap;cursor:pointer;padding:4px 8px;border-radius:8px;font-family:inherit}
@@ -284,6 +302,7 @@
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
       <hr>
+      <button id="gm-downloads" onclick="irParaView('downloads')">📥 Downloads</button>
       <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
   </div>
@@ -562,6 +581,19 @@
     <div id="audit-total"></div>
   </div>
 
+  <!-- DOWNLOADS -->
+  <div class="view" id="view-downloads">
+    <div class="bar">
+      <h2>📥 Downloads</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btn-nova-cat-dl" onclick="abrirNovaCatDl()" style="display:none">+ Nova Categoria</button>
+    </div>
+    <div class="dl-layout">
+      <div class="dl-cats" id="dl-cats"><div style="color:var(--muted);padding:20px;font-size:13px">Nenhuma categoria cadastrada.</div></div>
+      <div class="dl-files" id="dl-files"><div style="color:var(--muted);padding:20px;font-size:13px">Selecione uma categoria à esquerda.</div></div>
+    </div>
+  </div>
+
   <!-- GRUPOS DE ACESSO -->
   <div class="view" id="view-grupos">
     <div class="bar">
@@ -729,6 +761,8 @@ const SEED = {
     {id:5, nome:'Cancelada',     cor:'#c62828', ordem:5, tipo:'cancelada'}
   ],
   ordensServico: [],
+  downloadCategorias: [],
+  downloadArquivos: [],
   cards: [
     {id:1, num:7,  clienteId:1, obraId:1, faseId:9,  responsavel:'Cleverson', agenda:d(-11,'07:00'), valor:3500,
      historico:[{data:d(-12,'14:32'),texto:'Alterado a data para tornar a chamar em setembro.'},{data:d(-40,'09:15'),texto:'Cliente pediu para aguardar a obra avançar.'}]},
@@ -770,7 +804,8 @@ const TELAS = [
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
   {id:'gerais',      nome:'Configurações do Sistema'},
-  {id:'auditoria',   nome:'Auditoria & Logs'}
+  {id:'auditoria',   nome:'Auditoria & Logs'},
+  {id:'downloads',   nome:'Downloads'}
 ];
 
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
@@ -779,7 +814,8 @@ const RECURSOS = [
   {id:'aba-obras',     nome:'Cartão CRM — aba Obras'},
   {id:'aba-os',        nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
   {id:'hist-card-editar', nome:'Histórico do Cartão CRM — Editar e Excluir registros'},
-  {id:'hist-os-editar',   nome:'Histórico da O.S. — Editar e Excluir registros'}
+  {id:'hist-os-editar',   nome:'Histórico da O.S. — Editar e Excluir registros'},
+  {id:'downloads-admin',  nome:'Downloads — Gerenciar arquivos e categorias'}
 ];
 
 /* Módulos: cada um tem seu menu horizontal próprio (sempre começando pelo Painel) */
@@ -894,6 +930,8 @@ function load(){
                   {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
+  if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
+  if(!Array.isArray(db.downloadArquivos)) db.downloadArquivos = [];
   db.ordensServico.forEach(o=>{
     if(!('fechada' in o)) o.fechada = false;
     if(!Array.isArray(o.arquivosArquiteto)) o.arquivosArquiteto = [];
@@ -964,7 +1002,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -976,7 +1014,9 @@ async function carregarDadosSupabase(){
       sb.from('obra_contatos').select('*').order('id'),
       sb.from('obra_equipamentos').select('*').order('id'),
       sb.from('obra_compras').select('*').order('id'),
-      sb.from('obra_nfs').select('*').order('id')
+      sb.from('obra_nfs').select('*').order('id'),
+      sb.from('download_categorias').select('*').order('ordem'),
+      sb.from('download_arquivos').select('*').order('criado_em', {ascending:false})
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1075,6 +1115,14 @@ async function carregarDadosSupabase(){
         valorNf:n.valor_nf!=null ? Number(n.valor_nf) : null,
         dataNf:n.data_nf ? n.data_nf.slice(0,10) : '',
         pdfPath:n.pdf_path||'', pdfNome:n.pdf_nome||''
+      }));
+    if(dlCats.data)
+      db.downloadCategorias = dlCats.data.map(c=>({id:c.id, nome:c.nome, ordem:c.ordem||0}));
+    if(dlArqs.data)
+      db.downloadArquivos = dlArqs.data.map(a=>({
+        id:a.id, categoriaId:a.categoria_id, nome:a.nome,
+        descricao:a.descricao||'', storagePath:a.storage_path,
+        tamanho:Number(a.tamanho)||0, criadoEm:a.criado_em, criadoPor:a.criado_por||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1189,6 +1237,14 @@ function syncDadosSupabase(){
       arquivos_arquiteto: o.arquivosArquiteto||[],
       arquivos_projeto:   o.arquivosProjeto||[]
     }));
+    await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
+      id:c.id, nome:c.nome, ordem:c.ordem||0
+    }));
+    await sincronizarTabela('download_arquivos', db.downloadArquivos||[], a=>({
+      id:a.id, categoria_id:a.categoriaId, nome:a.nome, descricao:a.descricao||'',
+      storage_path:a.storagePath, tamanho:Number(a.tamanho)||0,
+      criado_em:a.criadoEm||new Date().toISOString(), criado_por:a.criadoPor||''
+    }));
   }, 800);
 }
 
@@ -1267,6 +1323,180 @@ function registrarLog(acao, entidade, entidade_id, descricao){
   }).then(({error})=>{ if(error) console.error('Erro ao registrar log:', error); });
 }
 
+/* ===== DOWNLOADS ===== */
+let _dlCatAtiva = null;
+
+function ehAdminDl(){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes('downloads-admin'); }
+function podeDownloadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes(`dl-cat-${catId}`); }
+
+function renderDownloads(){
+  const admin = ehAdminDl();
+  const btnNova = document.getElementById('btn-nova-cat-dl');
+  if(btnNova) btnNova.style.display = admin ? '' : 'none';
+  renderDlCats();
+  const cats = db.downloadCategorias||[];
+  if(!_dlCatAtiva && cats.length) _dlCatAtiva = cats[0].id;
+  if(_dlCatAtiva) renderDlArquivos(_dlCatAtiva);
+  else document.getElementById('dl-files').innerHTML = '<div style="color:var(--muted);padding:20px;font-size:13px">Selecione uma categoria à esquerda.</div>';
+}
+
+function renderDlCats(){
+  const el = document.getElementById('dl-cats');
+  const cats = db.downloadCategorias||[];
+  const admin = ehAdminDl();
+  if(!cats.length){ el.innerHTML='<div style="color:var(--muted);padding:20px;font-size:13px">Nenhuma categoria cadastrada.</div>'; return; }
+  el.innerHTML = cats.sort((a,b)=>a.ordem-b.ordem).map(c=>`
+    <div class="dl-cat-item${_dlCatAtiva===c.id?' ativa':''}" onclick="selecionarDlCat(${c.id})">
+      📁 ${c.nome}
+      ${admin?`<span class="dl-cat-acoes">
+        <button class="icon-btn" title="Renomear" onclick="event.stopPropagation();renomearCatDl(${c.id})">✏️</button>
+        <button class="icon-btn del" title="Excluir" onclick="event.stopPropagation();excluirCatDl(${c.id})">🗑</button>
+      </span>`:''}
+    </div>`).join('');
+}
+
+function selecionarDlCat(id){
+  _dlCatAtiva = id;
+  renderDlCats();
+  renderDlArquivos(id);
+}
+
+function renderDlArquivos(catId){
+  const el = document.getElementById('dl-files');
+  const admin = ehAdminDl();
+  const podeDl = podeDownloadCat(catId);
+  const arqs = (db.downloadArquivos||[]).filter(a=>a.categoriaId===catId);
+  const cat = (db.downloadCategorias||[]).find(c=>c.id===catId);
+  let html = `<h3 style="margin:0 0 16px;font-size:15px">📁 ${cat?cat.nome:''}</h3>`;
+  if(admin){
+    html += `<div class="dl-upload-area" onclick="document.getElementById('dl-upload-input').click()">
+      ⬆ Clique para enviar um arquivo nesta categoria
+      <input type="file" id="dl-upload-input" style="display:none" onchange="uploadDlArquivo(${catId},this)">
+    </div>
+    <div id="dl-upload-status" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>`;
+  }
+  if(!arqs.length){
+    html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhum arquivo nesta categoria.</div>';
+  } else {
+    arqs.forEach(a=>{
+      const ext = a.nome.split('.').pop().toUpperCase();
+      const tamanho = a.tamanho ? fmtBytes(a.tamanho) : '';
+      const data = a.criadoEm ? new Date(a.criadoEm).toLocaleDateString('pt-BR') : '';
+      html += `<div class="dl-file-item">
+        <div style="font-size:22px;line-height:1">${extIcone(ext)}</div>
+        <div class="dl-file-info">
+          <b>${a.nome}</b>
+          <span>${a.descricao||''}${tamanho?' · '+tamanho:''} ${data?'· '+data:''}</span>
+        </div>
+        <div class="dl-file-acoes">
+          ${podeDl
+            ? `<button class="btn sm primary" onclick="baixarDlArquivo('${a.id}','${a.storagePath}','${a.nome}')">⬇ Baixar</button>`
+            : `<span class="dl-bloqueado">🔒 Sem acesso</span>`}
+          ${admin ? `<button class="icon-btn del" title="Excluir" onclick="excluirDlArquivo('${a.id}','${a.storagePath}')">🗑</button>` : ''}
+        </div>
+      </div>`;
+    });
+  }
+  el.innerHTML = html;
+}
+
+function extIcone(ext){
+  if(['XLS','XLSX','CSV'].includes(ext)) return '📊';
+  if(['DOC','DOCX'].includes(ext)) return '📝';
+  if(ext==='PDF') return '📄';
+  if(['ZIP','RAR','7Z'].includes(ext)) return '🗜️';
+  if(['PNG','JPG','JPEG','GIF','SVG'].includes(ext)) return '🖼️';
+  return '📎';
+}
+
+async function abrirNovaCatDl(){
+  const nome = prompt('Nome da nova categoria:');
+  if(!nome || !nome.trim()) return;
+  const ordem = (db.downloadCategorias||[]).length;
+  const {data, error} = await sb.from('download_categorias').insert({nome:nome.trim(), ordem}).select().single();
+  if(error){ alert('Erro ao criar categoria: '+error.message); return; }
+  db.downloadCategorias = db.downloadCategorias||[];
+  db.downloadCategorias.push({id:data.id, nome:data.nome, ordem:data.ordem});
+  _dlCatAtiva = data.id;
+  registrarLog('criar','download-cat',data.id,`Categoria de download criada: "${data.nome}"`);
+  renderDownloads();
+}
+
+async function renomearCatDl(id){
+  const cat = (db.downloadCategorias||[]).find(c=>c.id===id);
+  if(!cat) return;
+  const novo = prompt('Novo nome:', cat.nome);
+  if(!novo || !novo.trim() || novo.trim()===cat.nome) return;
+  const {error} = await sb.from('download_categorias').update({nome:novo.trim()}).eq('id',id);
+  if(error){ alert('Erro: '+error.message); return; }
+  cat.nome = novo.trim();
+  registrarLog('editar','download-cat',id,`Categoria renomeada para: "${cat.nome}"`);
+  renderDownloads();
+}
+
+async function excluirCatDl(id){
+  const cat = (db.downloadCategorias||[]).find(c=>c.id===id);
+  const qtd = (db.downloadArquivos||[]).filter(a=>a.categoriaId===id).length;
+  if(!confirm(`Excluir categoria "${cat?cat.nome:id}"?${qtd?` Ela tem ${qtd} arquivo(s) que também serão excluídos.`:''}`)) return;
+  // remove arquivos do Storage
+  const arqs = (db.downloadArquivos||[]).filter(a=>a.categoriaId===id);
+  for(const a of arqs) await sb.storage.from('downloads').remove([a.storagePath]);
+  const {error} = await sb.from('download_categorias').delete().eq('id',id);
+  if(error){ alert('Erro: '+error.message); return; }
+  db.downloadCategorias = (db.downloadCategorias||[]).filter(c=>c.id!==id);
+  db.downloadArquivos   = (db.downloadArquivos||[]).filter(a=>a.categoriaId!==id);
+  if(_dlCatAtiva===id) _dlCatAtiva = (db.downloadCategorias[0]||{}).id||null;
+  registrarLog('excluir','download-cat',id,`Categoria excluída: "${cat?cat.nome:id}"`);
+  renderDownloads();
+}
+
+async function uploadDlArquivo(catId, input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const st = document.getElementById('dl-upload-status');
+  if(st) st.textContent = `Enviando ${file.name}...`;
+  const arqId = 'dl'+Date.now()+Math.random().toString(36).slice(2,7);
+  const path = `${catId}/${arqId}_${file.name}`;
+  const {error:errUp} = await sb.storage.from('downloads').upload(path, file, {upsert:false});
+  if(errUp){ if(st) st.textContent='Erro: '+errUp.message; return; }
+  const novoArq = {
+    id:arqId, categoriaId:catId, nome:file.name, descricao:'',
+    storagePath:path, tamanho:file.size,
+    criadoEm:new Date().toISOString(), criadoPor:usuarioAtual?usuarioAtual.nome:''
+  };
+  const {error:errDb} = await sb.from('download_arquivos').insert({
+    id:arqId, categoria_id:catId, nome:file.name, descricao:'',
+    storage_path:path, tamanho:file.size,
+    criado_em:novoArq.criadoEm, criado_por:novoArq.criadoPor
+  });
+  if(errDb){ await sb.storage.from('downloads').remove([path]); if(st) st.textContent='Erro DB: '+errDb.message; return; }
+  db.downloadArquivos = db.downloadArquivos||[];
+  db.downloadArquivos.push(novoArq);
+  if(st) st.textContent='';
+  input.value='';
+  registrarLog('criar','download-arq',arqId,`Arquivo enviado: "${file.name}" na categoria ${catId}`);
+  renderDlArquivos(catId);
+}
+
+async function baixarDlArquivo(id, path, nome){
+  const {data, error} = await sb.storage.from('downloads').createSignedUrl(path, 60);
+  if(error){ alert('Erro ao gerar link: '+error.message); return; }
+  const a = document.createElement('a'); a.href=data.signedUrl; a.download=nome; a.target='_blank';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  registrarLog('download','download-arq',id,`Arquivo baixado: "${nome}"`);
+}
+
+async function excluirDlArquivo(id, path){
+  if(!confirm('Excluir este arquivo?')) return;
+  await sb.storage.from('downloads').remove([path]);
+  await sb.from('download_arquivos').delete().eq('id',id);
+  db.downloadArquivos = (db.downloadArquivos||[]).filter(a=>a.id!==id);
+  const arq = (db.downloadArquivos||[]).find(a=>a.id===id);
+  registrarLog('excluir','download-arq',id,`Arquivo excluído: "${arq?arq.nome:id}"`);
+  if(_dlCatAtiva) renderDlArquivos(_dlCatAtiva);
+}
+
+/* ===== AUDITORIA ===== */
 /* Cache dos logs carregados (evita rebuscar ao só filtrar) */
 let _auditLogs = [];
 
@@ -2020,7 +2250,7 @@ function aplicarPermissoes(){
   renderNavTelas();
   // view ativa precisa ser permitida (telas da engrenagem também valem)
   const atual = viewAtiva();
-  const gearViews = ['usuarios','grupos','funcoes','gerais','auditoria'];
+  const gearViews = ['usuarios','grupos','funcoes','gerais','auditoria','downloads'];
   const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
     : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
   if(!permitida && mod){
@@ -2028,7 +2258,7 @@ function aplicarPermissoes(){
     if(primeira) ativarView(primeira);
   }
   // itens do menu engrenagem conforme o grupo
-  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-auditoria':'auditoria'};
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria'};
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
@@ -2050,6 +2280,7 @@ function ativarView(viewId){
   if(v) v.classList.add('active');
   if(viewId==='gerais') renderGerais();
   if(viewId==='auditoria') carregarLogs();
+  if(viewId==='downloads') renderDownloads();
   renderAll();
 }
 
@@ -5806,6 +6037,8 @@ function formGrupo(g){
     <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
   const recursosCk = RECURSOS.map(r=>`
     <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
+  const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).map(c=>`
+    <label class="perm-item"><input type="checkbox" class="ck-grec" value="dl-cat-${c.id}" ${!g||(g.recursos||[]).includes(`dl-cat-${c.id}`)?'checked':''}> 📁 Baixar da categoria: ${c.nome}</label>`).join('');
   return `
     <label>Nome do grupo</label><input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas...">
     ${g&&g.admin
@@ -5813,7 +6046,8 @@ function formGrupo(g){
       : `<label>Telas permitidas</label>
          <div class="perm-box">${telasCk}</div>
          <label>Permissões dentro do cartão CRM</label>
-         <div class="perm-box">${recursosCk}</div>`}`;
+         <div class="perm-box">${recursosCk}</div>
+         ${dlCatsCk?`<label>Downloads — categorias permitidas</label><div class="perm-box">${dlCatsCk}</div>`:''}`}`;
 }
 
 function abrirNovoGrupo(){
