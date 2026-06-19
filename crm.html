@@ -4740,24 +4740,35 @@ async function novaProposta(cardId){
       }));
       if(progNP) progNP.style.display='none';
     }
+    // Upload concluído — cria e salva a proposta ainda dentro do try
+    const novaProp={
+      id:propId, numero, cardId,
+      clienteId:c.clienteId, obraId:c.obraId,
+      dataEmissao, valor,
+      validadeDias:+document.getElementById('pn-validade').value||0,
+      faseId:+document.getElementById('pn-fase').value,
+      status:'emitida', arquivos,
+      aditivo: temAprovada(cardId)
+    };
+    db.propostas.push(novaProp);
+    registrarLog('criar', 'proposta', propId, `Nova proposta${novaProp.aditivo?' (aditivo)':''} criada: ${numero} — ${fmtMoney(valor)||'sem valor'}`);
+    save();
+    renderAll();
+    abrirEditarCartao(cardId,'emitidas');
+    // Rola o aba-corpo para o topo para mostrar a proposta recém-adicionada
+    requestAnimationFrame(()=>{
+      const corpo = document.querySelector('.modal.cartao .aba-corpo');
+      if(corpo) corpo.scrollTop = 0;
+    });
+  } catch(e) {
+    console.error('Erro em novaProposta:', e);
+    alert('Erro ao salvar a proposta: ' + (e && e.message ? e.message : e));
   } finally {
     if(btnNP){ btnNP.disabled=false; btnNP.textContent='＋ Adicionar Proposta'; }
     if(stNP) stNP.textContent='';
     const progNP2=document.getElementById('progress-nova-proposta');
     if(progNP2) progNP2.style.display='none';
   }
-  const novaProp={
-    id:propId, numero, cardId,
-    clienteId:c.clienteId, obraId:c.obraId,
-    dataEmissao, valor,
-    validadeDias:+document.getElementById('pn-validade').value||0,
-    faseId:+document.getElementById('pn-fase').value,
-    status:'emitida', arquivos,
-    aditivo: temAprovada(cardId)
-  };
-  db.propostas.push(novaProp);
-  registrarLog('criar', 'proposta', propId, `Nova proposta${novaProp.aditivo?' (aditivo)':''} criada: ${numero} — ${fmtMoney(valor)||'sem valor'}`);
-  save(); renderAll(); abrirEditarCartao(cardId,'emitidas');
 }
 
 /* Aprovação acontece exclusivamente pela subida do Excel na aba "Proposta Aprovada" */
