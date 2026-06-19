@@ -3168,8 +3168,10 @@ function previewArquivosProposta(inputId, previewId){
     bar.style.display='flex';
     bar.innerHTML = lista.map((f,i)=>{
       const url = URL.createObjectURL(f);
+      const ext = f.name.split('.').pop().toLowerCase();
+      const icone = ['xlsx','xls','csv'].includes(ext) ? '📊' : '📄';
       return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">📄 ${f.name}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${icone} ${f.name}</span>
         <button class="btn-xs" onclick="window.open('${url}','_blank')">👁 Visualizar</button>
         <button class="btn-xs btn-danger" title="Remover" onclick="removerArquivoProposta('${inputId}','${previewId}',${i})">🗑</button>
       </div>`;
@@ -4601,7 +4603,8 @@ function formAprovacaoHTML(c, candidatas, rotulo){
       ${candidatas.map(p=>`<option value="${p.id}">${p.numero} — ${fmtMoney(p.valor)||'sem valor'} (${fmtDia2(p.dataEmissao)})</option>`).join('')}
     </select>
     <label>Excel (memória de cálculo)</label>
-    <input id="pa-arq" type="file" multiple accept=".xlsx,.xls">
+    <input id="pa-arq" type="file" multiple accept=".xlsx,.xls" onchange="previewArquivosProposta('pa-arq','pa-arq-preview')">
+    <div id="pa-arq-preview" style="display:none;flex-direction:column;gap:4px;margin-top:6px"></div>
     <div class="actions" style="justify-content:flex-start">
       <button id="btn-aprovar-excel" class="btn primary" onclick="aprovarComExcel(${c.id})">✔ Confirmar Aprovação</button>
     </div>
