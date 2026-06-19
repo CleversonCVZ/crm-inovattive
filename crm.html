@@ -4969,6 +4969,15 @@ async function salvarEdicaoProposta(id){
   }
   propEditandoId=null;
   registrarLog('editar', 'proposta', id, `Proposta editada: ${p.numero} (${fmtMoney(p.valor)||'sem valor'})`);
+  // UPDATE imediato no Supabase — não depende do debounce de 800ms do syncDadosSupabase
+  const {error:errProp} = await sb.from('propostas').update({
+    numero: p.numero,
+    data_emissao: toISO(p.dataEmissao),
+    valor: p.valor||0,
+    validade_dias: Number(p.validadeDias)||0,
+    fase_id: Number(p.faseId)||null
+  }).eq('id', id);
+  if(errProp) console.error('Erro ao salvar proposta no Supabase:', errProp);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
 
