@@ -342,7 +342,7 @@
       <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
     </div>
     <table class="lista">
-      <thead><tr><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th></tr></thead>
+      <thead><tr><th>Tipo</th><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th></tr></thead>
       <tbody id="clientes-tbody"></tbody>
     </table>
   </div>
@@ -2281,17 +2281,33 @@ function excluirFase(id){
 }
 
 /* ================= CLIENTES ================= */
+function classificarCliente(clienteId){
+  const cardsCliente = db.cards.filter(x=>x.clienteId===clienteId);
+  // Tem proposta aprovada? → Cliente
+  const temAprovada = cardsCliente.some(card=>
+    (db.propostas||[]).some(p=>p.cardId===card.id && p.status==='aprovada')
+  );
+  if(temAprovada) return {selo:'🟢 Cliente', cor:'#1d8348'};
+  // Tem card ativo (fora de perdido/concluido)? → Prospect
+  const fasesInatvas = new Set(db.fases.filter(f=>f.tipo==='perdido'||f.tipo==='concluido').map(f=>f.id));
+  const temAtivo = cardsCliente.some(card=>!fasesInatvas.has(card.faseId));
+  if(temAtivo) return {selo:'🟡 Prospect', cor:'#b7950b'};
+  // Só tem cards perdidos/concluidos ou nenhum card → Lead Frio
+  return {selo:'🔴 Lead Frio', cor:'#922b21'};
+}
+
 function renderClientes(){
   const tb = document.getElementById('clientes-tbody'); tb.innerHTML='';
   const t = termoBusca();
   db.clientes.filter(c=>!t || (c.nome+' '+enderecoResumo(c)).toLowerCase().includes(t)).forEach(c=>{
     const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
     const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
+    const {selo, cor} = classificarCliente(c.id);
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.title='Clique para editar';
     tr.onclick=()=>abrirEditarCliente(c.id);
-    tr.innerHTML=`<td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td>`;
+    tr.innerHTML=`<td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td><td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td>`;
     tb.appendChild(tr);
   });
 }
