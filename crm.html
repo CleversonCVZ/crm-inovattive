@@ -342,7 +342,7 @@
       <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
     </div>
     <table class="lista">
-      <thead><tr><th>Tipo</th><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th></tr></thead>
+      <thead><tr><th>Tipo</th><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th><th>Emitidas</th><th>Aprovadas</th></tr></thead>
       <tbody id="clientes-tbody"></tbody>
     </table>
   </div>
@@ -2342,12 +2342,14 @@ function renderClientes(){
   db.clientes.filter(c=>!t || (c.nome+' '+enderecoResumo(c)).toLowerCase().includes(t)).forEach(c=>{
     const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
     const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
+    const qtdEmitidas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='emitida').length;
+    const qtdAprovadas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='aprovada').length;
     const {selo, cor} = classificarCliente(c.id);
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.title='Clique para editar';
     tr.onclick=()=>abrirEditarCliente(c.id);
-    tr.innerHTML=`<td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td><td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td>`;
+    tr.innerHTML=`<td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td><td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td><td>${qtdEmitidas||'—'}</td><td style="color:${qtdAprovadas?'#6a1b9a':'inherit'};font-weight:${qtdAprovadas?'700':'400'}">${qtdAprovadas||'—'}</td>`;
     tb.appendChild(tr);
   });
 }
