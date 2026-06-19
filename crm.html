@@ -1350,6 +1350,20 @@ async function purgarLogsAntigos(){
 }
 
 function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
+
+/* Versão segura de nextId: consulta o Supabase para garantir que o ID gerado
+   não colide com registros já persistidos, mesmo após reloads ou falhas de sync. */
+async function proximoIdSeguro(tabela, arr){
+  const localMax = arr.reduce((m,x)=>Math.max(m, +x.id||0), 0);
+  try {
+    const { data } = await sb.from(tabela).select('id').order('id', {ascending:false}).limit(1);
+    const supaMax = (data && data[0]) ? +data[0].id : 0;
+    return Math.max(localMax, supaMax) + 1;
+  } catch(e) {
+    console.warn('proximoIdSeguro fallback para local:', e);
+    return localMax + 1;
+  }
+}
 function cliente(id){ return db.clientes.find(c=>c.id===id) || {nome:'—'}; }
 function obraDe(c){ return c.obraId ? (db.obras.find(o=>o.id===c.obraId)||null) : null; }
 function fase(id){ return db.fases.find(f=>f.id===id); }
@@ -2401,12 +2415,12 @@ function toggleNovaObra(){
   document.getElementById('m-obra').disabled = box.classList.contains('open');
   if(box.classList.contains('open')) document.getElementById('no-nome').focus();
 }
-function resolverObra(clienteId){
+async function resolverObra(clienteId){
   const box = document.getElementById('nova-obra-box');
   if(box && box.classList.contains('open')){
     const nome = document.getElementById('no-nome').value.trim();
     if(!nome) return null;
-    const id = nextId(db.obras);
+    const id = await proximoIdSeguro('obras', db.obras);
     db.obras.push({id, clienteId, nome});
     return id;
   }
@@ -2612,13 +2626,13 @@ function toggleNovoCliente(){
   if(selO) selO.innerHTML = aberto ? '<option value="">(sem obra)</option>' : optsObras(+document.getElementById('m-cliente').value, null);
 }
 
-function salvarNovoCartao(){
+async function salvarNovoCartao(){
   let clienteId;
   const box = document.getElementById('novo-cliente-box');
   if(box.classList.contains('open')){
     const nome = document.getElementById('nc-nome').value.trim();
     if(!nome){ alert('Informe o nome do novo cliente.'); return; }
-    clienteId = nextId(db.clientes);
+    clienteId = await proximoIdSeguro('clientes', db.clientes);
     db.clientes.push({
       id:clienteId, nome,
       tel:document.getElementById('nc-tel').value,
@@ -2631,10 +2645,10 @@ function salvarNovoCartao(){
     if(!clienteId){ alert('Selecione um cliente ou cadastre um novo.'); return; }
   }
   const novo = {
-    id:nextId(db.cards),
+    id: await proximoIdSeguro('cards', db.cards),
     num:db.cards.reduce((m,c)=>Math.max(m,c.num),0)+1,
     clienteId,
-    obraId:resolverObra(clienteId),
+    obraId: await resolverObra(clienteId),
     origemId:+document.getElementById('m-origem').value||null,
     faseId:+document.getElementById('m-fase').value,
     responsavel:document.getElementById('m-resp').value,
@@ -4671,7 +4685,7 @@ async function novaProposta(cardId){
 
   let valor=+document.getElementById('pn-valor').value||0;
   let dataEmissao=document.getElementById('pn-data').value||localDia(0);
-  const propId=nextId(db.propostas);
+  const propId = await proximoIdSeguro('propostas', db.propostas);
   const arquivos=[];
   const btnNP = document.getElementById('btn-nova-proposta');
   const stNP  = document.getElementById('status-nova-proposta');
@@ -5340,11 +5354,11 @@ function abrirNovoCliente(){
       <button class="btn primary" onclick="salvarNovoCliente()">Salvar</button>
     </div>`);
 }
-function salvarNovoCliente(){
+async function salvarNovoCliente(){
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return; }
   const end=lerEndereco();
-  const clienteId = nextId(db.clientes);
+  const clienteId = await proximoIdSeguro('clientes', db.clientes);
   db.clientes.push({
     id:clienteId, nome,
     tel:document.getElementById('m-tel').value,
@@ -5543,7 +5557,7 @@ function copiarEnderecoCliente(clienteId){
   const uf = document.getElementById('o-uf'); if(uf) uf.value=(ec.uf||'').toUpperCase();
 }
 
-function salvarObra(id, clienteId, returnCardId=null){
+async function salvarObra(id, clienteId, returnCardId=null){
   const nome=document.getElementById('o-nome').value.trim();
   if(!nome){ alert('Informe o nome da obra.'); return; }
   const end=lerEndereco('o');
@@ -5552,7 +5566,7 @@ function salvarObra(id, clienteId, returnCardId=null){
     o.nome=nome; o.endereco=end;
     registrarLog('editar', 'obra', id, `Obra editada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   } else {
-    const novaObra={id:nextId(db.obras), clienteId, nome, endereco:end};
+    const novaObra={id: await proximoIdSeguro('obras', db.obras), clienteId, nome, endereco:end};
     db.obras.push(novaObra);
     registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
