@@ -5618,7 +5618,7 @@ function renderPropostas(){
 function salvarEdicaoCartao(id){
   const c=db.cards.find(x=>x.id===id);
   c.clienteId=+document.getElementById('m-cliente').value;
-  c.obraId=resolverObra(c.clienteId);
+  c.obraId=+document.getElementById('m-obra').value||null;
   c.origemId=+document.getElementById('m-origem').value||null;
   c.faseId=+document.getElementById('m-fase').value;
   c.responsavel=document.getElementById('m-resp').value;
