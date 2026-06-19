@@ -4885,6 +4885,20 @@ function cancelarEdicaoProposta(cardId){
   abrirEditarCartao(cardId, 'emitidas');
 }
 
+/* Auto-salva só o faseId quando o dropdown muda — evita perder a mudança se o usuário fechar sem clicar em "Salvar Proposta" */
+function autoSalvarFaseProposta(id){
+  const p = db.propostas.find(x=>x.id===id);
+  if(!p) return;
+  const el = document.getElementById('pe-fase');
+  if(!el) return;
+  const novaFase = +el.value;
+  if(novaFase && novaFase !== p.faseId){
+    p.faseId = novaFase;
+    registrarLog('editar','proposta',id,`Fase da proposta ${p.numero} alterada para "${faseProp(novaFase)?.nome||novaFase}"`);
+    save();
+  }
+}
+
 function propostaEditHTML(p){
   const f=faseProp(p.faseId);
   return `
@@ -4899,7 +4913,7 @@ function propostaEditHTML(p){
         <div class="estreito"><label>Validade (dias)</label><input id="pe-validade" type="number" min="0" value="${p.validadeDias||0}"></div>
       </div>
       <label>Fase da proposta</label>
-      <select id="pe-fase">${fasesPropOrdenadas().filter(x=>!x.tipo).map(x=>`<option value="${x.id}" ${x.id===p.faseId?'selected':''}>${x.nome}</option>`).join('')}</select>
+      <select id="pe-fase" onchange="autoSalvarFaseProposta(${p.id})">${fasesPropOrdenadas().filter(x=>!x.tipo).map(x=>`<option value="${x.id}" ${x.id===p.faseId?'selected':''}>${x.nome}</option>`).join('')}</select>
       <label>Anexar mais PDFs (opcional)</label>
       <input id="pe-arqs" type="file" multiple accept=".pdf" onchange="previewArquivosProposta('pe-arqs','pe-arqs-preview')">
       <div id="pe-arqs-preview" style="display:none;flex-direction:column;gap:4px;margin-top:6px"></div>
