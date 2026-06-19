@@ -1148,10 +1148,11 @@ function syncDadosSupabase(){
     }));
     await sincronizarHistoricos();
     await sincronizarTabela('propostas', db.propostas, p=>({
-      id:p.id, numero:p.numero, card_id:p.cardId, cliente_id:p.clienteId, obra_id:p.obraId||null,
-      data_emissao:p.dataEmissao||null, valor:p.valor||0, validade_dias:p.validadeDias||0,
-      fase_id:p.faseId, status:p.status, aditivo:!!p.aditivo,
-      data_aprovacao:p.dataAprovacao||null, fase_anterior:p.faseAnterior||null
+      id:p.id, numero:p.numero,
+      card_id:Number(p.cardId)||null, cliente_id:Number(p.clienteId)||null, obra_id:Number(p.obraId)||null,
+      data_emissao:toISO(p.dataEmissao), valor:p.valor||0, validade_dias:Number(p.validadeDias)||0,
+      fase_id:Number(p.faseId)||null, status:p.status, aditivo:!!p.aditivo,
+      data_aprovacao:toISO(p.dataAprovacao), fase_anterior:Number(p.faseAnterior)||null
     }));
     await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
@@ -2180,6 +2181,21 @@ function renderVistaArquivados(k){
 
 /* --- Vista 3: por data da agenda --- */
 function localDia(off){ const x=new Date(); x.setDate(x.getDate()+off); x.setMinutes(x.getMinutes()-x.getTimezoneOffset()); return x.toISOString().slice(0,10); }
+// Converte qualquer formato de data para YYYY-MM-DD (para salvar no Supabase)
+// Suporta: YYYY-MM-DD (já ok), YYYY-DD-MM (dia/mês invertidos), DD/MM/YYYY
+function toISO(d){
+  if(!d) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)){
+    const parts=d.split('-');
+    let [y,m,dia]=[+parts[0],+parts[1],+parts[2]];
+    if(m>12 && dia<=12){let t=m;m=dia;dia=t;} // corrige YYYY-DD-MM invertido
+    if(m<1||m>12||dia<1||dia>31) return null;
+    return `${y}-${String(m).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  }
+  const dmy=d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(dmy) return `${dmy[3]}-${dmy[2].padStart(2,'0')}-${dmy[1].padStart(2,'0')}`;
+  return null;
+}
 function fmtDia(s){ const [a,m,dd]=s.split('-'); return `${dd}/${m}`; }
 
 function renderVistaData(k){
