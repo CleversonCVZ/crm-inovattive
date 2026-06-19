@@ -3153,6 +3153,52 @@ function _mostrarPreviewPdf(file, previewId, limparFn){
     <button class="btn-xs btn-danger" title="Remover arquivo" onclick="${limparFn}">🗑</button>`;
   bar.style.display='flex';
 }
+// Preview com lixeira para inputs de arquivo múltiplo (propostas)
+function previewArquivosProposta(inputId, previewId){
+  const input = document.getElementById(inputId);
+  const bar   = document.getElementById(previewId);
+  if(!input || !bar) return;
+  if(!input.files.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+
+  // Mantém uma cópia mutável dos arquivos selecionados
+  let lista = [...input.files];
+
+  function renderizar(){
+    if(!lista.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+    bar.style.display='flex';
+    bar.innerHTML = lista.map((f,i)=>{
+      const url = URL.createObjectURL(f);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">📄 ${f.name}</span>
+        <button class="btn-xs" onclick="window.open('${url}','_blank')">👁 Visualizar</button>
+        <button class="btn-xs btn-danger" title="Remover" onclick="removerArquivoProposta('${inputId}','${previewId}',${i})">🗑</button>
+      </div>`;
+    }).join('');
+    // Sincroniza o input com a lista atual via DataTransfer
+    try{
+      const dt = new DataTransfer();
+      lista.forEach(f=>dt.items.add(f));
+      input.files = dt.files;
+    }catch(e){ /* Safari pode não suportar DataTransfer — sem sync reverso, mas funciona */ }
+  }
+
+  // Expõe a lista para que removerArquivoProposta possa acessar
+  input._previewLista = lista;
+  renderizar();
+}
+
+function removerArquivoProposta(inputId, previewId, idx){
+  const input = document.getElementById(inputId);
+  if(!input || !input._previewLista) return;
+  input._previewLista.splice(idx, 1);
+  try{
+    const dt = new DataTransfer();
+    input._previewLista.forEach(f=>dt.items.add(f));
+    input.files = dt.files;
+  }catch(e){}
+  previewArquivosProposta(inputId, previewId);
+}
+
 function previewArquivoCompra(input, cardId){
   _mostrarPreviewPdf(input.files[0]||null, 'compra-pdf-preview-'+cardId, `limparArquivoCompra(${cardId})`);
 }
@@ -4456,7 +4502,8 @@ function propostaEditHTML(p){
       <label>Fase da proposta</label>
       <select id="pe-fase">${fasesPropOrdenadas().filter(x=>!x.tipo).map(x=>`<option value="${x.id}" ${x.id===p.faseId?'selected':''}>${x.nome}</option>`).join('')}</select>
       <label>Anexar mais PDFs (opcional)</label>
-      <input id="pe-arqs" type="file" multiple accept=".pdf">
+      <input id="pe-arqs" type="file" multiple accept=".pdf" onchange="previewArquivosProposta('pe-arqs','pe-arqs-preview')">
+      <div id="pe-arqs-preview" style="display:none;flex-direction:column;gap:4px;margin-top:6px"></div>
       <div class="actions">
         <button class="btn neutral" onclick="cancelarEdicaoProposta(${p.cardId})">Cancelar</button>
         <button id="btn-salvar-proposta" class="btn primary" onclick="salvarEdicaoProposta(${p.id})">Salvar Proposta</button>
@@ -4533,7 +4580,8 @@ function abaPropostasHTML(c){
     <label>Fase da proposta</label>
     <select id="pn-fase">${fasesPropOrdenadas().filter(f=>!f.tipo).map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}</select>
     <label>PDF da proposta (gerado da sua planilha)</label>
-    <input id="pn-arqs" type="file" multiple accept=".pdf">
+    <input id="pn-arqs" type="file" multiple accept=".pdf" onchange="previewArquivosProposta('pn-arqs','pn-arqs-preview')">
+    <div id="pn-arqs-preview" style="display:none;flex-direction:column;gap:4px;margin-top:6px"></div>
     <div class="actions" style="justify-content:flex-start">
       <button id="btn-nova-proposta" class="btn primary" onclick="novaProposta(${c.id})">＋ Adicionar Proposta</button>
     </div>
