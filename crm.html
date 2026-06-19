@@ -1328,6 +1328,7 @@ let _dlCatAtiva = null;
 
 function ehAdminDl(){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes('downloads-admin'); }
 function podeDownloadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes(`dl-cat-${catId}`); }
+function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes('downloads-admin') || (g.recursos||[]).includes(`ul-cat-${catId}`); }
 
 function renderDownloads(){
   const admin = ehAdminDl();
@@ -1345,14 +1346,18 @@ function renderDlCats(){
   const cats = db.downloadCategorias||[];
   const admin = ehAdminDl();
   if(!cats.length){ el.innerHTML='<div style="color:var(--muted);padding:20px;font-size:13px">Nenhuma categoria cadastrada.</div>'; return; }
-  el.innerHTML = cats.sort((a,b)=>a.ordem-b.ordem).map(c=>`
+  el.innerHTML = cats.sort((a,b)=>a.ordem-b.ordem).map(c=>{
+    const qtd = (db.downloadArquivos||[]).filter(a=>a.categoriaId===c.id).length;
+    return `
     <div class="dl-cat-item${_dlCatAtiva===c.id?' ativa':''}" onclick="selecionarDlCat(${c.id})">
-      📁 ${c.nome}
+      <span>📁 ${c.nome}</span>
+      <span style="font-size:11px;color:var(--muted);margin-left:4px">${qtd>0?`(${qtd})`:'vazio'}</span>
       ${admin?`<span class="dl-cat-acoes">
         <button class="icon-btn" title="Renomear" onclick="event.stopPropagation();renomearCatDl(${c.id})">✏️</button>
         <button class="icon-btn del" title="Excluir" onclick="event.stopPropagation();excluirCatDl(${c.id})">🗑</button>
       </span>`:''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function selecionarDlCat(id){
@@ -1363,36 +1368,45 @@ function selecionarDlCat(id){
 
 function renderDlArquivos(catId){
   const el = document.getElementById('dl-files');
-  const admin = ehAdminDl();
-  const podeDl = podeDownloadCat(catId);
-  const arqs = (db.downloadArquivos||[]).filter(a=>a.categoriaId===catId);
-  const cat = (db.downloadCategorias||[]).find(c=>c.id===catId);
-  let html = `<h3 style="margin:0 0 16px;font-size:15px">📁 ${cat?cat.nome:''}</h3>`;
-  if(admin){
-    html += `<div class="dl-upload-area" onclick="document.getElementById('dl-upload-input').click()">
-      ⬆ Clique para enviar um arquivo nesta categoria
-      <input type="file" id="dl-upload-input" style="display:none" onchange="uploadDlArquivo(${catId},this)">
-    </div>
-    <div id="dl-upload-status" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>`;
-  }
+  const podeDl  = podeDownloadCat(catId);
+  const podeUl  = podeUploadCat(catId);
+  const admin   = ehAdminDl();
+  const arqs    = (db.downloadArquivos||[]).filter(a=>a.categoriaId===catId)
+                    .sort((a,b)=>new Date(b.criadoEm||0)-new Date(a.criadoEm||0));
+  const cat     = (db.downloadCategorias||[]).find(c=>c.id===catId);
+  let html = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <h3 style="margin:0;font-size:15px">📁 ${cat?cat.nome:''}</h3>
+    <span style="font-size:12px;color:var(--muted)">${arqs.length} arquivo${arqs.length!==1?'s':''}</span>
+    <div style="flex:1"></div>
+    ${podeUl ? `<button class="btn primary" onclick="abrirModalUploadDl(${catId})">⬆ Enviar arquivo</button>` : ''}
+  </div>`;
   if(!arqs.length){
-    html += '<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhum arquivo nesta categoria.</div>';
+    html += `<div style="color:var(--muted);font-size:13px;padding:24px;text-align:center;border:2px dashed var(--border);border-radius:10px">
+      ${podeUl ? 'Nenhum arquivo ainda. Clique em "Enviar arquivo" para adicionar.' : 'Nenhum arquivo nesta categoria.'}
+    </div>`;
   } else {
     arqs.forEach(a=>{
-      const ext = a.nome.split('.').pop().toUpperCase();
-      const tamanho = a.tamanho ? fmtBytes(a.tamanho) : '';
-      const data = a.criadoEm ? new Date(a.criadoEm).toLocaleDateString('pt-BR') : '';
+      const ext   = a.nome.split('.').pop().toUpperCase();
+      const tam   = a.tamanho ? fmtBytes(a.tamanho) : '';
+      const dataFmt = a.criadoEm ? new Date(a.criadoEm).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '';
+      const autor = a.criadoPor || '';
       html += `<div class="dl-file-item">
-        <div style="font-size:22px;line-height:1">${extIcone(ext)}</div>
+        <div style="font-size:28px;line-height:1;flex-shrink:0">${extIcone(ext)}</div>
         <div class="dl-file-info">
-          <b>${a.nome}</b>
-          <span>${a.descricao||''}${tamanho?' · '+tamanho:''} ${data?'· '+data:''}</span>
+          <b title="${a.nome}">${a.nome}</b>
+          ${a.descricao ? `<span style="color:var(--text);font-size:12.5px;margin-top:2px;display:block">${a.descricao}</span>` : ''}
+          <span style="margin-top:3px;display:flex;gap:10px;flex-wrap:wrap">
+            ${dataFmt?`<span title="Data do upload">📅 ${dataFmt}</span>`:''}
+            ${autor?`<span title="Enviado por">👤 ${autor}</span>`:''}
+            ${tam?`<span title="Tamanho">📦 ${tam}</span>`:''}
+          </span>
         </div>
         <div class="dl-file-acoes">
           ${podeDl
             ? `<button class="btn sm primary" onclick="baixarDlArquivo('${a.id}','${a.storagePath}','${a.nome}')">⬇ Baixar</button>`
             : `<span class="dl-bloqueado">🔒 Sem acesso</span>`}
-          ${admin ? `<button class="icon-btn del" title="Excluir" onclick="excluirDlArquivo('${a.id}','${a.storagePath}')">🗑</button>` : ''}
+          ${admin||podeUl ? `<button class="icon-btn" title="Editar descrição" onclick="editarDescDlArquivo('${a.id}')">✏️</button>` : ''}
+          ${admin ? `<button class="icon-btn del" title="Excluir arquivo" onclick="excluirDlArquivo('${a.id}','${a.storagePath}')">🗑</button>` : ''}
         </div>
       </div>`;
     });
@@ -1406,6 +1420,7 @@ function extIcone(ext){
   if(ext==='PDF') return '📄';
   if(['ZIP','RAR','7Z'].includes(ext)) return '🗜️';
   if(['PNG','JPG','JPEG','GIF','SVG'].includes(ext)) return '🖼️';
+  if(['DWG','DXF'].includes(ext)) return '📐';
   return '📎';
 }
 
@@ -1438,7 +1453,6 @@ async function excluirCatDl(id){
   const cat = (db.downloadCategorias||[]).find(c=>c.id===id);
   const qtd = (db.downloadArquivos||[]).filter(a=>a.categoriaId===id).length;
   if(!confirm(`Excluir categoria "${cat?cat.nome:id}"?${qtd?` Ela tem ${qtd} arquivo(s) que também serão excluídos.`:''}`)) return;
-  // remove arquivos do Storage
   const arqs = (db.downloadArquivos||[]).filter(a=>a.categoriaId===id);
   for(const a of arqs) await sb.storage.from('downloads').remove([a.storagePath]);
   const {error} = await sb.from('download_categorias').delete().eq('id',id);
@@ -1450,50 +1464,138 @@ async function excluirCatDl(id){
   renderDownloads();
 }
 
-async function uploadDlArquivo(catId, input){
-  const file = input.files && input.files[0];
+/* Modal de upload com progresso */
+function abrirModalUploadDl(catId){
+  const cat = (db.downloadCategorias||[]).find(c=>c.id===catId);
+  abrirModal(`
+    <h3>⬆ Enviar arquivo — ${cat?cat.nome:''}</h3>
+    <div class="dl-upload-area" id="dl-drop-area" onclick="document.getElementById('dl-file-input').click()"
+      ondragover="event.preventDefault();this.style.borderColor='var(--blue)'"
+      ondragleave="this.style.borderColor=''"
+      ondrop="event.preventDefault();this.style.borderColor='';dlArquivoSelecionado(event.dataTransfer.files[0])">
+      <div id="dl-drop-txt">📁 Clique ou arraste o arquivo aqui</div>
+      <input type="file" id="dl-file-input" style="display:none" onchange="dlArquivoSelecionado(this.files[0])">
+    </div>
+    <div id="dl-file-escolhido" style="display:none;background:#f1f3f5;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:-6px;margin-bottom:14px">
+      <b id="dl-file-nome"></b> &nbsp;<span id="dl-file-tam" style="color:var(--muted)"></span>
+    </div>
+    <label>Descrição <small style="color:var(--muted)">(opcional — explique o que é este arquivo)</small></label>
+    <textarea id="dl-desc" rows="3" placeholder="Ex.: Modelo de proposta comercial para contratos residenciais. Atualizado em junho/2026." style="resize:vertical"></textarea>
+    <div id="dl-prog-wrap" style="display:none;margin:10px 0">
+      <div style="background:#e0e0e0;border-radius:4px;height:7px;overflow:hidden">
+        <div id="dl-prog-bar" style="background:var(--blue);height:100%;width:0%;transition:width 0.15s"></div>
+      </div>
+      <span id="dl-prog-txt" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+    <div id="dl-upload-erro" style="color:var(--red);font-size:13px;display:none"></div>
+    <div class="actions">
+      <button class="btn neutral" id="btn-dl-cancelar" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" id="btn-dl-enviar" onclick="confirmarUploadDl(${catId})" disabled>⬆ Enviar arquivo</button>
+    </div>`);
+  window._dlFileSelecionado = null;
+}
+
+function dlArquivoSelecionado(file){
   if(!file) return;
-  const st = document.getElementById('dl-upload-status');
-  if(st) st.textContent = `Enviando ${file.name}...`;
+  window._dlFileSelecionado = file;
+  const tam = fmtBytes(file.size);
+  document.getElementById('dl-drop-txt').textContent = '✓ Arquivo selecionado';
+  document.getElementById('dl-file-nome').textContent = file.name;
+  document.getElementById('dl-file-tam').textContent = tam;
+  document.getElementById('dl-file-escolhido').style.display = '';
+  document.getElementById('btn-dl-enviar').disabled = false;
+}
+
+async function confirmarUploadDl(catId){
+  const file = window._dlFileSelecionado;
+  if(!file){ alert('Selecione um arquivo.'); return; }
+  if(file.size > 50*1024*1024){ alert('Arquivo muito grande. Máximo: 50 MB.'); return; }
+  const descricao = (document.getElementById('dl-desc').value||'').trim();
+  const btnEnviar  = document.getElementById('btn-dl-enviar');
+  const btnCancelar= document.getElementById('btn-dl-cancelar');
+  const progWrap   = document.getElementById('dl-prog-wrap');
+  const progBar    = document.getElementById('dl-prog-bar');
+  const progTxt    = document.getElementById('dl-prog-txt');
+  const erroEl     = document.getElementById('dl-upload-erro');
+  btnEnviar.disabled = true; btnEnviar.textContent = '⏳ Enviando...';
+  btnCancelar.disabled = true;
+  progWrap.style.display = ''; erroEl.style.display = 'none';
   const arqId = 'dl'+Date.now()+Math.random().toString(36).slice(2,7);
-  const path = `${catId}/${arqId}_${file.name}`;
-  const {error:errUp} = await sb.storage.from('downloads').upload(path, file, {upsert:false});
-  if(errUp){ if(st) st.textContent='Erro: '+errUp.message; return; }
+  const path  = `${catId}/${arqId}_${file.name}`;
+  const {error:errUp} = await uploadOSArquivoXHR('downloads', path, file, (loaded, total)=>{
+    const pct = Math.round(loaded/total*100);
+    if(progBar) progBar.style.width = pct+'%';
+    if(progTxt) progTxt.textContent = `${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+  });
+  if(errUp && errUp.message!=='__xhr_load_failed__'){
+    erroEl.textContent = 'Erro no upload: '+(errUp.message||errUp);
+    erroEl.style.display = '';
+    btnEnviar.disabled=false; btnEnviar.textContent='⬆ Enviar arquivo';
+    btnCancelar.disabled=false;
+    return;
+  }
+  // fallback se XHR falhou
+  if(errUp && errUp.message==='__xhr_load_failed__'){
+    const {error:errFb} = await sb.storage.from('downloads').upload(path, file, {upsert:true});
+    if(errFb){ erroEl.textContent='Erro: '+errFb.message; erroEl.style.display=''; btnEnviar.disabled=false; btnCancelar.disabled=false; return; }
+  }
   const novoArq = {
-    id:arqId, categoriaId:catId, nome:file.name, descricao:'',
+    id:arqId, categoriaId:catId, nome:file.name, descricao,
     storagePath:path, tamanho:file.size,
     criadoEm:new Date().toISOString(), criadoPor:usuarioAtual?usuarioAtual.nome:''
   };
   const {error:errDb} = await sb.from('download_arquivos').insert({
-    id:arqId, categoria_id:catId, nome:file.name, descricao:'',
+    id:arqId, categoria_id:catId, nome:file.name, descricao,
     storage_path:path, tamanho:file.size,
     criado_em:novoArq.criadoEm, criado_por:novoArq.criadoPor
   });
-  if(errDb){ await sb.storage.from('downloads').remove([path]); if(st) st.textContent='Erro DB: '+errDb.message; return; }
+  if(errDb){ await sb.storage.from('downloads').remove([path]); erroEl.textContent='Erro DB: '+errDb.message; erroEl.style.display=''; btnEnviar.disabled=false; btnCancelar.disabled=false; return; }
   db.downloadArquivos = db.downloadArquivos||[];
   db.downloadArquivos.push(novoArq);
-  if(st) st.textContent='';
-  input.value='';
-  registrarLog('criar','download-arq',arqId,`Arquivo enviado: "${file.name}" na categoria ${catId}`);
+  registrarLog('criar','download-arq',arqId,`Arquivo enviado: "${file.name}" — ${descricao||'sem descrição'} (cat ${catId})`);
+  fecharModal();
   renderDlArquivos(catId);
+  renderDlCats();
+}
+
+async function editarDescDlArquivo(id){
+  const arq = (db.downloadArquivos||[]).find(a=>a.id===id);
+  if(!arq) return;
+  abrirModal(`
+    <h3>✏️ Editar descrição</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 10px">${arq.nome}</p>
+    <label>Descrição</label>
+    <textarea id="dl-edit-desc" rows="3" style="resize:vertical">${arq.descricao||''}</textarea>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarDescDlArquivo('${id}')">Salvar</button>
+    </div>`);
+}
+
+async function salvarDescDlArquivo(id){
+  const arq = (db.downloadArquivos||[]).find(a=>a.id===id);
+  if(!arq) return;
+  const desc = (document.getElementById('dl-edit-desc').value||'').trim();
+  const {error} = await sb.from('download_arquivos').update({descricao:desc}).eq('id',id);
+  if(error){ alert('Erro: '+error.message); return; }
+  arq.descricao = desc;
+  fecharModal();
+  if(_dlCatAtiva) renderDlArquivos(_dlCatAtiva);
 }
 
 async function baixarDlArquivo(id, path, nome){
-  const {data, error} = await sb.storage.from('downloads').createSignedUrl(path, 60);
-  if(error){ alert('Erro ao gerar link: '+error.message); return; }
-  const a = document.createElement('a'); a.href=data.signedUrl; a.download=nome; a.target='_blank';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  await _baixarArquivoBucket('downloads', path, nome);
   registrarLog('download','download-arq',id,`Arquivo baixado: "${nome}"`);
 }
 
 async function excluirDlArquivo(id, path){
-  if(!confirm('Excluir este arquivo?')) return;
+  const arq = (db.downloadArquivos||[]).find(a=>a.id===id);
+  if(!confirm(`Excluir "${arq?arq.nome:id}"?`)) return;
   await sb.storage.from('downloads').remove([path]);
   await sb.from('download_arquivos').delete().eq('id',id);
   db.downloadArquivos = (db.downloadArquivos||[]).filter(a=>a.id!==id);
-  const arq = (db.downloadArquivos||[]).find(a=>a.id===id);
   registrarLog('excluir','download-arq',id,`Arquivo excluído: "${arq?arq.nome:id}"`);
-  if(_dlCatAtiva) renderDlArquivos(_dlCatAtiva);
+  if(_dlCatAtiva){ renderDlArquivos(_dlCatAtiva); renderDlCats(); }
 }
 
 /* ===== AUDITORIA ===== */
@@ -6037,8 +6139,17 @@ function formGrupo(g){
     <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
   const recursosCk = RECURSOS.map(r=>`
     <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
-  const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).map(c=>`
-    <label class="perm-item"><input type="checkbox" class="ck-grec" value="dl-cat-${c.id}" ${!g||(g.recursos||[]).includes(`dl-cat-${c.id}`)?'checked':''}> 📁 Baixar da categoria: ${c.nome}</label>`).join('');
+  const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).length
+    ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:4px 8px;align-items:center">
+        <div style="font-size:11px;color:var(--muted);font-weight:600">CATEGORIA</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">BAIXAR</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">ENVIAR</div>
+        ${(db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).map(c=>`
+          <div style="font-size:13px">📁 ${c.nome}</div>
+          <div style="text-align:center"><input type="checkbox" class="ck-grec" value="dl-cat-${c.id}" ${!g||(g.recursos||[]).includes(`dl-cat-${c.id}`)?'checked':''}></div>
+          <div style="text-align:center"><input type="checkbox" class="ck-grec" value="ul-cat-${c.id}" ${!g||(g.recursos||[]).includes(`ul-cat-${c.id}`)?'checked':''}></div>`).join('')}
+      </div>`
+    : '<span style="font-size:13px;color:var(--muted)">Nenhuma categoria criada ainda.</span>';
   return `
     <label>Nome do grupo</label><input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas...">
     ${g&&g.admin
