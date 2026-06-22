@@ -358,8 +358,24 @@
     <div class="bar">
       <h2>Clientes / Prospects</h2>
       <div class="spacer"></div>
+      <select id="cli-filtro-tipo" onchange="renderClientes()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os tipos</option>
+        <option value="cliente">🟢 Clientes</option>
+        <option value="prospect">🟡 Prospects</option>
+        <option value="frio">🔴 Leads Frios</option>
+      </select>
+      <select id="cli-filtro-cidade" onchange="renderClientes()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todas as cidades</option>
+      </select>
+      <select id="cli-sort" onchange="renderClientes()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="nome">A-Z por nome</option>
+        <option value="aprovadas">Mais aprovadas</option>
+        <option value="emitidas">Mais emitidas</option>
+        <option value="crms">Mais CRMs</option>
+      </select>
       <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
     </div>
+    <div class="stats" id="cli-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <table class="lista">
       <thead><tr><th>Tipo</th><th>Nome</th><th>Telefone</th><th>E-mail</th><th>Endereço</th><th>Obras</th><th>CRM(s)</th><th>Emitidas</th><th>Aprovadas</th></tr></thead>
       <tbody id="clientes-tbody"></tbody>
@@ -506,13 +522,33 @@
     <div class="bar">
       <h2>Controle de Propostas</h2>
       <div class="spacer"></div>
+      <select id="prop-filtro-status" onchange="renderPropostas()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os status</option>
+        <option value="emitida">Emitidas (abertas)</option>
+        <option value="aprovada">Aprovadas</option>
+        <option value="perdida">Perdidas / Abandonadas</option>
+      </select>
+      <select id="prop-filtro-fase" onchange="renderPropostas()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todas as fases</option>
+      </select>
+      <select id="prop-filtro-periodo" onchange="renderPropostas()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os períodos</option>
+        <option value="mes">Este mês</option>
+        <option value="mes-ant">Mês anterior</option>
+        <option value="ano">Este ano</option>
+      </select>
+      <select id="prop-sort" onchange="renderPropostas()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="data">Mais recentes</option>
+        <option value="valor">Maior valor</option>
+        <option value="cliente">Cliente (A-Z)</option>
+      </select>
     </div>
     <div class="stats" id="prop-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As propostas são criadas dentro do cartão CRM (abra o cartão → aba "Propostas Emitidas"). Clique numa linha para abrir o cartão correspondente.
     </p>
     <table class="lista">
-      <thead><tr><th>Número</th><th>Cliente</th><th>Obra</th><th>Cartão</th><th>Emissão</th><th>Valor</th><th>Fase</th><th>Status</th><th>Arquivos</th></tr></thead>
+      <thead><tr><th>Número</th><th>Cliente</th><th>Obra</th><th>Cartão</th><th>Emissão</th><th>Validade</th><th>Valor</th><th>Fase</th><th>Status</th><th>Arquivos</th></tr></thead>
       <tbody id="propostas-tbody"></tbody>
     </table>
   </div>
@@ -2670,9 +2706,55 @@ function classificarCliente(clienteId){
 }
 
 function renderClientes(){
-  const tb = document.getElementById('clientes-tbody'); tb.innerHTML='';
+  const tb = document.getElementById('clientes-tbody'); if(!tb) return; tb.innerHTML='';
+  const st = document.getElementById('cli-stats');
+  const selCidade = document.getElementById('cli-filtro-cidade');
+  const filtroTipo   = document.getElementById('cli-filtro-tipo')?.value   || '';
+  const filtroCidade = selCidade?.value || '';
+  const sort         = document.getElementById('cli-sort')?.value || 'nome';
   const t = termoBusca();
-  db.clientes.filter(c=>!t || (c.nome+' '+enderecoResumo(c)).toLowerCase().includes(t)).forEach(c=>{
+
+  // popular select de cidades dinamicamente
+  if(selCidade){
+    const cidadeAtual = selCidade.value;
+    const cidades = [...new Set(db.clientes.map(c=>c.cidade||'').filter(Boolean))].sort();
+    while(selCidade.options.length > 1) selCidade.remove(1);
+    cidades.forEach(ci=>{ const o=document.createElement('option'); o.value=ci; o.textContent=ci; selCidade.appendChild(o); });
+    if(cidadeAtual) selCidade.value = cidadeAtual;
+  }
+
+  // stats globais
+  const nCliente  = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Cliente')).length;
+  const nProspect = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Prospect')).length;
+  const nFrio     = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Lead Frio')).length;
+  if(st) st.innerHTML=`
+    <div class="stat"><div class="n">${db.clientes.length}</div><div class="l">Total</div></div>
+    <div class="stat"><div class="n" style="color:#1d8348">${nCliente}</div><div class="l">🟢 Clientes</div></div>
+    <div class="stat"><div class="n" style="color:#b7950b">${nProspect}</div><div class="l">🟡 Prospects</div></div>
+    <div class="stat"><div class="n" style="color:#922b21">${nFrio}</div><div class="l">🔴 Leads Frios</div></div>`;
+
+  // filtrar
+  let lista = db.clientes.filter(c=>{
+    if(t && !(c.nome+' '+enderecoResumo(c)).toLowerCase().includes(t)) return false;
+    if(filtroCidade && (c.cidade||'')!==filtroCidade) return false;
+    if(filtroTipo){
+      const {selo} = classificarCliente(c.id);
+      if(filtroTipo==='cliente'  && !selo.includes('Cliente'))  return false;
+      if(filtroTipo==='prospect' && !selo.includes('Prospect')) return false;
+      if(filtroTipo==='frio'     && !selo.includes('Lead Frio')) return false;
+    }
+    return true;
+  });
+
+  // ordenar
+  lista = lista.slice().sort((a,b)=>{
+    if(sort==='aprovadas') return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='aprovada').length - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='aprovada').length;
+    if(sort==='emitidas')  return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='emitida').length  - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='emitida').length;
+    if(sort==='crms')      return db.cards.filter(x=>x.clienteId===b.id).length - db.cards.filter(x=>x.clienteId===a.id).length;
+    return a.nome.localeCompare(b.nome);
+  });
+
+  lista.forEach(c=>{
     const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
     const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
     const qtdEmitidas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='emitida').length;
@@ -2685,6 +2767,7 @@ function renderClientes(){
     tr.innerHTML=`<td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td><td><b>${c.nome}</b></td><td>${c.tel||''}</td><td>${c.email||''}</td><td>${enderecoResumo(c)||'<span style="color:var(--muted)">— clique para cadastrar</span>'}</td><td>${qtdObras}</td><td>${qtd}</td><td>${qtdEmitidas||'—'}</td><td style="color:${qtdAprovadas?'#6a1b9a':'inherit'};font-weight:${qtdAprovadas?'700':'400'}">${qtdAprovadas||'—'}</td>`;
     tb.appendChild(tr);
   });
+  if(!lista.length) tb.innerHTML='<tr><td colspan="9" class="empty">Nenhum cliente encontrado.</td></tr>';
 }
 
 /* ================= MODAIS ================= */
@@ -5603,25 +5686,68 @@ function renderPropostas(){
   const tb=document.getElementById('propostas-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'propostas')) return;
+
+  const selFase = document.getElementById('prop-filtro-fase');
+  const filtroStatus  = document.getElementById('prop-filtro-status')?.value  || '';
+  const filtroFase    = selFase?.value || '';
+  const filtroPeriodo = document.getElementById('prop-filtro-periodo')?.value || '';
+  const sort          = document.getElementById('prop-sort')?.value || 'data';
   const t=termoBusca();
-  const lista=db.propostas
-    .filter(p=>!t || (p.numero+' '+cliente(p.clienteId).nome).toLowerCase().includes(t))
-    .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+
+  // popular select de fases dinamicamente
+  if(selFase){
+    const faseAtual = selFase.value;
+    const fasesDisp = fasesPropOrdenadas().filter(f=>!f.tipo);
+    while(selFase.options.length > 1) selFase.remove(1);
+    fasesDisp.forEach(f=>{ const o=document.createElement('option'); o.value=f.id; o.textContent=f.nome; selFase.appendChild(o); });
+    if(faseAtual) selFase.value = faseAtual;
+  }
+
+  // período
+  const hoje = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const mesAnt   = (()=>{ const d=new Date(hoje); d.setMonth(d.getMonth()-1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; })();
+  const anoAtual = String(hoje.getFullYear());
+
+  // stats globais (sempre totais completos, independente dos filtros)
   const st=document.getElementById('prop-stats');
-  const aprovadas=db.propostas.filter(p=>p.status==='aprovada');
-  const perdidas=db.propostas.filter(p=>p.status==='emitida' && propostaPerdida(p));
-  const abertas=db.propostas.filter(p=>p.status==='emitida' && !propostaPerdida(p));
   const soma=arr=>arr.reduce((s,p)=>s+(p.valor||0),0);
-  st.innerHTML=`
-    <div class="stat"><div class="n">${abertas.length}</div><div class="l">Emitidas em aberto</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(abertas))||'R$ 0,00'}</div></div>
-    <div class="stat"><div class="n">${aprovadas.length}</div><div class="l">Aprovadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(aprovadas))||'R$ 0,00'}</div></div>
-    <div class="stat"><div class="n">${perdidas.length}</div><div class="l">Perdidas/Abandonadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(perdidas))||'R$ 0,00'}</div></div>`;
+  const abertas_g  = db.propostas.filter(p=>p.status==='emitida' && !propostaPerdida(p));
+  const aprovadas_g= db.propostas.filter(p=>p.status==='aprovada');
+  const perdidas_g = db.propostas.filter(p=>p.status==='emitida' && propostaPerdida(p));
+  if(st) st.innerHTML=`
+    <div class="stat"><div class="n">${abertas_g.length}</div><div class="l">Emitidas em aberto</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(abertas_g))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n">${aprovadas_g.length}</div><div class="l">Aprovadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(aprovadas_g))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n">${perdidas_g.length}</div><div class="l">Perdidas/Abandonadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(perdidas_g))||'R$ 0,00'}</div></div>`;
+
+  // filtrar
+  let lista=db.propostas.filter(p=>{
+    if(t && !(p.numero+' '+cliente(p.clienteId).nome).toLowerCase().includes(t)) return false;
+    if(filtroStatus==='emitida'  && (p.status!=='emitida' || propostaPerdida(p))) return false;
+    if(filtroStatus==='aprovada' && p.status!=='aprovada') return false;
+    if(filtroStatus==='perdida'  && !(p.status==='emitida' && propostaPerdida(p))) return false;
+    if(filtroFase && String(p.faseId)!==filtroFase) return false;
+    if(filtroPeriodo==='mes'     && !(p.dataEmissao||'').startsWith(mesAtual)) return false;
+    if(filtroPeriodo==='mes-ant' && !(p.dataEmissao||'').startsWith(mesAnt))   return false;
+    if(filtroPeriodo==='ano'     && !(p.dataEmissao||'').startsWith(anoAtual)) return false;
+    return true;
+  });
+
+  // ordenar
+  if(sort==='data')    lista=lista.sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+  if(sort==='valor')   lista=lista.sort((a,b)=>(b.valor||0)-(a.valor||0));
+  if(sort==='cliente') lista=lista.sort((a,b)=>cliente(a.clienteId).nome.localeCompare(cliente(b.clienteId).nome));
+
+  const hojeS = localDia(0);
   lista.forEach(p=>{
     const card=db.cards.find(c=>c.id===p.cardId);
     const ob=p.obraId?db.obras.find(o=>o.id===p.obraId):null;
+    const venc=vencimentoProp(p);
+    const vencida = venc && venc < hojeS && p.status==='emitida' && !propostaPerdida(p);
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.title='Clique para abrir o cartão';
+    if(vencida) tr.style.background='#fff8f0';
     tr.onclick=()=>abrirEditarCartao(p.cardId, p.status==='aprovada'?'aprovada':'emitidas');
     tr.innerHTML=`
       <td><b>${p.numero}</b></td>
@@ -5629,13 +5755,14 @@ function renderPropostas(){
       <td>${ob?ob.nome:'—'}</td>
       <td>#${card?card.num:'?'}</td>
       <td>${fmtDia2(p.dataEmissao)}</td>
+      <td>${venc?`<span style="color:${vencida?'#e53935':'inherit'}">${fmtDia2(venc)}${vencida?' ⚠':''}</span>`:'—'}</td>
       <td>${fmtMoney(p.valor)||'—'}</td>
       <td>${(()=>{const f=faseProp(p.faseId); return f?`<span style="color:${f.cor}">●</span> ${f.nome}`:'—';})()}</td>
       <td><span class="badge-status ${p.status==='aprovada'?'aprovada':propostaPerdida(p)?'perdida':'emitida'}">${p.status==='aprovada'?'Aprovada':propostaPerdida(p)?'Perdida':'Emitida'}</span></td>
       <td>${(p.arquivos||[]).length}</td>`;
     tb.appendChild(tr);
   });
-  if(!lista.length) tb.innerHTML='<tr><td colspan="9" class="empty">Nenhuma proposta cadastrada.</td></tr>';
+  if(!lista.length) tb.innerHTML='<tr><td colspan="10" class="empty">Nenhuma proposta encontrada.</td></tr>';
 }
 
 function salvarEdicaoCartao(id){
