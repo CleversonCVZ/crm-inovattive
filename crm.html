@@ -103,6 +103,7 @@
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay.open{display:flex}
   .modal{background:#fff;border-radius:12px;padding:22px;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto}
+  .modal.wide{width:820px}
   .modal.cartao{width:920px;height:min(660px,90vh);display:flex;flex-direction:column}
   .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
   .rodape-cartao{flex-shrink:0;border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
@@ -7173,7 +7174,7 @@ function abrirNovoGrupo(){
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" onclick="salvarGrupo()">Salvar</button>
-    </div>`);
+    </div>`, 'wide');
 }
 
 function abrirEditarGrupo(id){
@@ -7183,7 +7184,7 @@ function abrirEditarGrupo(id){
       ${g.admin?'':`<button class="btn danger" onclick="excluirGrupo(${g.id})">Excluir</button>`}
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" onclick="salvarGrupo(${g.id})">Salvar</button>
-    </div>`);
+    </div>`, 'wide');
 }
 
 async function salvarGrupo(id){
