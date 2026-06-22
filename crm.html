@@ -3198,7 +3198,7 @@ function abrirEditarCartao(id, aba='dados'){
     <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirCartao(${c.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      <button class="btn primary" style="${aba==='dados'?'':'visibility:hidden'}" ${aba==='dados'?`onclick="salvarEdicaoCartao(${c.id})"`:'disabled'}>Salvar</button>
+      <button class="btn primary" onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
     </div>`, 'cartao');
   if(aba==='dados') wireValidacao(c.id);
 }
