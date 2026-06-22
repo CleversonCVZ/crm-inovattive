@@ -2654,7 +2654,7 @@ function renderVistaData(k){
   const dow=(new Date().getDay()+6)%7; // 0 = segunda-feira
   const fimSem=localDia(6-dow), fimProx=localDia(13-dow);
   const buckets={atrasado:[],hoje:[],amanha:[],semana:[],proxsemana:[],futuro:[],sem:[]};
-  db.cards.filter(c=>cardAtivo(c) && filtroBusca(c)).forEach(c=>{
+  db.cards.filter(c=>cardAtivo(c) && podeVerFase(c.faseId) && filtroBusca(c)).forEach(c=>{
     let b='sem';
     if(c.agenda){
       const dia=c.agenda.slice(0,10);
