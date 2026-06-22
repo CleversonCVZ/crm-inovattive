@@ -4389,44 +4389,20 @@ function abrirVerOS(osId, cardId){
   const mkItensPropostaSecao = () => {
     if(!todosItensProp.length) return '';
     const itensAloc = marcadosOS.filter(m=>m.qtdOS>0);
-    if(os.fechada){
-      if(!itensAloc.length) return '';
-      return `<div style="margin-bottom:10px">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📦 Itens vinculados</div>
-        ${itensAloc.map(reg=>{
-          const it = todosItensProp.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
-          const desc = reg.descricao||it?.descricao||it?.item||'—';
-          return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">
-            <span style="flex:1;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${desc}">${desc}</span>
-            <span style="font-size:12px;font-weight:700;color:#26a69a;flex-shrink:0">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
-          </div>`;
-        }).join('')}
-        <div style="border-top:2px solid var(--border);margin:8px 0 10px"></div>
+    const linhas = itensAloc.map(reg=>{
+      const it   = todosItensProp.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+      const desc = reg.descricao||it?.descricao||it?.item||'—';
+      return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" title="${desc}">${desc}</span>
+        <span style="font-size:12px;font-weight:700;color:#26a69a;flex-shrink:0">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
       </div>`;
-    }
+    }).join('');
     return `<div style="margin-bottom:10px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">📦 Itens da proposta</div>
-      ${!itensDisponiveis.length
-        ? `<div style="font-size:11px;color:var(--muted);padding:4px 0">Todos os itens já alocados em outras O.S.</div>`
-        : itensDisponiveis.map(it=>{
-            const key = it.propostaId+'_'+it.idx;
-            const reg = marcadosOS.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-            const qtdOS = reg?(reg.qtdOS||0):0;
-            const jaAlocado = outrasOSTodas.reduce((s,o)=>{
-              const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-              return s+(r?r.qtdOS||0:0);
-            },0);
-            const saldo = Math.max(0,(it.qtd||0)-jaAlocado);
-            const cor = qtdOS>0?'#26a69a':'#ddd';
-            const desc = it.descricao||it.item;
-            return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--border)">
-              <span style="flex:1;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:${qtdOS>0?'700':'400'}" title="${desc} — Saldo: ${saldo} ${it.tipo||'un'}">${desc}</span>
-              <input type="number" min="0" max="${saldo+qtdOS}" value="${qtdOS}" title="Qtd nesta OS (saldo: ${saldo})"
-                style="width:48px;text-align:center;font-size:12px;font-weight:700;border:2px solid ${cor};border-radius:5px;padding:2px 3px;flex-shrink:0"
-                onchange="salvarQtdItemOS(${osId},'${key}',${it.propostaId},${it.idx},+this.value,${cardId})">
-              <span style="font-size:11px;color:var(--muted);flex-shrink:0;min-width:20px">${it.tipo||'un'}</span>
-            </div>`;
-          }).join('')}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">📦 Itens${itensAloc.length?' ('+itensAloc.length+')':''}</div>
+        ${!os.fechada?`<button class="btn sm primary" style="font-size:11px;padding:2px 8px" onclick="abrirSeletorItensOS(${osId},${cardId})">＋ Gerenciar</button>`:''}
+      </div>
+      ${linhas||`<div style="font-size:11px;color:var(--muted);padding:3px 0">Nenhum item alocado.</div>`}
       <div style="border-top:2px solid var(--border);margin:8px 0 10px"></div>
     </div>`;
   };
@@ -4952,7 +4928,7 @@ function abrirSeletorItensOS(osId, cardId){
     </div>
 
     <div class="actions" style="margin-top:20px">
-      <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'itens')">← Voltar à O.S.</button>
+      <button class="btn neutral" onclick="${os.tipo==='execucao'?`abrirVerOSExecucao(${osId},${cardId},'itens')`:`abrirVerOS(${osId},${cardId})`}">← Voltar à O.S.</button>
     </div>
   `);
 }
