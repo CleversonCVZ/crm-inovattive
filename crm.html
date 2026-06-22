@@ -6125,8 +6125,10 @@ function copiarEnderecoCliente(clienteId){
 }
 
 async function salvarObra(id, clienteId, returnCardId=null){
+  const btnSalvar = document.querySelector('#modal .btn.primary');
+  if(btnSalvar){ if(btnSalvar.disabled) return; btnSalvar.disabled=true; btnSalvar.textContent='Salvando…'; }
   const nome=document.getElementById('o-nome').value.trim();
-  if(!nome){ alert('Informe o nome da obra.'); return; }
+  if(!nome){ alert('Informe o nome da obra.'); if(btnSalvar){ btnSalvar.disabled=false; btnSalvar.textContent='Salvar'; } return; }
   const end=lerEndereco('o');
   const faseId=+document.getElementById('o-fase').value||null;
   const status=document.getElementById('o-status').value||'ativa';
