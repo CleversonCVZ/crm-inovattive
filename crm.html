@@ -4713,7 +4713,9 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
                   <div class="os-img-card">
                     <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}','os-diario-imagens')">
                     <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
-                    ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirImagemDiario(${osId},${d.id},${ii},${cardId})">🗑 remover</button>`:''}
+                    ${!os.fechada?`
+                    <button class="icon-btn" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="editarLegendaImagemDiario(${osId},${d.id},${ii},${cardId})">✏️ legenda</button>
+                    <button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirImagemDiario(${osId},${d.id},${ii},${cardId})">🗑 remover</button>`:''}
                   </div>`).join('')}
               </div>
               ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
@@ -5058,6 +5060,30 @@ async function excluirImagemDiario(osId, diaId, imgIdx, cardId){
   const img= (d.imagens||[])[imgIdx];
   if(img?.path) await sb.storage.from('os-diario-imagens').remove([img.path]);
   d.imagens.splice(imgIdx, 1);
+  await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+}
+
+function editarLegendaImagemDiario(osId, diaId, imgIdx, cardId){
+  const os  = db.ordensServico.find(x=>x.id===osId);
+  const d   = (os.diario||[]).find(x=>x.id===diaId);
+  const img = (d.imagens||[])[imgIdx];
+  abrirModal(`
+    <h3 style="margin-bottom:16px">✏️ Legenda da imagem</h3>
+    <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin-bottom:14px;background:#f0f0f0">
+    <label style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Legenda</label>
+    <input id="leg-edit-txt" type="text" value="${(img.descricao||'').replace(/"/g,'&quot;')}" placeholder="Descreva a imagem..." style="width:100%;margin-bottom:20px">
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'diario')">Cancelar</button>
+      <button class="btn primary" onclick="salvarLegendaImagemDiario(${osId},${diaId},${imgIdx},${cardId})">Salvar</button>
+    </div>`);
+}
+
+async function salvarLegendaImagemDiario(osId, diaId, imgIdx, cardId){
+  const leg = (document.getElementById('leg-edit-txt')?.value||'').trim();
+  const os  = db.ordensServico.find(x=>x.id===osId);
+  const d   = (os.diario||[]).find(x=>x.id===diaId);
+  d.imagens[imgIdx].descricao = leg;
   await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
   save(); abrirVerOSExecucao(osId, cardId, 'diario');
 }
