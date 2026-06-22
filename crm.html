@@ -4374,7 +4374,63 @@ function abrirVerOS(osId, cardId){
     </div>`;
   }).join('');
 
+  // itens da proposta disponíveis para esta OS (qualquer tipo)
+  const todosItensProp = _itensPropostasAprovadas(cardId);
+  const marcadosOS     = (os.itensTrabalho||[]);
+  const outrasOSTodas  = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
+  const itensDisponiveis = todosItensProp.filter(it=>{
+    const jaAlocado = outrasOSTodas.reduce((s,o)=>{
+      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+      return s+(r?r.qtdOS||0:0);
+    },0);
+    const reg = marcadosOS.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+    return jaAlocado < (it.qtd||0) || (reg && reg.qtdOS>0);
+  });
+  const mkItensPropostaSecao = () => {
+    if(!todosItensProp.length) return '';
+    const itensAloc = marcadosOS.filter(m=>m.qtdOS>0);
+    if(os.fechada){
+      if(!itensAloc.length) return '';
+      return `<div style="margin-bottom:14px">
+        <label style="font-weight:700">📦 Itens vinculados a esta O.S.</label>
+        ${itensAloc.map(reg=>{
+          const it = todosItensProp.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="flex:1;font-weight:600">${reg.descricao||it?.descricao||it?.item||'—'}</span>
+            <span style="color:#26a69a;font-weight:700">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+    return `<div style="margin-bottom:14px">
+      <label style="font-weight:700">📦 Itens da proposta</label>
+      ${!itensDisponiveis.length
+        ? `<div style="font-size:12px;color:var(--muted);padding:6px 0">Todos os itens já foram alocados em outras O.S.</div>`
+        : itensDisponiveis.map(it=>{
+            const key = it.propostaId+'_'+it.idx;
+            const reg = marcadosOS.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+            const qtdOS = reg?(reg.qtdOS||0):0;
+            const jaAlocado = outrasOSTodas.reduce((s,o)=>{
+              const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+              return s+(r?r.qtdOS||0:0);
+            },0);
+            const saldo = Math.max(0,(it.qtd||0)-jaAlocado);
+            const cor = qtdOS>0?'#26a69a':'#ccc';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);flex-wrap:wrap">
+              <span style="flex:1;font-size:13px;font-weight:${qtdOS>0?'700':'400'}">${it.descricao||it.item}</span>
+              <span style="font-size:11px;color:#1565c0;background:#e3f2fd;border-radius:4px;padding:1px 5px">Saldo: ${saldo} ${it.tipo||'un'}</span>
+              <input type="number" min="0" max="${saldo+qtdOS}" value="${qtdOS}"
+                style="width:60px;text-align:center;font-size:13px;font-weight:700;border:2px solid ${cor};border-radius:6px;padding:3px 4px"
+                onchange="salvarQtdItemOS(${osId},'${key}',${it.propostaId},${it.idx},+this.value,${cardId})">
+              <span style="font-size:11px;color:var(--muted)">${it.tipo||'un'}</span>
+            </div>`;
+          }).join('')}
+    </div>
+    <div style="border-top:2px solid var(--border);margin:10px 0 14px"></div>`;
+  };
+
   const colDir = isProjeto ? `
+    ${mkItensPropostaSecao()}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <label style="margin:0;font-weight:700">📐 Arquivos do Arquiteto</label>
       <span class="os-arq-secao-status ${nArqArq?'':'pendente'}">${nArqArq?'✅ '+nArqArq+' arquivo(s)':'⏳ Aguardando'}</span>
@@ -4626,8 +4682,8 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
   else if(aba==='itens'){
     const todosItens = _itensPropostasAprovadas(cardId);
     const marcados   = (os.itensTrabalho||[]);
-    // outras OS de execução do mesmo card (para calcular já instalado em outras OS)
-    const outrasOSExec = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId && o.tipo==='execucao');
+    // todas as outras OS do mesmo card (projeto + execução) para calcular saldo
+    const outrasOSExec = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
 
     if(os.fechada){
       // ── MODO VISUALIZAÇÃO (técnico / OS fechada): só mostra itens alocados nesta OS ──
