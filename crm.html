@@ -411,11 +411,30 @@
     <div class="bar">
       <h2>Obras</h2>
       <div class="spacer"></div>
+      <select id="ob-filtro-status" onchange="renderObrasLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos os status</option>
+        <option value="ativa">🟢 Ativas</option>
+        <option value="pausada">🟡 Pausadas</option>
+        <option value="concluida">✅ Concluídas</option>
+      </select>
+      <select id="ob-filtro-fase" onchange="renderObrasLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todas as fases</option>
+      </select>
+      <select id="ob-filtro-cidade" onchange="renderObrasLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todas as cidades</option>
+      </select>
+      <select id="ob-sort" onchange="renderObrasLista()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="nome">Nome (A-Z)</option>
+        <option value="cliente">Cliente (A-Z)</option>
+        <option value="os">Mais O.S.</option>
+        <option value="valor">Maior valor aprovado</option>
+      </select>
     </div>
-    <div class="empty" style="padding:60px 20px;font-size:15px">
-      🏗️ Lista de Obras em construção.<br>
-      <small style="color:var(--muted)">Aqui aparecerão todas as obras cadastradas com status, fase atual, cliente e progresso.</small>
-    </div>
+    <div class="stats" id="ob-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <table class="lista">
+      <thead><tr><th>Obra</th><th>Cliente</th><th>Cidade</th><th>Fase</th><th>Status</th><th>O.S.</th><th>OS Abertas</th><th>Prop. Aprovadas</th><th>Valor Aprovado</th><th>Compras</th></tr></thead>
+      <tbody id="obras-lista-tbody"></tbody>
+    </table>
   </div>
 
   <!-- O.S.: PAINEL -->
@@ -925,6 +944,7 @@ function load(){
     }
   });
   if(!Array.isArray(db.obras)) db.obras=[];
+  db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; });
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1062,6 +1082,8 @@ async function carregarDadosSupabase(){
     if(obras.data)
       db.obras = obras.data.map(o=>({
         id:o.id, clienteId:o.cliente_id, nome:o.nome,
+        faseId: o.fase_id || null,
+        status: o.status || 'ativa',
         endereco: (o.endereco && Object.keys(o.endereco).length) ? o.endereco : enderecoVazio('')
       }));
     if(cards.data){
@@ -1223,7 +1245,8 @@ function syncDadosSupabase(){
       id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'', endereco:c.endereco||{}
     }));
     await sincronizarTabela('obras', db.obras, o=>({
-      id:o.id, cliente_id:Number(o.clienteId)||null, nome:o.nome, endereco:o.endereco||{}
+      id:o.id, cliente_id:Number(o.clienteId)||null, nome:o.nome,
+      fase_id:Number(o.faseId)||null, status:o.status||'ativa', endereco:o.endereco||{}
     }));
     await sincronizarTabela('cards', db.cards, c=>({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null, origem_id:Number(c.origemId)||null,
@@ -5994,9 +6017,15 @@ function editarObraDoCartao(cardId, clienteId){
 
 function abrirObraModal(obraId, clienteId, returnCardId=null){
   const o = obraId ? db.obras.find(x=>x.id===obraId) : null;
+  const fasesOpts = fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${o&&o.faseId===f.id?'selected':''}>${f.nome}</option>`).join('');
+  const statusOpts = [['ativa','🟢 Ativa'],['pausada','🟡 Pausada'],['concluida','✅ Concluída']].map(([v,l])=>`<option value="${v}" ${(o?o.status||'ativa':'ativa')===v?'selected':''}>${l}</option>`).join('');
   abrirModal(`
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><label>Fase da obra</label><select id="o-fase" style="width:100%"><option value="">— sem fase —</option>${fasesOpts}</select></div>
+      <div><label>Status</label><select id="o-status" style="width:100%">${statusOpts}</select></div>
+    </div>
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
     <div class="actions">
       ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
@@ -6099,12 +6128,14 @@ async function salvarObra(id, clienteId, returnCardId=null){
   const nome=document.getElementById('o-nome').value.trim();
   if(!nome){ alert('Informe o nome da obra.'); return; }
   const end=lerEndereco('o');
+  const faseId=+document.getElementById('o-fase').value||null;
+  const status=document.getElementById('o-status').value||'ativa';
   if(id){
     const o=db.obras.find(x=>x.id===id);
-    o.nome=nome; o.endereco=end;
-    registrarLog('editar', 'obra', id, `Obra editada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
+    o.nome=nome; o.endereco=end; o.faseId=faseId; o.status=status;
+    registrarLog('editar', 'obra', id, `Obra editada: "${nome}" — fase: ${faseId||'sem'}, status: ${status}`);
   } else {
-    const novaObra={id: await proximoIdSeguro('obras', db.obras), clienteId, nome, endereco:end};
+    const novaObra={id: await proximoIdSeguro('obras', db.obras), clienteId, nome, faseId, status, endereco:end};
     db.obras.push(novaObra);
     registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
@@ -6441,8 +6472,97 @@ function renderOSLista(){
   });
 }
 
+function renderObrasLista(){
+  const tb = document.getElementById('obras-lista-tbody'); if(!tb) return;
+  const st = document.getElementById('ob-stats');
+  const selFase   = document.getElementById('ob-filtro-fase');
+  const selCidade = document.getElementById('ob-filtro-cidade');
+  const filtroStatus = document.getElementById('ob-filtro-status')?.value  || '';
+  const filtroFase   = selFase?.value   || '';
+  const filtroCidade = selCidade?.value || '';
+  const sort         = document.getElementById('ob-sort')?.value || 'nome';
+  const t = termoBusca();
+
+  // popular selects dinamicamente
+  if(selFase){
+    const faseAtual = selFase.value;
+    while(selFase.options.length > 1) selFase.remove(1);
+    fasesObraOrdenadas().forEach(f=>{ const o=document.createElement('option'); o.value=f.id; o.textContent=f.nome; selFase.appendChild(o); });
+    if(faseAtual) selFase.value = faseAtual;
+  }
+  if(selCidade){
+    const cidadeAtual = selCidade.value;
+    const cidades = [...new Set(db.obras.map(o=>o.endereco?.cidade||'').filter(Boolean))].sort();
+    while(selCidade.options.length > 1) selCidade.remove(1);
+    cidades.forEach(ci=>{ const o=document.createElement('option'); o.value=ci; o.textContent=ci; selCidade.appendChild(o); });
+    if(cidadeAtual) selCidade.value = cidadeAtual;
+  }
+
+  // stats globais
+  const nAtiva     = db.obras.filter(o=>(o.status||'ativa')==='ativa').length;
+  const nPausada   = db.obras.filter(o=>o.status==='pausada').length;
+  const nConcluida = db.obras.filter(o=>o.status==='concluida').length;
+  const valorTotal = db.obras.reduce((s,o)=>s+db.propostas.filter(p=>p.obraId===o.id&&p.status==='aprovada').reduce((ss,p)=>ss+(p.valor||0),0),0);
+  if(st) st.innerHTML=`
+    <div class="stat"><div class="n">${db.obras.length}</div><div class="l">Total de Obras</div></div>
+    <div class="stat"><div class="n" style="color:#1d8348">${nAtiva}</div><div class="l">🟢 Ativas</div></div>
+    <div class="stat"><div class="n" style="color:#b7950b">${nPausada}</div><div class="l">🟡 Pausadas</div></div>
+    <div class="stat"><div class="n" style="color:#2e86c1">${nConcluida}</div><div class="l">✅ Concluídas</div></div>
+    <div class="stat"><div class="n">${fmtMoney(valorTotal)||'R$ 0,00'}</div><div class="l">Valor total aprovado</div></div>`;
+
+  // filtrar
+  let lista = db.obras.filter(o=>{
+    if(t && !(o.nome+' '+(cliente(o.clienteId)?.nome||'')).toLowerCase().includes(t)) return false;
+    if(filtroStatus && (o.status||'ativa')!==filtroStatus) return false;
+    if(filtroFase   && String(o.faseId)!==filtroFase) return false;
+    if(filtroCidade && (o.endereco?.cidade||'')!==filtroCidade) return false;
+    return true;
+  });
+
+  // ordenar
+  lista = lista.slice().sort((a,b)=>{
+    if(sort==='cliente') return (cliente(a.clienteId)?.nome||'').localeCompare(cliente(b.clienteId)?.nome||'');
+    if(sort==='os')      return (db.ordensServico||[]).filter(x=>x.obraId===b.id).length - (db.ordensServico||[]).filter(x=>x.obraId===a.id).length;
+    if(sort==='valor')   return db.propostas.filter(p=>p.obraId===b.id&&p.status==='aprovada').reduce((s,p)=>s+(p.valor||0),0) - db.propostas.filter(p=>p.obraId===a.id&&p.status==='aprovada').reduce((s,p)=>s+(p.valor||0),0);
+    return a.nome.localeCompare(b.nome);
+  });
+
+  tb.innerHTML = '';
+  if(!lista.length){ tb.innerHTML='<tr><td colspan="10" class="empty">Nenhuma obra encontrada.</td></tr>'; return; }
+
+  const statusLabel = {ativa:'🟢 Ativa', pausada:'🟡 Pausada', concluida:'✅ Concluída'};
+  const statusCor   = {ativa:'#1d8348',  pausada:'#b7950b',    concluida:'#2e86c1'};
+  lista.forEach(o=>{
+    const cli       = cliente(o.clienteId);
+    const f         = faseObra(o.faseId);
+    const cidade    = o.endereco?.cidade || '—';
+    const osObra    = (db.ordensServico||[]).filter(os=>os.obraId===o.id);
+    const osAbertas = osObra.filter(os=>!os.fechada).length;
+    const propAprov = db.propostas.filter(p=>p.obraId===o.id && p.status==='aprovada');
+    const valorAprov= propAprov.reduce((s,p)=>s+(p.valor||0),0);
+    const nCompras  = (db.obraCompras||[]).filter(c=>c.obraId===o.id).length;
+    const st_txt    = o.status||'ativa';
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.title = 'Clique para abrir a obra';
+    tr.onclick = ()=>{ const card=db.cards.find(c=>c.obraId===o.id); if(card) abrirEditarCartao(card.id,'obras'); else abrirObraModal(o.id,o.clienteId); };
+    tr.innerHTML=`
+      <td><b>${o.nome}</b></td>
+      <td>${cli?.nome||'—'}</td>
+      <td>${cidade}</td>
+      <td>${f?`<span style="color:${f.cor};font-weight:700">● ${f.nome}</span>`:'<span style="color:var(--muted)">—</span>'}</td>
+      <td><span style="font-size:12px;font-weight:600;color:${statusCor[st_txt]||'#555'}">${statusLabel[st_txt]||st_txt}</span></td>
+      <td style="text-align:center">${osObra.length||'—'}</td>
+      <td style="text-align:center;color:${osAbertas?'#e53935':'inherit'};font-weight:${osAbertas?'700':'400'}">${osAbertas||'—'}</td>
+      <td style="text-align:center">${propAprov.length||'—'}</td>
+      <td style="font-weight:${valorAprov?'700':'400'};color:${valorAprov?'#6a1b9a':'inherit'}">${valorAprov?fmtMoney(valorAprov):'—'}</td>
+      <td style="text-align:center">${nCompras||'—'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderOSFases(); renderOSLista(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderOSFases(); renderOSLista(); }
 load();
 atualizarMarca();
 (async function(){
