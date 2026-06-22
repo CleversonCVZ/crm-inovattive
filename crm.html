@@ -992,6 +992,14 @@ function load(){
     if(!('fechada' in o)) o.fechada = false;
     if(!Array.isArray(o.arquivosArquiteto)) o.arquivosArquiteto = [];
     if(!Array.isArray(o.arquivosProjeto))   o.arquivosProjeto   = [];
+    if(!('faseObraId' in o)) o.faseObraId = null;
+    if(!Array.isArray(o.tecnicos))      o.tecnicos      = [];
+    if(!Array.isArray(o.diario))        o.diario        = [];
+    if(!Array.isArray(o.itensTrabalho)) o.itensTrabalho = [];
+    o.pendencias = (o.pendencias||[]).map(p=>({
+      id:p.id, texto:p.texto, resolvida:!!p.resolvida,
+      origem:p.origem||'empresa', osDestinoId:p.osDestinoId||null, transferida:!!p.transferida
+    }));
   });
   db.obras.forEach(o=>{
     if(!o.endereco) o.endereco={cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''};
@@ -1058,7 +1066,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, osItensTrabalho] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1072,7 +1080,10 @@ async function carregarDadosSupabase(){
       sb.from('obra_compras').select('*').order('id'),
       sb.from('obra_nfs').select('*').order('id'),
       sb.from('download_categorias').select('*').order('ordem'),
-      sb.from('download_arquivos').select('*').order('criado_em', {ascending:false})
+      sb.from('download_arquivos').select('*').order('criado_em', {ascending:false}),
+      sb.from('os_tecnicos').select('*').order('id'),
+      sb.from('os_diario').select('*').order('data', {ascending:false}),
+      sb.from('os_itens_trabalho').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1134,7 +1145,7 @@ async function carregarDadosSupabase(){
     if(ordensServico.data){
       db.ordensServico = ordensServico.data.map(o=>({
         id:o.id, numero:o.numero, cardId:o.card_id, clienteId:o.cliente_id, obraId:o.obra_id,
-        tipo:o.tipo||'avaliacao', faseId:o.fase_id, titulo:o.titulo||'',
+        tipo:o.tipo||'avaliacao', faseId:o.fase_id, faseObraId:o.fase_obra_id||null, titulo:o.titulo||'',
         responsavelId:o.responsavel_id||null,
         dataAgend:  o.data_agend   ? o.data_agend.slice(0,10)  : '',
         dataInicio: o.data_inicio  ? o.data_inicio.slice(0,16) : '',
@@ -1145,8 +1156,18 @@ async function carregarDadosSupabase(){
         pendencias:Array.isArray(o.pendencias)          ? o.pendencias          : [],
         historico: Array.isArray(o.historico)           ? o.historico           : [],
         arquivosArquiteto: Array.isArray(o.arquivos_arquiteto) ? o.arquivos_arquiteto : [],
-        arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : []
+        arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : [],
+        itensTrabalho: Array.isArray(o.itens_trabalho) ? o.itens_trabalho : [],
+        tecnicos:[], diario:[]
       }));
+      if(osTecnicos.data) osTecnicos.data.forEach(t=>{
+        const os=db.ordensServico.find(x=>x.id===t.os_id);
+        if(os) os.tecnicos.push({id:t.id, usuarioId:t.usuario_id});
+      });
+      if(osDiario.data) osDiario.data.forEach(d=>{
+        const os=db.ordensServico.find(x=>x.id===d.os_id);
+        if(os) os.diario.push({id:d.id, data:d.data, autorId:d.autor_id||null, descricao:d.descricao||'', imagens:Array.isArray(d.imagens)?d.imagens:[]});
+      });
     }
     if(obraContatos.data)
       db.obraContatos = obraContatos.data.map(c=>({
@@ -1285,7 +1306,7 @@ function syncDadosSupabase(){
     }));
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:Number(o.cardId)||null, cliente_id:Number(o.clienteId)||null, obra_id:Number(o.obraId)||null,
-      tipo:o.tipo||'avaliacao', fase_id:Number(o.faseId)||null, titulo:o.titulo||'',
+      tipo:o.tipo||'avaliacao', fase_id:Number(o.faseId)||null, fase_obra_id:Number(o.faseObraId)||null, titulo:o.titulo||'',
       responsavel_id:Number(o.responsavelId)||null,
       data_agend:  o.dataAgend||null,
       data_inicio: o.dataInicio||null,
@@ -1294,7 +1315,8 @@ function syncDadosSupabase(){
       imagens:   o.imagens||[], produtos:o.produtos||[], pendencias:o.pendencias||[],
       historico: o.historico||[],
       arquivos_arquiteto: o.arquivosArquiteto||[],
-      arquivos_projeto:   o.arquivosProjeto||[]
+      arquivos_projeto:   o.arquivosProjeto||[],
+      itens_trabalho: o.itensTrabalho||[]
     }));
     await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
       id:c.id, nome:c.nome, ordem:c.ordem||0
@@ -4302,6 +4324,7 @@ async function salvarNovaOS(cardId){
 
 function abrirVerOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
+  if(os.tipo === 'execucao'){ abrirVerOSExecucao(osId, cardId); return; }
   const c  = db.cards.find(x=>x.id===cardId);
   const obra = db.obras.find(x=>x.id===os.obraId);
   const propAprov = propostaPrincipal(cardId);
@@ -4517,6 +4540,406 @@ function salvarDadosOS(osId, cardId){
   os.dataTermino     = document.getElementById('vos-dt').value||'';
   registrarLog('editar', 'os', osId, `O.S. atualizada: ${os.numero}`);
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
+}
+
+/* =============== OS EXECUÇÃO — modal com abas =============== */
+function _itensPropostasAprovadas(cardId){
+  return db.propostas
+    .filter(p=>p.cardId===cardId && p.status==='aprovada')
+    .flatMap(p=>(p.itens||[]).map((it,i)=>({propostaId:p.id, idx:i, propostaNum:p.numero, ...it})));
+}
+
+function abrirVerOSExecucao(osId, cardId, aba='geral'){
+  const os   = db.ordensServico.find(x=>x.id===osId); if(!os) return;
+  const obra = db.obras.find(x=>x.id===os.obraId);
+  const resp = db.usuarios.find(u=>u.id===os.responsavelId);
+  const dis  = os.fechada ? 'disabled' : '';
+  const tipoColor = ostipoInfo(os.tipo).cor;
+
+  const tabBtn = (t, label) =>
+    `<button onclick="abrirVerOSExecucao(${osId},${cardId},'${t}')"
+       style="padding:7px 14px;font-size:13px;font-weight:600;border:none;border-bottom:3px solid ${aba===t?'#26a69a':'transparent'};background:none;color:${aba===t?'#26a69a':'var(--muted)'};cursor:pointer">${label}</button>`;
+
+  let tabContent = '';
+
+  /* ── ABA GERAL ── */
+  if(aba==='geral'){
+    tabContent = `
+      <div class="form-row">
+        <div>
+          <label>Fase da O.S.</label>
+          <select id="exec-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label>Fase da Obra executada</label>
+          <select id="exec-fase-obra" ${dis}>
+            <option value="">— sem fase —</option>
+            ${fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseObraId?'selected':''}>${f.nome}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <label>Responsável principal</label>
+      <select id="exec-resp" ${dis}>
+        <option value="">— Selecione —</option>
+        ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
+      </select>
+      <div class="form-row" style="margin-top:8px">
+        <div><label>Agendamento</label><input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis}></div>
+        <div></div>
+      </div>
+      <div class="form-row">
+        <div><label>Início real</label><input id="exec-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
+        <div><label>Término real</label><input id="exec-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+      </div>
+      ${!os.fechada?`<div style="margin-top:12px;text-align:right">
+        <button class="btn primary" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>
+      </div>`:''}`;
+  }
+
+  /* ── ABA EQUIPE ── */
+  else if(aba==='equipe'){
+    const tecnicos = (os.tecnicos||[]);
+    tabContent = `
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Técnicos alocados para esta O.S. além do responsável principal.</p>
+      <div id="exec-tec-lista">
+        ${tecnicos.map(t=>{
+          const u=db.usuarios.find(x=>x.id===t.usuarioId);
+          return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span style="flex:1;font-weight:600">👷 ${u?u.nome:'Usuário #'+t.usuarioId}</span>
+            ${!os.fechada?`<button class="btn sm danger" onclick="removerTecnicoOS(${osId},${t.id},${cardId})">Remover</button>`:''}
+          </div>`;
+        }).join('')||`<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Nenhum técnico adicional alocado.</div>`}
+      </div>
+      ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:12px">
+        <select id="exec-tec-sel" style="flex:1">
+          <option value="">— Selecione técnico —</option>
+          ${db.usuarios.filter(u=>u.ativo!==false && u.id!==os.responsavelId && !(os.tecnicos||[]).some(t=>t.usuarioId===u.id)).map(u=>`<option value="${u.id}">${u.nome}</option>`).join('')}
+        </select>
+        <button class="btn primary" onclick="adicionarTecnicoOS(${osId},${cardId})">＋ Adicionar</button>
+      </div>`:''}`;
+  }
+
+  /* ── ABA ITENS ── */
+  else if(aba==='itens'){
+    const todosItens = _itensPropostasAprovadas(cardId);
+    const marcados   = (os.itensTrabalho||[]);
+    tabContent = todosItens.length ? `
+      <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Itens da proposta aprovada que serão executados nesta O.S.</p>
+      <div>
+        ${todosItens.map((it,i)=>{
+          const chk = marcados.some(m=>m.propostaId===it.propostaId && m.idx===it.idx);
+          const key = `${it.propostaId}_${it.idx}`;
+          return `<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
+            <input type="checkbox" id="exec-it-${key}" ${chk?'checked':''} ${dis}
+              onchange="toggleItemTrabalhoOS(${osId},'${key}',${it.propostaId},${it.idx},this.checked,${cardId})"
+              style="margin-top:3px;width:16px;height:16px;flex-shrink:0">
+            <label for="exec-it-${key}" style="cursor:pointer;flex:1">
+              <span style="font-weight:${chk?'700':'400'}">${it.descricao||it.item}</span>
+              <span style="font-size:12px;color:var(--muted);margin-left:8px">${it.qtd} ${it.tipo||'un'} · ${fmtMoney(it.total)||'—'}</span>
+              ${it.categoria?`<span style="font-size:11px;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px;margin-left:6px">${it.categoria}</span>`:''}
+              <span style="font-size:11px;color:#8e24aa;margin-left:6px">${it.propostaNum}</span>
+            </label>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted)">${marcados.length} de ${todosItens.length} item(ns) marcado(s) para esta O.S.</div>
+    ` : `<div class="empty" style="padding:30px">Não há propostas aprovadas vinculadas a este cartão.</div>`;
+  }
+
+  /* ── ABA DIÁRIO ── */
+  else if(aba==='diario'){
+    const diario = (os.diario||[]).slice().sort((a,b)=>b.data.localeCompare(a.data));
+    tabContent = `
+      ${!os.fechada?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+        <button class="btn primary" onclick="novaEntradaDiario(${osId},${cardId})">＋ Nova entrada</button>
+      </div>`:''}
+      <div id="exec-diario-lista">
+        ${diario.map(d=>{
+          const autor = db.usuarios.find(u=>u.id===d.autorId);
+          return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
+            <div style="background:#f5f5f5;padding:8px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
+              <span style="font-weight:700">📅 ${fmtDia2(d.data)}</span>
+              ${autor?`<span style="font-size:12px;color:var(--muted)">por ${autor.nome}</span>`:''}
+              <span style="flex:1"></span>
+              ${!os.fechada?`<button class="btn sm danger" onclick="excluirEntradaDiario(${osId},${d.id},${cardId})">🗑</button>`:''}
+            </div>
+            <div style="padding:10px 12px">
+              ${!os.fechada
+                ? `<textarea id="diario-txt-${d.id}" rows="3" style="width:100%;resize:vertical;font-size:13px" onblur="salvarTextoDiario(${osId},${d.id},${cardId})">${(d.descricao||'').replace(/</g,'&lt;')}</textarea>`
+                : `<p style="font-size:13px;white-space:pre-wrap;margin:0">${(d.descricao||'').replace(/</g,'&lt;')||'<span style="color:var(--muted)">Sem descrição.</span>'}</p>`}
+              <div class="os-imagens" style="margin-top:8px">
+                ${(d.imagens||[]).map((img,ii)=>`
+                  <div class="os-img-card">
+                    <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}','os-diario-imagens')">
+                    <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
+                    ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirImagemDiario(${osId},${d.id},${ii},${cardId})">🗑 remover</button>`:''}
+                  </div>`).join('')}
+              </div>
+              ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                <input id="diario-img-file-${d.id}" type="file" multiple accept="image/*" style="flex:1;font-size:12px">
+                <input id="diario-img-leg-${d.id}" placeholder="Legenda" style="width:140px;font-size:12px">
+                <button class="btn sm primary" onclick="uploadImagemDiario(${osId},${d.id},${cardId})">📷 Upload</button>
+              </div>
+              <div id="diario-status-${d.id}" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:3px"></div>`:''}
+            </div>
+          </div>`;
+        }).join('')||'<div class="empty" style="padding:30px">Nenhuma entrada no diário ainda.</div>'}
+      </div>`;
+  }
+
+  /* ── ABA PENDÊNCIAS ── */
+  else if(aba==='pendencias'){
+    const pends = (os.pendencias||[]);
+    const corOrigem = {empresa:'#1565c0', cliente:'#e65100'};
+    const bgOrigem  = {empresa:'#e3f2fd', cliente:'#fff3e0'};
+    tabContent = `
+      <div id="exec-pend-lista">
+        ${pends.map((p,i)=>`
+          <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${p.transferida?'opacity:0.5':''}">
+            <input type="checkbox" ${p.resolvida?'checked':''} ${dis||p.transferida?'disabled':''} style="margin-top:3px;flex-shrink:0"
+              onchange="togglePendOSExec(${osId},${i},this.checked,${cardId})">
+            <div style="flex:1">
+              <span style="font-size:12px;font-weight:700;color:${corOrigem[p.origem]||'#555'};background:${bgOrigem[p.origem]||'#eee'};padding:1px 7px;border-radius:10px;margin-right:6px">
+                ${p.origem==='cliente'?'🏠 Cliente':'🏢 Empresa'}
+              </span>
+              <span style="${p.resolvida?'text-decoration:line-through;color:var(--muted)':''}">${p.texto}</span>
+              ${p.transferida?`<span style="font-size:11px;color:var(--muted);margin-left:6px">↪ transferida</span>`:''}
+            </div>
+            ${!os.fechada && !p.transferida && !p.resolvida?`
+              <button class="btn sm neutral" title="Transferir para outra O.S." onclick="abrirTransferirPend(${osId},${i},${cardId})" style="font-size:11px;padding:2px 8px">↪</button>
+              <button class="icon-btn" style="font-size:11px" onclick="removerPendOSExec(${osId},${i},${cardId})">✖</button>
+            `:''}
+          </div>`).join('')||'<div style="font-size:13px;color:var(--muted);margin-bottom:12px">Nenhuma pendência registrada.</div>'}
+      </div>
+      ${!os.fechada?`<div style="margin-top:12px;border:1px solid var(--border);border-radius:8px;padding:12px;background:#fafafa">
+        <label style="font-size:13px;font-weight:700;margin-bottom:8px;display:block">Nova pendência</label>
+        <textarea id="exec-pend-nova" rows="2" placeholder="Descreva a pendência..." style="width:100%;resize:vertical;margin-bottom:8px"></textarea>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="font-size:13px;font-weight:600;margin:0">Responsabilidade:</label>
+          <label style="font-size:13px"><input type="radio" name="pend-origem" value="empresa" checked> 🏢 Nossa empresa</label>
+          <label style="font-size:13px"><input type="radio" name="pend-origem" value="cliente"> 🏠 Cliente</label>
+          <button class="btn sm primary" style="margin-left:auto" onclick="adicionarPendOSExec(${osId},${cardId})">＋ Adicionar</button>
+        </div>
+      </div>`:''}`;
+  }
+
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>${os.numero}</span>
+        <span class="os-tag" style="background:${tipoColor}">Execução/Obra (OBR)</span>
+        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+      </h3>
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+      <div style="font-size:12px;color:var(--muted)">
+        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+        ${os.faseObraId?` &nbsp;·&nbsp; 📋 Fase: ${faseObra(os.faseObraId)?.nome||'—'}`:''}
+        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+      </div>
+    </div>
+
+    <!-- Abas -->
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-shrink:0;flex-wrap:wrap">
+      ${tabBtn('geral','⚙️ Geral')}
+      ${tabBtn('equipe','👷 Equipe'+(os.tecnicos?.length?` (${os.tecnicos.length})`:' '))}
+      ${tabBtn('itens','📦 Itens'+(os.itensTrabalho?.length?` (${os.itensTrabalho.length})`:' '))}
+      ${tabBtn('diario','📅 Diário'+(os.diario?.length?` (${os.diario.length})`:' '))}
+      ${tabBtn('pendencias','⚠️ Pendências'+(os.pendencias?.filter(p=>!p.resolvida&&!p.transferida).length?' ('+os.pendencias.filter(p=>!p.resolvida&&!p.transferida).length+')':' '))}
+    </div>
+
+    <!-- Conteúdo da aba -->
+    <div style="flex:1;overflow-y:auto;min-height:0">
+      ${tabContent}
+    </div>
+
+    <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
+      ${os.fechada
+        ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
+        : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
+    </div>`, 'cartao');
+}
+
+function salvarDadosOSExec(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.faseId     = +document.getElementById('exec-fase').value || os.faseId;
+  os.faseObraId = +document.getElementById('exec-fase-obra').value || null;
+  os.responsavelId = +document.getElementById('exec-resp').value || null;
+  os.dataAgend  = document.getElementById('exec-agend').value||'';
+  os.dataInicio = document.getElementById('exec-di').value||'';
+  os.dataTermino= document.getElementById('exec-dt').value||'';
+  registrarLog('editar', 'os', osId, `O.S. Execução atualizada: ${os.numero}`);
+  save(); renderAll(); abrirVerOSExecucao(osId, cardId, 'geral');
+}
+
+async function adicionarTecnicoOS(osId, cardId){
+  const uid = +document.getElementById('exec-tec-sel').value;
+  if(!uid){ alert('Selecione um técnico.'); return; }
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os.tecnicos) os.tecnicos=[];
+  if(os.tecnicos.some(t=>t.usuarioId===uid)){ alert('Técnico já adicionado.'); return; }
+  const {data, error} = await sb.from('os_tecnicos').insert({os_id:osId, usuario_id:uid}).select().single();
+  if(error){ console.error(error); alert('Erro ao salvar técnico.'); return; }
+  os.tecnicos.push({id:data.id, usuarioId:uid});
+  registrarLog('editar','os',osId,`Técnico adicionado à OS ${os.numero}: ${db.usuarios.find(u=>u.id===uid)?.nome||uid}`);
+  save(); abrirVerOSExecucao(osId, cardId, 'equipe');
+}
+
+async function removerTecnicoOS(osId, tecId, cardId){
+  if(!confirm('Remover este técnico da O.S.?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const {error} = await sb.from('os_tecnicos').delete().eq('id', tecId);
+  if(error){ console.error(error); alert('Erro ao remover técnico.'); return; }
+  os.tecnicos = (os.tecnicos||[]).filter(t=>t.id!==tecId);
+  save(); abrirVerOSExecucao(osId, cardId, 'equipe');
+}
+
+function toggleItemTrabalhoOS(osId, key, propostaId, idx, checked, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os.itensTrabalho) os.itensTrabalho=[];
+  const todosItens = _itensPropostasAprovadas(cardId);
+  const it = todosItens.find(x=>x.propostaId===propostaId && x.idx===idx);
+  if(checked){
+    if(!os.itensTrabalho.some(m=>m.propostaId===propostaId && m.idx===idx))
+      os.itensTrabalho.push({propostaId, idx, descricao:it?.descricao||it?.item||'', qtd:it?.qtd||0, tipo:it?.tipo||'', categoria:it?.categoria||''});
+  } else {
+    os.itensTrabalho = os.itensTrabalho.filter(m=>!(m.propostaId===propostaId && m.idx===idx));
+  }
+  save();
+  // atualiza contador na aba sem reabrir o modal
+  const tabBtnEl = document.querySelector(`button[onclick*="'itens'"]`);
+  if(tabBtnEl) tabBtnEl.textContent = `📦 Itens${os.itensTrabalho.length?' ('+os.itensTrabalho.length+')':' '}`;
+}
+
+async function novaEntradaDiario(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const hoje = localDia(0);
+  if((os.diario||[]).some(d=>d.data===hoje)){
+    alert('Já existe uma entrada para hoje ('+fmtDia2(hoje)+'). Edite-a diretamente no diário.');
+    abrirVerOSExecucao(osId, cardId, 'diario'); return;
+  }
+  const {data, error} = await sb.from('os_diario').insert({
+    os_id:osId, data:hoje, autor_id:usuarioAtual?.id||null, descricao:'', imagens:[]
+  }).select().single();
+  if(error){ console.error(error); alert('Erro ao criar entrada.'); return; }
+  if(!os.diario) os.diario=[];
+  os.diario.push({id:data.id, data:hoje, autorId:usuarioAtual?.id||null, descricao:'', imagens:[]});
+  registrarLog('editar','os',osId,`Nova entrada no diário de obra: ${os.numero} — ${fmtDia2(hoje)}`);
+  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+}
+
+async function salvarTextoDiario(osId, diaId, cardId){
+  const os  = db.ordensServico.find(x=>x.id===osId);
+  const d   = (os.diario||[]).find(x=>x.id===diaId);
+  const txt = document.getElementById(`diario-txt-${diaId}`)?.value||'';
+  if(!d || d.descricao===txt) return;
+  d.descricao = txt;
+  await sb.from('os_diario').update({descricao:txt}).eq('id', diaId);
+  save();
+}
+
+async function excluirEntradaDiario(osId, diaId, cardId){
+  if(!confirm('Excluir esta entrada do diário?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const d  = (os.diario||[]).find(x=>x.id===diaId);
+  if(d?.imagens?.length){
+    await sb.storage.from('os-diario-imagens').remove(d.imagens.map(i=>i.path));
+  }
+  await sb.from('os_diario').delete().eq('id', diaId);
+  os.diario = (os.diario||[]).filter(x=>x.id!==diaId);
+  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+}
+
+async function uploadImagemDiario(osId, diaId, cardId){
+  const os    = db.ordensServico.find(x=>x.id===osId);
+  const d     = (os.diario||[]).find(x=>x.id===diaId);
+  const files = document.getElementById(`diario-img-file-${diaId}`)?.files;
+  const leg   = document.getElementById(`diario-img-leg-${diaId}`)?.value||'';
+  const statusEl = document.getElementById(`diario-status-${diaId}`);
+  if(!files?.length){ alert('Selecione ao menos uma imagem.'); return; }
+  if(statusEl) statusEl.textContent = 'Enviando…';
+  const novas = [];
+  for(const file of files){
+    const ext  = file.name.split('.').pop();
+    const path = `os${osId}/dia${diaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {error} = await sb.storage.from('os-diario-imagens').upload(path, file, {upsert:false});
+    if(error){ console.error(error); if(statusEl) statusEl.textContent = 'Erro: '+error.message; continue; }
+    novas.push({path, descricao:leg});
+  }
+  if(!d.imagens) d.imagens=[];
+  d.imagens.push(...novas);
+  await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  save();
+  if(statusEl) statusEl.textContent = `${novas.length} imagem(ns) enviada(s).`;
+  setTimeout(()=>abrirVerOSExecucao(osId, cardId, 'diario'), 800);
+}
+
+async function excluirImagemDiario(osId, diaId, imgIdx, cardId){
+  if(!confirm('Remover esta imagem?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const d  = (os.diario||[]).find(x=>x.id===diaId);
+  const img= (d.imagens||[])[imgIdx];
+  if(img?.path) await sb.storage.from('os-diario-imagens').remove([img.path]);
+  d.imagens.splice(imgIdx, 1);
+  await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+}
+
+function adicionarPendOSExec(osId, cardId){
+  const texto  = (document.getElementById('exec-pend-nova')?.value||'').trim();
+  if(!texto){ alert('Descreva a pendência.'); return; }
+  const origem = document.querySelector('input[name="pend-origem"]:checked')?.value||'empresa';
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os.pendencias) os.pendencias=[];
+  os.pendencias.push({id:Date.now(), texto, resolvida:false, origem, osDestinoId:null, transferida:false});
+  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
+}
+
+function removerPendOSExec(osId, idx, cardId){
+  if(!confirm('Remover esta pendência?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.pendencias.splice(idx, 1);
+  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
+}
+
+function togglePendOSExec(osId, idx, valor, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(os.pendencias[idx]) os.pendencias[idx].resolvida = valor;
+  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
+}
+
+function abrirTransferirPend(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const p  = os.pendencias[idx];
+  const outrasOS = db.ordensServico.filter(x=>x.id!==osId && !x.fechada);
+  if(!outrasOS.length){ alert('Não há outras O.S. abertas para transferir.'); return; }
+  abrirModal(`
+    <h3>↪ Transferir pendência</h3>
+    <p style="font-size:13px;margin-bottom:12px">"${p.texto}"</p>
+    <label>O.S. de destino</label>
+    <select id="pend-dest-os" style="width:100%;margin-bottom:16px">
+      <option value="">— Selecione —</option>
+      ${outrasOS.map(o=>`<option value="${o.id}">${o.numero} — ${o.titulo}</option>`).join('')}
+    </select>
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'pendencias')">Cancelar</button>
+      <button class="btn primary" onclick="confirmarTransferirPend(${osId},${idx},${cardId})">Transferir</button>
+    </div>`);
+}
+
+function confirmarTransferirPend(osId, idx, cardId){
+  const destId = +document.getElementById('pend-dest-os').value;
+  if(!destId){ alert('Selecione a O.S. de destino.'); return; }
+  const osOrig = db.ordensServico.find(x=>x.id===osId);
+  const osDest = db.ordensServico.find(x=>x.id===destId);
+  const p = osOrig.pendencias[idx];
+  // copiar para destino
+  if(!osDest.pendencias) osDest.pendencias=[];
+  osDest.pendencias.push({id:Date.now(), texto:p.texto, resolvida:false, origem:p.origem, osDestinoId:null, transferida:false});
+  // marcar original como transferida
+  p.transferida = true; p.osDestinoId = destId;
+  registrarLog('editar','os',osId,`Pendência transferida de ${osOrig.numero} → ${osDest.numero}: "${p.texto}"`);
+  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
 }
 
 function fecharOS(osId, cardId){
@@ -4851,8 +5274,8 @@ async function excluirArquivoOSProjeto(osId, idx, tipo, cardId){
   save(); abrirVerOS(osId, cardId);
 }
 
-function getOSImageUrl(path){
-  try{ return sb.storage.from('os-imagens').getPublicUrl(path).data.publicUrl; }
+function getOSImageUrl(path, bucket='os-imagens'){
+  try{ return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl; }
   catch(e){ return path; }
 }
 
@@ -4910,8 +5333,8 @@ async function excluirOSImagem(osId, idx, cardId){
   save(); abrirVerOS(osId, cardId);
 }
 
-function verOSImagem(path, legenda){
-  const url = getOSImageUrl(path);
+function verOSImagem(path, legenda, bucket='os-imagens'){
+  const url = getOSImageUrl(path, bucket);
   abrirModal(`
     <div style="text-align:center">
       <img src="${url}" style="max-width:100%;max-height:70vh;border-radius:8px">
