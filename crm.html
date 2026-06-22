@@ -5117,7 +5117,7 @@ function abrirTransferirPend(osId, idx, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   const p  = os.pendencias[idx];
   const outrasOS = db.ordensServico.filter(x=>x.id!==osId && x.cardId===cardId && !x.fechada);
-  if(!outrasOS.length){ alert('Não há outras O.S. abertas neste cartão para transferir.'); return; }
+  if(!outrasOS.length){ alert('Não há outras O.S. abertas neste CRM para transferir.'); return; }
   abrirModal(`
     <h3>↪ Transferir pendência</h3>
     <p style="font-size:13px;margin-bottom:12px">"${p.texto}"</p>
