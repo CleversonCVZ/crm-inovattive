@@ -866,12 +866,21 @@ const TELAS = [
 
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
 const RECURSOS = [
-  {id:'aba-propostas', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
-  {id:'aba-obras',     nome:'Cartão CRM — aba Obras'},
-  {id:'aba-os',        nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
-  {id:'hist-card-editar', nome:'Histórico do Cartão CRM — Editar e Excluir registros'},
-  {id:'hist-os-editar',   nome:'Histórico da O.S. — Editar e Excluir registros'},
-  {id:'downloads-admin',  nome:'Downloads — Gerenciar arquivos e categorias'}
+  // ── Cartão CRM — abas principais
+  {id:'aba-propostas',    grupo:'crm', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
+  {id:'aba-obras',        grupo:'crm', nome:'Cartão CRM — aba Obras'},
+  {id:'aba-os',           grupo:'crm', nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
+  {id:'hist-card-editar', grupo:'crm', nome:'Cartão CRM — Histórico: Editar e Excluir registros'},
+  {id:'hist-os-editar',   grupo:'crm', nome:'O.S. — Histórico: Editar e Excluir registros'},
+  // ── Sub-itens da aba Obras
+  {id:'obra-informacoes',   grupo:'obras', nome:'Aba Obras — Informações'},
+  {id:'obra-contatos',      grupo:'obras', nome:'Aba Obras — Contatos'},
+  {id:'obra-senhas',        grupo:'obras', nome:'Aba Obras — Senhas'},
+  {id:'obra-compras',       grupo:'obras', nome:'Aba Obras — Compras'},
+  {id:'obra-custo-mo',      grupo:'obras', nome:'Aba Obras — Custo M.Obra'},
+  {id:'obra-outros-custos', grupo:'obras', nome:'Aba Obras — Outros Custos'},
+  // ── Downloads
+  {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'}
 ];
 
 /* Módulos: cada um tem seu menu horizontal próprio (sempre começando pelo Painel) */
@@ -3209,15 +3218,17 @@ function abrirEditarCartao(id, aba='dados'){
 function abaObrasCartaoHTML(c, abaAtiva){
   const ob = obraDe(c);
   if(!ob) return '<div class="empty">Nenhuma obra vinculada a este cartão.<br><small>Vincule uma obra na aba Dados, campo "Nome da obra".</small></div>';
-  abaAtiva = abaAtiva || 'informacoes';
-  const navItens = [
-    {id:'informacoes', icon:'🏗', label:'Informações'},
-    {id:'contatos',    icon:'👥', label:'Contatos'},
-    {id:'senhas',      icon:'🔑', label:'Senhas'},
-    {id:'compras',     icon:'🛒', label:'Compras'},
-    {id:'custoMobra',  icon:'👷', label:'Custo M.Obra'},
-    {id:'outrosCustos', icon:'💰', label:'Outros Custos'},
+  const todoNavItens = [
+    {id:'informacoes',  recurso:'obra-informacoes',   icon:'🏗', label:'Informações'},
+    {id:'contatos',     recurso:'obra-contatos',       icon:'👥', label:'Contatos'},
+    {id:'senhas',       recurso:'obra-senhas',         icon:'🔑', label:'Equipamentos & Senhas'},
+    {id:'compras',      recurso:'obra-compras',        icon:'🛒', label:'Compras'},
+    {id:'custoMobra',   recurso:'obra-custo-mo',       icon:'👷', label:'Custo M.Obra'},
+    {id:'outrosCustos', recurso:'obra-outros-custos',  icon:'💰', label:'Outros Custos'},
   ];
+  const navItens = todoNavItens.filter(n=>podeUsar(usuarioAtual, n.recurso));
+  if(!navItens.length) return '<div class="empty">Sem permissão para acessar sub-itens desta obra.</div>';
+  if(!abaAtiva || !navItens.find(n=>n.id===abaAtiva)) abaAtiva = navItens[0].id;
   return `
     <datalist id="dl-funcoes-obra">
       <option>Proprietário</option><option>Esposa</option><option>Esposo</option>
@@ -7083,8 +7094,10 @@ function renderGrupos(){
 function formGrupo(g){
   const telasCk = TELAS.map(t=>`
     <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
-  const recursosCk = RECURSOS.map(r=>`
+  const mkRecursosCk = (grupo) => RECURSOS.filter(r=>r.grupo===grupo).map(r=>`
     <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
+  const recursosCk    = mkRecursosCk('crm');
+  const recursosObras = mkRecursosCk('obras');
   const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).length
     ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:4px 8px;align-items:center">
         <div style="font-size:11px;color:var(--muted);font-weight:600">CATEGORIA</div>
@@ -7102,8 +7115,10 @@ function formGrupo(g){
       ? '<label>Permissões</label><div style="font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</div>'
       : `<label>Telas permitidas</label>
          <div class="perm-box">${telasCk}</div>
-         <label>Permissões dentro do cartão CRM</label>
+         <label>Permissões — Cartão CRM</label>
          <div class="perm-box">${recursosCk}</div>
+         <label>Permissões — Sub-itens da aba Obras</label>
+         <div class="perm-box">${recursosObras}</div>
          ${dlCatsCk?`<label>Downloads — categorias permitidas</label><div class="perm-box">${dlCatsCk}</div>`:''}`}`;
 }
 
