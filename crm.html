@@ -4683,86 +4683,31 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
   /* ── ABA ITENS ── */
   else if(aba==='itens'){
     const todosItens = _itensPropostasAprovadas(cardId);
-    const marcados   = (os.itensTrabalho||[]);
-    // todas as outras OS do mesmo card (projeto + execução) para calcular saldo
-    const outrasOSExec = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
+    const alocados   = (os.itensTrabalho||[]).filter(m=>m.qtdOS>0);
+    const mkListaAlocados = (alocados) => alocados.length
+      ? alocados.map(reg=>{
+          const it = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+          const desc = reg.descricao||it?.descricao||it?.item||'—';
+          const cat  = it?.categoria||'';
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+            <div style="flex:1">
+              <div style="font-weight:600;font-size:13px">${desc}</div>
+              ${cat?`<span style="font-size:11px;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px">${cat}</span>`:''}
+            </div>
+            <span style="font-size:15px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
+          </div>`;
+        }).join('')
+      : `<div class="empty" style="padding:20px 0">Nenhum item alocado ainda.</div>`;
 
-    if(os.fechada){
-      // ── MODO VISUALIZAÇÃO (técnico / OS fechada): só mostra itens alocados nesta OS ──
-      const itensAlocados = marcados.filter(m=>m.qtdOS>0);
-      tabContent = itensAlocados.length ? `
-        <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Itens executados nesta O.S.:</p>
-        <div>
-          ${itensAlocados.map(reg=>{
-            // busca dados do item original para categoria/proposta
-            const it = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
-            return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
-              <div style="flex:1">
-                <div style="font-weight:600;font-size:13px">${reg.descricao||it?.descricao||it?.item||'—'}</div>
-                <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                  ${(it?.categoria)?`<span style="background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px;margin-right:4px">${it.categoria}</span>`:''}
-                  ${it?`<span style="color:#8e24aa">${it.propostaNum}</span>`:''}
-                </div>
-              </div>
-              <span style="font-size:15px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
-            </div>`;
-          }).join('')}
-        </div>
-      ` : `<div class="empty" style="padding:30px">Nenhum item alocado a esta O.S.</div>`;
-    } else {
-      // ── MODO SELEÇÃO (gerente): filtra itens com saldo disponível ──
-      // item aparece se: tem saldo em outras OS OU já está alocado nesta OS
-      const itensVisiveis = todosItens.filter(it=>{
-        const jaInstalado = outrasOSExec.reduce((s,o)=>{
-          const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-          return s+(r?r.qtdOS||0:0);
-        },0);
-        const reg = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-        const qtdOS = reg?(reg.qtdOS||0):0;
-        // mostra se tem saldo restante OU se já tem qtd nesta OS (para poder editar/zerar)
-        return jaInstalado < (it.qtd||0) || qtdOS > 0;
-      });
-
-      tabContent = todosItens.length ? `
-        <p style="font-size:13px;color:var(--muted);margin-bottom:10px">Selecione os itens e quantidades que serão executados nesta O.S.</p>
-        ${!itensVisiveis.length ? `<div class="empty" style="padding:20px">Todos os itens já foram totalmente alocados em outras O.S.</div>` : `
-        <div>
-          ${itensVisiveis.map((it)=>{
-            const key = `${it.propostaId}_${it.idx}`;
-            const reg = marcados.find(m=>m.propostaId===it.propostaId && m.idx===it.idx);
-            const qtdOS = reg ? (reg.qtdOS||0) : 0;
-            const jaInstalado = outrasOSExec.reduce((s,o)=>{
-              const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-              return s+(r?r.qtdOS||0:0);
-            },0);
-            const qtdTotal  = it.qtd||0;
-            const restante  = Math.max(0, qtdTotal - jaInstalado);
-            const corBorda  = qtdOS>0 ? '#26a69a' : '#ccc';
-            return `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                <div style="flex:1;min-width:180px">
-                  <div style="font-weight:600;font-size:13px">${it.descricao||it.item}</div>
-                  <div style="font-size:11px;color:var(--muted);margin-top:2px">
-                    ${it.categoria?`<span style="background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px;margin-right:4px">${it.categoria}</span>`:''}
-                    <span style="color:#8e24aa">${it.propostaNum}</span>
-                  </div>
-                </div>
-                <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-                  ${jaInstalado>0?`<span style="font-size:11px;color:#e65100;background:#fff3e0;border-radius:4px;padding:2px 6px">Outras OS: ${jaInstalado}</span>`:''}
-                  <span style="font-size:11px;color:#1565c0;background:#e3f2fd;border-radius:4px;padding:2px 6px">Saldo: ${restante} ${it.tipo||'un'}</span>
-                  <label style="font-size:12px;font-weight:600;color:var(--muted)">Nesta OS:</label>
-                  <input type="number" min="0" max="${restante + qtdOS}" value="${qtdOS}"
-                    style="width:70px;text-align:center;font-size:14px;font-weight:700;border:2px solid ${corBorda};border-radius:6px;padding:4px 6px"
-                    onchange="salvarQtdItemOS(${osId},'${key}',${it.propostaId},${it.idx},+this.value,${cardId})">
-                  <span style="font-size:11px;color:var(--muted)">${it.tipo||'un'}</span>
-                </div>
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-        <div style="margin-top:10px;font-size:12px;color:var(--muted)">${marcados.filter(m=>m.qtdOS>0).length} item(ns) com quantidade nesta O.S.</div>`}
-      ` : `<div class="empty" style="padding:30px">Não há propostas aprovadas vinculadas a este cartão.</div>`;
-    }
+    tabContent = !todosItens.length
+      ? `<div class="empty" style="padding:30px">Não há propostas aprovadas vinculadas a este cartão.</div>`
+      : `
+        ${!os.fechada ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn primary" onclick="abrirSeletorItensOS(${osId},${cardId})">＋ Gerenciar itens</button>
+        </div>` : ''}
+        ${mkListaAlocados(alocados)}
+        ${alocados.length ? `<div style="margin-top:8px;font-size:12px;color:var(--muted)">${alocados.length} item(ns) alocado(s) nesta O.S.</div>` : ''}
+      `;
   }
 
   /* ── ABA DIÁRIO ── */
@@ -4939,6 +4884,130 @@ function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
   const tabBtnEl = document.querySelector(`button[onclick*="'itens'"]`);
   const comQtd = os.itensTrabalho.filter(m=>m.qtdOS>0).length;
   if(tabBtnEl) tabBtnEl.textContent = `📦 Itens${comQtd?' ('+comQtd+')':' '}`;
+}
+
+function abrirSeletorItensOS(osId, cardId){
+  const os         = db.ordensServico.find(x=>x.id===osId);
+  const todosItens = _itensPropostasAprovadas(cardId);
+  const outrasOS   = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
+  const marcados   = (os.itensTrabalho||[]);
+
+  // itens ainda com saldo e não alocados nesta OS (aparecem no combobox)
+  const disponiveis = todosItens.filter(it=>{
+    const jaAlocado = outrasOS.reduce((s,o)=>{
+      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+      return s+(r?r.qtdOS||0:0);
+    },0);
+    const reg = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+    return jaAlocado < (it.qtd||0) && !(reg && reg.qtdOS>0);
+  }).map(it=>{
+    const jaAlocado = outrasOS.reduce((s,o)=>{
+      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+      return s+(r?r.qtdOS||0:0);
+    },0);
+    return {...it, saldo: (it.qtd||0) - jaAlocado};
+  });
+
+  // itens já alocados nesta OS
+  const alocados = marcados.filter(m=>m.qtdOS>0).map(reg=>{
+    const it = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+    return {...reg, _desc: reg.descricao||it?.descricao||it?.item||'—', _tipo: reg.tipo||it?.tipo||'un'};
+  });
+
+  abrirModal(`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3 style="margin:0">📦 Itens da O.S.</h3>
+      <span style="font-size:13px;color:var(--muted)">${os.numero}</span>
+    </div>
+
+    ${disponiveis.length ? `
+    <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:20px">
+      <label style="font-weight:700;font-size:13px;margin-bottom:10px">Adicionar item</label>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <label style="font-size:11px;color:var(--muted)">Item da proposta</label>
+          <select id="sit-sel" style="width:100%;font-size:13px" onchange="atualizarSaldoSit()">
+            <option value="">— Selecione —</option>
+            ${disponiveis.map((it,i)=>`<option value="${i}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.descricao||it.item}</option>`).join('')}
+          </select>
+        </div>
+        <div style="width:80px;flex-shrink:0">
+          <label style="font-size:11px;color:var(--muted)">Quantidade</label>
+          <input type="number" id="sit-qtd" min="1" value="1" style="width:100%;text-align:center;font-size:14px;font-weight:700">
+        </div>
+        <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarItemSit(${osId},${cardId})">＋ Adicionar</button>
+      </div>
+      <div id="sit-info" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>
+    </div>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:10px;background:#f5f5f5;border-radius:8px">Todos os itens da proposta já foram alocados em outras O.S.</div>`}
+
+    <label style="font-weight:700;font-size:13px">Itens alocados nesta O.S.</label>
+    <div id="sit-lista" style="margin-top:8px;min-height:40px">
+      ${alocados.length ? alocados.map(reg=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1;font-size:13px;font-weight:600">${reg._desc}</span>
+          <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
+          <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
+        </div>`).join('')
+      : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum item adicionado ainda.</div>`}
+    </div>
+
+    <div class="actions" style="margin-top:20px">
+      <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'itens')">← Voltar à O.S.</button>
+    </div>
+  `);
+}
+
+function atualizarSaldoSit(){
+  const sel  = document.getElementById('sit-sel');
+  const info = document.getElementById('sit-info');
+  const qtdI = document.getElementById('sit-qtd');
+  const opt  = sel.options[sel.selectedIndex];
+  if(opt && opt.dataset.saldo){
+    const saldo = +opt.dataset.saldo;
+    const tipo  = opt.dataset.tipo||'un';
+    info.textContent = `Saldo disponível: ${saldo} ${tipo}`;
+    qtdI.max = saldo;
+    if(+qtdI.value > saldo) qtdI.value = saldo;
+    if(+qtdI.value < 1) qtdI.value = 1;
+  } else {
+    info.textContent = '';
+    qtdI.removeAttribute('max');
+  }
+}
+
+function adicionarItemSit(osId, cardId){
+  const sel  = document.getElementById('sit-sel');
+  const qtdI = document.getElementById('sit-qtd');
+  if(!sel.value){ alert('Selecione um item.'); return; }
+  const qtd = +qtdI.value;
+  if(!qtd || qtd <= 0){ alert('Informe uma quantidade válida.'); return; }
+  const opt   = sel.options[sel.selectedIndex];
+  const saldo = +(opt?.dataset?.saldo||0);
+  if(qtd > saldo){ alert(`Quantidade máxima disponível: ${saldo}`); return; }
+
+  const todosItens = _itensPropostasAprovadas(cardId);
+  const outrasOS   = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
+  const os         = db.ordensServico.find(x=>x.id===osId);
+  const marcados   = (os.itensTrabalho||[]);
+  // reconstrói lista de disponíveis (mesma lógica do render)
+  const disponiveis = todosItens.filter(it=>{
+    const jaAlocado = outrasOS.reduce((s,o)=>{
+      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+      return s+(r?r.qtdOS||0:0);
+    },0);
+    const reg = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+    return jaAlocado < (it.qtd||0) && !(reg && reg.qtdOS>0);
+  });
+  const it  = disponiveis[+sel.value];
+  if(!it){ alert('Item não encontrado.'); return; }
+  const key = `${it.propostaId}_${it.idx}`;
+  salvarQtdItemOS(osId, key, it.propostaId, it.idx, qtd, cardId);
+  abrirSeletorItensOS(osId, cardId); // re-abre atualizado
+}
+
+function removerItemSit(osId, key, propostaId, idx, cardId){
+  salvarQtdItemOS(osId, key, propostaId, idx, 0, cardId);
+  abrirSeletorItensOS(osId, cardId); // re-abre atualizado
 }
 
 async function novaEntradaDiario(osId, cardId){
