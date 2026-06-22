@@ -4310,12 +4310,15 @@ async function salvarNovaOS(cardId){
     id: await proximoIdSeguro('ordens_servico', db.ordensServico),
     numero: osNumero(c.num, tipo, osDoCard),
     cardId, clienteId:c.clienteId, obraId:c.obraId,
-    tipo, faseId, titulo, responsavelId:respId,
+    tipo, faseId, faseObraId:null, titulo, responsavelId:respId,
     dataAgend:ai,
     dataInicio:'', dataTermino:'',
     fechada: false,
     historico: histTexto ? [{data:agoraISO(), texto:histTexto}] : [],
-    imagens: [], produtos: [], pendencias
+    imagens: [], produtos: [],
+    pendencias: pendencias.map(p=>({...p, origem:p.origem||'empresa', transferida:false, osDestinoId:null})),
+    tecnicos: [], diario: [], itensTrabalho: [],
+    arquivosArquiteto: [], arquivosProjeto: []
   };
   db.ordensServico.push(os);
   registrarLog('criar', 'os', os.id, `O.S. criada: ${os.numero} — ${titulo}`);
@@ -4558,7 +4561,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
 
   const tabBtn = (t, label) =>
     `<button onclick="abrirVerOSExecucao(${osId},${cardId},'${t}')"
-       style="padding:7px 14px;font-size:13px;font-weight:600;border:none;border-bottom:3px solid ${aba===t?'#26a69a':'transparent'};background:none;color:${aba===t?'#26a69a':'var(--muted)'};cursor:pointer">${label}</button>`;
+       style="padding:8px 16px;font-size:13px;font-weight:600;border:1px solid var(--border);border-bottom:${aba===t?'3px solid #26a69a':'1px solid var(--border)'};border-radius:8px 8px 0 0;background:${aba===t?'#fff':'#f5f5f5'};color:${aba===t?'#26a69a':'#555'};cursor:pointer;margin-right:4px;position:relative;bottom:-1px">${label}</button>`;
 
   let tabContent = '';
 
