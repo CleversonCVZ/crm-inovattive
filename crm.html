@@ -258,6 +258,7 @@
 
   /* ===== Permissões ===== */
   .perm-box{border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:#f8f9fa}
+  .perm-section-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:4px}
   .perm-item{display:flex;align-items:center;gap:8px;font-size:13.5px;padding:4px 0;cursor:pointer;text-transform:none;font-weight:600;color:var(--text)}
   .perm-item input{width:auto;accent-color:var(--green)}
   .badge-papel{font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
@@ -7124,24 +7125,42 @@ function formGrupo(g){
       </div>`
     : '<span style="font-size:13px;color:var(--muted)">Nenhuma categoria criada ainda.</span>';
   return `
-    <label>Nome do grupo</label><input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas...">
+    <label>Nome do grupo</label>
+    <input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas..." style="margin-bottom:12px">
     ${g&&g.admin
-      ? '<label>Permissões</label><div style="font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</div>'
-      : `<label>Telas permitidas</label>
-         <div class="perm-box">${telasCk}</div>
-         <label>Permissões — Cartão CRM</label>
-         <div class="perm-box">${recursosCk}</div>
-         <label>Permissões — Sub-itens da aba Obras</label>
-         <div class="perm-box">${recursosObras}</div>
-         <label>Fases do CRM visíveis</label>
-         <div style="margin-bottom:6px">
-           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-             <input type="checkbox" id="ck-restringir-fases" ${restringirFases?'checked':''} onchange="toggleRestricaoFases(this.checked)">
-             Restringir fases (marque para selecionar quais fases este grupo pode ver)
-           </label>
-         </div>
-         <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk}</div>
-         ${dlCatsCk?`<label>Downloads — categorias permitidas</label><div class="perm-box">${dlCatsCk}</div>`:''}`}`;
+      ? '<div style="font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</div>'
+      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+           <!-- COLUNA ESQUERDA -->
+           <div style="display:flex;flex-direction:column;gap:10px">
+             <div>
+               <div class="perm-section-label">Telas permitidas</div>
+               <div class="perm-box">${telasCk}</div>
+             </div>
+             <div>
+               <div class="perm-section-label">Fases do CRM visíveis</div>
+               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:6px;color:var(--muted)">
+                 <input type="checkbox" id="ck-restringir-fases" ${restringirFases?'checked':''} onchange="toggleRestricaoFases(this.checked)">
+                 Restringir por fase
+               </label>
+               <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk||'<span style="font-size:12px;color:var(--muted)">Nenhuma fase cadastrada.</span>'}</div>
+             </div>
+             ${dlCatsCk?`<div>
+               <div class="perm-section-label">Downloads — categorias</div>
+               <div class="perm-box">${dlCatsCk}</div>
+             </div>`:''}
+           </div>
+           <!-- COLUNA DIREITA -->
+           <div style="display:flex;flex-direction:column;gap:10px">
+             <div>
+               <div class="perm-section-label">Permissões — Cartão CRM</div>
+               <div class="perm-box">${recursosCk}</div>
+             </div>
+             <div>
+               <div class="perm-section-label">Permissões — Sub-itens Obras</div>
+               <div class="perm-box">${recursosObras}</div>
+             </div>
+           </div>
+         </div>`}`;
 }
 
 function toggleRestricaoFases(restringir){
