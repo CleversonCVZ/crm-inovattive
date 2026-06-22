@@ -997,6 +997,7 @@ function load(){
     if(!Array.isArray(o.tecnicos))      o.tecnicos      = [];
     if(!Array.isArray(o.diario))        o.diario        = [];
     if(!Array.isArray(o.itensTrabalho)) o.itensTrabalho = [];
+    if(!o.custoMO || typeof o.custoMO!=='object') o.custoMO = {valor:0, tecnicoIds:[]};
     o.pendencias = (o.pendencias||[]).map(p=>({
       id:p.id, texto:p.texto, resolvida:!!p.resolvida,
       origem:p.origem||'empresa', osDestinoId:p.osDestinoId||null, transferida:!!p.transferida
@@ -1159,6 +1160,7 @@ async function carregarDadosSupabase(){
         arquivosArquiteto: Array.isArray(o.arquivos_arquiteto) ? o.arquivos_arquiteto : [],
         arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : [],
         itensTrabalho: Array.isArray(o.itens_trabalho) ? o.itens_trabalho : [],
+        custoMO: o.custo_mo && typeof o.custo_mo==='object' ? o.custo_mo : {valor:0, tecnicoIds:[]},
         tecnicos:[], diario:[]
       }));
       if(osTecnicos.data) osTecnicos.data.forEach(t=>{
@@ -1317,7 +1319,8 @@ function syncDadosSupabase(){
       historico: o.historico||[],
       arquivos_arquiteto: o.arquivosArquiteto||[],
       arquivos_projeto:   o.arquivosProjeto||[],
-      itens_trabalho: o.itensTrabalho||[]
+      itens_trabalho: o.itensTrabalho||[],
+      custo_mo: o.custoMO||null
     }));
     await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
       id:c.id, nome:c.nome, ordem:c.ordem||0
@@ -3650,9 +3653,76 @@ function abaObraCompras(c, ob){
 
 /* ================= CUSTO MÃO DE OBRA ================= */
 function abaObraCustoMobra(c, ob){
+  const osDoCard = db.ordensServico.filter(o=>o.cardId===c.id);
+  const usuarios  = db.usuarios.filter(u=>u.ativo!==false);
+  const fmtR = v => v>0 ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+  const totalGeral = osDoCard.reduce((s,o)=>s+(+o.custoMO?.valor||0),0);
+  const tipoLabel  = {projeto:'PRJ',execucao:'OBR',avulsa:'AVL'};
+  const tipoColor  = {projeto:'#7b1fa2',execucao:'#e65100',avulsa:'#00796b'};
+
+  if(!osDoCard.length) return `<div class="empty" style="padding:30px">Nenhuma O.S. vinculada a este cartão.</div>`;
+
   return `
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Custo Mão de Obra</div>
-    <div class="empty">Em breve — lançamento e controle de custos de mão de obra desta obra.</div>`;
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">👷 Custo Mão de Obra por O.S.</div>
+    ${osDoCard.map(os=>{
+      const mo = os.custoMO||{valor:0,tecnicoIds:[]};
+      const ids = Array.isArray(mo.tecnicoIds)?mo.tecnicoIds:[];
+      return `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:#fafafa">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-weight:700;font-size:13px">${os.numero}</span>
+          <span style="background:${tipoColor[os.tipo]||'#555'};color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 8px">${tipoLabel[os.tipo]||os.tipo}</span>
+          <span style="font-size:13px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${os.titulo}</span>
+          ${os.fechada?`<span style="font-size:11px;color:#888;font-weight:600">🔒 Fechada</span>`:''}
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+          <div style="min-width:160px">
+            <label style="font-size:11px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">Valor M.O. (R$)</label>
+            <input type="number" id="mo-val-${os.id}" min="0" step="0.01" value="${mo.valor||0}"
+              style="width:100%;font-size:15px;font-weight:700;text-align:right;padding:6px 10px">
+          </div>
+          <div style="flex:1;min-width:200px">
+            <label style="font-size:11px;color:var(--muted);font-weight:700;display:block;margin-bottom:4px">Técnico(s) que recebem</label>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:#fff;min-height:36px">
+              ${usuarios.map(u=>`
+                <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;white-space:nowrap;padding:2px 6px;border-radius:6px;background:${ids.includes(u.id)?'#e3f2fd':'#f5f5f5'};border:1px solid ${ids.includes(u.id)?'#90caf9':'transparent'}" id="mo-lbl-${os.id}-${u.id}">
+                  <input type="checkbox" id="mo-tec-${os.id}-${u.id}" data-osid="${os.id}" data-uid="${u.id}"
+                    ${ids.includes(u.id)?'checked':''}
+                    onchange="atualizarLabelMO(${os.id},${u.id},this.checked)"
+                    style="accent-color:var(--primary)">
+                  ${u.nome}
+                </label>`).join('')}
+            </div>
+          </div>
+          <button class="btn sm primary" style="flex-shrink:0;align-self:flex-end" onclick="salvarCustoMOOS(${os.id},${c.id})">Salvar</button>
+        </div>
+        <div id="mo-status-${os.id}" style="font-size:11px;color:var(--green);margin-top:6px;min-height:14px"></div>
+      </div>`;
+    }).join('')}
+    <div style="border-top:2px solid var(--border);padding-top:10px;margin-top:4px;display:flex;justify-content:flex-end;align-items:center;gap:10px">
+      <span style="font-size:13px;color:var(--muted)">Total M.O. neste cartão:</span>
+      <span style="font-size:16px;font-weight:800;color:var(--blue-dark)">${fmtR(totalGeral)}</span>
+    </div>`;
+}
+
+function atualizarLabelMO(osId, uid, checked){
+  const lbl = document.getElementById(`mo-lbl-${osId}-${uid}`);
+  if(!lbl) return;
+  lbl.style.background = checked ? '#e3f2fd' : '#f5f5f5';
+  lbl.style.borderColor = checked ? '#90caf9' : 'transparent';
+}
+
+async function salvarCustoMOOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os) return;
+  const valor = +document.getElementById(`mo-val-${osId}`)?.value||0;
+  const tecnicoIds = [...document.querySelectorAll(`input[data-osid="${osId}"][type=checkbox]:checked`)]
+    .map(el=>+el.dataset.uid).filter(Boolean);
+  os.custoMO = {valor, tecnicoIds};
+  const {error} = await sb.from('ordens_servico').update({custo_mo:{valor,tecnicoIds}}).eq('id',osId);
+  save();
+  const st = document.getElementById(`mo-status-${osId}`);
+  if(st) st.textContent = error ? '⚠️ Erro ao salvar.' : '✔ Salvo';
 }
 
 function abaObraOutrosCustos(c, ob){
