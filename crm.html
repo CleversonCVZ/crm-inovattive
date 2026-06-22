@@ -940,6 +940,8 @@ function load(){
     if(!Array.isArray(g.recursos)) g.recursos = RECURSOS.map(r=>r.id);
     // garante que novos recursos sejam adicionados a grupos admin existentes
     RECURSOS.forEach(r=>{ if(g.admin && !g.recursos.includes(r.id)) g.recursos.push(r.id); });
+    // fasesPermitidas: null = sem restrição (todos veem tudo)
+    if(!('fasesPermitidas' in g)) g.fasesPermitidas = null;
   });
   const gAdmin = db.grupos.find(g=>g.admin);
   db.usuarios.forEach(u=>{
@@ -1060,7 +1062,7 @@ async function carregarConfigSupabase(){
     if(funcoes.data && funcoes.data.length)
       db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
     if(grupos.data && grupos.data.length)
-      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[]}));
+      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null}));
     if(empresa.data){
       db.empresa = {
         id:empresa.data.id, logo:empresa.data.logo||'', razao:empresa.data.razao||'', fantasia:empresa.data.fantasia||'',
@@ -1257,7 +1259,7 @@ function syncConfigSupabase(){
     sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[]}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -2434,6 +2436,13 @@ function podeUsar(u, recursoId){
   return (g.recursos||[]).includes(recursoId);
 }
 
+function podeVerFase(faseId){
+  const g = grupoDe(usuarioAtual);
+  if(g.admin) return true;
+  if(g.fasesPermitidas === null || g.fasesPermitidas === undefined) return true;
+  return (g.fasesPermitidas).includes(faseId);
+}
+
 function aplicarPermissoes(){
   // módulo ativo precisa ser permitido
   const modOk = m => m.telas.some(t=>podeVer(usuarioAtual,t));
@@ -2579,6 +2588,7 @@ function renderKanban(){
 function renderVistaFases(k){
   fasesOrdenadas().forEach(f=>{
     if(f.tipo) return; // fases de sistema (Perdido/Abandonado e CRM Concluído) NUNCA aparecem nesta visualização
+    if(!podeVerFase(f.id)) return; // restrição por grupo
     if(!db.cards.some(c=>c.faseId===f.id && cardAtivo(c))) return; // só fases com cartão ativo
     const itens = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c) && filtroBusca(c));
     k.appendChild(colEl(f.nome, f.cor, itens, {
@@ -2602,8 +2612,8 @@ function renderVistaFases(k){
 function renderVistaArquivados(k){
   const fp = faseTipo('perdido'), fc = faseTipo('concluido');
   if(!fp || !fc) return;
-  k.appendChild(colEl(fp.nome, fp.cor, db.cards.filter(c=>c.perdido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
-  k.appendChild(colEl(fc.nome, fc.cor, db.cards.filter(c=>c.concluido && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
+  k.appendChild(colEl(fp.nome, fp.cor, db.cards.filter(c=>c.perdido && podeVerFase(c.faseId) && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
+  k.appendChild(colEl(fc.nome, fc.cor, db.cards.filter(c=>c.concluido && podeVerFase(c.faseId) && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
 }
 
 /* --- Vista 3: por data da agenda --- */
@@ -3176,6 +3186,7 @@ function abrirEditarCartao(id, aba='dados'){
   if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS)) aba='dados';
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
+  if(c && !podeVerFase(c.faseId)){ alert('Sem permissão para acessar cartões nesta fase.'); return; }
   const nEmit=db.propostas.filter(p=>p.cardId===id && p.status==='emitida').length;
   const nAprov=db.propostas.filter(p=>p.cardId===id && p.status==='aprovada').length;
   const nOS=db.ordensServico.filter(o=>o.cardId===id).length;
@@ -7098,6 +7109,9 @@ function formGrupo(g){
     <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
   const recursosCk    = mkRecursosCk('crm');
   const recursosObras = mkRecursosCk('obras');
+  const restringirFases = g && Array.isArray(g.fasesPermitidas);
+  const fasesCk = (db.fases||[]).map(f=>`
+    <label class="perm-item"><input type="checkbox" class="ck-gfase" value="${f.id}" ${!restringirFases || (g.fasesPermitidas||[]).includes(f.id)?'checked':''}> ${f.nome}</label>`).join('');
   const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).length
     ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:4px 8px;align-items:center">
         <div style="font-size:11px;color:var(--muted);font-weight:600">CATEGORIA</div>
@@ -7119,7 +7133,20 @@ function formGrupo(g){
          <div class="perm-box">${recursosCk}</div>
          <label>Permissões — Sub-itens da aba Obras</label>
          <div class="perm-box">${recursosObras}</div>
+         <label>Fases do CRM visíveis</label>
+         <div style="margin-bottom:6px">
+           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+             <input type="checkbox" id="ck-restringir-fases" ${restringirFases?'checked':''} onchange="toggleRestricaoFases(this.checked)">
+             Restringir fases (marque para selecionar quais fases este grupo pode ver)
+           </label>
+         </div>
+         <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk}</div>
          ${dlCatsCk?`<label>Downloads — categorias permitidas</label><div class="perm-box">${dlCatsCk}</div>`:''}`}`;
+}
+
+function toggleRestricaoFases(restringir){
+  const box = document.getElementById('fases-perm-box');
+  if(box) box.style.display = restringir ? '' : 'none';
 }
 
 function abrirNovoGrupo(){
@@ -7146,13 +7173,15 @@ async function salvarGrupo(id){
   if(db.grupos.some(g=>g.nome.toLowerCase()===nome.toLowerCase() && g.id!==id)){ alert('Já existe um grupo com esse nome.'); return; }
   const telas=[...document.querySelectorAll('.ck-gtela:checked')].map(c=>c.value);
   const recursos=[...document.querySelectorAll('.ck-grec:checked')].map(c=>c.value);
+  const restringirFases = document.getElementById('ck-restringir-fases')?.checked || false;
+  const fasesPermitidas = restringirFases ? [...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)) : null;
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.recursos=recursos; }
+    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; }
     registrarLog('editar', 'grupo', id, `Grupo editado: "${nome}"`);
   } else {
-    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos};
+    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos, fasesPermitidas};
     db.grupos.push(ng);
     registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
