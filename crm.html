@@ -4747,6 +4747,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
               ${p.transferida?`<span style="font-size:11px;color:var(--muted);margin-left:6px">↪ transferida</span>`:''}
             </div>
             ${!os.fechada && !p.transferida && !p.resolvida?`
+              <button class="btn sm neutral" title="Editar texto" onclick="editarPendOSExec(${osId},${i},${cardId})" style="font-size:11px;padding:2px 8px">✏️</button>
               <button class="btn sm neutral" title="Transferir para outra O.S." onclick="abrirTransferirPend(${osId},${i},${cardId})" style="font-size:11px;padding:2px 8px">↪</button>
               <button class="icon-btn" style="font-size:11px" onclick="removerPendOSExec(${osId},${i},${cardId})">✖</button>
             `:''}
@@ -5075,6 +5076,34 @@ function removerPendOSExec(osId, idx, cardId){
   if(!confirm('Remover esta pendência?')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
   os.pendencias.splice(idx, 1);
+  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
+}
+
+function editarPendOSExec(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const p  = os.pendencias[idx];
+  abrirModal(`
+    <h3 style="margin-bottom:16px">✏️ Editar pendência</h3>
+    <label style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Texto</label>
+    <textarea id="pend-edit-texto" rows="3" style="width:100%;resize:vertical;margin-bottom:12px">${p.texto}</textarea>
+    <label style="font-size:13px;font-weight:700;display:block;margin-bottom:6px">Responsabilidade</label>
+    <div style="display:flex;gap:16px;margin-bottom:20px">
+      <label style="font-size:13px"><input type="radio" name="pend-edit-origem" value="empresa" ${p.origem==='empresa'?'checked':''}> 🏢 Nossa empresa</label>
+      <label style="font-size:13px"><input type="radio" name="pend-edit-origem" value="cliente" ${p.origem==='cliente'?'checked':''}> 🏠 Cliente</label>
+    </div>
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'pendencias')">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoPendOSExec(${osId},${idx},${cardId})">Salvar</button>
+    </div>`);
+}
+
+function salvarEdicaoPendOSExec(osId, idx, cardId){
+  const texto = (document.getElementById('pend-edit-texto')?.value||'').trim();
+  if(!texto){ alert('O texto não pode ficar vazio.'); return; }
+  const origem = document.querySelector('input[name="pend-edit-origem"]:checked')?.value||'empresa';
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.pendencias[idx].texto  = texto;
+  os.pendencias[idx].origem = origem;
   save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
 }
 
