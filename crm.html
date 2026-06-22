@@ -668,6 +668,18 @@
     </table>
   </div>
 
+  <!-- GRUPO FORM (tela cheia) -->
+  <div class="view" id="view-grupo-form">
+    <div class="bar">
+      <button class="btn neutral" onclick="ativarView('grupos')">← Voltar</button>
+      <h2 id="grupo-form-titulo" style="margin-left:12px">Grupo</h2>
+      <div class="spacer"></div>
+      <button class="btn danger" id="grupo-form-btn-excluir" style="display:none" onclick="excluirGrupoForm()">Excluir</button>
+      <button class="btn primary" onclick="salvarGrupo(window._grupoFormId||undefined)">Salvar</button>
+    </div>
+    <div id="grupo-form-body" style="padding:0 4px"></div>
+  </div>
+
   <!-- ORIGEM DO LEAD -->
   <div class="view" id="view-origens">
     <div class="bar">
@@ -2457,7 +2469,7 @@ function aplicarPermissoes(){
   renderNavTelas();
   // view ativa precisa ser permitida (telas da engrenagem também valem)
   const atual = viewAtiva();
-  const gearViews = ['usuarios','grupos','funcoes','gerais','auditoria','downloads'];
+  const gearViews = ['usuarios','grupos','grupo-form','funcoes','gerais','auditoria','downloads'];
   const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
     : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
   if(!permitida && mod){
@@ -7114,8 +7126,9 @@ function formGrupo(g){
   const restringirFases = g && Array.isArray(g.fasesPermitidas);
   const fasesCk = (db.fases||[]).map(f=>`
     <label class="perm-item"><input type="checkbox" class="ck-gfase" value="${f.id}" ${!restringirFases || (g.fasesPermitidas||[]).includes(f.id)?'checked':''}> ${f.nome}</label>`).join('');
-  const dlCatsCk = (db.downloadCategorias||[]).sort((a,b)=>a.ordem-b.ordem).length
-    ? `<div style="display:grid;grid-template-columns:1fr 90px 90px;gap:4px 8px;align-items:center">
+  const hasDlCats = (db.downloadCategorias||[]).length > 0;
+  const dlCatsCk = hasDlCats
+    ? `<div style="display:grid;grid-template-columns:1fr 72px 72px;gap:4px 8px;align-items:center">
         <div style="font-size:11px;color:var(--muted);font-weight:600">CATEGORIA</div>
         <div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">BAIXAR</div>
         <div style="font-size:11px;color:var(--muted);font-weight:600;text-align:center">ENVIAR</div>
@@ -7125,43 +7138,52 @@ function formGrupo(g){
           <div style="text-align:center"><input type="checkbox" class="ck-grec" value="ul-cat-${c.id}" ${!g||(g.recursos||[]).includes(`ul-cat-${c.id}`)?'checked':''}></div>`).join('')}
       </div>`
     : '<span style="font-size:13px;color:var(--muted)">Nenhuma categoria criada ainda.</span>';
+
+  if(g && g.admin) return `
+    <div style="max-width:520px">
+      <label>Nome do grupo</label>
+      <input id="g-nome" value="${g.nome.replace(/"/g,'&quot;')}" disabled>
+      <p style="margin-top:14px;font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</p>
+    </div>`;
+
   return `
-    <label>Nome do grupo</label>
-    <input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas..." style="margin-bottom:12px">
-    ${g&&g.admin
-      ? '<div style="font-size:13px;color:var(--muted)">O grupo Administradores tem acesso a todas as telas e abas — isso não pode ser alterado.</div>'
-      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
-           <!-- COLUNA ESQUERDA -->
-           <div style="display:flex;flex-direction:column;gap:10px">
-             <div>
-               <div class="perm-section-label">Telas permitidas</div>
-               <div class="perm-box">${telasCk}</div>
-             </div>
-             <div>
-               <div class="perm-section-label">Fases do CRM visíveis</div>
-               <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:6px;color:var(--muted)">
-                 <input type="checkbox" id="ck-restringir-fases" ${restringirFases?'checked':''} onchange="toggleRestricaoFases(this.checked)">
-                 Restringir por fase
-               </label>
-               <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk||'<span style="font-size:12px;color:var(--muted)">Nenhuma fase cadastrada.</span>'}</div>
-             </div>
-             ${dlCatsCk?`<div>
-               <div class="perm-section-label">Downloads — categorias</div>
-               <div class="perm-box">${dlCatsCk}</div>
-             </div>`:''}
-           </div>
-           <!-- COLUNA DIREITA -->
-           <div style="display:flex;flex-direction:column;gap:10px">
-             <div>
-               <div class="perm-section-label">Permissões — Cartão CRM</div>
-               <div class="perm-box">${recursosCk}</div>
-             </div>
-             <div>
-               <div class="perm-section-label">Permissões — Sub-itens Obras</div>
-               <div class="perm-box">${recursosObras}</div>
-             </div>
-           </div>
-         </div>`}`;
+    <div style="margin-bottom:16px;max-width:340px">
+      <label>Nome do grupo</label>
+      <input id="g-nome" value="${g?g.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Técnicos, Vendas...">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start">
+      <!-- COL 1: TELAS -->
+      <div>
+        <div class="perm-section-label">Telas permitidas</div>
+        <div class="perm-box">${telasCk}</div>
+      </div>
+      <!-- COL 2: PERMISSÕES CRM + OBRAS -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <div class="perm-section-label">Permissões — Cartão CRM</div>
+          <div class="perm-box">${recursosCk}</div>
+        </div>
+        <div>
+          <div class="perm-section-label">Permissões — Sub-itens Obras</div>
+          <div class="perm-box">${recursosObras}</div>
+        </div>
+      </div>
+      <!-- COL 3: FASES + DOWNLOADS -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div>
+          <div class="perm-section-label">Fases do CRM visíveis</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:6px;color:var(--muted)">
+            <input type="checkbox" id="ck-restringir-fases" ${restringirFases?'checked':''} onchange="toggleRestricaoFases(this.checked)">
+            Restringir por fase
+          </label>
+          <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk||'<span style="font-size:12px;color:var(--muted)">Nenhuma fase cadastrada.</span>'}</div>
+        </div>
+        <div>
+          <div class="perm-section-label">Downloads — categorias</div>
+          <div class="perm-box">${dlCatsCk}</div>
+        </div>
+      </div>
+    </div>`;
 }
 
 function toggleRestricaoFases(restringir){
@@ -7170,21 +7192,25 @@ function toggleRestricaoFases(restringir){
 }
 
 function abrirNovoGrupo(){
-  abrirModal(`<h3>Novo Grupo de Acesso</h3>${formGrupo(null)}
-    <div class="actions">
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarGrupo()">Salvar</button>
-    </div>`, 'wide');
+  window._grupoFormId = null;
+  document.getElementById('grupo-form-titulo').textContent = 'Novo Grupo';
+  document.getElementById('grupo-form-btn-excluir').style.display = 'none';
+  document.getElementById('grupo-form-body').innerHTML = formGrupo(null);
+  ativarView('grupo-form');
 }
 
 function abrirEditarGrupo(id){
-  const g=db.grupos.find(x=>x.id===id);
-  abrirModal(`<h3>Grupo — ${g.nome}</h3>${formGrupo(g)}
-    <div class="actions">
-      ${g.admin?'':`<button class="btn danger" onclick="excluirGrupo(${g.id})">Excluir</button>`}
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarGrupo(${g.id})">Salvar</button>
-    </div>`, 'wide');
+  const g = db.grupos.find(x=>x.id===id);
+  window._grupoFormId = g.id;
+  document.getElementById('grupo-form-titulo').textContent = 'Grupo — ' + g.nome;
+  document.getElementById('grupo-form-btn-excluir').style.display = g.admin ? 'none' : '';
+  document.getElementById('grupo-form-btn-excluir').setAttribute('onclick', `excluirGrupoForm()`);
+  document.getElementById('grupo-form-body').innerHTML = formGrupo(g);
+  ativarView('grupo-form');
+}
+
+function excluirGrupoForm(){
+  excluirGrupo(window._grupoFormId);
 }
 
 async function salvarGrupo(id){
@@ -7205,9 +7231,10 @@ async function salvarGrupo(id){
     db.grupos.push(ng);
     registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
-  save(); fecharModal();
+  save();
   if(usuarioAtual) aplicarPermissoes(); // permissões podem ter mudado para o próprio usuário
   renderAll();
+  ativarView('grupos');
 }
 
 function excluirGrupo(id){
@@ -7219,7 +7246,7 @@ function excluirGrupo(id){
   registrarLog('excluir', 'grupo', id, `Grupo excluído: "${g.nome}"`);
   excluirDoSupabase('grupos', id);
   db.grupos=db.grupos.filter(x=>x.id!==id);
-  save(); fecharModal(); renderAll();
+  save(); renderAll(); ativarView('grupos');
 }
 
 function renderOSLista(){
