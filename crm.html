@@ -6548,7 +6548,6 @@ function renderObrasFases(){
       const fo=faseObra(id);
       if(fo?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
       if(db.fasesObra.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
-      const fo=faseObra(id);
       const qtd=db.obras.filter(o=>o.faseId===id).length;
       const outras=fasesObraOrdenadas().filter(f=>f.id!==id);
       if(qtd>0){
