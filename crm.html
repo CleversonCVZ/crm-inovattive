@@ -8050,14 +8050,48 @@ function _osPainelCardHTML(os){
 }
 
 function _renderOSPainelAbertas(corpo, lista){
-  lista.sort((a,b)=>{
-    const ha=a.dataAgend||'', hb=b.dataAgend||'';
-    if(ha&&!hb) return -1; if(!ha&&hb) return 1;
-    return ha.localeCompare(hb)||b.id-a.id;
+  corpo.innerHTML = '';
+  const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida'&&f.tipo!=='cancelada');
+  const kanban = document.createElement('div');
+  kanban.className = 'kanban';
+  fases.forEach(f=>{
+    const itens = lista.filter(os=>{
+      const obra = db.obras.find(x=>x.id===os.obraId);
+      return obra?.faseId === f.id;
+    });
+    if(!itens.length) return;
+    itens.sort((a,b)=>{
+      const ha=a.dataAgend||'', hb=b.dataAgend||'';
+      if(ha&&!hb) return -1; if(!ha&&hb) return 1;
+      return ha.localeCompare(hb)||b.id-a.id;
+    });
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
+      <span class="col-title">${f.nome}</span>
+      <span class="col-count">${itens.length}</span>
+    </div>
+    <div class="col-body">${itens.map(_osPainelCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
   });
-  corpo.innerHTML = lista.length
-    ? `<div class="os-painel-list">${lista.map(_osPainelCardHTML).join('')}</div>`
-    : '<div class="empty">Nenhuma O.S. aberta.</div>';
+  // OS sem obra ou com obra sem fase definida
+  const semFase = lista.filter(os=>{
+    const obra = db.obras.find(x=>x.id===os.obraId);
+    return !obra || !obra.faseId || !fases.find(f=>f.id===obra.faseId);
+  });
+  if(semFase.length){
+    semFase.sort((a,b)=>(a.dataAgend||'').localeCompare(b.dataAgend||'')||b.id-a.id);
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:#adb5bd;color:#fff">
+      <span class="col-title">— Sem fase</span>
+      <span class="col-count">${semFase.length}</span>
+    </div>
+    <div class="col-body">${semFase.map(_osPainelCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  }
+  if(!kanban.children.length) corpo.innerHTML='<div class="empty">Nenhuma O.S. aberta.</div>';
+  else corpo.appendChild(kanban);
 }
 
 function _renderOSPainelFechadas(corpo, lista){
