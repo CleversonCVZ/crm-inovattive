@@ -467,7 +467,6 @@
         <option value="avulsa">Avulsa (AVL)</option>
       </select>
     </div>
-    <div class="stats" id="os-painel-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <div id="os-painel-corpo"></div>
   </div>
 
@@ -7562,25 +7561,12 @@ function mudarVistaOSPainel(v){ osPainelVista=v; localStorage.setItem('osPainelV
 
 function renderOSPainel(){
   const corpo = document.getElementById('os-painel-corpo'); if(!corpo) return;
-  const statsEl = document.getElementById('os-painel-stats');
   const selV = document.getElementById('os-painel-vista');
   if(selV && selV.value !== osPainelVista) selV.value = osPainelVista;
   const filtroTipo = document.getElementById('os-painel-tipo')?.value || '';
   const t = termoBusca();
 
   const todas = db.ordensServico || [];
-  const abertas = todas.filter(o=>!o.fechada);
-  const comPend = abertas.filter(o=>(o.pendencias||[]).some(p=>!p.resolvida&&!p.transferida));
-  const hojeS = new Date().toISOString().slice(0,10);
-  const atrasadas = abertas.filter(o=>o.dataAgend && o.dataAgend.slice(0,10) < hojeS);
-  const agHoje = abertas.filter(o=>o.dataAgend && o.dataAgend.slice(0,10)===hojeS);
-
-  if(statsEl) statsEl.innerHTML = `
-    <div class="stat"><div class="n">${abertas.length}</div><div class="l">Abertas</div></div>
-    <div class="stat"><div class="n">${comPend.length}</div><div class="l" style="color:#c62828">Com pendências</div></div>
-    <div class="stat"><div class="n">${atrasadas.length}</div><div class="l" style="color:#e65100">Atrasadas</div></div>
-    <div class="stat"><div class="n">${agHoje.length}</div><div class="l" style="color:#1565c0">Agendadas hoje</div></div>`;
-
   let lista = todas.filter(o=>{
     if(filtroTipo && o.tipo !== filtroTipo) return false;
     if(t){
