@@ -167,6 +167,16 @@
   .os-arq-secao-status{font-size:12px;font-weight:600;padding:2px 10px;border-radius:12px;background:#e8f5e9;color:#2e7d32}
   .os-arq-secao-status.pendente{background:#fff3e0;color:#e65100}
   .os-img-card img{width:120px;height:80px;object-fit:cover;display:block}
+
+  /* ===== OS Painel ===== */
+  .os-painel-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:8px}
+  .os-painel-card{background:var(--card);border-radius:10px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,.1);border-left:5px solid #adb5bd;cursor:pointer;transition:box-shadow .15s}
+  .os-painel-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.18)}
+  .os-painel-atrasada{background:#fff5f5}
+  .os-painel-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:wrap}
+  .os-painel-titulo{font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.3}
+  .os-painel-meta{display:flex;flex-wrap:wrap;gap:8px;font-size:12px;color:var(--muted)}
+  .os-grupo-header{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin:8px 0 8px;display:flex;align-items:center;gap:8px}
   .os-img-card .os-img-leg{padding:4px 6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .os-produtos{margin-top:8px;border-top:1px solid var(--border);padding-top:8px;font-size:13px}
   .os-prod-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0}
@@ -442,11 +452,23 @@
 
   <!-- O.S.: PAINEL -->
   <div class="view" id="view-os-painel">
-    <div class="bar"><h2>O.S. — Acompanhamento</h2></div>
-    <div class="empty" style="padding:60px 20px;font-size:15px">
-      🔧 Painel de Ordens de Serviço em construção.<br>
-      <small style="color:var(--muted)">Aqui entrará o kanban/painel de O.S. por fase, com visão geral das ordens em andamento.</small>
+    <div class="bar">
+      <h2>O.S. — Acompanhamento</h2>
+      <select class="vista-sel" id="os-painel-vista" onchange="mudarVistaOSPainel(this.value)">
+        <option value="abertas">Visualização: Abertas</option>
+        <option value="fechadas">Visualização: Fechadas</option>
+        <option value="data">Visualização: por data de execução</option>
+        <option value="fases">Visualização: por fases</option>
+      </select>
+      <select class="vista-sel" id="os-painel-tipo" onchange="renderOSPainel()" style="margin-left:6px">
+        <option value="">Todos os tipos</option>
+        <option value="projeto">Projeto (PRJ)</option>
+        <option value="execucao">Execução (OBR)</option>
+        <option value="avulsa">Avulsa (AVL)</option>
+      </select>
     </div>
+    <div class="stats" id="os-painel-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div id="os-painel-corpo"></div>
   </div>
 
   <!-- O.S.: FASES -->
@@ -7533,8 +7555,146 @@ function renderObrasLista(){
   });
 }
 
+/* ================= OS PAINEL ================= */
+let osPainelVista = localStorage.getItem('osPainelVista') || 'abertas';
+
+function mudarVistaOSPainel(v){ osPainelVista=v; localStorage.setItem('osPainelVista',v); renderOSPainel(); }
+
+function renderOSPainel(){
+  const corpo = document.getElementById('os-painel-corpo'); if(!corpo) return;
+  const statsEl = document.getElementById('os-painel-stats');
+  const selV = document.getElementById('os-painel-vista');
+  if(selV && selV.value !== osPainelVista) selV.value = osPainelVista;
+  const filtroTipo = document.getElementById('os-painel-tipo')?.value || '';
+  const t = termoBusca();
+
+  const todas = db.ordensServico || [];
+  const abertas = todas.filter(o=>!o.fechada);
+  const comPend = abertas.filter(o=>(o.pendencias||[]).some(p=>!p.resolvida&&!p.transferida));
+  const hojeS = new Date().toISOString().slice(0,10);
+  const atrasadas = abertas.filter(o=>o.dataAgend && o.dataAgend.slice(0,10) < hojeS);
+  const agHoje = abertas.filter(o=>o.dataAgend && o.dataAgend.slice(0,10)===hojeS);
+
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat"><div class="n">${abertas.length}</div><div class="l">Abertas</div></div>
+    <div class="stat"><div class="n">${comPend.length}</div><div class="l" style="color:#c62828">Com pendências</div></div>
+    <div class="stat"><div class="n">${atrasadas.length}</div><div class="l" style="color:#e65100">Atrasadas</div></div>
+    <div class="stat"><div class="n">${agHoje.length}</div><div class="l" style="color:#1565c0">Agendadas hoje</div></div>`;
+
+  let lista = todas.filter(o=>{
+    if(filtroTipo && o.tipo !== filtroTipo) return false;
+    if(t){
+      const cli = cliente(o.clienteId)?.nome||'';
+      const ob = db.obras.find(x=>x.id===o.obraId)?.nome||'';
+      if(!(o.numero+' '+o.titulo+' '+cli+' '+ob).toLowerCase().includes(t)) return false;
+    }
+    return true;
+  });
+
+  if(osPainelVista==='abertas')       _renderOSPainelAbertas(corpo, lista.filter(o=>!o.fechada));
+  else if(osPainelVista==='fechadas') _renderOSPainelFechadas(corpo, lista.filter(o=>o.fechada));
+  else if(osPainelVista==='data')     _renderOSPainelData(corpo, lista.filter(o=>!o.fechada));
+  else                                _renderOSPainelFases(corpo, lista);
+}
+
+function _osPainelCardHTML(os){
+  const cli = cliente(os.clienteId)?.nome||'';
+  const ob  = db.obras.find(x=>x.id===os.obraId)?.nome||'';
+  const f   = faseOS(os.faseId);
+  const {label:tlabel, cor:tcor} = ostipoInfo(os.tipo);
+  const hojeS = new Date().toISOString().slice(0,10);
+  const pends = (os.pendencias||[]).filter(p=>!p.resolvida&&!p.transferida);
+  const atrasada = !os.fechada && os.dataAgend && os.dataAgend.slice(0,10) < hojeS;
+  const agHoje   = os.dataAgend && os.dataAgend.slice(0,10) === hojeS;
+  let badges = '';
+  if(atrasada) badges += '<span class="badge atrasado">⚠ Atrasada</span> ';
+  else if(agHoje) badges += '<span class="badge hoje">● Hoje</span> ';
+  if(pends.length) badges += `<span class="badge" style="background:#fce4ec;color:#c62828">⚑ ${pends.length} pendência${pends.length>1?'s':''}</span>`;
+  return `<div class="os-painel-card${atrasada?' os-painel-atrasada':''}" onclick="abrirEditarCartao(${os.cardId},'os')" style="border-left-color:${f?.cor||'#adb5bd'}">
+    <div class="os-painel-top">
+      <span class="os-numero">OS #${os.numero}</span>
+      <span class="os-tag" style="background:${tcor}">${tlabel}</span>
+      ${f?`<span class="os-fase-badge" style="background:${f.cor}">${f.nome}</span>`:''}
+    </div>
+    <div class="os-painel-titulo">${os.titulo}</div>
+    <div class="os-painel-meta">
+      ${cli?`<span>👤 ${cli}</span>`:''}
+      ${ob?`<span>🏗 ${ob}</span>`:''}
+      ${os.dataAgend?`<span>📅 ${fmtDia2(os.dataAgend)}</span>`:''}
+    </div>
+    ${badges?`<div style="margin-top:5px">${badges}</div>`:''}
+  </div>`;
+}
+
+function _renderOSPainelAbertas(corpo, lista){
+  lista.sort((a,b)=>{
+    const ha=a.dataAgend||'', hb=b.dataAgend||'';
+    if(ha&&!hb) return -1; if(!ha&&hb) return 1;
+    return ha.localeCompare(hb)||b.id-a.id;
+  });
+  corpo.innerHTML = lista.length
+    ? `<div class="os-painel-list">${lista.map(_osPainelCardHTML).join('')}</div>`
+    : '<div class="empty">Nenhuma O.S. aberta.</div>';
+}
+
+function _renderOSPainelFechadas(corpo, lista){
+  lista.sort((a,b)=>(b.dataTermino||'').localeCompare(a.dataTermino||'')||b.id-a.id);
+  corpo.innerHTML = lista.length
+    ? `<div class="os-painel-list">${lista.map(_osPainelCardHTML).join('')}</div>`
+    : '<div class="empty">Nenhuma O.S. fechada.</div>';
+}
+
+function _renderOSPainelData(corpo, lista){
+  const hojeS = new Date().toISOString().slice(0,10);
+  const semFim = new Date(); semFim.setDate(semFim.getDate()+7);
+  const semFimS = semFim.toISOString().slice(0,10);
+  const grupos = [
+    {key:'atrasadas', label:'⚠ Atrasadas',   cor:'var(--red)',       itens:[]},
+    {key:'hoje',      label:'● Hoje',         cor:'#9a6700',          itens:[]},
+    {key:'semana',    label:'📅 Esta semana',  cor:'var(--blue-dark)', itens:[]},
+    {key:'proximas',  label:'🔜 Próximas',     cor:'#2e7d32',          itens:[]},
+    {key:'semData',   label:'— Sem data',     cor:'var(--muted)',     itens:[]},
+  ];
+  lista.forEach(os=>{
+    const d = os.dataAgend?.slice(0,10);
+    if(!d)          grupos[4].itens.push(os);
+    else if(d<hojeS)  grupos[0].itens.push(os);
+    else if(d===hojeS)grupos[1].itens.push(os);
+    else if(d<=semFimS)grupos[2].itens.push(os);
+    else            grupos[3].itens.push(os);
+  });
+  grupos.forEach(g=>g.itens.sort((a,b)=>(a.dataAgend||'').localeCompare(b.dataAgend||'')));
+  let html = '';
+  grupos.forEach(g=>{
+    if(!g.itens.length) return;
+    html += `<div class="os-grupo-header" style="color:${g.cor}">${g.label} <span class="col-count" style="background:${g.cor};color:#fff">${g.itens.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:18px">${g.itens.map(_osPainelCardHTML).join('')}</div>`;
+  });
+  corpo.innerHTML = html || '<div class="empty">Nenhuma O.S. aberta encontrada.</div>';
+}
+
+function _renderOSPainelFases(corpo, lista){
+  corpo.innerHTML = '';
+  const fases = fasesOSOrdenadas();
+  if(!fases.length){ corpo.innerHTML='<div class="empty">Nenhuma fase de O.S. cadastrada.</div>'; return; }
+  const kanban = document.createElement('div');
+  kanban.className = 'kanban';
+  fases.forEach(f=>{
+    const itens = lista.filter(os=>os.faseId===f.id);
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
+      <span class="col-title">${f.nome}</span>
+      <span class="col-count">${itens.length}</span>
+    </div>
+    <div class="col-body">${itens.map(_osPainelCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  });
+  corpo.appendChild(kanban);
+}
+
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderOSFases(); renderOSLista(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderOSFases(); renderOSLista(); renderOSPainel(); }
 load();
 atualizarMarca();
 (async function(){
