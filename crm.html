@@ -4416,10 +4416,10 @@ function osItemHTML(os, c){
 function abrirNovaOS(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   if(!obraDe(c)){ alert('Vincule uma obra a este cartão (aba Dados) antes de criar uma O.S.'); return; }
-  // pendências abertas de OS anteriores fechadas
+  // pendências abertas de OS anteriores fechadas (exclui já transferidas)
   const osPrev = db.ordensServico.filter(o=>o.cardId===cardId && o.fechada);
   let pendTransf = [];
-  osPrev.forEach(o=>(o.pendencias||[]).filter(p=>!p.resolvida).forEach(p=>pendTransf.push({...p, _deOS:o.numero})));
+  osPrev.forEach(o=>(o.pendencias||[]).filter(p=>!p.resolvida && !p.transferida).forEach(p=>pendTransf.push({...p, _deOS:o.numero, _osId:o.id})));
   const hasPend = pendTransf.length > 0;
   abrirModal(`
     <h3>Nova Ordem de Serviço — Cartão #${c.num}</h3>
@@ -4451,7 +4451,7 @@ function abrirNovaOS(cardId){
       <label style="color:#f57f17">⚠ Existem ${pendTransf.length} pendência${pendTransf.length>1?'s':''} não resolvida${pendTransf.length>1?'s':''} de O.S. anteriores. Selecione as que deseja importar:</label>
       ${pendTransf.map((p,i)=>`
         <div class="os-pend-item">
-          <input type="checkbox" id="pend-imp-${i}" data-texto="${p.texto.replace(/"/g,'&quot;')}" checked>
+          <input type="checkbox" id="pend-imp-${i}" data-texto="${p.texto.replace(/"/g,'&quot;')}" data-os-id="${p._osId}" data-pend-id="${p.id}" checked>
           <label for="pend-imp-${i}" style="cursor:pointer">${p.texto} <span style="color:var(--muted)">(${p._deOS})</span></label>
         </div>`).join('')}
     </div>`:''}
@@ -4473,10 +4473,14 @@ async function salvarNovaOS(cardId){
   const ai = document.getElementById('nos-ai').value||'';
   const histTexto = document.getElementById('nos-hist').value.trim();
   // importar pendências selecionadas (apenas para execucao e avulsa)
-  const pendencias = [];
+  const pendSelecionadas = []; // { texto, osId, pendId }
   if(tipo !== 'projeto'){
     document.querySelectorAll('[id^="pend-imp-"]').forEach(cb=>{
-      if(cb.checked) pendencias.push({id: Date.now()+Math.random(), texto: cb.dataset.texto, resolvida:false});
+      if(cb.checked) pendSelecionadas.push({
+        texto: cb.dataset.texto,
+        osId: +cb.dataset.osId,
+        pendId: cb.dataset.pendId
+      });
     });
   }
   const osDoCard = db.ordensServico.filter(o=>o.cardId===cardId);
@@ -4490,11 +4494,21 @@ async function salvarNovaOS(cardId){
     fechada: false,
     historico: histTexto ? [{data:agoraISO(), texto:histTexto}] : [],
     imagens: [], produtos: [],
-    pendencias: pendencias.map(p=>({...p, origem:p.origem||'empresa', transferida:false, osDestinoId:null})),
+    pendencias: pendSelecionadas.map(p=>({
+      id: Date.now()+Math.random(), texto:p.texto,
+      resolvida:false, origem:'empresa', transferida:false, osDestinoId:null
+    })),
     tecnicos: [], diario: [], itensTrabalho: [],
     arquivosArquiteto: [], arquivosProjeto: []
   };
   db.ordensServico.push(os);
+  // marcar pendências de origem como transferidas para esta nova OS
+  pendSelecionadas.forEach(sel=>{
+    const srcOs = db.ordensServico.find(x=>x.id===sel.osId);
+    if(!srcOs) return;
+    const srcPend = (srcOs.pendencias||[]).find(p=>String(p.id)===String(sel.pendId));
+    if(srcPend){ srcPend.transferida = true; srcPend.osDestinoId = os.id; }
+  });
   registrarLog('criar', 'os', os.id, `O.S. criada: ${os.numero} — ${titulo}`);
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
 }
