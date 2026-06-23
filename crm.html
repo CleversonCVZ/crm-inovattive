@@ -7341,13 +7341,27 @@ async function salvarObra(id, clienteId, returnCardId=null){
   else abrirEditarCliente(clienteId);
 }
 async function excluirObra(id, clienteId, returnCardId=null){
-  const emUso=db.cards.filter(c=>c.obraId===id).length;
-  const o=db.obras.find(x=>x.id===id);
-  if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
+  const o = db.obras.find(x=>x.id===id);
+  // --- guard: verificar vínculos bloqueantes ---
+  const nOS        = (db.ordensServico||[]).filter(os=>os.obraId===id).length;
+  const nPropostas = (db.propostas||[]).filter(p=>p.obraId===id).length;
+  if(nOS || nPropostas){
+    const linhas = [];
+    if(nOS)        linhas.push(`• ${nOS} O.S. vinculada${nOS>1?'s':''}`);
+    if(nPropostas) linhas.push(`• ${nPropostas} proposta${nPropostas>1?'s':''} vinculada${nPropostas>1?'s':''}`);
+    alert(`Não é possível excluir a obra "${o?.nome||'?'}" pois ela possui:\n\n${linhas.join('\n')}\n\nEncerre ou exclua essas atividades antes de excluir a obra.`);
+    return;
+  }
+  // --- aviso: cards vinculados ficarão sem obra ---
+  const nCards = db.cards.filter(c=>c.obraId===id).length;
+  const msg = nCards
+    ? `A obra "${o?.nome||'?'}" está vinculada a ${nCards} cartão(ões) CRM — eles ficarão sem obra. Excluir mesmo assim?`
+    : `Excluir a obra "${o?.nome||'?'}"? Esta ação não pode ser desfeita.`;
+  if(!confirm(msg)) return;
   registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
   await excluirDoSupabase('obras', id);
   db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
-  db.obras=db.obras.filter(x=>x.id!==id);
+  db.obras = db.obras.filter(x=>x.id!==id);
   save(); renderAll();
   if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
   else abrirEditarCliente(clienteId);
