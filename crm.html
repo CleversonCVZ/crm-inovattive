@@ -4402,7 +4402,7 @@ function osItemHTML(os, c){
             Responsável: ${resp?resp.nome:'—'} · ${os.dataInicio ? `Início: ${fmtDia2(os.dataInicio.slice(0,10))}` : `Agendado: ${os.dataAgend?fmtDia2(os.dataAgend):'—'}`}
             ${os.dataTermino?` · Encerrada: ${fmtData(os.dataTermino)}`:''}
           </div>
-          ${!os.fechada && pendAbertas.length?`<div style="font-size:12px;color:#e53935;margin-top:2px">⚠ ${pendAbertas.length} pendência${pendAbertas.length>1?'s':''} em aberto</div>`:''}
+          ${pendAbertas.filter(p=>!p.transferida).length?`<div style="font-size:12px;color:#e53935;margin-top:2px">⚠ ${pendAbertas.filter(p=>!p.transferida).length} pendência${pendAbertas.filter(p=>!p.transferida).length>1?'s':''} em aberto</div>`:''}
         </div>
         <div class="os-acoes">
           <button class="icon-btn" title="${os.fechada?'Ver O.S.':'Editar O.S.'}" onclick="abrirVerOS(${os.id},${c.id})">${os.fechada?'👁':'✏️'}</button>
@@ -5761,6 +5761,16 @@ function verOSImagem(path, legenda, bucket='os-imagens'){
 function excluirOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!confirm(`Excluir a O.S. ${os.numero}? Esta ação não pode ser desfeita.`)) return;
+  // devolver pendências transferidas para esta OS às suas OSes de origem
+  db.ordensServico.forEach(outra=>{
+    if(outra.id === osId) return;
+    (outra.pendencias||[]).forEach(p=>{
+      if(p.osDestinoId === osId){
+        p.transferida  = false;
+        p.osDestinoId  = null;
+      }
+    });
+  });
   // remover imagens do storage
   const paths = (os.imagens||[]).map(i=>i.path).filter(Boolean);
   if(paths.length) sb.storage.from('os-imagens').remove(paths);
