@@ -5065,6 +5065,10 @@ function salvarDadosOSExec(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   os.faseId     = +document.getElementById('exec-fase').value || os.faseId;
   os.faseObraId = +document.getElementById('exec-fase-obra').value || null;
+  if(os.faseObraId && os.obraId){
+    const obraVinc = db.obras.find(x=>x.id===os.obraId);
+    if(obraVinc) obraVinc.faseId = os.faseObraId;
+  }
   os.responsavelId = +document.getElementById('exec-resp').value || null;
   os.dataAgend  = document.getElementById('exec-agend').value||'';
   os.dataInicio = document.getElementById('exec-di').value||'';
