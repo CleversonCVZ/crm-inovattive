@@ -5124,7 +5124,7 @@ function abrirSeletorItensOS(osId, cardId){
           <label style="font-size:11px;color:var(--muted)">Item da proposta</label>
           <select id="sit-sel" style="width:100%;font-size:13px" onchange="atualizarSaldoSit()">
             <option value="">— Selecione —</option>
-            ${disponiveis.map((it,i)=>`<option value="${i}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.clienteFornece?'🏗 ':''}${it.descricao||it.item}</option>`).join('')}
+            ${disponiveis.map((it)=>`<option value="${it.propostaId}_${it.idx}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.clienteFornece?'🏗 ':''}${it.descricao||it.item}</option>`).join('')}
           </select>
         </div>
         <div style="width:80px;flex-shrink:0">
@@ -5189,16 +5189,9 @@ function adicionarItemSit(osId, cardId){
   const outrasOS   = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
   const os         = db.ordensServico.find(x=>x.id===osId);
   const marcados   = (os.itensTrabalho||[]);
-  // reconstrói lista de disponíveis (mesma lógica do render)
-  const disponiveis = todosItens.filter(it=>{
-    const jaAlocado = outrasOS.reduce((s,o)=>{
-      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-      return s+(r?r.qtdOS||0:0);
-    },0);
-    const reg = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-    return jaAlocado < (it.qtd||0) && !(reg && reg.qtdOS>0);
-  });
-  const it  = disponiveis[+sel.value];
+  // busca o item pelo par propostaId_idx (valor estável independente de ordenação)
+  const [pIdStr, idxStr] = sel.value.split('_');
+  const it = todosItens.find(x=>x.propostaId===+pIdStr && x.idx===+idxStr);
   if(!it){ alert('Item não encontrado.'); return; }
   const key = `${it.propostaId}_${it.idx}`;
   salvarQtdItemOS(osId, key, it.propostaId, it.idx, qtd, cardId);
