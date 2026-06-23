@@ -7580,7 +7580,7 @@ function renderOSPainel(){
   if(osPainelVista==='abertas')       _renderOSPainelAbertas(corpo, lista.filter(o=>!o.fechada));
   else if(osPainelVista==='fechadas') _renderOSPainelFechadas(corpo, lista.filter(o=>o.fechada));
   else if(osPainelVista==='data')     _renderOSPainelData(corpo, lista.filter(o=>!o.fechada));
-  else                                _renderOSPainelFases(corpo, lista);
+  else                                _renderOSPainelFases(corpo, lista.filter(o=>!o.fechada));
 }
 
 function _osPainelCardHTML(os){
