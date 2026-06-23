@@ -8142,45 +8142,30 @@ function _osPainelCardHTML(os){
 
 function _renderOSPainelAbertas(corpo, lista){
   corpo.innerHTML = '';
-  const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida'&&f.tipo!=='cancelada');
+  const grupos = [
+    {tipo:'projeto',  label:'📐 Projeto (PRJ)',      cor:'#1565c0'},
+    {tipo:'execucao', label:'🔨 Execução/Obra (OBR)', cor:'#2e7d32'},
+    {tipo:'avulsa',   label:'⚡ Avulsa (AVL)',        cor:'#6a1b9a'},
+  ];
   const kanban = document.createElement('div');
   kanban.className = 'kanban';
-  fases.forEach(f=>{
-    const itens = lista.filter(os=>{
-      const obra = db.obras.find(x=>x.id===os.obraId);
-      return obra?.faseId === f.id;
-    });
+  grupos.forEach(g=>{
+    const itens = lista.filter(os=>os.tipo===g.tipo)
+      .sort((a,b)=>{
+        const ha=a.dataAgend||'', hb=b.dataAgend||'';
+        if(ha&&!hb) return -1; if(!ha&&hb) return 1;
+        return ha.localeCompare(hb)||b.id-a.id;
+      });
     if(!itens.length) return;
-    itens.sort((a,b)=>{
-      const ha=a.dataAgend||'', hb=b.dataAgend||'';
-      if(ha&&!hb) return -1; if(!ha&&hb) return 1;
-      return ha.localeCompare(hb)||b.id-a.id;
-    });
     const col = document.createElement('div');
     col.className = 'col';
-    col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
-      <span class="col-title">${f.nome}</span>
+    col.innerHTML = `<div class="col-head" style="background:${g.cor};color:#fff">
+      <span class="col-title">${g.label}</span>
       <span class="col-count">${itens.length}</span>
     </div>
     <div class="col-body">${itens.map(_osPainelCardHTML).join('')}</div>`;
     kanban.appendChild(col);
   });
-  // OS sem obra ou com obra sem fase definida
-  const semFase = lista.filter(os=>{
-    const obra = db.obras.find(x=>x.id===os.obraId);
-    return !obra || !obra.faseId || !fases.find(f=>f.id===obra.faseId);
-  });
-  if(semFase.length){
-    semFase.sort((a,b)=>(a.dataAgend||'').localeCompare(b.dataAgend||'')||b.id-a.id);
-    const col = document.createElement('div');
-    col.className = 'col';
-    col.innerHTML = `<div class="col-head" style="background:#adb5bd;color:#fff">
-      <span class="col-title">— Sem fase</span>
-      <span class="col-count">${semFase.length}</span>
-    </div>
-    <div class="col-body">${semFase.map(_osPainelCardHTML).join('')}</div>`;
-    kanban.appendChild(col);
-  }
   if(!kanban.children.length) corpo.innerHTML='<div class="empty">Nenhuma O.S. aberta.</div>';
   else corpo.appendChild(kanban);
 }
