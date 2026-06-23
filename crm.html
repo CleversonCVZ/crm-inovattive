@@ -817,6 +817,126 @@ async function chamarAdminUsuarios(payload){
   }catch(e){ return {error:'Falha de conexão: '+e.message}; }
 }
 
+/* ================= GOOGLE CALENDAR ================= */
+const GOOGLE_CLIENT_ID   = '253913769433-vkuonlnl07t3bgfrtc27kenlauea9m9f.apps.googleusercontent.com';
+const GOOGLE_REDIRECT_URI = 'https://crm-inovattive.vercel.app';
+
+// Handler do popup OAuth — roda quando o Google redireciona de volta para o app
+(function(){
+  const p = new URLSearchParams(window.location.search);
+  const code = p.get('google_code');
+  const uid  = p.get('state');
+  if(code && window.opener){
+    window.opener.postMessage({type:'google_oauth_code', code, uid}, window.location.origin);
+    window.close();
+    return;
+  }
+  // Caso não seja popup (redirect direto), processa aqui mesmo
+  if(code && uid && !window.opener){
+    history.replaceState({}, '', window.location.pathname);
+    // Aguarda app carregar antes de processar
+    window.addEventListener('load', ()=> trocarCodigoGoogle(code, uid), {once:true});
+  }
+})();
+
+function conectarGoogleCalendar(userId){
+  const scope = 'https://www.googleapis.com/auth/calendar.events';
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth'
+    + '?client_id='     + encodeURIComponent(GOOGLE_CLIENT_ID)
+    + '&redirect_uri='  + encodeURIComponent(GOOGLE_REDIRECT_URI)
+    + '&response_type=code'
+    + '&scope='         + encodeURIComponent(scope)
+    + '&access_type=offline'
+    + '&prompt=consent'
+    + '&state='         + userId;
+  const popup = window.open(url, 'google-oauth', 'width=520,height=640,left=200,top=80');
+  function handler(e){
+    if(e.origin !== window.location.origin) return;
+    if(e.data?.type !== 'google_oauth_code') return;
+    window.removeEventListener('message', handler);
+    if(popup && !popup.closed) popup.close();
+    trocarCodigoGoogle(e.data.code, e.data.uid || userId);
+  }
+  window.addEventListener('message', handler);
+}
+
+async function trocarCodigoGoogle(code, userId){
+  const res = await chamarEdgeFn('google-oauth', {code, userId: +userId});
+  if(res.error){ alert('Erro ao conectar Google Calendar:\n' + res.error); return; }
+  await carregarUsuariosSupabase();
+  // Atualiza o usuário atual em memória se for ele mesmo
+  if(usuarioAtual && usuarioAtual.id === +userId){
+    const me = db.usuarios.find(x=>x.id===usuarioAtual.id);
+    if(me) usuarioAtual.googleRefreshToken = me.googleRefreshToken;
+  }
+  renderAll();
+  abrirEditarUsuario(+userId);
+}
+
+async function desconectarGoogleCalendar(userId){
+  if(!confirm('Desconectar Google Calendar deste usuário?')) return;
+  const {error} = await sb.from('usuarios').update({google_refresh_token: null}).eq('id', userId);
+  if(error){ alert('Erro ao desconectar: ' + error.message); return; }
+  await carregarUsuariosSupabase();
+  if(usuarioAtual && usuarioAtual.id === userId) usuarioAtual.googleRefreshToken = null;
+  renderAll();
+  abrirEditarUsuario(userId);
+}
+
+async function enviarParaAgendaGoogle(tipo, id){
+  if(!usuarioAtual?.googleRefreshToken){
+    alert('Conecte seu Google Calendar primeiro.\n\nVá em Configurações → Usuários → seu perfil → Conectar Google Calendar.');
+    return;
+  }
+  let title, description, date, eventId;
+  if(tipo === 'card'){
+    const c = db.cards.find(x=>x.id===id);
+    if(!c?.agenda){ alert('Este cartão não tem data agendada.'); return; }
+    const ob = obraDe(c);
+    title = `CRM: ${cliente(c.clienteId).nome}`;
+    description = `Cartão #${c.num} · Responsável: ${c.responsavel}${ob?'\nObra: '+ob.nome:''}`;
+    date = c.agenda.slice(0,10);
+    eventId = c.googleEventId || null;
+  } else {
+    const os = db.ordensServico.find(x=>x.id===id);
+    if(!os?.dataAgend){ alert('Esta O.S. não tem data de agendamento.'); return; }
+    const c = db.cards.find(x=>x.id===os.cardId);
+    title = `OS ${os.numero}: ${os.titulo}`;
+    description = `${ostipoInfo(os.tipo).label}${c?' · '+cliente(c.clienteId).nome:''}`;
+    date = os.dataAgend;
+    eventId = os.googleEventId || null;
+  }
+  const btnId = `btn-gcal-${tipo}-${id}`;
+  const btn = document.getElementById(btnId);
+  if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
+  const res = await chamarEdgeFn('google-calendar', {userId: usuarioAtual.id, action:'upsert', eventId, title, description, date});
+  if(btn){ btn.disabled=false; btn.innerHTML='📅 Agenda'; }
+  if(res.error){ alert('Erro ao criar evento:\n' + res.error); return; }
+  if(tipo === 'card'){
+    const c = db.cards.find(x=>x.id===id);
+    c.googleEventId = res.eventId;
+    await sb.from('cards').update({google_event_id: res.eventId}).eq('id', id);
+  } else {
+    const os = db.ordensServico.find(x=>x.id===id);
+    os.googleEventId = res.eventId;
+    await sb.from('ordens_servico').update({google_event_id: res.eventId}).eq('id', id);
+  }
+  if(btn) btn.innerHTML = '✅ Na agenda';
+}
+
+async function chamarEdgeFn(nome, payload){
+  try{
+    const {data:{session}} = await sb.auth.getSession();
+    if(!session) return {error:'Sessão expirada.'};
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${nome}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+      body: JSON.stringify(payload)
+    });
+    return await res.json();
+  }catch(e){ return {error:e.message}; }
+}
+
 /* ================= DADOS ================= */
 const hoje = new Date(); hoje.setHours(0,0,0,0);
 function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
@@ -1163,7 +1283,8 @@ async function carregarDadosSupabase(){
       db.cards = cards.data.map(c=>({
         id:c.id, num:c.num, clienteId:c.cliente_id, obraId:c.obra_id, origemId:c.origem_id,
         faseId:c.fase_id, responsavel:c.responsavel||'', agenda: c.agenda ? c.agenda.slice(0,10) : '',
-        valor:Number(c.valor)||0, perdido:!!c.perdido, concluido:!!c.concluido, historico:[]
+        valor:Number(c.valor)||0, perdido:!!c.perdido, concluido:!!c.concluido, historico:[],
+        googleEventId: c.google_event_id || null
       }));
       if(historico.data){
         historico.data.forEach(h=>{
@@ -1226,6 +1347,7 @@ async function carregarDadosSupabase(){
         instrucoes: o.instrucoes||'',
         descricaoChamado: o.descricao_chamado||'',
         tipoAtendimento: o.tipo_atendimento||'a_definir',
+        googleEventId: o.google_event_id||null,
         tecnicos:[], diario:[]
       }));
       if(osTecnicos.data) osTecnicos.data.forEach(t=>{
@@ -2163,7 +2285,8 @@ async function carregarUsuariosSupabase(){
   if(error || !data) return;
   db.usuarios = data.map(u=>({
     id:u.id, nome:u.nome, login:u.login, email:u.email, funcao:u.funcao,
-    grupoId:u.grupo_id, diasLogado:u.dias_logado, ativo:u.ativo, authId:u.auth_id
+    grupoId:u.grupo_id, diasLogado:u.dias_logado, ativo:u.ativo, authId:u.auth_id,
+    googleRefreshToken: u.google_refresh_token || null
   }));
 }
 
@@ -3066,7 +3189,11 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
     </select>
     <label>Fase</label><select id="m-fase">${optsFases(c?c.faseId:faseInicial)}</select>
     <label>Responsável</label><input id="m-resp" value="${c?c.responsavel:(usuarioAtual?usuarioAtual.nome:'')}">
-    <label>Agenda (próxima ação)</label><input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}">
+    <label>Agenda (próxima ação)</label>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}" style="flex:1">
+      ${c?.agenda && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-card-${c.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('card',${c.id})">${c.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+    </div>
     <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c?(c.valor||0):0}">
     <div class="flags">
       <label class="flag perdido"><input type="checkbox" id="m-perdido" ${c&&c.perdido?'checked':''}> ✖ Perdido</label>
@@ -4799,7 +4926,10 @@ function abrirVerOS(osId, cardId){
           <div class="form-row" style="align-items:flex-end">
             <div>
               <label>Agendamento</label>
-              <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis}>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+                ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+              </div>
             </div>
             ${isProjeto ? `<div>
               <label>Fase da Obra</label>
@@ -4906,7 +5036,12 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
       </select>
       <div class="form-row" style="margin-top:8px">
-        <div><label>Agendamento</label><input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis}></div>
+        <div><label>Agendamento</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+            ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+          </div>
+        </div>
         <div></div>
       </div>
       <div class="form-row">
@@ -5157,7 +5292,10 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         </div>
         <div>
           <label>Agendamento</label>
-          <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis}>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+            ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+          </div>
         </div>
       </div>
       <div class="form-row">
@@ -7545,7 +7683,18 @@ function abrirNovoUsuario(){
 
 function abrirEditarUsuario(id){
   const u=db.usuarios.find(x=>x.id===id);
+  const gcal = !!u.googleRefreshToken;
   abrirModal(`<h3>Usuário — ${u.nome}</h3>${formUsuario(u)}
+    <div style="margin-top:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Google Calendar</div>
+      ${gcal
+        ? `<div style="display:flex;align-items:center;gap:12px">
+             <span style="font-size:13px;color:#2e7d32;font-weight:600">✅ Conectado</span>
+             <button class="btn sm neutral" style="border-color:#c62828;color:#c62828" onclick="desconectarGoogleCalendar(${u.id})">Desconectar</button>
+           </div>`
+        : `<button class="btn sm" style="background:#4285f4;color:#fff;border:none" onclick="fecharModal();conectarGoogleCalendar(${u.id})">🔗 Conectar Google Calendar</button>`
+      }
+    </div>
     <div class="actions">
       <button class="btn danger" onclick="excluirUsuario(${u.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
