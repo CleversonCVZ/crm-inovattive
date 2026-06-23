@@ -1094,7 +1094,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, osItensTrabalho] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1110,8 +1110,8 @@ async function carregarDadosSupabase(){
       sb.from('download_categorias').select('*').order('ordem'),
       sb.from('download_arquivos').select('*').order('criado_em', {ascending:false}),
       sb.from('os_tecnicos').select('*').order('id'),
-      sb.from('os_diario').select('*').order('data', {ascending:false}),
-      sb.from('os_itens_trabalho').select('*').order('id')
+      sb.from('os_diario').select('*').order('data', {ascending:false})
+      // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -1799,6 +1799,7 @@ async function salvarRetencaoLog(){
 }
 
 async function purgarLogsAntigos(){
+  if(!grupoDe(usuarioAtual)?.admin){ console.warn('purgarLogsAntigos: apenas admins podem purgar logs.'); return; }
   const dias = (db.empresa||{}).logRetencaoDias || 90;
   const corte = new Date(Date.now() - dias*24*60*60*1000).toISOString();
   const {error} = await sb.from('audit_logs').delete().lt('created_at', corte);
@@ -1846,7 +1847,7 @@ function recalcValorCartao(cardId){
   const aprovadas=db.propostas.filter(p=>p.cardId===cardId && p.status==='aprovada');
   if(aprovadas.length) c.valor=Math.round(aprovadas.reduce((s,p)=>s+(p.valor||0),0)*100)/100;
 }
-function fmtMoney(v){ return v ? v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
+function fmtMoney(v){ return v != null && v !== '' ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
 function fmtData(iso){ if(!iso) return ''; const [data,hora]=iso.split('T'); const [a,m,dd]=data.split('-'); return `${dd}/${m}/${a} ${hora||''}`.trim(); }
 function fmtDia2(s){ if(!s) return ''; const [a,m,dd]=s.slice(0,10).split('-'); return `${dd}/${m}/${a}`; }
 function fmtBytes(b){ if(b<1024) return b+' B'; if(b<1024*1024) return (b/1024).toFixed(1)+' KB'; return (b/(1024*1024)).toFixed(1)+' MB'; }
@@ -2162,10 +2163,17 @@ async function entrarComSessao(erro){
   return true;
 }
 
+function limparDadosEmMemoria(){
+  // zera todos os dados sensíveis da memória e do cache local
+  db = JSON.parse(JSON.stringify(SEED));
+  localStorage.removeItem('crmDB');
+}
+
 async function logout(){
   registrarLog('logout', 'sistema', null, `Sessão encerrada: ${usuarioAtual?usuarioAtual.nome:'?'}`);
   await sb.auth.signOut();
   localStorage.removeItem('crmLembrar');
+  limparDadosEmMemoria();
   usuarioAtual=null;
   document.getElementById('login-bg').style.display='flex';
   document.getElementById('gear-wrap').style.display='none';
@@ -2770,9 +2778,10 @@ async function novaFase(){
 }
 
 function excluirFase(id){
+  const f = fase(id);
+  if(f?.tipo){ alert('Fases de sistema não podem ser excluídas.'); return; }
   const qtd = db.cards.filter(c=>c.faseId===id).length;
   if(db.fases.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
-  const f = fase(id);
   if(qtd>0){
     const outras = fasesOrdenadas().filter(f=>f.id!==id);
     if(!confirm(`Esta fase tem ${qtd} cartão(ões). Eles serão movidos para "${outras[0].nome}". Continuar?`)) return;
@@ -2794,9 +2803,9 @@ function classificarCliente(clienteId){
     (db.propostas||[]).some(p=>p.cardId===card.id && p.status==='aprovada')
   );
   if(temAprovada) return {selo:'🟢 Cliente', cor:'#1d8348'};
-  // Tem card ativo (fora de perdido/concluido)? → Prospect
+  // Tem card ativo (fora de perdido/concluido e sem flag perdido/concluido)? → Prospect
   const fasesInatvas = new Set(db.fases.filter(f=>f.tipo==='perdido'||f.tipo==='concluido').map(f=>f.id));
-  const temAtivo = cardsCliente.some(card=>!fasesInatvas.has(card.faseId));
+  const temAtivo = cardsCliente.some(card=>!fasesInatvas.has(card.faseId) && !card.perdido && !card.concluido);
   if(temAtivo) return {selo:'🟡 Prospect', cor:'#b7950b'};
   // Só tem cards perdidos/concluidos ou nenhum card → Lead Frio
   return {selo:'🔴 Lead Frio', cor:'#922b21'};
@@ -2870,7 +2879,7 @@ function renderClientes(){
 /* ================= MODAIS ================= */
 const overlay=document.getElementById('overlay'), modal=document.getElementById('modal');
 overlay.onclick=e=>{ if(e.target===overlay) fecharModal(); };
-function fecharModal(){ overlay.classList.remove('open'); }
+function fecharModal(){ overlay.classList.remove('open'); if(typeof propEditandoId!=='undefined') propEditandoId=null; }
 function abrirModal(html, classe){
   modal.className = 'modal' + (classe ? ' ' + classe : '');
   modal.innerHTML = html;
@@ -2890,7 +2899,7 @@ function histHTML(c){
   return `
     <label>Histórico (${c.historico.length} registro${c.historico.length>1?'s':''})</label>
     <div class="hist">${hist.map(h=>{
-      const idx = c.historico.indexOf(h);
+      const idx = c.historico.findIndex(x=>x.data===h.data && x.texto===h.texto);
       const podeEditHist = podeUsar(usuarioAtual,'hist-card-editar');
       return `
       <div class="hist-item">
@@ -4223,7 +4232,7 @@ async function adicionarEquipamento(obraId, cardId){
       const ok = await uploadOSArquivoXHR('equip-arquivos', path, file, pct=>{
         if(statusEl) statusEl.textContent = `Enviando ${i+1}/${files.length}… ${pct}%`;
       });
-      if(ok){
+      if(!ok.error){
         novo.arquivos.push({nome: file.name, path});
         registrarLog('upload','obra_equipamento',novo.id,`Arquivo "${file.name}" adicionado ao equipamento "${equipamento}"`);
       }
@@ -4333,7 +4342,7 @@ async function uploadEquipArquivo(equipId, obraId, cardId, input){
   const ok = await uploadOSArquivoXHR('equip-arquivos', path, file, pct=>{
     if(statusEl) statusEl.textContent = `Enviando… ${pct}%`;
   });
-  if(!ok){ if(statusEl) statusEl.textContent = 'Erro no envio.'; return; }
+  if(ok.error){ if(statusEl) statusEl.textContent = 'Erro no envio.'; return; }
   if(!Array.isArray(e.arquivos)) e.arquivos=[];
   e.arquivos.push({nome: file.name, path});
   registrarLog('upload','obra_equipamento',equipId,`Arquivo "${file.name}" adicionado ao equipamento "${e.equipamento}"`);
@@ -4495,7 +4504,7 @@ async function salvarNovaOS(cardId){
     historico: histTexto ? [{data:agoraISO(), texto:histTexto}] : [],
     imagens: [], produtos: [],
     pendencias: pendSelecionadas.map(p=>({
-      id: Date.now()+Math.random(), texto:p.texto,
+      id: crypto.randomUUID(), texto:p.texto,
       resolvida:false, origem:'empresa', transferida:false, osDestinoId:null
     })),
     tecnicos: [], diario: [], itensTrabalho: [],
@@ -4548,7 +4557,7 @@ function abrirVerOS(osId, cardId){
   });
   const dis = os.fechada ? 'disabled' : '';
   const histRows = hist.map(h=>{
-    const idx = os.historico.indexOf(h);
+    const idx = os.historico.findIndex(x=>x.data===h.data && x.texto===h.texto);
     const podeEditHist = podeUsar(usuarioAtual,'hist-os-editar');
     return `<div class="hist-item">
       <div class="hist-data" style="display:flex;justify-content:space-between;align-items:center">
@@ -5321,7 +5330,7 @@ function adicionarPendOSExec(osId, cardId){
   const origem = document.querySelector('input[name="pend-origem"]:checked')?.value||'empresa';
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os.pendencias) os.pendencias=[];
-  os.pendencias.push({id:Date.now(), texto, resolvida:false, origem, osDestinoId:null, transferida:false});
+  os.pendencias.push({id:crypto.randomUUID(), texto, resolvida:false, origem, osDestinoId:null, transferida:false});
   save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
 }
 
@@ -5552,7 +5561,7 @@ function adicionarPendOS(osId, cardId){
   const texto = document.getElementById('vos-pend-nova').value.trim();
   if(!texto) return;
   if(!os.pendencias) os.pendencias=[];
-  os.pendencias.push({id:Date.now(), texto, resolvida:false});
+  os.pendencias.push({id:crypto.randomUUID(), texto, resolvida:false, origem:'empresa', osDestinoId:null, transferida:false});
   registrarLog('criar','os',osId,`Pendência adicionada à O.S. ${os.numero}: ${texto}`);
   save(); abrirVerOS(osId, cardId);
 }
@@ -5705,7 +5714,7 @@ async function uploadArquivosOSProjeto(osId, cardId, tipo){
     if(!Array.isArray(os.arquivosArquiteto)) os.arquivosArquiteto = [];
     if(!Array.isArray(os.arquivosProjeto))   os.arquivosProjeto   = [];
     const arr = tipo==='arquiteto' ? os.arquivosArquiteto : os.arquivosProjeto;
-    arr.push({id: Date.now()+Math.random(), nome: f.name, path});
+    arr.push({id: crypto.randomUUID(), nome: f.name, path});
     enviados++;
   }
 
@@ -5767,7 +5776,7 @@ async function uploadOSImagens(osId, cardId){
     if(st) st.textContent='';
     if(error){ console.error('Erro upload imagem OS:', error); alert('Erro ao enviar '+f.name+': '+(error.message||'')); continue; }
     if(!os.imagens) os.imagens=[];
-    os.imagens.push({id:Date.now()+Math.random(), nome:f.name, path, descricao:legenda});
+    os.imagens.push({id:crypto.randomUUID(), nome:f.name, path, descricao:legenda});
     enviados++;
   }
   if(btn){ btn.disabled=false; btn.textContent='📷 Upload'; }
@@ -5803,7 +5812,7 @@ function verOSImagem(path, legenda, bucket='os-imagens'){
     </div>`);
 }
 
-function excluirOS(osId, cardId){
+async function excluirOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!confirm(`Excluir a O.S. ${os.numero}? Esta ação não pode ser desfeita.`)) return;
   // devolver pendências transferidas para esta OS às suas OSes de origem
@@ -5816,12 +5825,12 @@ function excluirOS(osId, cardId){
       }
     });
   });
-  // remover imagens do storage
+  // remover imagens do storage (await garante conclusão antes de deletar registro)
   const paths = (os.imagens||[]).map(i=>i.path).filter(Boolean);
-  if(paths.length) sb.storage.from('os-imagens').remove(paths);
+  if(paths.length) await sb.storage.from('os-imagens').remove(paths);
   // remover arquivos de projeto do storage
   const pathsArq = [...(os.arquivosArquiteto||[]), ...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
-  if(pathsArq.length) sb.storage.from('os-arquivos').remove(pathsArq);
+  if(pathsArq.length) await sb.storage.from('os-arquivos').remove(pathsArq);
   excluirDoSupabase('ordens_servico', osId);
   db.ordensServico = db.ordensServico.filter(x=>x.id!==osId);
   registrarLog('excluir', 'os', osId, `O.S. excluída: ${os.numero}`);
@@ -5864,7 +5873,9 @@ function marcarPerdida(id){
 function reativarProposta(id){
   const p=db.propostas.find(x=>x.id===id);
   if(!confirm(`Reativar a proposta ${p.numero}? Ela volta para a fase em que estava.`)) return;
-  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior) && !faseProp(p.faseAnterior).tipo) ? p.faseAnterior : fasesPropOrdenadas().find(f=>!f.tipo).id;
+  const faseFallback = fasesPropOrdenadas().find(f=>!f.tipo);
+  if(!faseFallback){ alert('Nenhuma fase de proposta disponível. Verifique o cadastro de fases.'); return; }
+  p.faseId = (p.faseAnterior && faseProp(p.faseAnterior) && !faseProp(p.faseAnterior).tipo) ? p.faseAnterior : faseFallback.id;
   delete p.faseAnterior;
   registrarLog('reativar', 'proposta', id, `Proposta reativada: ${p.numero}`);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
@@ -6707,10 +6718,12 @@ async function excluirCartao(id){
   registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   for(const os of oss){
-    const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
-    if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
-    const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
-    if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+    try{
+      const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+      if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+      const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+      if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+    }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
     await excluirDoSupabase('ordens_servico', os.id);
   }
   for(const p of props){
@@ -7056,17 +7069,28 @@ async function excluirCliente(id){
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
   registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
   const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
+  // propostas vinculadas às obras e ao cliente
+  const propostasDoCliente = db.propostas.filter(p=>obraIds.includes(p.obraId)||p.clienteId===id);
+  for(const p of propostasDoCliente){
+    for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
+    await sb.from('proposta_itens').delete().eq('proposta_id', p.id);
+    await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
+    await excluirDoSupabase('propostas', p.id);
+  }
   const ossDoCliente = db.ordensServico.filter(o=>obraIds.includes(o.obraId)||o.clienteId===id);
   for(const os of ossDoCliente){
-    const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
-    if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
-    const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
-    if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+    try{
+      const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+      if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+      const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+      if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+    }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
   }
   const ossIds = ossDoCliente.map(o=>o.id);
   for(const osId of ossIds) await excluirDoSupabase('ordens_servico', osId);
   for(const obraId of obraIds) await excluirDoSupabase('obras', obraId);
   await excluirDoSupabase('clientes', id);
+  db.propostas = db.propostas.filter(p=>!obraIds.includes(p.obraId)&&p.clienteId!==id);
   db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
@@ -7527,6 +7551,7 @@ atualizarMarca();
 /* se a sessão expirar/for invalidada em outra aba, volta para a tela de login */
 sb.auth.onAuthStateChange((evento)=>{
   if(evento==='SIGNED_OUT' && usuarioAtual){
+    limparDadosEmMemoria();
     usuarioAtual=null;
     document.getElementById('login-bg').style.display='flex';
     document.getElementById('gear-wrap').style.display='none';
