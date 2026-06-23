@@ -5051,21 +5051,22 @@ function abrirSeletorItensOS(osId, cardId){
   const outrasOS   = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
   const marcados   = (os.itensTrabalho||[]);
 
-  // itens ainda com saldo e não alocados nesta OS (aparecem no combobox)
-  const disponiveis = todosItens.filter(it=>{
-    const jaAlocado = outrasOS.reduce((s,o)=>{
+  function calcSaldoOutras(it){
+    return outrasOS.reduce((s,o)=>{
       const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
       return s+(r?r.qtdOS||0:0);
     },0);
+  }
+
+  // itens ainda com saldo e não alocados nesta OS (aparecem no combobox)
+  // itens clienteFornece aparecem primeiro
+  const disponiveis = todosItens.filter(it=>{
+    const jaAlocado = calcSaldoOutras(it);
     const reg = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
     return jaAlocado < (it.qtd||0) && !(reg && reg.qtdOS>0);
   }).map(it=>{
-    const jaAlocado = outrasOS.reduce((s,o)=>{
-      const r=(o.itensTrabalho||[]).find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-      return s+(r?r.qtdOS||0:0);
-    },0);
-    return {...it, saldo: (it.qtd||0) - jaAlocado};
-  });
+    return {...it, saldo: (it.qtd||0) - calcSaldoOutras(it)};
+  }).sort((a,b)=>(b.clienteFornece?1:0)-(a.clienteFornece?1:0));
 
   // itens já alocados nesta OS
   const alocados = marcados.filter(m=>m.qtdOS>0).map(reg=>{
@@ -5073,11 +5074,46 @@ function abrirSeletorItensOS(osId, cardId){
     return {...reg, _desc: reg.descricao||it?.descricao||it?.item||'—', _tipo: reg.tipo||it?.tipo||'un'};
   });
 
+  // TODOS os itens marcados como cliente fornece da proposta (para painel fixo)
+  const itensCliente = todosItens.filter(it=>it.clienteFornece).map(it=>{
+    const regNesta = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
+    const saldo = (it.qtd||0) - calcSaldoOutras(it);
+    return {...it, _nesta: regNesta?.qtdOS||0, saldo};
+  });
+
   abrirModal(`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <h3 style="margin:0">📦 Itens da O.S.</h3>
       <span style="font-size:13px;color:var(--muted)">${os.numero}</span>
     </div>
+
+    ${itensCliente.length ? `
+    <div style="background:#fff8e1;border:2px solid #f9a825;border-radius:10px;padding:14px;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:16px">🏗</span>
+        <span style="font-weight:700;font-size:13px;color:#e65100">Fornecimento do Cliente</span>
+        <span style="font-size:11px;background:#e65100;color:#fff;border-radius:10px;padding:1px 8px;margin-left:2px">${itensCliente.length} item${itensCliente.length>1?'s':''}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead>
+          <tr style="color:#bf360c;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.5px">
+            <th style="text-align:left;padding:4px 8px;border-bottom:1px solid #f9a825">Item</th>
+            <th style="text-align:center;padding:4px 8px;border-bottom:1px solid #f9a825;white-space:nowrap">Total</th>
+            <th style="text-align:center;padding:4px 8px;border-bottom:1px solid #f9a825;white-space:nowrap">Nesta O.S.</th>
+            <th style="text-align:center;padding:4px 8px;border-bottom:1px solid #f9a825;white-space:nowrap">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itensCliente.map(it=>`
+          <tr style="${it._nesta>0?'background:rgba(255,160,0,.15)':''}">
+            <td style="padding:5px 8px;font-weight:600">${it.descricao||it.item}</td>
+            <td style="text-align:center;padding:5px 8px;color:#555">${it.qtd||0} ${it.tipo||'un'}</td>
+            <td style="text-align:center;padding:5px 8px;font-weight:700;color:${it._nesta>0?'#2e7d32':'#bbb'}">${it._nesta>0?it._nesta+' '+(it.tipo||'un'):'—'}</td>
+            <td style="text-align:center;padding:5px 8px;color:${it.saldo>0?'#1976d2':'#bbb'}">${it.saldo>0?it.saldo+' '+(it.tipo||'un'):'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
 
     ${disponiveis.length ? `
     <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:20px">
