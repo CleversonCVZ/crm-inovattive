@@ -4081,11 +4081,11 @@ function salvarEdicaoCompra(compraId, cardId){
   trocarAbaObra(cardId,'compras');
 }
 
-function excluirCompra(compraId, cardId){
+async function excluirCompra(compraId, cardId){
   if(!confirm('Excluir este pedido de compra e todas as NFs vinculadas?')) return;
   const nfsVinculadas = (db.obraNfs||[]).filter(x=>x.compraId===compraId);
-  nfsVinculadas.forEach(nf => excluirDoSupabase('obra_nfs', nf.id));
-  excluirDoSupabase('obra_compras', compraId);
+  for(const nf of nfsVinculadas) await excluirDoSupabase('obra_nfs', nf.id);
+  await excluirDoSupabase('obra_compras', compraId);
   db.obraCompras = (db.obraCompras||[]).filter(x=>x.id!==compraId);
   db.obraNfs     = (db.obraNfs||[]).filter(x=>x.compraId!==compraId);
   save();
@@ -4221,9 +4221,9 @@ function salvarEdicaoNf(nfId, compraId, cardId){
   trocarAbaObra(cardId,'compras');
 }
 
-function excluirNf(nfId, compraId, cardId){
+async function excluirNf(nfId, compraId, cardId){
   if(!confirm('Excluir esta nota fiscal?')) return;
-  excluirDoSupabase('obra_nfs', nfId);
+  await excluirDoSupabase('obra_nfs', nfId);
   db.obraNfs = (db.obraNfs||[]).filter(x=>x.id!==nfId);
   // se não sobrar NF, volta p/ pendente
   const cpNfs = (db.obraNfs||[]).filter(x=>x.compraId===compraId);
@@ -4349,12 +4349,12 @@ function salvarEdicaoEquipamento(id, obraId, cardId){
   save(); voltarParaInformacoes(cardId);
 }
 
-function excluirEquipamento(id, obraId, cardId){
+async function excluirEquipamento(id, obraId, cardId){
   const e  = db.obraEquipamentos.find(x=>x.id===id);
   const ob = db.obras.find(x=>x.id===obraId);
   if(!confirm(`Remover o equipamento "${e?.equipamento||'?'}"?`)) return;
   registrarLog('excluir','obra_equipamento',id,`Equipamento removido da obra "${ob?.nome||'?'}": ${e?.equipamento||'?'}`);
-  excluirDoSupabase('obra_equipamentos', id);
+  await excluirDoSupabase('obra_equipamentos', id);
   db.obraEquipamentos = db.obraEquipamentos.filter(x=>x.id!==id);
   save(); voltarParaInformacoes(cardId);
 }
@@ -6119,7 +6119,7 @@ async function excluirOS(osId, cardId){
   // remover arquivos de projeto do storage
   const pathsArq = [...(os.arquivosArquiteto||[]), ...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
   if(pathsArq.length) await sb.storage.from('os-arquivos').remove(pathsArq);
-  excluirDoSupabase('ordens_servico', osId);
+  await excluirDoSupabase('ordens_servico', osId);
   db.ordensServico = db.ordensServico.filter(x=>x.id!==osId);
   registrarLog('excluir', 'os', osId, `O.S. excluída: ${os.numero}`);
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
@@ -7281,12 +7281,12 @@ function salvarEdicaoContatoObra(id, obraId, cardId){
   save(); voltarParaContatos(cardId);
 }
 
-function excluirContatoObra(id, obraId, cardId){
+async function excluirContatoObra(id, obraId, cardId){
   const ct = db.obraContatos.find(x=>x.id===id);
   const o  = db.obras.find(x=>x.id===obraId);
   if(!confirm(`Remover o contato "${ct?.nome||'?'}"?`)) return;
   registrarLog('excluir','obra_contato',id,`Contato removido da obra "${o?.nome||'?'}": ${ct?.nome||'?'}`);
-  excluirDoSupabase('obra_contatos', id);
+  await excluirDoSupabase('obra_contatos', id);
   db.obraContatos = db.obraContatos.filter(x=>x.id!==id);
   save(); voltarParaContatos(cardId);
 }
@@ -7340,12 +7340,12 @@ async function salvarObra(id, clienteId, returnCardId=null){
   if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
   else abrirEditarCliente(clienteId);
 }
-function excluirObra(id, clienteId, returnCardId=null){
+async function excluirObra(id, clienteId, returnCardId=null){
   const emUso=db.cards.filter(c=>c.obraId===id).length;
   const o=db.obras.find(x=>x.id===id);
   if(!confirm(emUso?`Esta obra está vinculada a ${emUso} CRM(s) — eles ficarão sem obra. Excluir mesmo assim?`:'Excluir esta obra?')) return;
   registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
-  excluirDoSupabase('obras', id);
+  await excluirDoSupabase('obras', id);
   db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
   db.obras=db.obras.filter(x=>x.id!==id);
   save(); renderAll();
