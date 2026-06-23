@@ -6676,6 +6676,7 @@ function renderPropPainel(){
   if(selV && selV.value!==propVista) selV.value=propVista;
   const t=termoBusca();
   const busca=p=>!t || (p.numero+' '+cliente(p.clienteId).nome).toLowerCase().includes(t);
+  k.style.display=''; k.style.overflowX='';
 
   if(propVista==='fase'){
     fasesPropOrdenadas().forEach(f=>{
@@ -6693,12 +6694,24 @@ function renderPropPainel(){
   else if(propVista==='aprovadas'){
     const itens=db.propostas.filter(p=>p.status==='aprovada' && busca(p))
       .sort((a,b)=>(b.dataAprovacao||'').localeCompare(a.dataAprovacao||''));
-    k.appendChild(colEl('Propostas Aprovadas', '#6a1b9a', itens, {render:propCard}));
+    k.style.display='block'; k.style.overflowX='unset';
+    if(!itens.length){ k.innerHTML='<div class="empty" style="padding:40px">Nenhuma proposta aprovada.</div>'; return; }
+    k.innerHTML=`<div class="os-grupo-header" style="color:#6a1b9a">✔ Propostas Aprovadas <span class="col-count" style="background:#6a1b9a;color:#fff">${itens.length}</span></div>
+    <div class="os-painel-list" id="prop-aprov-list" style="margin-bottom:24px"></div>`;
+    const lista=document.getElementById('prop-aprov-list');
+    itens.forEach(p=>lista.appendChild(propCard(p)));
+    return;
   }
   else if(propVista==='perdidas'){
     const itens=db.propostas.filter(p=>p.status==='emitida' && propostaPerdida(p) && busca(p))
       .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
-    k.appendChild(colEl('Perdidas / Abandonadas', '#ff2d00', itens, {render:propCard}));
+    k.style.display='block'; k.style.overflowX='unset';
+    if(!itens.length){ k.innerHTML='<div class="empty" style="padding:40px">Nenhuma proposta perdida ou abandonada.</div>'; return; }
+    k.innerHTML=`<div class="os-grupo-header" style="color:#ff2d00">✖ Perdidas / Abandonadas <span class="col-count" style="background:#ff2d00;color:#fff">${itens.length}</span></div>
+    <div class="os-painel-list" id="prop-perd-list" style="margin-bottom:24px"></div>`;
+    const lista=document.getElementById('prop-perd-list');
+    itens.forEach(p=>lista.appendChild(propCard(p)));
+    return;
   }
   else {
     const hojeS=localDia(0), amanhaS=localDia(1);
