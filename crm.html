@@ -8142,22 +8142,30 @@ function _renderOSPainelFechadas(corpo, lista){
 function _renderOSPainelData(corpo, lista){
   corpo.innerHTML = '';
   const hojeS = new Date().toISOString().slice(0,10);
-  const semFim = new Date(); semFim.setDate(semFim.getDate()+7);
-  const semFimS = semFim.toISOString().slice(0,10);
+  // fim desta semana = próximo domingo (dow: 0=dom,1=seg,...,6=sab; ISO week starts Monday)
+  const hoje = new Date();
+  const diasAteDom = (7 - hoje.getDay()) % 7 || 7; // dias até o próximo domingo (0 = hoje é domingo → 7)
+  const fimSemana = new Date(hoje); fimSemana.setDate(hoje.getDate() + diasAteDom);
+  const fimSemanaS = fimSemana.toISOString().slice(0,10);
+  // fim da próxima semana = domingo seguinte
+  const fimProxSemana = new Date(fimSemana); fimProxSemana.setDate(fimSemana.getDate() + 7);
+  const fimProxSemanaS = fimProxSemana.toISOString().slice(0,10);
   const grupos = [
-    {key:'atrasadas', label:'⚠ Atrasadas',   cor:'#c62828', itens:[]},
-    {key:'hoje',      label:'● Hoje',         cor:'#9a6700', itens:[]},
-    {key:'semana',    label:'📅 Esta semana',  cor:'#1565c0', itens:[]},
-    {key:'proximas',  label:'🔜 Próximas',     cor:'#2e7d32', itens:[]},
-    {key:'semData',   label:'— Sem data',     cor:'#757575', itens:[]},
+    {key:'atrasadas',  label:'⚠ Atrasadas',        cor:'#c62828', itens:[]},
+    {key:'hoje',       label:'● Hoje',              cor:'#9a6700', itens:[]},
+    {key:'semana',     label:'📅 Esta semana',       cor:'#1565c0', itens:[]},
+    {key:'proxsemana', label:'🔜 Próxima semana',    cor:'#2e7d32', itens:[]},
+    {key:'proximas',   label:'📆 Futuras',           cor:'#546e7a', itens:[]},
+    {key:'semData',    label:'— Sem data',          cor:'#757575', itens:[]},
   ];
   lista.forEach(os=>{
     const d = os.dataAgend?.slice(0,10);
-    if(!d)             grupos[4].itens.push(os);
-    else if(d<hojeS)   grupos[0].itens.push(os);
-    else if(d===hojeS) grupos[1].itens.push(os);
-    else if(d<=semFimS)grupos[2].itens.push(os);
-    else               grupos[3].itens.push(os);
+    if(!d)                    grupos[5].itens.push(os);
+    else if(d<hojeS)          grupos[0].itens.push(os);
+    else if(d===hojeS)        grupos[1].itens.push(os);
+    else if(d<=fimSemanaS)    grupos[2].itens.push(os);
+    else if(d<=fimProxSemanaS)grupos[3].itens.push(os);
+    else                      grupos[4].itens.push(os);
   });
   grupos.forEach(g=>g.itens.sort((a,b)=>(a.dataAgend||'').localeCompare(b.dataAgend||'')));
   const kanban = document.createElement('div');
