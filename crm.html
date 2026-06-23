@@ -394,13 +394,22 @@
       <tbody id="clientes-tbody"></tbody>
     </table>
   </div>
-  <!-- OBRAS: PAINEL (em construção) -->
+  <!-- OBRAS: PAINEL -->
   <div class="view" id="view-obras-painel">
-    <div class="bar"><h2>Obras — Acompanhamento</h2></div>
-    <div class="empty" style="padding:60px 20px;font-size:15px">
-      🏗️ Painel de Obras em construção.<br>
-      <small style="color:var(--muted)">Aqui entrará o kanban/painel de obras por etapa, com visão geral do andamento físico de cada obra.</small>
+    <div class="bar">
+      <h2>Obras — Acompanhamento</h2>
+      <select class="vista-sel" id="obras-painel-vista" onchange="mudarVistaObrasPainel(this.value)">
+        <option value="fases">Visualização: por fases</option>
+        <option value="status">Visualização: por status</option>
+        <option value="cidade">Visualização: por cidade</option>
+      </select>
+      <select class="vista-sel" id="obras-painel-status" onchange="renderObrasPainel()" style="margin-left:6px">
+        <option value="">Todos os status</option>
+        <option value="ativa">Só ativas</option>
+        <option value="pausada">Só pausadas</option>
+      </select>
     </div>
+    <div id="obras-painel-corpo"></div>
   </div>
 
   <!-- OBRAS: FASES -->
@@ -7560,6 +7569,139 @@ function renderObrasLista(){
   });
 }
 
+/* ================= OBRAS PAINEL ================= */
+let obrasPainelVista = localStorage.getItem('obrasPainelVista') || 'fases';
+
+function mudarVistaObrasPainel(v){ obrasPainelVista=v; localStorage.setItem('obrasPainelVista',v); renderObrasPainel(); }
+
+function renderObrasPainel(){
+  const corpo = document.getElementById('obras-painel-corpo'); if(!corpo) return;
+  const selV = document.getElementById('obras-painel-vista');
+  if(selV && selV.value !== obrasPainelVista) selV.value = obrasPainelVista;
+  const filtroStatus = document.getElementById('obras-painel-status')?.value || '';
+  const t = termoBusca();
+
+  const lista = (db.obras||[]).filter(o=>{
+    if(filtroStatus && (o.status||'ativa') !== filtroStatus) return false;
+    if(t){
+      const cli = cliente(o.clienteId)?.nome||'';
+      const cidade = o.endereco?.cidade||'';
+      if(!(o.nome+' '+cli+' '+cidade).toLowerCase().includes(t)) return false;
+    }
+    return true;
+  });
+
+  if(obrasPainelVista==='fases')       _renderObrasPainelFases(corpo, lista);
+  else if(obrasPainelVista==='status') _renderObrasPainelStatus(corpo, lista);
+  else                                 _renderObrasPainelCidade(corpo, lista);
+}
+
+function _obrasCardHTML(o){
+  const cli = cliente(o.clienteId)?.nome||'—';
+  const f = faseObra(o.faseId);
+  const cidade = o.endereco?.cidade||'';
+  const card = db.cards.find(c=>c.obraId===o.id);
+  const valorAprov = db.propostas.filter(p=>p.obraId===o.id&&p.status==='aprovada').reduce((s,p)=>s+(p.valor||0),0);
+  const osAbertas = (db.ordensServico||[]).filter(os=>os.obraId===o.id&&!os.fechada);
+  const hojeS = new Date().toISOString().slice(0,10);
+  const osAtrasadas = osAbertas.filter(os=>os.dataAgend&&os.dataAgend.slice(0,10)<hojeS).length;
+  const statusInfo = {
+    ativa:    {label:'🟢 Ativa',      cor:'#1d8348'},
+    pausada:  {label:'🟡 Pausada',    cor:'#b7950b'},
+    concluida:{label:'✅ Concluída',   cor:'#1a5276'},
+    cancelada:{label:'🔴 Abandonada', cor:'#922b21'}
+  };
+  const si = statusInfo[o.status||'ativa'] || statusInfo.ativa;
+  const onclick = card ? `abrirEditarCartao(${card.id},'obras')` : 'void(0)';
+  return `<div class="os-painel-card" onclick="${onclick}" style="border-left-color:${f?.cor||'#adb5bd'};${!card?'cursor:default':''}">
+    <div class="os-painel-top">
+      <span class="os-numero">${o.nome}</span>
+      ${f?`<span class="os-fase-badge" style="background:${f.cor}">${f.nome}</span>`:''}
+    </div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:4px">👤 ${cli}</div>
+    <div class="os-painel-meta">
+      ${cidade?`<span>📍 ${cidade}</span>`:''}
+      ${valorAprov?`<span>💰 ${fmtMoney(valorAprov)}</span>`:''}
+      <span style="color:${osAbertas.length?'#1565c0':'var(--muted)'}">🔧 ${osAbertas.length} OS aberta${osAbertas.length!==1?'s':''}</span>
+    </div>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:11px;font-weight:700;color:${si.cor}">${si.label}</span>
+      ${osAtrasadas?`<span class="badge atrasado">⚠ ${osAtrasadas} OS atrasada${osAtrasadas>1?'s':''}</span>`:''}
+    </div>
+  </div>`;
+}
+
+function _renderObrasPainelFases(corpo, lista){
+  corpo.innerHTML = '';
+  const fases = fasesObraOrdenadas();
+  if(!fases.length){ corpo.innerHTML='<div class="empty">Nenhuma fase de obra cadastrada.</div>'; return; }
+  const kanban = document.createElement('div');
+  kanban.className = 'kanban';
+  fases.forEach(f=>{
+    const itens = lista.filter(o=>o.faseId===f.id);
+    if(!itens.length) return;
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
+      <span class="col-title">${f.nome}</span>
+      <span class="col-count">${itens.length}</span>
+    </div>
+    <div class="col-body">${itens.map(_obrasCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  });
+  const semFase = lista.filter(o=>!o.faseId);
+  if(semFase.length){
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:#adb5bd;color:#fff">
+      <span class="col-title">Sem fase</span>
+      <span class="col-count">${semFase.length}</span>
+    </div>
+    <div class="col-body">${semFase.map(_obrasCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  }
+  if(!kanban.children.length) corpo.innerHTML='<div class="empty">Nenhuma obra encontrada.</div>';
+  else corpo.appendChild(kanban);
+}
+
+function _renderObrasPainelStatus(corpo, lista){
+  const grupos = [
+    {key:'ativa',     label:'🟢 Ativas',      cor:'#1d8348', itens:[]},
+    {key:'pausada',   label:'🟡 Pausadas',     cor:'#b7950b', itens:[]},
+    {key:'concluida', label:'✅ Concluídas',   cor:'#1a5276', itens:[]},
+    {key:'cancelada', label:'🔴 Abandonadas',  cor:'#922b21', itens:[]},
+  ];
+  lista.forEach(o=>{
+    const g = grupos.find(g=>g.key===(o.status||'ativa'));
+    if(g) g.itens.push(o);
+  });
+  let html = '';
+  grupos.forEach(g=>{
+    if(!g.itens.length) return;
+    html += `<div class="os-grupo-header" style="color:${g.cor}">${g.label} <span class="col-count" style="background:${g.cor};color:#fff">${g.itens.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:18px">${g.itens.map(_obrasCardHTML).join('')}</div>`;
+  });
+  corpo.innerHTML = html || '<div class="empty">Nenhuma obra encontrada.</div>';
+}
+
+function _renderObrasPainelCidade(corpo, lista){
+  const mapa = {};
+  lista.forEach(o=>{
+    const c = o.endereco?.cidade?.trim() || 'Sem cidade';
+    if(!mapa[c]) mapa[c]=[];
+    mapa[c].push(o);
+  });
+  const cidades = Object.keys(mapa).sort((a,b)=>a==='Sem cidade'?1:b==='Sem cidade'?-1:a.localeCompare(b));
+  if(!cidades.length){ corpo.innerHTML='<div class="empty">Nenhuma obra encontrada.</div>'; return; }
+  let html = '';
+  cidades.forEach(c=>{
+    const itens = mapa[c];
+    html += `<div class="os-grupo-header" style="color:var(--blue-dark)">📍 ${c} <span class="col-count" style="background:var(--blue-dark);color:#fff">${itens.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:18px">${itens.map(_obrasCardHTML).join('')}</div>`;
+  });
+  corpo.innerHTML = html;
+}
+
 /* ================= OS PAINEL ================= */
 let osPainelVista = localStorage.getItem('osPainelVista') || 'abertas';
 
@@ -7687,7 +7829,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderOSFases(); renderOSLista(); renderOSPainel(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); }
 load();
 atualizarMarca();
 (async function(){
