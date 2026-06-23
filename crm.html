@@ -1224,6 +1224,8 @@ async function carregarDadosSupabase(){
         itensTrabalho: Array.isArray(o.itens_trabalho) ? o.itens_trabalho : [],
         custoMO: o.custo_mo && typeof o.custo_mo==='object' ? o.custo_mo : {valor:0, tecnicoIds:[]},
         instrucoes: o.instrucoes||'',
+        descricaoChamado: o.descricao_chamado||'',
+        tipoAtendimento: o.tipo_atendimento||'a_definir',
         tecnicos:[], diario:[]
       }));
       if(osTecnicos.data) osTecnicos.data.forEach(t=>{
@@ -1384,7 +1386,9 @@ function syncDadosSupabase(){
       arquivos_projeto:   o.arquivosProjeto||[],
       itens_trabalho: o.itensTrabalho||[],
       custo_mo: o.custoMO||null,
-      instrucoes: o.instrucoes||null
+      instrucoes: o.instrucoes||null,
+      descricao_chamado: o.descricaoChamado||null,
+      tipo_atendimento:  o.tipoAtendimento||null
     }));
     await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
       id:c.id, nome:c.nome, ordem:c.ordem||0
@@ -4562,6 +4566,7 @@ async function salvarNovaOS(cardId){
 function abrirVerOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(os.tipo === 'execucao'){ abrirVerOSExecucao(osId, cardId); return; }
+  if(os.tipo === 'avulsa'){   abrirVerOSAvulsa(osId, cardId);   return; }
   const c  = db.cards.find(x=>x.id===cardId);
   const obra = db.obras.find(x=>x.id===os.obraId);
   const propAprov = propostaPrincipal(cardId);
@@ -5080,6 +5085,227 @@ function salvarDadosOSExec(osId, cardId){
   registrarLog('editar', 'os', osId, `O.S. Execução atualizada: ${os.numero}`);
   save(); renderAll(); abrirVerOSExecucao(osId, cardId, 'geral');
 }
+
+/* =============== OS AVULSA — modal com abas =============== */
+function abrirVerOSAvulsa(osId, cardId, aba='geral'){
+  const os   = db.ordensServico.find(x=>x.id===osId);
+  const obra = db.obras.find(x=>x.id===os.obraId);
+  const resp = db.usuarios.find(u=>u.id===os.responsavelId);
+  const tipoColor = ostipoInfo(os.tipo).cor;
+  const dis = os.fechada ? 'disabled' : '';
+
+  const tabBtn = (id, label) =>
+    `<button onclick="abrirVerOSAvulsa(${osId},${cardId},'${id}')"
+      style="padding:8px 14px;border:none;border-bottom:${aba===id?'3px solid var(--primary)':'3px solid transparent'};
+      background:none;font-weight:${aba===id?'700':'400'};cursor:pointer;font-size:13px;
+      color:${aba===id?'var(--primary)':'var(--muted)'}">${label}</button>`;
+
+  const tipoAtend = os.tipoAtendimento||'a_definir';
+  const tipoAtendLabel = {garantia:'🛡 Garantia', cobrado:'💰 Cobrado', a_definir:'❓ A definir'};
+  const tipoAtendCor   = {garantia:'#1b5e20',     cobrado:'#7b1fa2',    a_definir:'#795548'};
+
+  let tabContent = '';
+
+  if(aba === 'geral'){
+    tabContent = `
+      <div class="form-row">
+        <div>
+          <label>Fase da O.S.</label>
+          <select id="avl-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label>Responsável</label>
+          <select id="avl-resp" ${dis}>
+            <option value="">— Selecione —</option>
+            ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label>Tipo de Atendimento</label>
+          <select id="avl-tipo-atend" ${dis}>
+            <option value="a_definir" ${tipoAtend==='a_definir'?'selected':''}>❓ A definir</option>
+            <option value="garantia"  ${tipoAtend==='garantia' ?'selected':''}>🛡 Garantia</option>
+            <option value="cobrado"   ${tipoAtend==='cobrado'  ?'selected':''}>💰 Cobrado</option>
+          </select>
+        </div>
+        <div>
+          <label>Agendamento</label>
+          <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis}>
+        </div>
+      </div>
+      <div class="form-row">
+        <div><label>Início real</label><input id="avl-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
+        <div><label>Término real</label><input id="avl-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Descrição do Chamado</label>
+        <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
+      </div>
+      ${!os.fechada?`<div class="actions" style="justify-content:flex-end;padding-top:10px;margin-top:4px">
+        <button class="btn primary" onclick="salvarDadosOSAvulsa(${osId},${cardId})">💾 Salvar</button>
+      </div>`:''}`;
+  }
+  else if(aba === 'itens'){
+    const itens = os.produtos||[];
+    const total = itens.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    tabContent = `
+      ${itens.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <thead>
+          <tr style="background:var(--surface)">
+            <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Descrição</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:60px">Qtd</th>
+            <th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:55px">Un</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Vl. Unit.</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Total</th>
+            ${!os.fechada?`<th style="width:36px;border-bottom:2px solid var(--border)"></th>`:''}
+          </tr>
+        </thead>
+        <tbody>
+          ${itens.map((it,i)=>`
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:7px 8px">${it.descricao||'—'}</td>
+              <td style="text-align:center;padding:7px 8px">${it.qtd||1}</td>
+              <td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>
+              <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
+              <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'}</td>
+              ${!os.fechada?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button></td>`:''}
+            </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--surface)">
+            <td colspan="${os.fechada?4:5}" style="text-align:right;padding:8px;font-weight:700">Total:</td>
+            <td style="text-align:right;padding:8px;font-weight:700;color:var(--primary)">${fmtMoney(total)}</td>
+            ${!os.fechada?'<td></td>':''}
+          </tr>
+        </tfoot>
+      </table>` : '<div style="font-size:13px;color:var(--muted);margin-bottom:16px">Nenhum item adicionado.</div>'}
+      ${!os.fechada?`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Adicionar item</div>
+        <div class="form-row">
+          <div style="flex:2"><label>Descrição</label><input id="avl-item-desc" placeholder="Ex: Troca de tomada..."></div>
+          <div><label>Qtd</label><input id="avl-item-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
+          <div><label>Un</label><input id="avl-item-unit" placeholder="un" style="width:55px"></div>
+          <div><label>Vl. Unit. (R$)</label><input id="avl-item-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+        </div>
+        <button class="btn sm primary" style="margin-top:8px" onclick="adicionarItemAVL(${osId},${cardId})">＋ Adicionar item</button>
+      </div>`:''}`;
+  }
+  else if(aba === 'fotos'){
+    const fotos = os.imagens||[];
+    tabContent = `
+      <div class="os-imagens" style="margin-bottom:12px">
+        ${fotos.map((img,i)=>`
+          <div class="os-img-card">
+            <img src="${getOSImageUrl(img.path)}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
+            <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
+            ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirOSImagem(${osId},${i},${cardId})">🗑 remover</button>`:''}
+          </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhuma foto adicionada.</div>'}
+      </div>
+      ${!os.fechada?`
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="vos-img-file" type="file" multiple accept="image/*" style="flex:1">
+        <input id="vos-img-leg" placeholder="Legenda (ex: antes, depois...)" style="flex:1.2">
+        <button id="btn-upload-img" class="btn sm primary" onclick="uploadOSImagens(${osId},${cardId})">📷 Upload</button>
+      </div>
+      <div id="vos-status-imagens" style="font-size:12px;color:var(--muted);min-height:18px;margin-top:4px"></div>
+      <div id="vos-progress-imagens" style="display:none;margin-top:4px">
+        <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="vos-bar-imagens" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+        <div id="vos-size-imagens" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
+      </div>`:''}`;
+  }
+  else if(aba === 'historico'){
+    const hist = (os.historico||[]).slice().sort((a,b)=>{
+      if(!a.data&&!b.data) return 0; if(!a.data) return 1; if(!b.data) return -1;
+      return b.data.localeCompare(a.data);
+    });
+    const histRows = hist.map(h=>{
+      const idx = os.historico.findIndex(x=>x.data===h.data&&x.texto===h.texto);
+      return `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <div style="color:var(--muted);font-size:11px;margin-bottom:3px">${h.data?fmtData(h.data):'—'}</div>
+        <div>${h.texto||''}</div>
+        ${!os.fechada?`<button class="icon-btn" style="font-size:11px;margin-top:4px" onclick="excluirHistOS(${osId},${idx},${cardId})">🗑</button>`:''}
+      </div>`;
+    }).join('');
+    tabContent = `
+      ${!os.fechada?`<div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="vos-hist-novo" placeholder="Descreva a atualização..." style="flex:1">
+        <button class="btn sm primary" onclick="adicionarHistOS(${osId},${cardId})">＋ Registrar</button>
+      </div>`:''}
+      ${hist.length ? histRows : '<div style="font-size:13px;color:var(--muted);padding:8px">Sem registros no histórico.</div>'}`;
+  }
+
+  const badgeAtend = `<span style="background:${tipoAtendCor[tipoAtend]};color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">${tipoAtendLabel[tipoAtend]}</span>`;
+
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>${os.numero}</span>
+        <span class="os-tag" style="background:${tipoColor}">Avulsa (AVL)</span>
+        ${badgeAtend}
+        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+      </h3>
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+      <div style="font-size:12px;color:var(--muted)">
+        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+      </div>
+    </div>
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-shrink:0;flex-wrap:wrap">
+      ${tabBtn('geral','⚙️ Geral')}
+      ${tabBtn('itens','📦 Itens'+(os.produtos?.length?` (${os.produtos.length})`:' '))}
+      ${tabBtn('fotos','📷 Fotos'+(os.imagens?.length?` (${os.imagens.length})`:' '))}
+      ${tabBtn('historico','📋 Histórico'+(os.historico?.length?` (${os.historico.length})`:' '))}
+    </div>
+    <div style="flex:1;overflow-y:auto;min-height:0">
+      ${tabContent}
+    </div>
+    <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
+      ${os.fechada
+        ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>`
+        : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
+    </div>`, 'cartao');
+}
+
+function salvarDadosOSAvulsa(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  os.faseId          = +document.getElementById('avl-fase').value || os.faseId;
+  os.responsavelId   = +document.getElementById('avl-resp').value || null;
+  os.tipoAtendimento = document.getElementById('avl-tipo-atend').value || 'a_definir';
+  os.dataAgend       = document.getElementById('avl-agend').value || '';
+  os.dataInicio      = document.getElementById('avl-di').value || '';
+  os.dataTermino     = document.getElementById('avl-dt').value || '';
+  os.descricaoChamado = document.getElementById('avl-descricao').value || '';
+  registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
+  save(); renderAll(); abrirVerOSAvulsa(osId, cardId, 'geral');
+}
+
+function adicionarItemAVL(osId, cardId){
+  const os   = db.ordensServico.find(x=>x.id===osId);
+  const desc = document.getElementById('avl-item-desc').value.trim();
+  if(!desc){ alert('Informe a descrição do item.'); return; }
+  const qtd   = parseFloat(document.getElementById('avl-item-qtd').value)   || 1;
+  const unit  = document.getElementById('avl-item-unit').value.trim()        || 'un';
+  const valor = parseFloat(document.getElementById('avl-item-valor').value)  || null;
+  if(!os.produtos) os.produtos = [];
+  os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso'});
+  registrarLog('criar','os',osId,`Item adicionado à O.S. ${os.numero}: ${desc}`);
+  save(); abrirVerOSAvulsa(osId, cardId, 'itens');
+}
+
+function removerItemAVL(osId, idx, cardId){
+  const os   = db.ordensServico.find(x=>x.id===osId);
+  const item = os.produtos[idx];
+  os.produtos.splice(idx,1);
+  registrarLog('excluir','os',osId,`Item removido da O.S. ${os.numero}: ${item?.descricao||'?'}`);
+  save(); abrirVerOSAvulsa(osId, cardId, 'itens');
+}
+
+/* =============== FIM OS AVULSA =============== */
 
 async function adicionarTecnicoOS(osId, cardId){
   const uid = +document.getElementById('exec-tec-sel').value;
