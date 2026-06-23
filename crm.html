@@ -1023,6 +1023,7 @@ function load(){
     if(!Array.isArray(o.diario))        o.diario        = [];
     if(!Array.isArray(o.itensTrabalho)) o.itensTrabalho = [];
     if(!o.custoMO || typeof o.custoMO!=='object') o.custoMO = {valor:0, tecnicoIds:[]};
+    if(!('instrucoes' in o)) o.instrucoes = '';
     o.pendencias = (o.pendencias||[]).map(p=>({
       id:p.id, texto:p.texto, resolvida:!!p.resolvida,
       origem:p.origem||'empresa', osDestinoId:p.osDestinoId||null, transferida:!!p.transferida
@@ -1186,6 +1187,7 @@ async function carregarDadosSupabase(){
         arquivosProjeto:   Array.isArray(o.arquivos_projeto)   ? o.arquivos_projeto   : [],
         itensTrabalho: Array.isArray(o.itens_trabalho) ? o.itens_trabalho : [],
         custoMO: o.custo_mo && typeof o.custo_mo==='object' ? o.custo_mo : {valor:0, tecnicoIds:[]},
+        instrucoes: o.instrucoes||'',
         tecnicos:[], diario:[]
       }));
       if(osTecnicos.data) osTecnicos.data.forEach(t=>{
@@ -1345,7 +1347,8 @@ function syncDadosSupabase(){
       arquivos_arquiteto: o.arquivosArquiteto||[],
       arquivos_projeto:   o.arquivosProjeto||[],
       itens_trabalho: o.itensTrabalho||[],
-      custo_mo: o.custoMO||null
+      custo_mo: o.custoMO||null,
+      instrucoes: o.instrucoes||null
     }));
     await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
       id:c.id, nome:c.nome, ordem:c.ordem||0
@@ -4787,6 +4790,8 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         <div><label>Início real</label><input id="exec-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
         <div><label>Término real</label><input id="exec-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
       </div>
+      <label style="margin-top:12px">Instruções para os técnicos</label>
+      <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis}>${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>
       ${!os.fechada?`<div style="margin-top:12px;text-align:right">
         <button class="btn primary" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>
       </div>`:''}`;
@@ -4970,6 +4975,7 @@ function salvarDadosOSExec(osId, cardId){
   os.dataAgend  = document.getElementById('exec-agend').value||'';
   os.dataInicio = document.getElementById('exec-di').value||'';
   os.dataTermino= document.getElementById('exec-dt').value||'';
+  os.instrucoes = document.getElementById('exec-instrucoes').value||'';
   registrarLog('editar', 'os', osId, `O.S. Execução atualizada: ${os.numero}`);
   save(); renderAll(); abrirVerOSExecucao(osId, cardId, 'geral');
 }
