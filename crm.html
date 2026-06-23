@@ -2654,9 +2654,14 @@ function renderKanban(){
     const nc = db.cards.filter(c=>c.concluido).length, np = db.cards.filter(c=>c.perdido).length;
     info.textContent = (vista==='fases' && (nc||np)) ? `✔ ${nc} concluído(s) · ✖ ${np} perdido(s) — fora do painel` : '';
   }
-  if(vista==='fases') renderVistaFases(k);
-  else if(vista==='arquivados') renderVistaArquivados(k);
-  else renderVistaData(k);
+  if(vista==='arquivados'){
+    k.style.display='block'; k.style.overflowX='unset';
+    renderVistaArquivados(k);
+  } else {
+    k.style.display=''; k.style.overflowX='';
+    if(vista==='fases') renderVistaFases(k);
+    else renderVistaData(k);
+  }
 }
 
 /* --- Vista 1: por fase (original) --- */
@@ -2687,8 +2692,28 @@ function renderVistaFases(k){
 function renderVistaArquivados(k){
   const fp = faseTipo('perdido'), fc = faseTipo('concluido');
   if(!fp || !fc) return;
-  k.appendChild(colEl(fp.nome, fp.cor, db.cards.filter(c=>c.perdido && podeVerFase(c.faseId) && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
-  k.appendChild(colEl(fc.nome, fc.cor, db.cards.filter(c=>c.concluido && podeVerFase(c.faseId) && filtroBusca(c)), {sub:'MARCADOS COMO', showFase:true}));
+
+  const grupos = [
+    { fase: fc, cards: db.cards.filter(c=>c.concluido && podeVerFase(c.faseId) && filtroBusca(c)) },
+    { fase: fp, cards: db.cards.filter(c=>c.perdido  && podeVerFase(c.faseId) && filtroBusca(c)) },
+  ];
+
+  let html = '';
+  grupos.forEach(({fase: f, cards})=>{
+    if(!cards.length) return;
+    html += `<div class="os-grupo-header" style="color:${f.cor}">
+      ${f.nome} <span class="col-count" style="background:${f.cor};color:#fff">${cards.length}</span>
+    </div>
+    <div class="os-painel-list" style="margin-bottom:24px" id="arq-lista-${f.tipo}"></div>`;
+  });
+
+  k.innerHTML = html || '<div class="empty" style="padding:40px">Nenhum cartão concluído ou perdido.</div>';
+
+  grupos.forEach(({fase: f, cards})=>{
+    const lista = document.getElementById(`arq-lista-${f.tipo}`);
+    if(!lista) return;
+    cards.forEach(c=> lista.appendChild(crmCard(c, true)));
+  });
 }
 
 /* --- Vista 3: por data da agenda --- */
