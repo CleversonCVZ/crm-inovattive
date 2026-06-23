@@ -3343,9 +3343,19 @@ function abaObraContatos(c, ob){
   // Comercial: responsavel do cartão CRM (texto livre)
   const comercial = (c.responsavel||'').trim();
 
-  // Técnicos: responsáveis das OS de execução deste cartão (únicos)
+  // Responsável: responsavelId das OS de execução deste cartão (únicos)
   const osExec = (db.ordensServico||[]).filter(o=>o.cardId===c.id && o.tipo==='execucao');
-  const tecnicos = [...new Map(osExec.filter(o=>o.responsavelId).map(o=>[o.responsavelId, {nome: nomeUser(o.responsavelId)}])).values()];
+  const responsaveis = [...new Map(osExec.filter(o=>o.responsavelId).map(o=>[o.responsavelId, {nome: nomeUser(o.responsavelId)}])).values()];
+
+  // Técnicos: usuarioId da aba Equipe (os_tecnicos) das OS de execução (únicos)
+  const tecnicosMap = new Map();
+  osExec.forEach(o=>{
+    (o.tecnicos||[]).forEach(t=>{
+      if(t.usuarioId && !tecnicosMap.has(t.usuarioId))
+        tecnicosMap.set(t.usuarioId, {nome: nomeUser(t.usuarioId)});
+    });
+  });
+  const tecnicos = [...tecnicosMap.values()];
 
   const linhaEquipe = (papel, valor, obs) => `
     <tr style="border-top:1px solid var(--border)">
@@ -3362,9 +3372,12 @@ function abaObraContatos(c, ob){
         ${projetistas.length
           ? projetistas.map(p=>linhaEquipe('Projetista', p.nome, p.os)).join('')
           : linhaEquipe('Projetista', '', 'Nenhuma OS de projeto')}
+        ${responsaveis.length
+          ? responsaveis.map(r=>linhaEquipe('Responsável', r.nome, 'OS de execução')).join('')
+          : linhaEquipe('Responsável', '', 'Nenhuma OS de execução')}
         ${tecnicos.length
           ? tecnicos.map(t=>linhaEquipe('Técnico', t.nome, 'OS de execução')).join('')
-          : linhaEquipe('Técnico', '', 'Nenhuma OS de execução')}
+          : ''}
       </tbody>
     </table>`;
 
