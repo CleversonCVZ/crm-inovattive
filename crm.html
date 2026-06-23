@@ -1158,7 +1158,8 @@ async function carregarDadosSupabase(){
           const p = db.propostas.find(x=>x.id===it.proposta_id);
           if(p) p.itens.push({
             item:it.item||'', descricao:it.descricao||'', qtd:Number(it.qtd)||0,
-            unit:Number(it.unit)||0, total:Number(it.total)||0, tipo:it.tipo||'', categoria:it.categoria||''
+            unit:Number(it.unit)||0, total:Number(it.total)||0, tipo:it.tipo||'', categoria:it.categoria||'',
+            clienteFornece: !!it.cliente_fornece
           });
         });
       }
@@ -1403,7 +1404,8 @@ async function sincronizarItensPropostas(){
     const rows=[];
     db.propostas.forEach(p=>(p.itens||[]).forEach(it=>rows.push({
       proposta_id:p.id, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
-      unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||''
+      unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||'',
+      cliente_fornece: !!it.clienteFornece
     })));
     if(rows.length){
       const {error:errIns} = await sb.from('proposta_itens').insert(rows);
@@ -2043,6 +2045,13 @@ async function lerItensExcel(dataURL){
 
 function somaItens(itens){ return (itens||[]).reduce((s,i)=>s+(i.total||0),0); }
 
+function toggleClienteFornece(propostaId, idx, checked){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  if(!p || !p.itens || !p.itens[idx]) return;
+  p.itens[idx].clienteFornece = checked;
+  save();
+}
+
 function itensContratadosHTML(p){
   if(!p.itens || !p.itens.length) return '';
   const soma=somaItens(p.itens);
@@ -2051,15 +2060,17 @@ function itensContratadosHTML(p){
     <label style="margin-top:18px;color:var(--blue-dark)">— Itens Contratados (${p.itens.length}: ${nS} serviços, ${p.itens.length-nS} produtos) —</label>
     <div class="itens-wrap">
       <table class="itens-tab">
-        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th></tr></thead>
-        <tbody>${p.itens.map(i=>`
-          <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}">
-            <td>${i.item}</td><td>${i.qtd==null?'':i.qtd}</td>
+        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th><th title="Fornecimento de terceiros — cliente providencia">🏗 Cliente</th></tr></thead>
+        <tbody>${p.itens.map((i,idx)=>`
+          <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}" style="${i.clienteFornece?'background:#fff8e1':''}">
+            <td>${i.item}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}</td>
+            <td>${i.qtd==null?'':i.qtd}</td>
             <td>${i.unit==null?'':fmtMoney(i.unit)}</td><td>${i.total==null?'':fmtMoney(i.total)}</td>
             <td>${i.tipo}</td>
+            <td style="text-align:center"><input type="checkbox" title="Cliente fornece este item" ${i.clienteFornece?'checked':''} onchange="toggleClienteFornece(${p.id},${idx},this.checked)"></td>
           </tr>`).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="2"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="3"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
       </table>
     </div>`;
 }
@@ -4829,10 +4840,14 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
           const it = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
           const desc = reg.descricao||it?.descricao||it?.item||'—';
           const cat  = it?.categoria||'';
-          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+          const cf   = it?.clienteFornece || false;
+          return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
             <div style="flex:1">
               <div style="font-weight:600;font-size:13px">${desc}</div>
-              ${cat?`<span style="font-size:11px;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px">${cat}</span>`:''}
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px">
+                ${cat?`<span style="font-size:11px;background:#e3f2fd;color:#1565c0;border-radius:4px;padding:1px 6px">${cat}</span>`:''}
+                ${cf?`<span style="font-size:11px;background:#f57f17;color:#fff;border-radius:4px;padding:1px 6px">🏗 Cliente fornece</span>`:''}
+              </div>
             </div>
             <span style="font-size:15px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}</span>
           </div>`;
@@ -5072,7 +5087,7 @@ function abrirSeletorItensOS(osId, cardId){
           <label style="font-size:11px;color:var(--muted)">Item da proposta</label>
           <select id="sit-sel" style="width:100%;font-size:13px" onchange="atualizarSaldoSit()">
             <option value="">— Selecione —</option>
-            ${disponiveis.map((it,i)=>`<option value="${i}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.descricao||it.item}</option>`).join('')}
+            ${disponiveis.map((it,i)=>`<option value="${i}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.clienteFornece?'🏗 ':''}${it.descricao||it.item}</option>`).join('')}
           </select>
         </div>
         <div style="width:80px;flex-shrink:0">
@@ -5086,12 +5101,15 @@ function abrirSeletorItensOS(osId, cardId){
 
     <label style="font-weight:700;font-size:13px">Itens alocados nesta O.S.</label>
     <div id="sit-lista" style="margin-top:8px;min-height:40px">
-      ${alocados.length ? alocados.map(reg=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <span style="flex:1;font-size:13px;font-weight:600">${reg._desc}</span>
+      ${alocados.length ? alocados.map(reg=>{
+        const itOrig = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+        const cf = itOrig?.clienteFornece || reg.clienteFornece;
+        return `
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
+          <span style="flex:1;font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
           <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
           <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
-        </div>`).join('')
+        </div>`;}).join('')
       : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum item adicionado ainda.</div>`}
     </div>
 
