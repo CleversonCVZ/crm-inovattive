@@ -7667,6 +7667,7 @@ function _renderOSPainelFases(corpo, lista){
   kanban.className = 'kanban';
   fases.forEach(f=>{
     const itens = lista.filter(os=>os.faseId===f.id);
+    if(!itens.length) return;
     const col = document.createElement('div');
     col.className = 'col';
     col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
