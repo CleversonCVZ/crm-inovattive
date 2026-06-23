@@ -821,21 +821,15 @@ async function chamarAdminUsuarios(payload){
 const GOOGLE_CLIENT_ID   = '253913769433-vkuonlnl07t3bgfrtc27kenlauea9m9f.apps.googleusercontent.com';
 const GOOGLE_REDIRECT_URI = 'https://crm-inovattive.vercel.app';
 
-// Handler do popup OAuth — roda quando o Google redireciona de volta para o app
+// Handler OAuth — Google redireciona de volta com ?code=XXX&state=userId
 (function(){
   const p = new URLSearchParams(window.location.search);
-  const code = p.get('google_code');
+  const code = p.get('code');
   const uid  = p.get('state');
-  if(code && window.opener){
-    window.opener.postMessage({type:'google_oauth_code', code, uid}, window.location.origin);
-    window.close();
-    return;
-  }
-  // Caso não seja popup (redirect direto), processa aqui mesmo
-  if(code && uid && !window.opener){
+  if(code && uid){
     history.replaceState({}, '', window.location.pathname);
-    // Aguarda app carregar antes de processar
-    window.addEventListener('load', ()=> trocarCodigoGoogle(code, uid), {once:true});
+    sessionStorage.setItem('pendingGoogleCode', code);
+    sessionStorage.setItem('pendingGoogleUid',  uid);
   }
 })();
 
@@ -849,15 +843,7 @@ function conectarGoogleCalendar(userId){
     + '&access_type=offline'
     + '&prompt=consent'
     + '&state='         + userId;
-  const popup = window.open(url, 'google-oauth', 'width=520,height=640,left=200,top=80');
-  function handler(e){
-    if(e.origin !== window.location.origin) return;
-    if(e.data?.type !== 'google_oauth_code') return;
-    window.removeEventListener('message', handler);
-    if(popup && !popup.closed) popup.close();
-    trocarCodigoGoogle(e.data.code, e.data.uid || userId);
-  }
-  window.addEventListener('message', handler);
+  window.location.href = url; // redirecionamento direto — sem popup
 }
 
 async function trocarCodigoGoogle(code, userId){
@@ -2353,6 +2339,14 @@ function iniciarApp(u){
   atualizarMarca();
   aplicarPermissoes();
   renderAll();
+  // Processa callback OAuth do Google Calendar se houver código pendente
+  const pendCode = sessionStorage.getItem('pendingGoogleCode');
+  const pendUid  = sessionStorage.getItem('pendingGoogleUid');
+  if(pendCode && pendUid){
+    sessionStorage.removeItem('pendingGoogleCode');
+    sessionStorage.removeItem('pendingGoogleUid');
+    trocarCodigoGoogle(pendCode, pendUid);
+  }
 }
 
 /* ===== Menu engrenagem ===== */
