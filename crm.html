@@ -1032,6 +1032,9 @@ function load(){
                   {id:3,nome:'Em Revisão',cor:'#f9a825',ordem:3},{id:4,nome:'Concluída',cor:'#2e7d32',ordem:4,tipo:'concluida'},
                   {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
+  // Marcar fases de sistema por nome (garante dados vindos do Supabase sem tipo)
+  db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
+  db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
   if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
   if(!Array.isArray(db.downloadArquivos)) db.downloadArquivos = [];
@@ -6514,7 +6517,7 @@ function renderObrasFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
@@ -6524,7 +6527,7 @@ function renderObrasFases(){
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${db.fasesObra.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:''}
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesObra.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
       </td>`;
     tb.appendChild(tr);
   });
@@ -6532,6 +6535,7 @@ function renderObrasFases(){
     inp.onchange=()=>{
       const f=faseObra(+inp.dataset.id);
       if(!f) return;
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
       if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
       else f[inp.dataset.campo]=inp.value;
       registrarLog('editar','fase_obra',f.id,`Fase da obra editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
@@ -6541,6 +6545,8 @@ function renderObrasFases(){
   tb.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick=()=>{
       const id=+btn.dataset.del;
+      const fo=faseObra(id);
+      if(fo?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
       if(db.fasesObra.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
       const fo=faseObra(id);
       const qtd=db.obras.filter(o=>o.faseId===id).length;
@@ -6578,7 +6584,7 @@ function renderOSFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
@@ -6588,13 +6594,14 @@ function renderOSFases(){
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema">🔒</small>`:(db.fasesOS.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesOS.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange=()=>{
       const f=faseOS(+inp.dataset.id);
       if(!f) return;
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
       if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
       else f[inp.dataset.campo]=inp.value;
       registrarLog('editar','fase_os',f.id,`Fase da O.S. editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
