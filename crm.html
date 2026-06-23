@@ -402,6 +402,7 @@
         <option value="fases">Visualização: por fases</option>
         <option value="status">Visualização: por status</option>
         <option value="cidade">Visualização: por cidade</option>
+        <option value="arquivadas">Visualização: concluídas e abandonadas</option>
       </select>
       <select class="vista-sel" id="obras-painel-status" onchange="renderObrasPainel()" style="margin-left:6px">
         <option value="">Todos os status</option>
@@ -7612,9 +7613,10 @@ function renderObrasPainel(){
     return true;
   });
 
-  if(obrasPainelVista==='fases')       _renderObrasPainelFases(corpo, lista);
-  else if(obrasPainelVista==='status') _renderObrasPainelStatus(corpo, lista);
-  else                                 _renderObrasPainelCidade(corpo, lista);
+  if(obrasPainelVista==='fases')           _renderObrasPainelFases(corpo, lista);
+  else if(obrasPainelVista==='status')     _renderObrasPainelStatus(corpo, lista);
+  else if(obrasPainelVista==='cidade')     _renderObrasPainelCidade(corpo, lista);
+  else                                     _renderObrasPainelArquivadas(corpo, lista);
 }
 
 function _obrasCardHTML(o){
@@ -7652,9 +7654,28 @@ function _obrasCardHTML(o){
   </div>`;
 }
 
+function _renderObrasPainelArquivadas(corpo, lista){
+  const fasesArq = fasesObraOrdenadas().filter(f=>f.tipo==='concluida'||f.tipo==='cancelada');
+  const idsArq = new Set(fasesArq.map(f=>f.id));
+  const grupos = fasesArq.map(f=>({f, itens: lista.filter(o=>o.faseId===f.id)}));
+  // também pega obras com status concluida/cancelada que podem não ter fase correspondente
+  const semFaseArq = lista.filter(o=>!idsArq.has(o.faseId) && (o.status==='concluida'||o.status==='cancelada'));
+  let html = '';
+  grupos.forEach(({f, itens})=>{
+    if(!itens.length) return;
+    html += `<div class="os-grupo-header" style="color:${f.cor}">${f.nome} <span class="col-count" style="background:${f.cor};color:#fff">${itens.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:18px">${itens.map(_obrasCardHTML).join('')}</div>`;
+  });
+  if(semFaseArq.length){
+    html += `<div class="os-grupo-header" style="color:var(--muted)">— Outras arquivadas <span class="col-count" style="background:var(--muted);color:#fff">${semFaseArq.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:18px">${semFaseArq.map(_obrasCardHTML).join('')}</div>`;
+  }
+  corpo.innerHTML = html || '<div class="empty">Nenhuma obra concluída ou abandonada.</div>';
+}
+
 function _renderObrasPainelFases(corpo, lista){
   corpo.innerHTML = '';
-  const fases = fasesObraOrdenadas();
+  const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida' && f.tipo!=='cancelada');
   if(!fases.length){ corpo.innerHTML='<div class="empty">Nenhuma fase de obra cadastrada.</div>'; return; }
   const kanban = document.createElement('div');
   kanban.className = 'kanban';
