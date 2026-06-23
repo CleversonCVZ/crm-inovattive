@@ -4427,7 +4427,7 @@ function abrirNovaOS(cardId){
     <label>Responsável</label>
     <select id="nos-resp">
       <option value="">— Selecione —</option>
-      ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}">${u.nome}</option>`).join('')}
+      ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.nome.trim().toLowerCase()===(c.responsavel||'').trim().toLowerCase()?'selected':''}>${u.nome}</option>`).join('')}
     </select>
     <label>Data de agendamento</label>
     <input id="nos-ai" type="date" style="max-width:200px">
