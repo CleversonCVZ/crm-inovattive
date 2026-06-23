@@ -5242,6 +5242,35 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         <div id="vos-size-imagens" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
       </div>`:''}`;
   }
+  else if(aba === 'equipe'){
+    const tecnicos = os.tecnicos||[];
+    const disponiveis = db.usuarios.filter(u=>u.ativo!==false && !tecnicos.some(t=>t.usuarioId===u.id));
+    tabContent = `
+      ${tecnicos.length ? tecnicos.map(t=>{
+        const u = db.usuarios.find(x=>x.id===t.usuarioId);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border-radius:8px;margin-bottom:7px;font-size:13px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">👷</span>
+            <div>
+              <div style="font-weight:600">${u?u.nome:'Usuário removido'}</div>
+              ${u?.funcao?`<div style="font-size:11px;color:var(--muted)">${u.funcao}</div>`:''}
+            </div>
+          </div>
+          ${!os.fechada?`<button class="icon-btn del" onclick="removerTecnicoAVL(${osId},${t.id},${cardId})">🗑</button>`:''}
+        </div>`;
+      }).join('') : '<div style="font-size:13px;color:var(--muted);margin-bottom:16px">Nenhum técnico alocado.</div>'}
+      ${!os.fechada?`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:8px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Adicionar técnico</div>
+        <div style="display:flex;gap:8px">
+          <select id="avl-tec-sel" style="flex:1">
+            <option value="">— Selecione —</option>
+            ${disponiveis.map(u=>`<option value="${u.id}">${u.nome}${u.funcao?' ('+u.funcao+')':''}</option>`).join('')}
+          </select>
+          <button class="btn sm primary" onclick="adicionarTecnicoAVL(${osId},${cardId})">＋ Adicionar</button>
+        </div>
+      </div>`:''}`;
+  }
   else if(aba === 'historico'){
     const hist = (os.historico||[]).slice().sort((a,b)=>{
       if(!a.data&&!b.data) return 0; if(!a.data) return 1; if(!b.data) return -1;
@@ -5283,6 +5312,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       ${tabBtn('geral','⚙️ Geral')}
       ${tabBtn('itens','📦 Itens'+(os.produtos?.length?` (${os.produtos.length})`:' '))}
       ${tabBtn('fotos','📷 Fotos'+(os.imagens?.length?` (${os.imagens.length})`:' '))}
+      ${tabBtn('equipe','👷 Equipe'+(os.tecnicos?.length?` (${os.tecnicos.length})`:' '))}
       ${tabBtn('historico','📋 Histórico'+(os.historico?.length?` (${os.historico.length})`:' '))}
     </div>
     <div style="flex:1;overflow-y:auto;min-height:0">
@@ -5307,6 +5337,29 @@ function salvarDadosOSAvulsa(osId, cardId){
   os.descricaoChamado = document.getElementById('avl-descricao').value || '';
   registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
   save(); renderAll(); abrirVerOSAvulsa(osId, cardId, 'geral');
+}
+
+async function adicionarTecnicoAVL(osId, cardId){
+  const uid = +document.getElementById('avl-tec-sel').value;
+  if(!uid){ alert('Selecione um técnico.'); return; }
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os.tecnicos) os.tecnicos=[];
+  if(os.tecnicos.some(t=>t.usuarioId===uid)){ alert('Técnico já adicionado.'); return; }
+  const {data, error} = await sb.from('os_tecnicos').insert({os_id:osId, usuario_id:uid}).select().single();
+  if(error){ console.error(error); alert('Erro ao salvar técnico.'); return; }
+  os.tecnicos.push({id:data.id, usuarioId:uid});
+  registrarLog('editar','os',osId,`Técnico adicionado à O.S. Avulsa ${os.numero}: ${db.usuarios.find(u=>u.id===uid)?.nome||uid}`);
+  save(); abrirVerOSAvulsa(osId, cardId, 'equipe');
+}
+
+async function removerTecnicoAVL(osId, tecId, cardId){
+  if(!confirm('Remover este técnico da O.S.?')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const {error} = await sb.from('os_tecnicos').delete().eq('id', tecId);
+  if(error){ console.error(error); alert('Erro ao remover técnico.'); return; }
+  os.tecnicos = (os.tecnicos||[]).filter(t=>t.id!==tecId);
+  registrarLog('editar','os',osId,`Técnico removido da O.S. Avulsa ${os.numero}`);
+  save(); abrirVerOSAvulsa(osId, cardId, 'equipe');
 }
 
 function adicionarItemAVL(osId, cardId){
