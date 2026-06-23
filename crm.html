@@ -1033,8 +1033,8 @@ function load(){
                   {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
   // Marcar fases de sistema por nome (garante dados vindos do Supabase sem tipo)
-  db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
-  db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
+  db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
+  db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
   if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
   if(!Array.isArray(db.downloadArquivos)) db.downloadArquivos = [];
