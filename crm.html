@@ -2425,6 +2425,7 @@ function recalcValorCartao(cardId){
   if(aprovadas.length) c.valor=Math.round(aprovadas.reduce((s,p)=>s+(p.valor||0),0)*100)/100;
 }
 function fmtMoney(v){ return v != null && v !== '' ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 /* Valor a receber de uma proposta = total dos itens que NÃO são fornecidos pelo cliente.
    Se a proposta não tiver itens detalhados, usa p.valor como fallback. */
 function valorReceberProposta(p){
