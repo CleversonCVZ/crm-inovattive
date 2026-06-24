@@ -1034,10 +1034,48 @@ async function chamarEdgeFn(nome, payload){
   }catch(e){ return {error:e.message}; }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ARQUITETURA GERAL — CRM Inovattive
+   ───────────────────────────────────────────────────────────────────────────
+   Todo o estado do sistema vive em `db` (objeto JS em memória).
+   Persistência funciona em duas camadas simultâneas:
+
+     1. localStorage (crmDB)  — cópia imediata, garante offline e reload rápido
+     2. Supabase (PostgreSQL) — fonte de verdade, multi-usuário em tempo real
+
+   Fluxo de escrita:
+     saveLocal()           → escreve db no localStorage
+     syncConfigSupabase()  → debounce 800ms → upsert fases/origens/grupos/empresa
+     syncDadosSupabase()   → debounce 800ms → upsert clientes/obras/cards/propostas/OS…
+     save() = saveLocal() + syncConfigSupabase() + syncDadosSupabase()
+
+   Fluxo de save com feedback visual (funções críticas):
+     btnSalvando(btn) → await operação Supabase + await delay(800ms) → fecharModal()
+     O delay garante que o usuário sempre enxerga "Salvando…" por pelo menos 800ms.
+
+   Fluxo de leitura (login):
+     carregarConfigSupabase() → carregarDadosSupabase() → iniciarApp()
+
+   Permissões:
+     Cada usuário pertence a um Grupo. O grupo define:
+       - `telas[]`  → quais módulos/telas o usuário vê no menu
+       - `recursos[]` → permissões mais finas (abas dentro do cartão CRM, etc.)
+       - `admin: true` → bypass de todas as restrições
+     Funções: podeVer(u, telaId), podeUsar(u, recursoId), ehAdmin(u)
+
+   IDs numéricos:
+     Usamos IDs inteiros sequenciais (não UUIDs). Para evitar colisões quando
+     dois usuários criam registros ao mesmo tempo, usamos proximoIdSeguro()
+     que consulta o maior ID já existente no Supabase antes de sugerir o próximo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* ================= DADOS ================= */
 const hoje = new Date(); hoje.setHours(0,0,0,0);
 function d(offset, h='09:00'){ const x=new Date(hoje); x.setDate(x.getDate()+offset); return x.toISOString().slice(0,10)+'T'+h; }
 
+/* SEED: dados de exemplo carregados apenas na primeira vez que o sistema roda
+   (localStorage vazio). Em produção, o Supabase sobrescreve esses valores logo
+   após o login — o SEED serve apenas de "estado inicial para desenvolvedores". */
 const SEED = {
   fases: [
     {id:1,  nome:'Contato Frio',            cor:'#607d8b', ordem:1},
@@ -1103,7 +1141,10 @@ const SEED = {
   ]
 };
 
-/* Registro central de telas — novas telas entram aqui e aparecem nas permissões */
+/* TELAS: registro central de todas as telas do sistema.
+   Para adicionar uma tela nova ao menu: (1) crie o <div id="view-X"> no HTML,
+   (2) adicione um entry aqui, (3) adicione ao MODULOS correspondente.
+   A chave `id` é usada em podeVer(u, telaId) e nos grupos de acesso. */
 const TELAS = [
   {id:'painel',      nome:'CRM — Painel',                menu:'Painel'},
   {id:'fases',       nome:'CRM — Fases',                 menu:'Fases'},
@@ -1132,7 +1173,10 @@ const TELAS = [
   {id:'cat-outros-custos', nome:'Financeiro — Categoria Custos Obra', menu:'Categoria Custos Obra'}
 ];
 
-/* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
+/* RECURSOS: permissões mais finas que TELAS.
+   Enquanto TELAS controla "o usuário vê esse módulo no menu", RECURSOS controla
+   ações ou sub-seções dentro de uma tela — ex.: a aba Obras dentro do cartão CRM.
+   Verificado com podeUsar(u, recursoId). Admins têm todos automaticamente. */
 const RECURSOS = [
   // ── Cartão CRM — abas principais
   {id:'aba-propostas',    grupo:'crm', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
@@ -1153,7 +1197,9 @@ const RECURSOS = [
   {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'}
 ];
 
-/* Módulos: cada um tem seu menu horizontal próprio (sempre começando pelo Painel) */
+/* MODULOS: agrupamentos de telas que formam o menu lateral esquerdo.
+   Cada módulo tem seu sub-menu horizontal próprio com as telas do grupo.
+   A ordem aqui define a ordem de exibição no menu lateral. */
 const MODULOS = [
   {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
@@ -1164,9 +1210,36 @@ const MODULOS = [
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
 
+/* `db` é o estado global do sistema — toda leitura e escrita de dados passa por aqui.
+   Estrutura principal:
+     db.fases           — fases do funil CRM
+     db.fasesProposta   — fases das propostas
+     db.fasesObra       — fases das obras
+     db.fasesOS         — fases das ordens de serviço
+     db.origens         — origens de lead (Google, indicação, etc.)
+     db.funcoes         — funções dos usuários (Técnico, Vendedor, etc.)
+     db.grupos          — grupos de acesso com suas permissões
+     db.empresa         — dados da empresa (razão social, logo, etc.)
+     db.usuarios        — usuários do sistema (lido do Supabase via Edge Function)
+     db.clientes        — clientes/prospects
+     db.obras           — obras vinculadas a clientes
+     db.cards           — cartões do CRM (pipeline de vendas)
+     db.propostas       — propostas emitidas (vinculadas a cards)
+     db.ordensServico   — ordens de serviço (avaliação, projeto, execução)
+     db.obraContatos    — contatos por obra (arquiteto, empreiteiro, etc.)
+     db.obraEquipamentos — equipamentos/senhas por obra
+     db.obraCompras     — pedidos de compra por obra
+     db.obraNfs         — notas fiscais vinculadas a compras
+     db.obraRetiradas   — retiradas do lucro por obra
+     db.downloadCategorias / downloadArquivos — área de downloads compartilhados */
 let db;
-let usuarioAtual = null;
+let usuarioAtual = null; // objeto do usuário logado; null = ninguém logado
 
+/* load(): inicializa `db` na abertura da página.
+   Tenta restaurar do localStorage (sessão anterior).
+   Se não houver dados salvos, parte do SEED (dados de exemplo).
+   Em seguida aplica migrações de compatibilidade — garante que registros
+   antigos tenham todos os campos que o código atual espera. */
 function load(){
   try{ db = JSON.parse(localStorage.getItem('crmDB')) || null; }catch(e){ db=null; }
   if(!db) db = JSON.parse(JSON.stringify(SEED));
@@ -1306,12 +1379,40 @@ function ultimoHist(c){ return (c.historico&&c.historico[0]) ? c.historico[0].te
 function registrarHist(c, texto){ if(texto && texto.trim()) c.historico.unshift({data:agoraISO(), texto:texto.trim()}); }
 function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
 function cardAtivo(c){ return !c.perdido && !c.concluido; }
+
+/* saveLocal(): persiste `db` imediatamente no localStorage. Síncrono e instantâneo.
+   Usado antes de fechar modais para garantir que o estado não se perca mesmo
+   se a sincronização com o Supabase ainda estiver pendente. */
 function saveLocal(){ localStorage.setItem('crmDB', JSON.stringify(db)); }
+
+/* save(): atalho completo = salva localmente + dispara sync em background.
+   Use save() em situações de fogo-e-esquece (config, OS, etc.).
+   Para saves com feedback visual (botão "Salvando…"), use saveLocal() +
+   await direto no Supabase + syncDadosSupabase() (ver padrão em salvarEdicaoCartao). */
 function save(){ saveLocal(); syncConfigSupabase(); syncDadosSupabase(); }
 
 /* ── Utilitários de UX para botões de salvar ────────────────────────────────
-   Uso: const btn = btnModalPrimario(); btnSalvando(btn); ... btnRestaurar(btn);
-   Guarda o texto original em _textoOrig para não precisar passá-lo de volta. */
+   Padrão usado em todas as funções de save/excluir com feedback visual:
+
+     const btn = btnModalPrimario();
+     btnSalvando(btn);                       // desabilita + muda texto
+     const _delay = new Promise(r=>setTimeout(r,800));
+     try {
+       await sb.from(...).upsert(...);       // operação real no Supabase
+       await _delay;                         // garante mínimo 800ms visível
+     } catch(e) { btnRestaurar(btn); alert(...); return; }
+     fecharModal();
+
+   O `_delay` é iniciado junto com a operação (em paralelo), portanto:
+   - Se o Supabase for rápido (<800ms), aguarda o tempo restante.
+   - Se o Supabase for lento (>800ms), não adiciona espera extra.
+
+   ATENÇÃO — seletor dos botões:
+   btnModalPrimario() e btnModalPerigo() buscam pelo atributo data-btn-salvar /
+   data-btn-perigo, NÃO por class="btn primary". Isso é necessário porque
+   o formulário do cartão CRM tem outros botões com "btn primary" (ex.: "Criar obra",
+   "Registrar no histórico") que aparecem antes do botão Salvar no DOM e causariam
+   falso match se o seletor fosse por classe. */
 function btnSalvando(btn, texto='Salvando…'){
   if(!btn) return;
   btn._textoOrig = btn.textContent;
@@ -1372,8 +1473,15 @@ async function carregarConfigSupabase(){
   }catch(e){ console.error('Falha ao carregar configurações do Supabase:', e); }
 }
 
-/* Busca clientes, obras, cards e o histórico dos cards no Supabase (após login)
-   e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
+/* carregarDadosSupabase():
+   Lê TODAS as entidades de dados do Supabase de uma vez (Promise.all) e
+   constrói o objeto `db` em memória. Faz a conversão de flat SQL → JS aninhado:
+   - card_historico → agrupado por card_id → db.cards[i].historico[]
+   - proposta_itens → agrupados por proposta_id → db.propostas[i].itens[]
+   - proposta_arquivos → agrupados por proposta_id → db.propostas[i].arquivos[]
+   - os_tecnicos, os_diario → agrupados por os_id → db.ordensServico[i].tecnicos/diario
+   Qualquer campo snake_case do banco vira camelCase no JS (ex.: fase_id → faseId).
+   Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
     const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas] = await Promise.all([
@@ -1536,8 +1644,16 @@ async function carregarDadosSupabase(){
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
 
-/* Envia uma lista local (db.fases, db.grupos, etc.) para a tabela do Supabase:
-   faz upsert de todas as linhas e remove no banco as que não existem mais localmente. */
+/* sincronizarTabela(tabela, linhas, mapear):
+   Coração do sistema de persistência — faz UPSERT de todos os registros locais
+   de uma tabela no Supabase. O parâmetro `mapear` é uma função que converte
+   o formato JS (camelCase) para o formato do banco (snake_case).
+
+   IMPORTANTE: esta função apenas faz upsert — nunca deleta registros.
+   Deleções devem ser feitas explicitamente com excluirDoSupabase() ANTES de
+   remover o item de `db`. Isso é intencional: em ambiente multi-usuário,
+   deletar "o que não está na memória local" poderia apagar dados criados por
+   outro usuário que ainda não chegaram neste cliente. */
 async function sincronizarTabela(tabela, linhas, mapear){
   try{
     const rows = linhas.map(mapear);
@@ -1545,9 +1661,6 @@ async function sincronizarTabela(tabela, linhas, mapear){
       const {error:errUp} = await sb.from(tabela).upsert(rows);
       if(errUp){ console.error(`Erro ao sincronizar ${tabela}:`, errUp); return; }
     }
-    // NOTA: deleções são feitas explicitamente em cada função de exclusão.
-    // Nunca deletamos "o que não está na memória local" — isso causaria
-    // perda de dados de outros usuários logados simultaneamente.
   }catch(e){ console.error(`Falha ao sincronizar ${tabela}:`, e); }
 }
 
@@ -1560,9 +1673,14 @@ async function excluirDoSupabase(tabela, id){
   }catch(e){ console.error(`Falha ao excluir de ${tabela}:`, e); }
 }
 
-/* Sincroniza as entidades de configuração com o Supabase (em segundo plano,
-   com pequeno atraso para agrupar várias edições seguidas). Só roda com
-   usuário logado, pois sem sessão o RLS bloqueia a escrita. */
+/* syncConfigSupabase():
+   Sincroniza em background as tabelas de configuração: fases (CRM/proposta/obra/OS),
+   origens, funções, grupos de acesso e dados da empresa.
+
+   Usa debounce de 800ms: se chamada várias vezes seguidas (ex.: usuário arrastra
+   fases rapidamente no kanban de configuração), só dispara uma vez ao parar.
+   Fogo-e-esquece — sem await, sem feedback visual ao usuário.
+   Guarda: sem usuário logado, o RLS do Supabase bloquearia a escrita → exit early. */
 let _syncConfigTimer=null;
 function syncConfigSupabase(){
   if(!usuarioAtual) return;
@@ -1584,8 +1702,15 @@ function syncConfigSupabase(){
   }, 800);
 }
 
-/* Sincroniza clientes, obras, cards e o histórico dos cards com o Supabase
-   (em segundo plano, com pequeno atraso para agrupar várias edições seguidas). */
+/* syncDadosSupabase():
+   Sincroniza em background todas as entidades de dados: clientes, obras, cards,
+   propostas, itens de proposta, ordens de serviço, equipamentos, compras, NFs,
+   retiradas, históricos, logs de auditoria e categorias/arquivos de download.
+
+   Mesma estratégia de debounce de 800ms que syncConfigSupabase.
+   Para saves críticos (cartão CRM, proposta), prefira fazer o upsert diretamente
+   com await e depois chamar syncDadosSupabase() — isso dá feedback visual ao usuário
+   e garante que o dado foi salvo antes de fechar o modal. */
 let _syncDadosTimer=null;
 function syncDadosSupabase(){
   if(!usuarioAtual) return;
@@ -2123,6 +2248,12 @@ function nextId(arr){ return arr.reduce((m,x)=>Math.max(m,x.id),0)+1; }
 
 /* Versão segura de nextId: consulta o Supabase para garantir que o ID gerado
    não colide com registros já persistidos, mesmo após reloads ou falhas de sync. */
+/* proximoIdSeguro(tabela, arr):
+   Gera o próximo ID inteiro livre, consultando tanto o array local quanto o
+   maior ID já existente no Supabase. Necessário porque em ambiente multi-usuário
+   o localStorage de um usuário pode estar desatualizado — outro usuário pode ter
+   criado registros com IDs maiores desde a última sincronização.
+   Fallback: se o Supabase não responder, usa apenas o máximo local. */
 async function proximoIdSeguro(tabela, arr){
   const localMax = arr.reduce((m,x)=>Math.max(m, +x.id||0), 0);
   try {
@@ -2473,7 +2604,11 @@ async function fazerLogin(){
   await entrarComSessao(erro);
 }
 
-/* chamado após login bem-sucedido OU ao reabrir a página com sessão válida */
+/* entrarComSessao(): ponto central de entrada no sistema após autenticação.
+   Chamado tanto pelo botão "Entrar" quanto ao reabrir a página com sessão ativa.
+   Sequência: carrega config → carrega dados → busca usuário pelo authId do Supabase Auth
+   → verifica se está ativo → iniciarApp().
+   Se o usuário existe no Auth mas não no CRM (não cadastrado), exibe erro e desloga. */
 async function entrarComSessao(erro){
   const {data:{session}} = await sb.auth.getSession();
   if(!session) return false;
@@ -2808,6 +2943,13 @@ async function novaFuncao(){
 }
 
 /* ================= PERMISSÕES (por grupo de acesso) ================= */
+/* ── Sistema de permissões ──────────────────────────────────────────────────
+   grupoDe(u)          → retorna o objeto grupo do usuário (ou grupo vazio se não encontrado)
+   ehAdmin(u)          → true se o grupo tem flag admin: true (bypass de tudo)
+   podeVer(u, telaId)  → true se o usuário pode ver/acessar aquela tela no menu
+   podeUsar(u, recursoId) → true se tem acesso a um recurso fino (aba, ação)
+   podeVerFase(faseId) → true se o grupo tem aquela fase permitida no kanban
+                          (fasesPermitidas = null significa "todas liberadas") */
 function grupoDe(u){ return db.grupos.find(g=>g.id===u.grupoId) || {nome:'—', telas:[], admin:false}; }
 function ehAdmin(u){ return !!grupoDe(u).admin; }
 
@@ -3174,6 +3316,17 @@ function excluirFase(id){
 }
 
 /* ================= CLIENTES ================= */
+/* classificarCliente(clienteId):
+   Determina o "selo" exibido na ficha de cada cliente. As regras de negócio são:
+     🟢 Cliente Ativo  — tem card aberto + proposta aprovada + obra cadastrada
+     🟢 Cliente        — sem card aberto, mas tem obra + proposta aprovada (cliente encerrado/concluído)
+     🟡 Prospect       — tem card aberto mas sem proposta aprovada ainda
+     🔴 Lead Frio      — só tem cards perdidos, sem obra nem proposta aprovada
+     ⚪ Ex-cliente/Sem classificação — demais casos
+
+   "Card aberto" = não perdido E não concluído (por flag OU por fase de sistema).
+   A função considera tanto a flag c.perdido/c.concluido quanto a fase do card
+   para cobrir os dois caminhos possíveis de marcar um card como encerrado. */
 function classificarCliente(clienteId){
   const cardsCliente = db.cards.filter(x=>x.clienteId===clienteId);
   const temObra = (db.obras||[]).some(o=>o.clienteId===clienteId);
