@@ -10325,38 +10325,64 @@ async function salvarGrupo(id){
   if(!nome){ alert('Informe o nome do grupo.'); return; }
   if(db.grupos.some(g=>g.nome.toLowerCase()===nome.toLowerCase() && g.id!==id)){ alert('Já existe um grupo com esse nome.'); return; }
   const btn=document.getElementById('btn-salvar-grupo');
-  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  btnSalvando(btn);
+  const _delay=new Promise(r=>setTimeout(r,800));
   const telas=[...document.querySelectorAll('.ck-gtela:checked')].map(c=>c.value);
   const recursos=[...document.querySelectorAll('.ck-grec:checked')].map(c=>c.value);
-  const restringirFases = document.getElementById('ck-restringir-fases')?.checked || false;
-  const fasesPermitidas = restringirFases ? [...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)) : null;
-  const filtrarOS = document.getElementById('ck-filtrar-os')?.checked || false;
+  const restringirFases=document.getElementById('ck-restringir-fases')?.checked||false;
+  const fasesPermitidas=restringirFases?[...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)):null;
+  const filtrarOS=document.getElementById('ck-filtrar-os')?.checked||false;
+  let row;
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
     if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; }
-    registrarLog('editar', 'grupo', id, `Grupo editado: "${nome}"`);
+    row=g;
+    registrarLog('editar','grupo',id,`Grupo editado: "${nome}"`);
   } else {
-    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos, fasesPermitidas, filtrarOS};
+    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,recursos,fasesPermitidas,filtrarOS};
     db.grupos.push(ng);
-    registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
+    row=ng;
+    registrarLog('criar','grupo',ng.id,`Novo grupo criado: "${nome}"`);
   }
-  await save();
+  try{
+    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],recursos:row.recursos||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS});
+    if(error) throw error;
+    await _delay;
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao salvar: '+e.message);
+    return;
+  }
+  saveLocal();
   if(usuarioAtual) aplicarPermissoes();
   renderAll();
   ativarView('grupos');
 }
 
-function excluirGrupo(id){
+async function excluirGrupo(id){
   const g=db.grupos.find(x=>x.id===id);
   if(g.admin){ alert('O grupo Administradores não pode ser excluído.'); return; }
   const qtd=db.usuarios.filter(u=>u.grupoId===id).length;
   if(qtd>0){ alert(`Este grupo tem ${qtd} usuário(s). Mova-os para outro grupo antes de excluir.`); return; }
   if(!confirm(`Excluir o grupo "${g.nome}"?`)) return;
-  registrarLog('excluir', 'grupo', id, `Grupo excluído: "${g.nome}"`);
-  excluirDoSupabase('grupos', id);
+  const btn=document.getElementById('grupo-form-btn-excluir');
+  btnSalvando(btn,'Excluindo…');
+  const _delay=new Promise(r=>setTimeout(r,800));
+  try{
+    const {error}=await sb.from('grupos').delete().eq('id',id);
+    if(error) throw error;
+    await _delay;
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao excluir: '+e.message);
+    return;
+  }
+  registrarLog('excluir','grupo',id,`Grupo excluído: "${g.nome}"`);
   db.grupos=db.grupos.filter(x=>x.id!==id);
-  save(); renderAll(); ativarView('grupos');
+  saveLocal();
+  renderAll();
+  ativarView('grupos');
 }
 
 /* osVisivelParaUsuario(os):
