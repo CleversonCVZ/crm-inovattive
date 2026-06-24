@@ -3218,6 +3218,30 @@ function toggleNovaObra(){
   box.classList.toggle('open');
   document.getElementById('m-obra').disabled = box.classList.contains('open');
   if(box.classList.contains('open')) document.getElementById('no-nome').focus();
+  else document.getElementById('no-nome').value = '';
+}
+async function criarObraRapida(clienteId){
+  const nome = (document.getElementById('no-nome').value||'').trim();
+  if(!nome){ alert('Digite o nome da obra.'); document.getElementById('no-nome').focus(); return; }
+  const id = await proximoIdSeguro('obras', db.obras);
+  const novaObra = {id, clienteId, nome};
+  db.obras.push(novaObra);
+  save();
+  registrarLog('criar','obra',id,`Obra criada pelo cartão: "${nome}"`);
+  // Adiciona ao select e seleciona
+  const sel = document.getElementById('m-obra');
+  if(sel){
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = nome; opt.selected = true;
+    sel.appendChild(opt);
+    sel.value = id;
+  }
+  // Mostra botão editar
+  const btnEd = document.getElementById('btn-editar-obra');
+  if(btnEd) btnEd.style.display = '';
+  // Fecha o box
+  const box = document.getElementById('nova-obra-box');
+  if(box){ box.classList.remove('open'); document.getElementById('m-obra').disabled = false; document.getElementById('no-nome').value = ''; }
 }
 async function resolverObra(clienteId){
   const box = document.getElementById('nova-obra-box');
@@ -3248,7 +3272,13 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
     </div>
     <button class="link-btn" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
     <div class="novo-cliente-box" id="nova-obra-box">
-      <label>Nome da nova obra</label><input id="no-nome" placeholder="Ex.: Residência Alphaville — Automação">
+      <label>Nome da nova obra</label>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input id="no-nome" placeholder="Ex.: Residência Alphaville — Automação" style="flex:1"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();criarObraRapida(${cid});}">
+        <button type="button" class="btn sm primary" onclick="criarObraRapida(${cid})">Criar obra</button>
+        <button type="button" class="btn sm neutral" onclick="toggleNovaObra()">Cancelar</button>
+      </div>
     </div>
     <label>Origem do lead</label>
     <select id="m-origem">
