@@ -2660,6 +2660,7 @@ async function salvarMeuUsuario(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,500));
 
   if(senha){
     const {error} = await sb.auth.updateUser({password:senha});
@@ -2670,6 +2671,7 @@ async function salvarMeuUsuario(){
   u.nome=nome; u.login=login;
   const {error:erroUpd} = await sb.from('usuarios').update({nome, login}).eq('id', u.id);
   if(erroUpd){ btnRestaurar(btn); alert('Erro ao salvar dados: '+erroUpd.message); return; }
+  await _delay;
 
   const mudancas=[];
   if(nomeAntes!==nome) mudancas.push(`nome: "${nomeAntes}" → "${nome}"`);
@@ -3587,6 +3589,7 @@ async function confirmarPerdido(cardId){
 
   const btn = btnModalPerigo();
   btnSalvando(btn, 'Salvando…');
+  const _delay = new Promise(r=>setTimeout(r,500));
   try{
     const {error:errCard} = await sb.from('cards').upsert({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null,
@@ -3606,6 +3609,7 @@ async function confirmarPerdido(cardId){
       });
       if(errP) throw errP;
     }
+    await _delay;
   }catch(e){
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
@@ -3687,6 +3691,7 @@ async function salvarNovoCartao(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,500));
   try{
     if(box.classList.contains('open')){
       const cli = db.clientes.find(x=>x.id===clienteId);
@@ -3705,6 +3710,7 @@ async function salvarNovoCartao(){
     });
     if(errCard) throw errCard;
     await sincronizarHistoricoCard(novo.id);
+    await _delay;
   }catch(e){
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
@@ -8573,6 +8579,7 @@ async function salvarEdicaoCartao(id){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,500));
   try{
     const {error} = await sb.from('cards').upsert({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null,
@@ -8583,6 +8590,7 @@ async function salvarEdicaoCartao(id){
     });
     if(error) throw error;
     await sincronizarHistoricoCard(id);
+    await _delay;
   }catch(e){
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
@@ -8603,6 +8611,7 @@ async function excluirCartao(id){
   if(!confirm(aviso)) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
+  const _delay = new Promise(r=>setTimeout(r,500));
   registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   for(const os of oss){
@@ -8623,6 +8632,7 @@ async function excluirCartao(id){
   db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
+  await _delay;
   saveLocal(); fecharModal(); renderAll();
 }
 
@@ -8723,12 +8733,14 @@ async function salvarNovoCliente(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,500));
   try{
     const {error} = await sb.from('clientes').upsert({
       id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
       cidade:cli.cidade||'', endereco:cli.endereco||{}
     });
     if(error) throw error;
+    await _delay;
   }catch(e){
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
@@ -8989,6 +9001,7 @@ async function excluirCliente(id){
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
+  const _delay = new Promise(r=>setTimeout(r,500));
   registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
   const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
   // propostas vinculadas às obras e ao cliente
@@ -9016,6 +9029,7 @@ async function excluirCliente(id){
   db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
+  await _delay;
   saveLocal(); fecharModal(); renderAll();
 }
 
@@ -9143,10 +9157,12 @@ async function excluirUsuario(id){
   if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
+  const _delay = new Promise(r=>setTimeout(r,500));
   const res = await chamarAdminUsuarios({acao:'excluir', id});
   if(res.error){ btnRestaurar(btnExc); alert(res.error); return; }
   registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
   await carregarUsuariosSupabase();
+  await _delay;
   saveLocal(); fecharModal(); renderAll();
 }
 
