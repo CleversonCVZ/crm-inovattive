@@ -33,6 +33,7 @@
   .sidebar button:hover{background:rgba(255,255,255,.10)}
   .sidebar button.ativo{color:#fff;background:var(--green);border-left-color:#fff}
   .sidebar-sep{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);margin-bottom:4px}
+  .stat-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:13px;font-weight:500}
   .conteudo{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
   nav{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;display:flex;gap:4px;flex-shrink:0}
@@ -748,6 +749,42 @@
     <div id="audit-total"></div>
   </div>
 
+  <!-- FINANCEIRO: CONTAS A RECEBER (PAINEL GLOBAL) -->
+  <div class="view" id="view-fin-contas-receber">
+    <div class="bar">
+      <h2>💳 Financeiro — Contas a Receber</h2>
+      <div class="spacer"></div>
+      <select id="fin-filtro-status" onchange="renderFinanceiroPainel()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Todos</option>
+        <option value="pendente">Pendentes</option>
+        <option value="recebido">Recebidos</option>
+        <option value="vencido">Vencidos</option>
+      </select>
+      <select id="fin-filtro-tipo" onchange="renderFinanceiroPainel()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="">Qualquer tipo</option>
+        <option value="fixo">Data fixa</option>
+        <option value="condicional">Condicional</option>
+      </select>
+    </div>
+    <div class="stats" id="fin-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <table class="lista">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Cartão</th>
+          <th>Origem</th>
+          <th>Descrição</th>
+          <th>Valor</th>
+          <th>Tipo</th>
+          <th>Vencimento / Condição</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="fin-tbody"></tbody>
+    </table>
+  </div>
+
   <!-- DOWNLOADS -->
   <div class="view" id="view-downloads">
     <div class="bar">
@@ -1304,6 +1341,7 @@ function load(){
   if(!Array.isArray(db.obras)) db.obras=[];
   db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; });
   if(!Array.isArray(db.cardContatos))    db.cardContatos=[];
+  if(!Array.isArray(db.recebimentos))    db.recebimentos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1487,7 +1525,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1505,7 +1543,8 @@ async function carregarDadosSupabase(){
       sb.from('download_arquivos').select('*').order('criado_em', {ascending:false}),
       sb.from('os_tecnicos').select('*').order('id'),
       sb.from('os_diario').select('*').order('data', {ascending:false}),
-      sb.from('obra_retiradas').select('*').order('data_retirada', {ascending:false})
+      sb.from('obra_retiradas').select('*').order('data_retirada', {ascending:false}),
+      sb.from('financeiro_recebimentos').select('*').order('id')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1647,6 +1686,18 @@ async function carregarDadosSupabase(){
         id:a.id, categoriaId:a.categoria_id, nome:a.nome,
         descricao:a.descricao||'', storagePath:a.storage_path,
         tamanho:Number(a.tamanho)||0, criadoEm:a.criado_em, criadoPor:a.criado_por||''
+      }));
+    if(recebimentos.data)
+      db.recebimentos = recebimentos.data.map(r=>({
+        id:r.id, cardId:r.card_id,
+        propostaId:r.proposta_id||null, osId:r.os_id||null,
+        descricao:r.descricao||'', valor:Number(r.valor)||0,
+        tipo:r.tipo||'fixo',
+        dataVencimento:r.data_vencimento ? r.data_vencimento.slice(0,10) : null,
+        condicao:r.condicao||null,
+        status:r.status||'pendente',
+        dataRecebimento:r.data_recebimento ? r.data_recebimento.slice(0,10) : null,
+        criadoEm:r.created_at||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1795,6 +1846,17 @@ function syncDadosSupabase(){
       storage_path:a.storagePath, tamanho:Number(a.tamanho)||0,
       criado_em:a.criadoEm||new Date().toISOString(), criado_por:a.criadoPor||''
     }));
+    await sincronizarTabela('financeiro_recebimentos', db.recebimentos||[], r=>({
+      id:r.id, card_id:Number(r.cardId)||null,
+      proposta_id:Number(r.propostaId)||null,
+      os_id:Number(r.osId)||null,
+      descricao:r.descricao||'', valor:r.valor||0,
+      tipo:r.tipo||'fixo',
+      data_vencimento:r.dataVencimento||null,
+      condicao:r.condicao||null,
+      status:r.status||'pendente',
+      data_recebimento:r.dataRecebimento||null
+    }));
   }, 800);
 }
 
@@ -1893,6 +1955,75 @@ let _dlCatAtiva = null;
 function ehAdminDl(){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes('downloads-admin'); }
 function podeDownloadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes(`dl-cat-${catId}`); }
 function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || (g.recursos||[]).includes('downloads-admin') || (g.recursos||[]).includes(`ul-cat-${catId}`); }
+
+/* ═══════════════════════════════════════════════════════════
+   FINANCEIRO — PAINEL GLOBAL (Contas a Receber)
+   Lista todos os recebimentos com filtro de status/tipo.
+   Nota: itens com clienteFornece=true NÃO entram no total.
+   ═══════════════════════════════════════════════════════════ */
+function renderFinanceiroPainel(){
+  if(!document.getElementById('fin-tbody')) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  const filtroStatus = (document.getElementById('fin-filtro-status')||{}).value||'';
+  const filtroTipo   = (document.getElementById('fin-filtro-tipo')||{}).value||'';
+
+  let lista = (db.recebimentos||[]).slice();
+  if(filtroTipo) lista = lista.filter(r=>r.tipo===filtroTipo);
+  if(filtroStatus==='vencido') lista = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
+  else if(filtroStatus) lista = lista.filter(r=>r.status===filtroStatus);
+  lista.sort((a,b)=>{
+    if(a.status!==b.status) return a.status==='pendente'?-1:1;
+    if(a.dataVencimento && b.dataVencimento) return a.dataVencimento.localeCompare(b.dataVencimento);
+    return a.id-b.id;
+  });
+
+  // totalizadores (sempre sobre tudo, sem filtro)
+  const todos = db.recebimentos||[];
+  const totPendente = todos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
+  const totRecebido = todos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
+  const totVencido  = todos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje).reduce((s,r)=>s+r.valor,0);
+
+  const statsEl = document.getElementById('fin-stats');
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat-card"><div class="stat-val">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="stat-lbl">A Receber (total)</div></div>
+    <div class="stat-card"><div class="stat-val" style="color:#2e7d32">${fmtMoney(totRecebido)||'R$ 0,00'}</div><div class="stat-lbl">Recebido</div></div>
+    ${totVencido?`<div class="stat-card"><div class="stat-val" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="stat-lbl">⚠ Vencido</div></div>`:''}
+  `;
+
+  const tbody = document.getElementById('fin-tbody');
+  if(!lista.length){ tbody.innerHTML=`<tr><td colspan="9" class="empty" style="text-align:center;padding:24px">Nenhuma parcela encontrada.</td></tr>`; return; }
+
+  tbody.innerHTML = lista.map(r=>{
+    const c = db.cards.find(x=>x.id===r.cardId);
+    const cl = c ? cliente(c.clienteId) : null;
+    const proposta = r.propostaId ? db.propostas.find(p=>p.id===r.propostaId) : null;
+    const os = r.osId ? db.ordensServico.find(o=>o.id===r.osId) : null;
+    const origemLabel = proposta ? `Prop. ${proposta.numero}` : os ? `OS ${os.numero}` : '—';
+    const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
+    const statusBadge = r.status==='recebido'
+      ? `<span style="color:#2e7d32;font-weight:700">✔ Recebido</span>`
+      : vencida
+        ? `<span style="color:#c62828;font-weight:700">⚠ Vencido</span>`
+        : `<span style="color:#e65100">⏳ Pendente</span>`;
+    const vencLabel = r.tipo==='fixo'
+      ? (r.dataVencimento ? fmtDia2(r.dataVencimento) : '—')
+      : `<span style="font-size:11px;color:var(--muted)">${escHtml(r.condicao||'—')}</span>`;
+    return `<tr style="${r.status==='recebido'?'opacity:.7':''}">
+      <td>${cl?escHtml(cl.nome):'—'}</td>
+      <td>${c?`<a href="#" onclick="abrirEditarCartao(${c.id},'financeiro');return false" style="color:var(--green)">#${c.num}</a>`:'—'}</td>
+      <td style="font-size:12px">${origemLabel}</td>
+      <td>${escHtml(r.descricao)}</td>
+      <td style="font-weight:700">${fmtMoney(r.valor)}</td>
+      <td style="font-size:12px">${r.tipo==='fixo'?'Data fixa':'Condicional'}</td>
+      <td style="font-size:12px">${vencLabel}</td>
+      <td>${statusBadge}</td>
+      <td>
+        ${r.status==='pendente'&&c?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
+        ${c?`<button class="icon-btn" onclick="abrirEditarCartao(${c.id},'financeiro')" title="Abrir cartão">↗</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
 
 function renderDownloads(){
   const admin = ehAdminDl();
@@ -2303,6 +2434,12 @@ function recalcValorCartao(cardId){
   if(aprovadas.length) c.valor=Math.round(aprovadas.reduce((s,p)=>s+(p.valor||0),0)*100)/100;
 }
 function fmtMoney(v){ return v != null && v !== '' ? Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}) : ''; }
+/* Valor a receber de uma proposta = total dos itens que NÃO são fornecidos pelo cliente.
+   Se a proposta não tiver itens detalhados, usa p.valor como fallback. */
+function valorReceberProposta(p){
+  if(!p.itens || !p.itens.length) return p.valor||0;
+  return p.itens.filter(it=>!it.clienteFornece).reduce((s,it)=>s+(it.total||0),0);
+}
 // Máscara monetária BR: digita só números, formata como 1.234,56
 function mascaraMoeda(el){
   let v = el.value.replace(/\D/g,'');
@@ -3027,6 +3164,7 @@ function ativarView(viewId){
   if(viewId==='auditoria') carregarLogs();
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
+  if(viewId==='fin-contas-receber') renderFinanceiroPainel();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
@@ -3915,6 +4053,7 @@ function abrirEditarCartao(id, aba='dados'){
   const nEmit=db.propostas.filter(p=>p.cardId===id && p.status==='emitida').length;
   const nAprov=db.propostas.filter(p=>p.cardId===id && p.status==='aprovada').length;
   const nOS=db.ordensServico.filter(o=>o.cardId===id).length;
+  const nReceb=(db.recebimentos||[]).filter(r=>r.cardId===id).length;
   let corpo='';
   if(aba==='dados') corpo=`
     <datalist id="dl-funcoes-contato">
@@ -3939,7 +4078,7 @@ function abrirEditarCartao(id, aba='dados'){
   else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
   else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
   else if(aba==='os') corpo=abaOSCartaoHTML(c);
-  else if(aba==='financeiro') corpo=`<div class="empty" style="padding:40px;text-align:center;color:var(--muted)">💳 Módulo Financeiro<br><small style="font-size:12px;margin-top:8px;display:block">Em desenvolvimento. Em breve você poderá acompanhar recebimentos, pagamentos e fluxo de caixa por cartão.</small></div>`;
+  else if(aba==='financeiro') corpo=abaFinanceiroCartaoHTML(c);
   else corpo=abaOSCartaoHTML(c);
   abrirModal(`
     <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
@@ -3950,7 +4089,7 @@ function abrirEditarCartao(id, aba='dados'){
       <button class="aba ${aba==='aprovada'?'ativa':''}" onclick="abrirEditarCartao(${id},'aprovada')">Proposta Aprovada${nAprov?' ✔':''}</button>`:''}
       ${verObras?`<button class="aba ${aba==='obras'?'ativa':''}" onclick="abrirEditarCartao(${id},'obras')">Obra</button>`:''}
       ${verOS?`<button class="aba ${aba==='os'?'ativa':''}" onclick="abrirEditarCartao(${id},'os')">O.S.${nOS?' ('+nOS+')':''}</button>`:''}
-      ${verFinanceiro?`<button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarCartao(${id},'financeiro')">Financeiro</button>`:''}
+      ${verFinanceiro?`<button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarCartao(${id},'financeiro')">💳 Financeiro${nReceb?' ('+nReceb+')':''}</button>`:''}
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -5716,6 +5855,290 @@ function abaOSCartaoHTML(c){
     </div>
     ${lista.length===0?'<div class="empty">Nenhuma Ordem de Serviço neste cartão.</div>':''}
     ${lista.map(os=>osItemHTML(os,c)).join('')}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ABA FINANCEIRO — Contas a Receber por Cartão CRM
+   Cada parcela tem: descricao, valor, tipo (fixo/condicional),
+   data_vencimento OU condicao, status (pendente/recebido),
+   origem (proposta ou os_avulsa).
+   ═══════════════════════════════════════════════════════════ */
+function abaFinanceiroCartaoHTML(c){
+  const recebimentos = (db.recebimentos||[]).filter(r=>r.cardId===c.id).sort((a,b)=>a.id-b.id);
+  const propostas = db.propostas.filter(p=>p.cardId===c.id && ['aprovada','concluida'].includes(p.status));
+  const osAvulsas = db.ordensServico.filter(o=>o.cardId===c.id && o.tipo==='avulsa');
+  const totalPendente = recebimentos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
+  const totalRecebido = recebimentos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
+  const hoje = new Date().toISOString().slice(0,10);
+  const vencidas = recebimentos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
+
+  const origemOptions = [
+    ...propostas.map(p=>`<option value="proposta:${p.id}">Proposta ${p.numero}${p.aditivo?' (Aditivo)':''} — ${fmtMoney(valorReceberProposta(p))} (a receber)</option>`),
+    ...osAvulsas.map(o=>`<option value="os:${o.id}">OS ${o.numero} — ${o.titulo||'Avulsa'}</option>`)
+  ].join('');
+
+  return `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat-pill" style="background:#e8f5e9;color:#2e7d32">A receber: <b>${fmtMoney(totalPendente)||'R$ 0,00'}</b></div>
+      <div class="stat-pill" style="background:#e3f2fd;color:#1565c0">Recebido: <b>${fmtMoney(totalRecebido)||'R$ 0,00'}</b></div>
+      ${vencidas.length?`<div class="stat-pill" style="background:#ffebee;color:#c62828">⚠ ${vencidas.length} vencida${vencidas.length>1?'s':''}</div>`:''}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:13.5px">Parcelas a Receber</b>
+      <button class="btn sm primary" onclick="abrirNovaParcelaReceber(${c.id})">＋ Nova Parcela</button>
+    </div>
+    ${recebimentos.length===0?'<div class="empty">Nenhuma parcela cadastrada. Clique em "＋ Nova Parcela" para começar.</div>':''}
+    ${recebimentos.map(r=>parcelaReceberItemHTML(r,c.id)).join('')}`;
+}
+
+function parcelaReceberItemHTML(r, cardId){
+  const hoje = new Date().toISOString().slice(0,10);
+  const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
+  const origemLabel = r.propostaId
+    ? `Proposta ${(db.propostas.find(p=>p.id===r.propostaId)||{}).numero||'#'+r.propostaId}`
+    : r.osId
+      ? `OS ${(db.ordensServico.find(o=>o.id===r.osId)||{}).numero||'#'+r.osId}`
+      : 'Sem vínculo';
+  const vencLabel = r.tipo==='fixo'
+    ? (r.dataVencimento ? `Venc: ${fmtDia2(r.dataVencimento)}` : 'Sem data')
+    : `Cond: ${r.condicao||'—'}`;
+  const statusLabel = r.status==='recebido'
+    ? `<span style="color:#2e7d32;font-weight:700">✔ Recebido${r.dataRecebimento?' em '+fmtDia2(r.dataRecebimento):''}</span>`
+    : `<span style="color:${vencida?'#c62828':'#e65100'}">${vencida?'⚠ Vencida':'⏳ Pendente'}</span>`;
+  return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${r.status==='recebido'?'#f1f8e9':'#fff'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">${fmtMoney(r.valor)} <span style="font-size:12px;font-weight:400;color:var(--muted)">— ${r.descricao}</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px">${origemLabel} · ${vencLabel}</div>
+          <div style="font-size:12px;margin-top:3px">${statusLabel}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          ${r.status==='pendente'?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Marcar como recebida">✔ Recebido</button>`:''}
+          <button class="icon-btn" onclick="editarParcelaReceber(${r.id},${cardId})" title="Editar">✏️</button>
+          <button class="icon-btn del" onclick="excluirParcelaReceber(${r.id},${cardId})" title="Excluir">🗑</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function abrirNovaParcelaReceber(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  const propostas = db.propostas.filter(p=>p.cardId===cardId && ['aprovada','concluida'].includes(p.status));
+  const osAvulsas = db.ordensServico.filter(o=>o.cardId===cardId && o.tipo==='avulsa');
+  const origemOptions = [
+    '<option value="">Sem vínculo específico</option>',
+    ...propostas.map(p=>`<option value="proposta:${p.id}">Proposta ${p.numero}${p.aditivo?' (Aditivo)':''} — ${fmtMoney(valorReceberProposta(p))} (a receber)</option>`),
+    ...osAvulsas.map(o=>`<option value="os:${o.id}">OS ${o.numero} — ${o.titulo||'Avulsa'}</option>`)
+  ].join('');
+  abrirModal(`
+    <h3>Nova Parcela a Receber — Cartão #${c.num}</h3>
+    <div class="form-row">
+      <div>
+        <label>Descrição</label>
+        <input id="nr-desc" placeholder="Ex: 1ª parcela, Sinal, Entrega final…">
+      </div>
+      <div>
+        <label>Valor (R$)</label>
+        <input id="nr-valor" type="number" min="0" step="0.01" placeholder="0,00">
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Origem / Vínculo</label>
+        <select id="nr-origem">${origemOptions}</select>
+      </div>
+      <div>
+        <label>Tipo de vencimento</label>
+        <select id="nr-tipo" onchange="toggleNrVenc()">
+          <option value="fixo">Data fixa</option>
+          <option value="condicional">Condicional / Evento</option>
+        </select>
+      </div>
+    </div>
+    <div id="nr-venc-fixo" class="form-row">
+      <div>
+        <label>Data de vencimento</label>
+        <input id="nr-data" type="date">
+      </div>
+    </div>
+    <div id="nr-venc-cond" class="form-row" style="display:none">
+      <div>
+        <label>Condição de recebimento</label>
+        <input id="nr-cond" placeholder="Ex: Após entrega do projeto, Após conclusão da obra…">
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Status inicial</label>
+        <select id="nr-status">
+          <option value="pendente">Pendente</option>
+          <option value="recebido">Já recebido</option>
+        </select>
+      </div>
+      <div id="nr-data-receb-wrap" style="display:none">
+        <label>Data de recebimento</label>
+        <input id="nr-data-receb" type="date" value="${new Date().toISOString().slice(0,10)}">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaParcelaReceber(${cardId})">Salvar</button>
+    </div>`,
+  ()=>{
+    document.getElementById('nr-status').addEventListener('change',function(){
+      document.getElementById('nr-data-receb-wrap').style.display = this.value==='recebido'?'':'none';
+    });
+  });
+}
+
+function toggleNrVenc(){
+  const fixo = document.getElementById('nr-tipo').value==='fixo';
+  document.getElementById('nr-venc-fixo').style.display = fixo?'':'none';
+  document.getElementById('nr-venc-cond').style.display = fixo?'none':'';
+}
+
+async function salvarNovaParcelaReceber(cardId){
+  const desc  = document.getElementById('nr-desc').value.trim();
+  const valor = parseFloat(document.getElementById('nr-valor').value||0);
+  const tipo  = document.getElementById('nr-tipo').value;
+  const origem= document.getElementById('nr-origem').value;
+  const status= document.getElementById('nr-status').value;
+  if(!desc){ alert('Informe uma descrição.'); return; }
+  if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  let propostaId=null, osId=null;
+  if(origem.startsWith('proposta:')) propostaId=Number(origem.split(':')[1]);
+  else if(origem.startsWith('os:')) osId=Number(origem.split(':')[1]);
+  const novo = {
+    id: await proximoIdSeguro('financeiro_recebimentos', db.recebimentos),
+    cardId, propostaId, osId, descricao:desc, valor, tipo,
+    dataVencimento: tipo==='fixo' ? (document.getElementById('nr-data').value||null) : null,
+    condicao: tipo==='condicional' ? (document.getElementById('nr-cond').value.trim()||null) : null,
+    status,
+    dataRecebimento: status==='recebido' ? (document.getElementById('nr-data-receb').value||new Date().toISOString().slice(0,10)) : null,
+    criadoEm: new Date().toISOString()
+  };
+  db.recebimentos.push(novo);
+  save();
+  fecharModal();
+  abrirEditarCartao(cardId,'financeiro');
+}
+
+function editarParcelaReceber(id, cardId){
+  const r = db.recebimentos.find(x=>x.id===id);
+  if(!r) return;
+  const c = db.cards.find(x=>x.id===cardId);
+  const propostas = db.propostas.filter(p=>p.cardId===cardId && ['aprovada','concluida'].includes(p.status));
+  const osAvulsas = db.ordensServico.filter(o=>o.cardId===cardId && o.tipo==='avulsa');
+  const origemAtual = r.propostaId ? `proposta:${r.propostaId}` : r.osId ? `os:${r.osId}` : '';
+  const origemOptions = [
+    `<option value="" ${!origemAtual?'selected':''}>Sem vínculo específico</option>`,
+    ...propostas.map(p=>`<option value="proposta:${p.id}" ${origemAtual===`proposta:${p.id}`?'selected':''}>Proposta ${p.numero}${p.aditivo?' (Aditivo)':''} — ${fmtMoney(valorReceberProposta(p))} (a receber)</option>`),
+    ...osAvulsas.map(o=>`<option value="os:${o.id}" ${origemAtual===`os:${o.id}`?'selected':''}>OS ${o.numero} — ${o.titulo||'Avulsa'}</option>`)
+  ].join('');
+  abrirModal(`
+    <h3>Editar Parcela — Cartão #${c.num}</h3>
+    <div class="form-row">
+      <div>
+        <label>Descrição</label>
+        <input id="er-desc" value="${escHtml(r.descricao)}">
+      </div>
+      <div>
+        <label>Valor (R$)</label>
+        <input id="er-valor" type="number" min="0" step="0.01" value="${r.valor}">
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Origem / Vínculo</label>
+        <select id="er-origem">${origemOptions}</select>
+      </div>
+      <div>
+        <label>Tipo de vencimento</label>
+        <select id="er-tipo" onchange="toggleErVenc()">
+          <option value="fixo" ${r.tipo==='fixo'?'selected':''}>Data fixa</option>
+          <option value="condicional" ${r.tipo==='condicional'?'selected':''}>Condicional / Evento</option>
+        </select>
+      </div>
+    </div>
+    <div id="er-venc-fixo" class="form-row" style="${r.tipo==='condicional'?'display:none':''}">
+      <div>
+        <label>Data de vencimento</label>
+        <input id="er-data" type="date" value="${r.dataVencimento||''}">
+      </div>
+    </div>
+    <div id="er-venc-cond" class="form-row" style="${r.tipo==='fixo'?'display:none':''}">
+      <div>
+        <label>Condição de recebimento</label>
+        <input id="er-cond" value="${escHtml(r.condicao||'')}">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoParcelaReceber(${id},${cardId})">Salvar</button>
+    </div>`);
+}
+
+function toggleErVenc(){
+  const fixo = document.getElementById('er-tipo').value==='fixo';
+  document.getElementById('er-venc-fixo').style.display = fixo?'':'none';
+  document.getElementById('er-venc-cond').style.display = fixo?'none':'';
+}
+
+function salvarEdicaoParcelaReceber(id, cardId){
+  const r = db.recebimentos.find(x=>x.id===id);
+  if(!r) return;
+  const tipo   = document.getElementById('er-tipo').value;
+  const origem = document.getElementById('er-origem').value;
+  r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
+  r.valor     = parseFloat(document.getElementById('er-valor').value||r.valor);
+  r.tipo      = tipo;
+  if(origem.startsWith('proposta:')){ r.propostaId=Number(origem.split(':')[1]); r.osId=null; }
+  else if(origem.startsWith('os:')){ r.osId=Number(origem.split(':')[1]); r.propostaId=null; }
+  else { r.propostaId=null; r.osId=null; }
+  r.dataVencimento = tipo==='fixo' ? (document.getElementById('er-data').value||null) : null;
+  r.condicao       = tipo==='condicional' ? (document.getElementById('er-cond').value.trim()||null) : null;
+  save();
+  fecharModal();
+  abrirEditarCartao(cardId,'financeiro');
+}
+
+function marcarParcelaRecebida(id, cardId){
+  const r = db.recebimentos.find(x=>x.id===id);
+  if(!r) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  abrirModal(`
+    <h3>Confirmar Recebimento</h3>
+    <p style="margin-bottom:12px">Parcela: <b>${r.descricao}</b> — ${fmtMoney(r.valor)}</p>
+    <div class="form-row">
+      <div>
+        <label>Data de recebimento</label>
+        <input id="mr-data" type="date" value="${hoje}">
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px">Em breve: escolha a conta corrente para creditar este valor.</p>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarParcelaRecebida(${id},${cardId})">Confirmar</button>
+    </div>`);
+}
+
+function confirmarParcelaRecebida(id, cardId){
+  const r = db.recebimentos.find(x=>x.id===id);
+  if(!r) return;
+  r.status = 'recebido';
+  r.dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
+  save();
+  fecharModal();
+  abrirEditarCartao(cardId,'financeiro');
+}
+
+async function excluirParcelaReceber(id, cardId){
+  if(!confirm('Excluir esta parcela?')) return;
+  await excluirDoSupabase('financeiro_recebimentos', id);
+  db.recebimentos = db.recebimentos.filter(x=>x.id!==id);
+  save();
+  abrirEditarCartao(cardId,'financeiro');
 }
 
 function osItemHTML(os, c){
