@@ -5039,11 +5039,13 @@ function abrirVerOS(osId, cardId){
       ${os.fechada
         ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
         : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>
-           <button class="btn primary" onclick="salvarDadosOS(${os.id},${cardId})">Salvar alterações</button>`}
+           <button class="btn primary" id="btn-salvar-os-${os.id}" onclick="salvarDadosOS(${os.id},${cardId})">Salvar alterações</button>`}
     </div>`, 'cartao');
 }
 
 function salvarDadosOS(osId, cardId){
+  const btn = document.getElementById(`btn-salvar-os-${osId}`);
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
   os.faseId       = +document.getElementById('vos-fase').value;
   os.responsavelId = +document.getElementById('vos-resp').value || null;
@@ -5061,7 +5063,7 @@ function salvarDadosOS(osId, cardId){
     }
   }
   registrarLog('editar', 'os', osId, `O.S. atualizada: ${os.numero}`);
-  save(); renderAll(); abrirEditarCartao(cardId, 'os');
+  save(); renderAll(); abrirVerOSProjeto(osId, cardId, 'geral');
 }
 
 /* =============== OS EXECUÇÃO — modal com abas =============== */
@@ -5121,7 +5123,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
       <label style="margin-top:12px">Instruções para os técnicos</label>
       <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis}>${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>
       ${!os.fechada?`<div style="margin-top:12px;text-align:right">
-        <button class="btn primary" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>
+        <button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>
       </div>`:''}`;
   }
 
@@ -5300,6 +5302,8 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
 }
 
 function salvarDadosOSExec(osId, cardId){
+  const btn = document.getElementById(`btn-salvar-os-${osId}`);
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
   os.faseId     = +document.getElementById('exec-fase').value || os.faseId;
   os.faseObraId = +document.getElementById('exec-fase-obra').value || null;
@@ -5377,7 +5381,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
       </div>
       ${!os.fechada?`<div class="actions" style="justify-content:flex-end;padding-top:10px;margin-top:4px">
-        <button class="btn primary" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>
+        <button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>
       </div>`:''}`;
   }
   else if(aba === 'itens'){
@@ -5535,6 +5539,8 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
 }
 
 function salvarDadosOSAvulsa(osId, cardId){
+  const btn = document.getElementById(`btn-salvar-os-${osId}`);
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
   os.faseId          = +document.getElementById('avl-fase').value || os.faseId;
   os.responsavelId   = +document.getElementById('avl-resp').value || null;
