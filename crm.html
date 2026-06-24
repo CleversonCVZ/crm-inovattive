@@ -2931,7 +2931,7 @@ function renderFases(){
     tr.style.color = tc;
     tr.innerHTML = `
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
@@ -6954,7 +6954,7 @@ function renderPropFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
