@@ -919,6 +919,30 @@ async function enviarParaAgendaGoogle(tipo, id){
   if(btn) btn.innerHTML = '✅ Na agenda';
 }
 
+async function limparAgendaCartao(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  // Remove do Google Calendar silenciosamente se houver evento
+  if(c.googleEventId && usuarioAtual?.googleRefreshToken){
+    try{
+      await chamarEdgeFn('google-calendar', {userId: usuarioAtual.id, action:'delete', eventId: c.googleEventId});
+    }catch(e){ /* ignora erro — evento pode não existir mais no Google */ }
+    c.googleEventId = null;
+    await sb.from('cards').update({google_event_id: null}).eq('id', cardId);
+  }
+  // Limpa a data
+  c.agenda = '';
+  await sb.from('cards').update({agenda: null}).eq('id', cardId);
+  // Atualiza UI sem fechar o modal
+  const inp = document.getElementById('m-agenda');
+  if(inp) inp.value = '';
+  const btnGcal = document.getElementById(`btn-gcal-card-${cardId}`);
+  if(btnGcal){ btnGcal.disabled = true; btnGcal.innerHTML = '📅 Agenda'; }
+  const btnX = document.getElementById(`btn-limpar-agenda-${cardId}`);
+  if(btnX) btnX.style.display = 'none';
+  renderAll();
+}
+
 async function chamarEdgeFn(nome, payload){
   try{
     const {data:{session}} = await sb.auth.getSession();
@@ -3196,8 +3220,9 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
     <label>Responsável</label><input id="m-resp" value="${c?c.responsavel:(usuarioAtual?usuarioAtual.nome:'')}">
     <label>Agenda (próxima ação)</label>
     <div style="display:flex;gap:6px;align-items:center">
-      <input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}" style="flex:1" oninput="const b=document.getElementById('btn-gcal-card-${c?.id}');if(b){b.disabled=!this.value;if(this.value&&!b.classList.contains('gcal-sent'))b.innerHTML='📅 Agenda';}">
+      <input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}" style="flex:1" oninput="const b=document.getElementById('btn-gcal-card-${c?.id}');if(b){b.disabled=!this.value;if(this.value&&!b.classList.contains('gcal-sent'))b.innerHTML='📅 Agenda';} const x=document.getElementById('btn-limpar-agenda-${c?.id}');if(x)x.style.display=this.value?'':'none';">
       ${c && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-card-${c.id}" class="btn sm gcal-card-btn${c.googleEventId?' gcal-sent':''}" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" ${!c.agenda?'disabled':''} onclick="enviarParaAgendaGoogle('card',${c.id})">${c.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+      ${c ? `<button type="button" id="btn-limpar-agenda-${c.id}" title="Limpar data e remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px;display:${c.agenda?'':'none'}" onclick="limparAgendaCartao(${c.id})">✕</button>` : ''}
     </div>
     <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c?(c.valor||0):0}">
     <div class="flags">
