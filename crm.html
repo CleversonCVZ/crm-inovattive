@@ -1308,6 +1308,24 @@ function faseTipo(tipo){ return db.fases.find(f=>f.tipo===tipo); }
 function cardAtivo(c){ return !c.perdido && !c.concluido; }
 function saveLocal(){ localStorage.setItem('crmDB', JSON.stringify(db)); }
 function save(){ saveLocal(); syncConfigSupabase(); syncDadosSupabase(); }
+
+/* ── Utilitários de UX para botões de salvar ────────────────────────────────
+   Uso: const btn = btnModalPrimario(); btnSalvando(btn); ... btnRestaurar(btn);
+   Guarda o texto original em _textoOrig para não precisar passá-lo de volta. */
+function btnSalvando(btn, texto='Salvando…'){
+  if(!btn) return;
+  btn._textoOrig = btn.textContent;
+  btn.disabled   = true;
+  btn.textContent = texto;
+}
+function btnRestaurar(btn){
+  if(!btn) return;
+  btn.disabled    = false;
+  btn.textContent = btn._textoOrig || 'Salvar';
+}
+/* Atalhos para encontrar o botão principal dentro do modal aberto */
+function btnModalPrimario(){ return document.querySelector('.modal .btn.primary'); }
+function btnModalPerigo()  { return document.querySelector('.modal .btn.danger');  }
 function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:cidade||'',uf:''}; }
 
 /* Busca as entidades de configuração no Supabase (após login) e
@@ -1666,6 +1684,19 @@ async function sincronizarHistoricos(){
       if(errIns) console.error('Erro ao gravar card_historico:', errIns);
     }
   }catch(e){ console.error('Falha ao sincronizar card_historico:', e); }
+}
+
+/* Sincroniza o histórico de UM card específico — versão granular de
+   sincronizarHistoricos() usada pelas funções de save com await real. */
+async function sincronizarHistoricoCard(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  const {error:errDel} = await sb.from('card_historico').delete().eq('card_id', cardId);
+  if(errDel) throw errDel;
+  const rows = (c?.historico||[]).map(h=>({card_id:cardId, data:h.data||null, texto:h.texto}));
+  if(rows.length){
+    const {error:errIns} = await sb.from('card_historico').insert(rows);
+    if(errIns) throw errIns;
+  }
 }
 
 /* Substitui no Supabase os itens (proposta_itens) de cada proposta pelo array
@@ -2626,21 +2657,27 @@ async function salvarMeuUsuario(){
   const senha=document.getElementById('mu-senha').value;
   if(!nome || !login){ alert('Informe nome e login.'); return; }
   if(db.usuarios.some(x=>x.login.toLowerCase()===login.toLowerCase() && x.id!==usuarioAtual.id)){ alert('Já existe um usuário com esse login.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
   if(senha){
     const {error} = await sb.auth.updateUser({password:senha});
-    if(error){ alert('Erro ao atualizar senha: '+error.message); return; }
+    if(error){ btnRestaurar(btn); alert('Erro ao atualizar senha: '+error.message); return; }
   }
   const u=db.usuarios.find(x=>x.id===usuarioAtual.id);
   const nomeAntes=u.nome, loginAntes=u.login;
   u.nome=nome; u.login=login;
   const {error:erroUpd} = await sb.from('usuarios').update({nome, login}).eq('id', u.id);
-  if(erroUpd){ alert('Erro ao salvar dados: '+erroUpd.message); return; }
+  if(erroUpd){ btnRestaurar(btn); alert('Erro ao salvar dados: '+erroUpd.message); return; }
+
   const mudancas=[];
   if(nomeAntes!==nome) mudancas.push(`nome: "${nomeAntes}" → "${nome}"`);
   if(loginAntes!==login) mudancas.push(`login: "${loginAntes}" → "${login}"`);
   if(senha) mudancas.push('senha alterada');
   registrarLog('editar','usuario',u.id,`Próprios dados atualizados${mudancas.length?': '+mudancas.join('; '):''}`);
-  save(); fecharModal(); iniciarApp(u);
+  saveLocal();
+  fecharModal(); iniciarApp(u);
   if(senha) alert('Senha atualizada com sucesso.');
 }
 
@@ -3525,11 +3562,12 @@ function abrirModalPerdido(cardId){
     </div>`);
 }
 
-function confirmarPerdido(cardId){
+async function confirmarPerdido(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   if(!c) return;
   const faseId = +document.getElementById('mp-fase').value;
   const fpPerdida = fasePropTipo('perdida');
+  const propostasMarcadas = [];
   let propsMarcadas = 0;
   document.querySelectorAll('input[name="prop-perd"]:checked').forEach(cb=>{
     const p = db.propostas.find(x=>x.id===+cb.value);
@@ -3537,6 +3575,7 @@ function confirmarPerdido(cardId){
       p.faseAnterior = p.faseId;
       p.faseId = fpPerdida.id;
       registrarLog('marcar_perdida','proposta',p.id,`Proposta marcada como perdida ao registrar perda do cartão #${c.num}: ${p.numero}`);
+      propostasMarcadas.push(p);
       propsMarcadas++;
     }
   });
@@ -3545,7 +3584,35 @@ function confirmarPerdido(cardId){
   c.faseId    = faseId;
   const fNome = fase(faseId)?.nome||'?';
   registrarLog('marcar_perdida','card',cardId,`Cartão #${c.num} marcado como perdido. Fase: "${fNome}". ${propsMarcadas} proposta(s) marcada(s) como perdida(s).`);
-  save(); fecharModal(); renderAll();
+
+  const btn = btnModalPerigo();
+  btnSalvando(btn, 'Salvando…');
+  try{
+    const {error:errCard} = await sb.from('cards').upsert({
+      id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null,
+      origem_id:Number(c.origemId)||null, fase_id:Number(c.faseId)||null,
+      responsavel:c.responsavel||'', agenda:c.agenda||null,
+      valor:c.valor||0, perdido:true, concluido:false
+    });
+    if(errCard) throw errCard;
+    for(const p of propostasMarcadas){
+      const {error:errP} = await sb.from('propostas').upsert({
+        id:p.id, numero:p.numero, card_id:Number(p.cardId)||null,
+        cliente_id:Number(p.clienteId)||null, obra_id:Number(p.obraId)||null,
+        data_emissao:toISO(p.dataEmissao), valor:p.valor||0,
+        validade_dias:Number(p.validadeDias)||0, fase_id:Number(p.faseId)||null,
+        status:p.status, aditivo:!!p.aditivo,
+        data_aprovacao:toISO(p.dataAprovacao), fase_anterior:Number(p.faseAnterior)||null
+      });
+      if(errP) throw errP;
+    }
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao salvar: '+(e.message||e));
+    return;
+  }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
 }
 
 function abrirNovoCartao(faseIdInicial){
@@ -3617,7 +3684,34 @@ async function salvarNovoCartao(){
   if(box.classList.contains('open'))
     registrarLog('criar', 'cliente', clienteId, `Novo cliente criado: "${db.clientes.find(c=>c.id===clienteId).nome}" (junto com novo CRM)`);
   registrarLog('criar', 'card', novo.id, `Novo CRM #${novo.num} — ${db.clientes.find(c=>c.id===clienteId).nome}`);
-  save(); fecharModal(); renderAll();
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  try{
+    if(box.classList.contains('open')){
+      const cli = db.clientes.find(x=>x.id===clienteId);
+      const {error:errCli} = await sb.from('clientes').upsert({
+        id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
+        cidade:cli.cidade||'', endereco:cli.endereco||{}
+      });
+      if(errCli) throw errCli;
+    }
+    const {error:errCard} = await sb.from('cards').upsert({
+      id:novo.id, num:novo.num, cliente_id:Number(novo.clienteId)||null,
+      obra_id:Number(novo.obraId)||null, origem_id:Number(novo.origemId)||null,
+      fase_id:Number(novo.faseId)||null, responsavel:novo.responsavel||'',
+      agenda:novo.agenda||null, valor:novo.valor||0,
+      perdido:!!novo.perdido, concluido:!!novo.concluido
+    });
+    if(errCard) throw errCard;
+    await sincronizarHistoricoCard(novo.id);
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao salvar: '+(e.message||e));
+    return;
+  }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
 }
 
 function abrirEditarCartao(id, aba='dados'){
@@ -8463,7 +8557,7 @@ function renderPropostas(){
   if(!lista.length) tb.innerHTML='<tr><td colspan="10" class="empty">Nenhuma proposta encontrada.</td></tr>';
 }
 
-function salvarEdicaoCartao(id){
+async function salvarEdicaoCartao(id){
   const c=db.cards.find(x=>x.id===id);
   c.clienteId=+document.getElementById('m-cliente').value;
   c.obraId=+document.getElementById('m-obra').value||null;
@@ -8476,7 +8570,26 @@ function salvarEdicaoCartao(id){
   c.perdido=document.getElementById('m-perdido').checked;
   c.concluido=document.getElementById('m-concluido').checked;
   registrarLog('editar', 'card', id, `CRM #${c.num} editado — ${cliente(c.clienteId).nome}`);
-  save(); fecharModal(); renderAll();
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  try{
+    const {error} = await sb.from('cards').upsert({
+      id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null,
+      obra_id:Number(c.obraId)||null, origem_id:Number(c.origemId)||null,
+      fase_id:Number(c.faseId)||null, responsavel:c.responsavel||'',
+      agenda:c.agenda||null, valor:c.valor||0,
+      perdido:!!c.perdido, concluido:!!c.concluido
+    });
+    if(error) throw error;
+    await sincronizarHistoricoCard(id);
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao salvar: '+(e.message||e));
+    return;
+  }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
 }
 
 async function excluirCartao(id){
@@ -8488,6 +8601,8 @@ async function excluirCartao(id){
   if(oss.length) partes.push(`${oss.length} O.S.`);
   const aviso = partes.length ? `Este cartão tem ${partes.join(' e ')}, que serão excluídas junto. Continuar?` : 'Excluir este cartão?';
   if(!confirm(aviso)) return;
+  const btnExc = btnModalPerigo();
+  btnSalvando(btnExc, 'Excluindo…');
   registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   for(const os of oss){
@@ -8508,7 +8623,7 @@ async function excluirCartao(id){
   db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
   db.propostas=db.propostas.filter(p=>p.cardId!==id);
   db.cards=db.cards.filter(x=>x.id!==id);
-  save(); fecharModal(); renderAll();
+  saveLocal(); fecharModal(); renderAll();
 }
 
 /* ---- Endereço da obra + busca por CEP (ViaCEP) ---- */
@@ -8596,15 +8711,31 @@ async function salvarNovoCliente(){
   if(!nome){ alert('Informe o nome.'); return; }
   const end=lerEndereco();
   const clienteId = await proximoIdSeguro('clientes', db.clientes);
-  db.clientes.push({
+  const cli = {
     id:clienteId, nome,
     tel:document.getElementById('m-tel').value,
     email:document.getElementById('m-email').value,
     cidade:end.cidade,
     endereco:end
-  });
+  };
+  db.clientes.push(cli);
   registrarLog('criar','cliente',clienteId,`Cliente criado: ${nome}`);
-  save(); fecharModal(); renderAll();
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  try{
+    const {error} = await sb.from('clientes').upsert({
+      id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
+      cidade:cli.cidade||'', endereco:cli.endereco||{}
+    });
+    if(error) throw error;
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao salvar: '+(e.message||e));
+    return;
+  }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
 }
 
 function obrasDoClienteHTML(c){
@@ -8856,6 +8987,8 @@ async function excluirCliente(id){
   if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
   const qtdObras=db.obras.filter(o=>o.clienteId===id).length;
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
+  const btnExc = btnModalPerigo();
+  btnSalvando(btnExc, 'Excluindo…');
   registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
   const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
   // propostas vinculadas às obras e ao cliente
@@ -8883,7 +9016,7 @@ async function excluirCliente(id){
   db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
   db.obras=db.obras.filter(o=>o.clienteId!==id);
   db.clientes=db.clientes.filter(x=>x.id!==id);
-  save(); fecharModal(); renderAll();
+  saveLocal(); fecharModal(); renderAll();
 }
 
 /* ================= USUÁRIOS ================= */
@@ -8997,7 +9130,7 @@ async function salvarUsuario(id){
     if(me) iniciarApp(me);
   }
   registrarLog(id?'editar':'criar', 'usuario', id||db.usuarios.find(x=>x.login===login)?.id, id ? `Usuário editado: "${nome}" (login: ${login})` : `Novo usuário criado: "${nome}" (login: ${login})`);
-  save(); fecharModal(); renderAll();
+  saveLocal(); fecharModal(); renderAll();
   if(!id) alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
 }
 
@@ -9008,11 +9141,13 @@ async function excluirUsuario(id){
     alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
   }
   if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
+  const btnExc = btnModalPerigo();
+  btnSalvando(btnExc, 'Excluindo…');
   const res = await chamarAdminUsuarios({acao:'excluir', id});
-  if(res.error){ alert(res.error); return; }
+  if(res.error){ btnRestaurar(btnExc); alert(res.error); return; }
   registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
   await carregarUsuariosSupabase();
-  save(); fecharModal(); renderAll();
+  saveLocal(); fecharModal(); renderAll();
 }
 
 /* ================= GRUPOS DE ACESSO ================= */
