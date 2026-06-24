@@ -105,13 +105,14 @@
   .overlay.open{display:flex}
   .modal{background:#fff;border-radius:12px;padding:22px;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto}
   .modal.wide{width:820px}
-  .modal.cartao{width:920px;height:min(660px,90vh);display:flex;flex-direction:column}
-  .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
+  .modal.cartao{width:920px;max-height:92vh;display:flex;flex-direction:column}
+  .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px;max-height:calc(92vh - 160px)}
   .rodape-cartao{flex-shrink:0;border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
   .dados-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
   .dados-grid .col-hist .hist{height:320px}
   @media (max-width:1000px){
-    .modal.cartao{width:600px;height:min(720px,90vh)}
+    .modal.cartao{width:600px}
+    .modal.cartao .aba-corpo{max-height:calc(92vh - 180px)}
     .dados-grid{grid-template-columns:1fr}
     .dados-grid .col-hist .hist{height:280px}
   }
