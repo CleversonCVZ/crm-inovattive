@@ -618,7 +618,7 @@
       <h2>Configurações do Sistema</h2>
       <span id="emp-msg" style="font-size:13px;font-weight:600;color:var(--green)"></span>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="salvarEmpresa()">Salvar Configurações</button>
+      <button id="btn-salvar-empresa" class="btn primary" onclick="salvarEmpresa()">Salvar Configurações</button>
     </div>
     <div class="config-grid">
       <div class="config-card">
@@ -2435,6 +2435,8 @@ function renderGerais(){
 }
 
 function salvarEmpresa(){
+  const btn = document.getElementById('btn-salvar-empresa');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const e = db.empresa;
   e.razao = document.getElementById('emp-razao').value.trim();
   e.fantasia = document.getElementById('emp-fantasia').value.trim();
@@ -2448,7 +2450,10 @@ function salvarEmpresa(){
   save(); atualizarMarca();
   const msg=document.getElementById('emp-msg');
   msg.textContent='✓ Configurações salvas';
-  setTimeout(()=>{ msg.textContent=''; }, 3000);
+  setTimeout(()=>{
+    if(btn){ btn.disabled=false; btn.textContent='Salvar Configurações'; }
+    setTimeout(()=>{ msg.textContent=''; }, 2000);
+  }, 600);
 }
 
 function carregarLogo(input){
@@ -6370,17 +6375,20 @@ function editarLegendaImagemDiario(osId, diaId, imgIdx, cardId){
     <input id="leg-edit-txt" type="text" value="${(img.descricao||'').replace(/"/g,'&quot;')}" placeholder="Descreva a imagem..." style="width:100%;margin-bottom:20px">
     <div class="actions">
       <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'diario')">Cancelar</button>
-      <button class="btn primary" onclick="salvarLegendaImagemDiario(${osId},${diaId},${imgIdx},${cardId})">Salvar</button>
+      <button id="btn-salvar-legenda" class="btn primary" onclick="salvarLegendaImagemDiario(${osId},${diaId},${imgIdx},${cardId})">Salvar</button>
     </div>`);
 }
 
 async function salvarLegendaImagemDiario(osId, diaId, imgIdx, cardId){
+  const btn = document.getElementById('btn-salvar-legenda');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const leg = (document.getElementById('leg-edit-txt')?.value||'').trim();
   const os  = db.ordensServico.find(x=>x.id===osId);
   const d   = (os.diario||[]).find(x=>x.id===diaId);
   d.imagens[imgIdx].descricao = leg;
   await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
-  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+  save();
+  setTimeout(()=>{ abrirVerOSExecucao(osId, cardId, 'diario'); }, 400);
 }
 
 function adicionarPendOSExec(osId, cardId){
@@ -6414,18 +6422,21 @@ function editarPendOSExec(osId, idx, cardId){
     </div>
     <div class="actions">
       <button class="btn neutral" onclick="abrirVerOSExecucao(${osId},${cardId},'pendencias')">Cancelar</button>
-      <button class="btn primary" onclick="salvarEdicaoPendOSExec(${osId},${idx},${cardId})">Salvar</button>
+      <button id="btn-salvar-pend" class="btn primary" onclick="salvarEdicaoPendOSExec(${osId},${idx},${cardId})">Salvar</button>
     </div>`);
 }
 
 function salvarEdicaoPendOSExec(osId, idx, cardId){
+  const btn = document.getElementById('btn-salvar-pend');
   const texto = (document.getElementById('pend-edit-texto')?.value||'').trim();
   if(!texto){ alert('O texto não pode ficar vazio.'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const origem = document.querySelector('input[name="pend-edit-origem"]:checked')?.value||'empresa';
   const os = db.ordensServico.find(x=>x.id===osId);
   os.pendencias[idx].texto  = texto;
   os.pendencias[idx].origem = origem;
-  save(); abrirVerOSExecucao(osId, cardId, 'pendencias');
+  save();
+  setTimeout(()=>{ abrirVerOSExecucao(osId, cardId, 'pendencias'); }, 400);
 }
 
 function togglePendOSExec(osId, idx, valor, cardId){
@@ -6997,10 +7008,12 @@ function propostaEditHTML(p){
 }
 
 async function salvarEdicaoProposta(id){
+  const btnProp = document.getElementById('btn-salvar-proposta');
+  if(btnProp){ btnProp.disabled=true; btnProp.textContent='Salvando...'; }
   const p=db.propostas.find(x=>x.id===id);
   const numero=document.getElementById('pe-numero').value.trim();
-  if(!numero){ alert('Informe o número da proposta.'); return; }
-  if(db.propostas.some(x=>x.id!==id && x.numero.toLowerCase()===numero.toLowerCase())){ alert('Já existe uma proposta com esse número.'); return; }
+  if(!numero){ if(btnProp){ btnProp.disabled=false; btnProp.textContent='Salvar Proposta'; } alert('Informe o número da proposta.'); return; }
+  if(db.propostas.some(x=>x.id!==id && x.numero.toLowerCase()===numero.toLowerCase())){ if(btnProp){ btnProp.disabled=false; btnProp.textContent='Salvar Proposta'; } alert('Já existe uma proposta com esse número.'); return; }
   p.numero=numero;
   p.dataEmissao=document.getElementById('pe-data').value||p.dataEmissao;
   p.valor=+document.getElementById('pe-valor').value||0;
