@@ -1324,8 +1324,8 @@ function btnRestaurar(btn){
   btn.textContent = btn._textoOrig || 'Salvar';
 }
 /* Atalhos para encontrar o botão principal dentro do modal aberto */
-function btnModalPrimario(){ return document.querySelector('.modal .btn.primary'); }
-function btnModalPerigo()  { return document.querySelector('.modal .btn.danger');  }
+function btnModalPrimario(){ return document.querySelector('.modal [data-btn-salvar]'); }
+function btnModalPerigo()  { return document.querySelector('.modal [data-btn-perigo]');  }
 function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:cidade||'',uf:''}; }
 
 /* Busca as entidades de configuração no Supabase (após login) e
@@ -2648,7 +2648,7 @@ function abrirMeuUsuario(){
     <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Grupo: ${grupoDe(u).nome} · Função: ${u.funcao||'—'}<br>Para alterar grupo, função ou permissões, fale com um administrador.</p>
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarMeuUsuario()">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarMeuUsuario()">Salvar</button>
     </div>`);
 }
 async function salvarMeuUsuario(){
@@ -3560,7 +3560,7 @@ function abrirModalPerdido(cardId){
 
     <div class="actions" style="margin-top:20px">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'dados')">← Cancelar</button>
-      <button class="btn danger" onclick="confirmarPerdido(${cardId})">✖ Confirmar Perda</button>
+      <button class="btn danger" data-btn-perigo onclick="confirmarPerdido(${cardId})">✖ Confirmar Perda</button>
     </div>`);
 }
 
@@ -3637,7 +3637,7 @@ function abrirNovoCartao(faseIdInicial){
     ${camposCartao(null, f, primeiroCliente)}
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarNovoCartao()">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovoCartao()">Salvar</button>
     </div>`);
   wireValidacao();
 }
@@ -3765,9 +3765,9 @@ function abrirEditarCartao(id, aba='dados'){
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
-      <button class="btn danger" onclick="excluirCartao(${c.id})">Excluir</button>
+      <button class="btn danger" data-btn-perigo onclick="excluirCartao(${c.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      <button class="btn primary" onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
+      <button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
     </div>`, 'cartao');
   if(aba==='dados') wireValidacao(c.id);
 }
@@ -8716,7 +8716,7 @@ function abrirNovoCliente(){
     <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Depois de salvar, abra o cliente para cadastrar as obras dele (cada obra com endereço próprio).</p>
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarNovoCliente()">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovoCliente()">Salvar</button>
     </div>`);
 }
 async function salvarNovoCliente(){
@@ -8775,7 +8775,7 @@ function abrirEditarCliente(id){
     ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
     ${obrasDoClienteHTML(c)}
     <div class="actions">
-      <button class="btn danger" onclick="excluirCliente(${c.id})">Excluir</button>
+      <button class="btn danger" data-btn-perigo onclick="excluirCliente(${c.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" onclick="salvarEdicaoCliente(${c.id})">Salvar</button>
     </div>`);
@@ -9084,7 +9084,7 @@ function abrirNovoUsuario(){
   abrirModal(`<h3>Novo Usuário</h3>${formUsuario(null)}
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" id="u-btn-salvar" onclick="salvarUsuario()">Salvar</button>
+      <button class="btn primary" data-btn-salvar id="u-btn-salvar" onclick="salvarUsuario()">Salvar</button>
     </div>`);
 }
 
@@ -9103,9 +9103,9 @@ function abrirEditarUsuario(id){
       }
     </div>
     <div class="actions">
-      <button class="btn danger" onclick="excluirUsuario(${u.id})">Excluir</button>
+      <button class="btn danger" data-btn-perigo onclick="excluirUsuario(${u.id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" id="u-btn-salvar" onclick="salvarUsuario(${u.id})">Salvar</button>
+      <button class="btn primary" data-btn-salvar id="u-btn-salvar" onclick="salvarUsuario(${u.id})">Salvar</button>
     </div>`);
 }
 
