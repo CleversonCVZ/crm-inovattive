@@ -1147,7 +1147,8 @@ const RECURSOS = [
   {id:'obra-senhas',        grupo:'obras', nome:'Aba Obras — Senhas'},
   {id:'obra-compras',       grupo:'obras', nome:'Aba Obras — Compras'},
   {id:'obra-custo-mo',      grupo:'obras', nome:'Aba Obras — Custo M.Obra'},
-  {id:'obra-outros-custos', grupo:'obras', nome:'Aba Obras — Outros Custos'},
+  {id:'obra-outros-custos',    grupo:'obras', nome:'Aba Obras — Outros Custos'},
+  {id:'obra-resultado-aparente', grupo:'obras', nome:'Aba Obras — Resultado Aparente'},
   // ── Downloads
   {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'}
 ];
@@ -3669,7 +3670,8 @@ function abaObrasCartaoHTML(c, abaAtiva){
     {id:'senhas',       recurso:'obra-senhas',         icon:'🔑', label:'Equipamentos & Senhas'},
     {id:'compras',      recurso:'obra-compras',        icon:'🛒', label:'Compras'},
     {id:'custoMobra',   recurso:'obra-custo-mo',       icon:'👷', label:'Custo M.Obra'},
-    {id:'outrosCustos', recurso:'obra-outros-custos',  icon:'💰', label:'Outros Custos'},
+    {id:'outrosCustos',       recurso:'obra-outros-custos',        icon:'💰', label:'Outros Custos'},
+    {id:'resultadoAparente',  recurso:'obra-resultado-aparente',   icon:'📊', label:'Resultado Aparente'},
   ];
   const navItens = todoNavItens.filter(n=>podeUsar(usuarioAtual, n.recurso));
   if(!navItens.length) return '<div class="empty">Sem permissão para acessar sub-itens desta obra.</div>';
@@ -3718,7 +3720,8 @@ function abaObraConteudo(c, ob, aba){
   if(aba==='senhas')      return abaObraSenhas(c, ob);
   if(aba==='compras')     return abaObraCompras(c, ob);
   if(aba==='custoMobra')  return abaObraCustoMobra(c, ob);
-  if(aba==='outrosCustos') return abaObraOutrosCustos(c, ob);
+  if(aba==='outrosCustos')      return abaObraOutrosCustos(c, ob);
+  if(aba==='resultadoAparente') return abaObraResultadoAparente(c, ob);
   return '';
 }
 
@@ -4374,6 +4377,14 @@ async function excluirCategoriaCusto(id){
   await sb.from('categorias_outros_custos').delete().eq('id',id);
   db.catOutrosCustos = (db.catOutrosCustos||[]).filter(c=>c.id!==id);
   renderCatOutrosCustos();
+}
+
+function abaObraResultadoAparente(c, ob){
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">📊 Resultado Aparente da Obra</div>
+    <div class="empty" style="padding:40px;text-align:center;color:var(--muted)">
+      Em construção — em breve esta seção exibirá o resultado financeiro consolidado da obra.
+    </div>`;
 }
 
 function abaObraOutrosCustos(c, ob, editandoId=null){
