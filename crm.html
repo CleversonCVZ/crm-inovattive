@@ -10302,6 +10302,8 @@ function abrirNovoGrupo(){
   window._grupoFormId = null;
   document.getElementById('grupo-form-titulo').textContent = 'Novo Grupo';
   document.getElementById('grupo-form-btn-excluir').style.display = 'none';
+  btnRestaurar(document.getElementById('btn-salvar-grupo'));
+  btnRestaurar(document.getElementById('grupo-form-btn-excluir'));
   document.getElementById('grupo-form-body').innerHTML = formGrupo(null);
   ativarView('grupo-form');
 }
@@ -10312,6 +10314,8 @@ function abrirEditarGrupo(id){
   document.getElementById('grupo-form-titulo').textContent = 'Grupo — ' + g.nome;
   document.getElementById('grupo-form-btn-excluir').style.display = g.admin ? 'none' : '';
   document.getElementById('grupo-form-btn-excluir').setAttribute('onclick', `excluirGrupoForm()`);
+  btnRestaurar(document.getElementById('btn-salvar-grupo'));
+  btnRestaurar(document.getElementById('grupo-form-btn-excluir'));
   document.getElementById('grupo-form-body').innerHTML = formGrupo(g);
   ativarView('grupo-form');
 }
