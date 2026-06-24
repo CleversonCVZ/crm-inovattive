@@ -32,6 +32,7 @@
   .sidebar:hover button .lbl{opacity:1}
   .sidebar button:hover{background:rgba(255,255,255,.10)}
   .sidebar button.ativo{color:#fff;background:var(--green);border-left-color:#fff}
+  .sidebar-sep{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);margin-bottom:4px}
   .conteudo{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
   nav{background:#fff;border-bottom:1px solid var(--border);padding:0 20px;display:flex;gap:4px;flex-shrink:0}
@@ -319,7 +320,6 @@
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
       <hr>
-      <button id="gm-downloads" onclick="irParaView('downloads')">📥 Downloads</button>
       <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
   </div>
@@ -3001,7 +3001,7 @@ function aplicarPermissoes(){
     if(primeira) ativarView(primeira);
   }
   // itens do menu engrenagem conforme o grupo
-  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria'};
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-auditoria':'auditoria'};
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
@@ -3025,11 +3025,14 @@ function ativarView(viewId){
   if(viewId==='auditoria') carregarLogs();
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
+  if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
 
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
+
+  // Módulos principais
   MODULOS.filter(m=>m.telas.some(t=>podeVer(usuarioAtual,t))).forEach(m=>{
     const b=document.createElement('button');
     b.className = m.id===moduloAtivo ? 'ativo' : '';
@@ -3038,6 +3041,21 @@ function renderSidebar(){
     b.onclick = ()=> mudarModulo(m.id);
     sb.appendChild(b);
   });
+
+  // Downloads — separado no fundo, acesso direto sem sub-menu
+  if(podeVer(usuarioAtual, 'downloads')){
+    const sep = document.createElement('div');
+    sep.className = 'sidebar-sep';
+    sb.appendChild(sep);
+
+    const viewAtualDownloads = document.querySelector('.view.active')?.id === 'view-downloads';
+    const bd = document.createElement('button');
+    bd.className = viewAtualDownloads ? 'ativo' : '';
+    bd.title = 'Downloads';
+    bd.innerHTML = `<span class="ic">📥</span><span class="lbl">Downloads</span>`;
+    bd.onclick = ()=> irParaView('downloads');
+    sb.appendChild(bd);
+  }
 }
 
 function renderNavTelas(){
