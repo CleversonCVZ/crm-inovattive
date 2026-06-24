@@ -2931,12 +2931,12 @@ function renderFases(){
     tr.style.color = tc;
     tr.innerHTML = `
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${f.tipo?'disabled title="Fase de sistema — não pode ser renomeada"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
       <td>
-        <label class="cor-chip" title="${f.tipo?'Fase de sistema — cor não pode ser alterada':'Clique para escolher outra cor'}" ${f.tipo?'style="opacity:.45;pointer-events:none"':''}>
+        <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${f.tipo?'disabled':''}">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
         </label>
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
@@ -2948,7 +2948,7 @@ function renderFases(){
     inp.onchange = ()=>{
       const f = fase(+inp.dataset.id);
       if(!f) return;
-      if(f.tipo && inp.dataset.campo !== 'ordem'){ alert('⚠️ Fases de sistema não podem ser editadas.'); inp.value=f[inp.dataset.campo]; return; }
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
       if(inp.dataset.campo==='ordem') f.ordem = parseFloat(inp.value)||0;
       else f[inp.dataset.campo] = inp.value;
       registrarLog('editar', 'fase_crm', f.id, `Fase CRM editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
@@ -6954,12 +6954,12 @@ function renderPropFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${f.tipo?'disabled title="Fase de sistema — não pode ser renomeada"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
       <td>
-        <label class="cor-chip" title="${f.tipo?'Fase de sistema — cor não pode ser alterada':'Clique para escolher outra cor'}" ${f.tipo?'style="opacity:.45;pointer-events:none"':''}>
+        <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${f.tipo?'disabled':''}">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
         </label>
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
@@ -6971,7 +6971,7 @@ function renderPropFases(){
     inp.onchange=()=>{
       const f=faseProp(+inp.dataset.id);
       if(!f) return;
-      if(f.tipo && inp.dataset.campo !== 'ordem'){ alert('⚠️ Fases de sistema não podem ser editadas.'); inp.value=f[inp.dataset.campo]; return; }
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
       if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
       else f[inp.dataset.campo]=inp.value;
       registrarLog('editar', 'fase_proposta', f.id, `Fase da proposta editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
