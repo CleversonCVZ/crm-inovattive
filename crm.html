@@ -1081,6 +1081,7 @@ const RECURSOS = [
   {id:'aba-propostas',    grupo:'crm', nome:'Cartão CRM — abas de Propostas (emitidas/aprovada)'},
   {id:'aba-obras',        grupo:'crm', nome:'Cartão CRM — aba Obras'},
   {id:'aba-os',           grupo:'crm', nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
+  {id:'aba-financeiro',   grupo:'crm', nome:'Cartão CRM — aba Financeiro'},
   {id:'hist-card-editar', grupo:'crm', nome:'Cartão CRM — Histórico: Editar e Excluir registros'},
   {id:'hist-os-editar',   grupo:'crm', nome:'O.S. — Histórico: Editar e Excluir registros'},
   // ── Sub-itens da aba Obras
@@ -3551,10 +3552,11 @@ async function salvarNovoCartao(){
 
 function abrirEditarCartao(id, aba='dados'){
   // permissões por aba (grupo do usuário logado)
-  const verPropostas = podeUsar(usuarioAtual,'aba-propostas');
-  const verObras = podeUsar(usuarioAtual,'aba-obras');
-  const verOS = podeUsar(usuarioAtual,'aba-os');
-  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS)) aba='dados';
+  const verPropostas   = podeUsar(usuarioAtual,'aba-propostas');
+  const verObras       = podeUsar(usuarioAtual,'aba-obras');
+  const verOS          = podeUsar(usuarioAtual,'aba-os');
+  const verFinanceiro  = podeUsar(usuarioAtual,'aba-financeiro');
+  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS) || (aba==='financeiro' && !verFinanceiro)) aba='dados';
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
   if(c && !podeVerFase(c.faseId)){ alert('Sem permissão para acessar cartões nesta fase.'); return; }
@@ -3577,6 +3579,8 @@ function abrirEditarCartao(id, aba='dados'){
   else if(aba==='emitidas') corpo=abaPropostasHTML(c);
   else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
   else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
+  else if(aba==='os') corpo=abaOSCartaoHTML(c);
+  else if(aba==='financeiro') corpo=`<div class="empty" style="padding:40px;text-align:center;color:var(--muted)">💳 Módulo Financeiro<br><small style="font-size:12px;margin-top:8px;display:block">Em desenvolvimento. Em breve você poderá acompanhar recebimentos, pagamentos e fluxo de caixa por cartão.</small></div>`;
   else corpo=abaOSCartaoHTML(c);
   abrirModal(`
     <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
@@ -3587,6 +3591,7 @@ function abrirEditarCartao(id, aba='dados'){
       <button class="aba ${aba==='aprovada'?'ativa':''}" onclick="abrirEditarCartao(${id},'aprovada')">Proposta Aprovada${nAprov?' ✔':''}</button>`:''}
       ${verObras?`<button class="aba ${aba==='obras'?'ativa':''}" onclick="abrirEditarCartao(${id},'obras')">Obra</button>`:''}
       ${verOS?`<button class="aba ${aba==='os'?'ativa':''}" onclick="abrirEditarCartao(${id},'os')">O.S.${nOS?' ('+nOS+')':''}</button>`:''}
+      ${verFinanceiro?`<button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarCartao(${id},'financeiro')">Financeiro</button>`:''}
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
