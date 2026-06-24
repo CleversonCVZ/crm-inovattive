@@ -3049,8 +3049,8 @@ function classificarCliente(clienteId){
   if(cardsAbertos.length === 0 && temObra && temAprovada)
     return {selo:'🟢 Cliente', cor:'#1a7a4a'};
 
-  // Regra 3: Prospect — card aberto + proposta emitida + nenhuma aprovada
-  if(cardsAbertos.length > 0 && temEmitida && !temAprovada)
+  // Regra 3: Prospect — card aberto + sem proposta aprovada (com ou sem emitida)
+  if(cardsAbertos.length > 0 && !temAprovada)
     return {selo:'🟡 Prospect', cor:'#b7950b'};
 
   // Regra 4: Lead Frio — tem card perdido + sem proposta aprovada + sem obra
