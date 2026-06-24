@@ -2931,22 +2931,24 @@ function renderFases(){
     tr.style.color = tc;
     tr.innerHTML = `
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${f.tipo?'disabled title="Fase de sistema — não pode ser renomeada"':''}></td>
       <td>
-        <label class="cor-chip" title="Clique para escolher outra cor">
+        <label class="cor-chip" title="${f.tipo?'Fase de sistema — cor não pode ser alterada':'Clique para escolher outra cor'}" ${f.tipo?'style="opacity:.45;pointer-events:none"':''}>
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${f.tipo?'disabled':''}">
         </label>
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
       <td>${qtd}${arq?` <small>(+${arq} arquivado${arq>1?'s':''})</small>`:''}</td>
-      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — usada pelos marcadores Perdido/Concluído">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange = ()=>{
       const f = fase(+inp.dataset.id);
+      if(!f) return;
+      if(f.tipo && inp.dataset.campo !== 'ordem'){ alert('⚠️ Fases de sistema não podem ser editadas.'); inp.value=f[inp.dataset.campo]; return; }
       if(inp.dataset.campo==='ordem') f.ordem = parseFloat(inp.value)||0;
       else f[inp.dataset.campo] = inp.value;
       registrarLog('editar', 'fase_crm', f.id, `Fase CRM editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
@@ -6952,22 +6954,24 @@ function renderPropFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${f.tipo?'disabled title="Fase de sistema — não pode ser renomeada"':''}></td>
       <td>
-        <label class="cor-chip" title="Clique para escolher outra cor">
+        <label class="cor-chip" title="${f.tipo?'Fase de sistema — cor não pode ser alterada':'Clique para escolher outra cor'}" ${f.tipo?'style="opacity:.45;pointer-events:none"':''}>
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${f.tipo?'disabled':''}">
         </label>
       </td>
       <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — usada na aprovação">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange=()=>{
       const f=faseProp(+inp.dataset.id);
+      if(!f) return;
+      if(f.tipo && inp.dataset.campo !== 'ordem'){ alert('⚠️ Fases de sistema não podem ser editadas.'); inp.value=f[inp.dataset.campo]; return; }
       if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
       else f[inp.dataset.campo]=inp.value;
       registrarLog('editar', 'fase_proposta', f.id, `Fase da proposta editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
