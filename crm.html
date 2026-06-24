@@ -833,7 +833,7 @@
       <h2 id="grupo-form-titulo" style="margin-left:12px">Grupo</h2>
       <div class="spacer"></div>
       <button class="btn danger" id="grupo-form-btn-excluir" style="display:none" onclick="excluirGrupoForm()">Excluir</button>
-      <button class="btn primary" onclick="salvarGrupo(window._grupoFormId||undefined)">Salvar</button>
+      <button class="btn primary" id="btn-salvar-grupo" onclick="salvarGrupo(window._grupoFormId||undefined)">Salvar</button>
     </div>
     <div id="grupo-form-body" style="padding:0 4px"></div>
   </div>
@@ -10324,6 +10324,8 @@ async function salvarGrupo(id){
   const nome=document.getElementById('g-nome').value.trim();
   if(!nome){ alert('Informe o nome do grupo.'); return; }
   if(db.grupos.some(g=>g.nome.toLowerCase()===nome.toLowerCase() && g.id!==id)){ alert('Já existe um grupo com esse nome.'); return; }
+  const btn=document.getElementById('btn-salvar-grupo');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
   const telas=[...document.querySelectorAll('.ck-gtela:checked')].map(c=>c.value);
   const recursos=[...document.querySelectorAll('.ck-grec:checked')].map(c=>c.value);
   const restringirFases = document.getElementById('ck-restringir-fases')?.checked || false;
@@ -10339,8 +10341,8 @@ async function salvarGrupo(id){
     db.grupos.push(ng);
     registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
-  save();
-  if(usuarioAtual) aplicarPermissoes(); // permissões podem ter mudado para o próprio usuário
+  await save();
+  if(usuarioAtual) aplicarPermissoes();
   renderAll();
   ativarView('grupos');
 }
