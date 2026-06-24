@@ -4793,8 +4793,8 @@ async function salvarNovaOS(cardId){
     dataAgend:ai,
     dataInicio:'', dataTermino:'',
     fechada: false,
-    descricaoChamado: tipo==='avulsa'    && histTexto ? histTexto : '',
-    instrucoes:       tipo==='execucao'  && histTexto ? histTexto : '',
+    descricaoChamado: tipo==='avulsa'   ? [titulo, histTexto].filter(Boolean).join('\n\n') : '',
+    instrucoes:       tipo==='execucao' ? [titulo, histTexto].filter(Boolean).join('\n\n') : '',
     historico: histTexto ? [{data:agoraISO(), texto:histTexto}] : [],
     imagens: [], produtos: [],
     pendencias: pendSelecionadas.map(p=>({
