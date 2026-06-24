@@ -3185,8 +3185,8 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
     <label>Responsável</label><input id="m-resp" value="${c?c.responsavel:(usuarioAtual?usuarioAtual.nome:'')}">
     <label>Agenda (próxima ação)</label>
     <div style="display:flex;gap:6px;align-items:center">
-      <input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}" style="flex:1">
-      ${c?.agenda && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-card-${c.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('card',${c.id})">${c.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+      <input id="m-agenda" type="datetime-local" value="${c?(c.agenda||''):''}" style="flex:1" oninput="const b=document.getElementById('btn-gcal-card-${c?.id}');if(b){b.disabled=!this.value;if(this.value&&!b.classList.contains('gcal-sent'))b.innerHTML='📅 Agenda';}">
+      ${c && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-card-${c.id}" class="btn sm gcal-card-btn${c.googleEventId?' gcal-sent':''}" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" ${!c.agenda?'disabled':''} onclick="enviarParaAgendaGoogle('card',${c.id})">${c.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
     </div>
     <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c?(c.valor||0):0}">
     <div class="flags">
