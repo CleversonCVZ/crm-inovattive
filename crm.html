@@ -658,7 +658,10 @@
       <button class="btn sm neutral" onclick="carregarLogs()">↺ Atualizar</button>
     </div>
     <div class="audit-filtros">
-      <input id="audit-busca" type="text" placeholder="Buscar por usuário, entidade ou descrição..." style="min-width:280px" oninput="filtrarAuditoria()">
+      <div class="search" style="min-width:280px;max-width:280px">
+        <input id="audit-busca" type="text" placeholder="Buscar por usuário, entidade ou descrição..." oninput="filtrarAuditoria();document.getElementById('audit-busca-clear').style.display=this.value?'block':'none';">
+        <button class="search-clear" id="audit-busca-clear" title="Limpar busca" onclick="document.getElementById('audit-busca').value='';this.style.display='none';filtrarAuditoria();">✕</button>
+      </div>
       <input id="audit-de" type="date" onchange="filtrarAuditoria()" title="De">
       <span style="font-size:13px;color:var(--muted)">até</span>
       <input id="audit-ate" type="date" onchange="filtrarAuditoria()" title="Até">
