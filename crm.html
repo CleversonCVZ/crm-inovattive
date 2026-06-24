@@ -16,8 +16,9 @@
   header{background:#fff;border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0}
   .logo{font-weight:800;font-size:18px;color:var(--blue-dark)}
   .logo span{color:var(--green)}
-  .search{flex:1;max-width:480px}
-  .search input{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+  .search{flex:1;max-width:480px;position:relative}
+  .search input{width:100%;padding:8px 32px 8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;box-sizing:border-box}
+  .search-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#999;font-size:16px;line-height:1;display:none;padding:0}
   .user{font-size:13px;color:var(--muted);white-space:nowrap}
   .empresa-brand{margin-left:auto;display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;color:var(--text);white-space:nowrap}
   .empresa-brand img{height:34px}
@@ -305,7 +306,10 @@
 
 <header>
   <div class="logo" id="modulo-titulo">Módulo CRM</div>
-  <div class="search"><input id="busca" type="text" placeholder="Buscar cliente ou cartão..."></div>
+  <div class="search">
+    <input id="busca" type="text" placeholder="Buscar cliente ou cartão...">
+    <button class="search-clear" id="busca-clear" title="Limpar busca" onclick="document.getElementById('busca').value='';document.getElementById('busca-clear').style.display='none';renderAll();">✕</button>
+  </div>
   <div class="empresa-brand" id="empresa-brand"></div>
   <div class="gear-wrap" id="gear-wrap" style="display:none">
     <button class="gear-btn" title="Configurações" onclick="toggleGearMenu(event)">⚙️</button>
@@ -2755,7 +2759,7 @@ function mudarModulo(mid){
   if(primeira) ativarView(primeira);
 }
 
-document.getElementById('busca').oninput = ()=> renderAll();
+document.getElementById('busca').oninput = ()=>{ document.getElementById('busca-clear').style.display = document.getElementById('busca').value ? 'block' : 'none'; renderAll(); };
 function termoBusca(){ return document.getElementById('busca').value.trim().toLowerCase(); }
 
 function statusAgenda(iso){
