@@ -5880,13 +5880,50 @@ function abaFinanceiroCartaoHTML(c){
   const osAvulsas = db.ordensServico.filter(o=>o.cardId===c.id && o.tipo==='avulsa');
   const totalPendente = recebimentos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
   const totalRecebido = recebimentos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
+  const totalParcelado = recebimentos.reduce((s,r)=>s+r.valor,0);
   const hoje = new Date().toISOString().slice(0,10);
   const vencidas = recebimentos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
+
+  // valor de referência das propostas aprovadas (exclui clienteFornece)
+  const refProposta = propostas.reduce((s,p)=>s+valorReceberProposta(p),0);
+  const refOsAvulsa = osAvulsas.reduce((s,o)=>s+(o.valor||0),0);
+  const refTotal = refProposta + refOsAvulsa;
+  const saldoNaoParcelado = refTotal - totalParcelado;
 
   const origemOptions = [
     ...propostas.map(p=>`<option value="proposta:${p.id}">Proposta ${p.numero}${p.aditivo?' (Aditivo)':''} — ${fmtMoney(valorReceberProposta(p))} (a receber)</option>`),
     ...osAvulsas.map(o=>`<option value="os:${o.id}">OS ${o.numero} — ${o.titulo||'Avulsa'}</option>`)
   ].join('');
+
+  // bloco de referência: só exibe quando há proposta aprovada ou OS avulsa
+  const blocoReferencia = refTotal > 0 ? `
+    <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px">
+      <div style="font-weight:700;color:var(--muted);margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.4px">📋 Referência — Valor aprovado</div>
+      ${propostas.map(p=>`
+        <div style="display:flex;justify-content:space-between;padding:3px 0">
+          <span style="color:#374151">Proposta ${p.numero}${p.aditivo?' <span style="font-size:10px;background:#fff3cd;color:#9a6700;padding:0 4px;border-radius:3px">ADITIVO</span>':''}</span>
+          <span style="font-weight:600">${fmtMoney(valorReceberProposta(p))}</span>
+        </div>`).join('')}
+      ${osAvulsas.map(o=>`
+        <div style="display:flex;justify-content:space-between;padding:3px 0">
+          <span style="color:#374151">OS ${o.numero} — ${o.titulo||'Avulsa'}</span>
+          <span style="font-weight:600">${fmtMoney(o.valor||0)}</span>
+        </div>`).join('')}
+      <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700">
+        <span>Total de referência</span>
+        <span style="color:var(--primary)">${fmtMoney(refTotal)}</span>
+      </div>
+      ${saldoNaoParcelado > 0.01 ? `
+      <div style="margin-top:4px;display:flex;justify-content:space-between;font-size:11px;color:#b45309">
+        <span>⚠ Ainda não parcelado</span>
+        <span style="font-weight:600">${fmtMoney(saldoNaoParcelado)}</span>
+      </div>` : saldoNaoParcelado < -0.01 ? `
+      <div style="margin-top:4px;display:flex;justify-content:space-between;font-size:11px;color:#2e7d32">
+        <span>✔ Totalmente parcelado</span>
+        <span></span>
+      </div>` : `
+      <div style="margin-top:4px;font-size:11px;color:#2e7d32">✔ Totalmente parcelado</div>`}
+    </div>` : '';
 
   return `
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -5894,6 +5931,7 @@ function abaFinanceiroCartaoHTML(c){
       <div class="stat-pill" style="background:#e3f2fd;color:#1565c0">Recebido: <b>${fmtMoney(totalRecebido)||'R$ 0,00'}</b></div>
       ${vencidas.length?`<div class="stat-pill" style="background:#ffebee;color:#c62828">⚠ ${vencidas.length} vencida${vencidas.length>1?'s':''}</div>`:''}
     </div>
+    ${blocoReferencia}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <b style="font-size:13.5px">Parcelas a Receber</b>
       <button class="btn sm primary" onclick="abrirNovaParcelaReceber(${c.id})">＋ Nova Parcela</button>
