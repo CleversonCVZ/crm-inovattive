@@ -5534,10 +5534,215 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     </div>
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
-      ${os.fechada
-        ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>`
-        : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSAvulsa(${osId},'visualizar')">👁 Visualizar PDF</button>
+        <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSAvulsa(${osId},'download')">⬇ Exportar PDF</button>
+        ${os.fechada
+          ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>`
+          : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
+      </div>
     </div>`, 'cartao');
+}
+
+async function exportarPDFOSAvulsa(osId, modo='download'){
+  // Carregar jsPDF dinamicamente
+  if(!window.jspdf){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+  if(typeof window.jspdf?.jsPDF?.prototype?.autoTable === 'undefined'){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+
+  const os      = db.ordensServico.find(x=>x.id===osId);
+  const obra    = db.obras.find(x=>x.id===os?.obraId);
+  const cliente = db.clientes.find(x=>x.id===obra?.clienteId);
+  const resp    = db.usuarios.find(u=>u.id===os?.responsavelId);
+  const empresa = db.empresa||{};
+
+  const W = 210; const M = 15; const lineW = W - M*2;
+  const tipoAtendLabel = {garantia:'Garantia', cobrado:'Cobrado', a_definir:'A definir'};
+  const tipoAtendCor   = {garantia:[27,94,32],  cobrado:[123,31,162], a_definir:[121,85,52]};
+  const fmtDT = dt => dt ? new Date(dt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '—';
+  const fmtDate = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const labelColor = [120,120,120];
+
+  let y = M;
+
+  // ── CABEÇALHO ──────────────────────────────────────────────
+  doc.setFillColor(42,42,40);
+  doc.rect(0,0,W,30,'F');
+
+  // Logo se disponível
+  if(empresa.logo){
+    try{ doc.addImage(empresa.logo,'JPEG',M,5,18,18); } catch(e){}
+    doc.setFontSize(14); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M+22, 14);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M+22, 21);
+  } else {
+    doc.setFontSize(15); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M, 15);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M, 22);
+  }
+
+  // Número OS (topo direito)
+  doc.setFontSize(12); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+  doc.text(os.numero, W-M, 14, {align:'right'});
+  doc.setFontSize(8); doc.setFont(undefined,'normal');
+  doc.text('Ordem de Serviço Avulsa', W-M, 21, {align:'right'});
+
+  y = 38;
+
+  // ── TÍTULO ─────────────────────────────────────────────────
+  doc.setFontSize(14); doc.setTextColor(30,30,30); doc.setFont(undefined,'bold');
+  doc.text(os.titulo||'(sem título)', M, y);
+  y += 7;
+
+  // ── BADGES ────────────────────────────────────────────────
+  const tipoAtend = os.tipoAtendimento||'a_definir';
+  const cor = tipoAtendCor[tipoAtend];
+  doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.setFillColor(...cor);
+  doc.roundedRect(M, y-4, 26, 6, 1.5,1.5,'F');
+  doc.text(tipoAtendLabel[tipoAtend], M+13, y, {align:'center'});
+
+  doc.setFillColor(os.fechada?80:33, os.fechada?80:113, os.fechada?80:48);
+  doc.roundedRect(M+28, y-4, 22, 6, 1.5,1.5,'F');
+  doc.text(os.fechada?'FECHADA':'ABERTA', M+39, y, {align:'center'});
+  y += 10;
+
+  // ── LINHA DIVISÓRIA ───────────────────────────────────────
+  doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+  doc.line(M, y, W-M, y);
+  y += 7;
+
+  // ── CAMPOS INFO (grid 2 colunas) ──────────────────────────
+  const col1=M, col2=W/2+4;
+  const drawField = (label, value, x, yy) => {
+    doc.setFontSize(7); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor);
+    doc.text(label.toUpperCase(), x, yy);
+    doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(value||'—', (W/2)-M-4);
+    doc.text(lines, x, yy+5);
+    return lines.length;
+  };
+
+  let rowH = 14;
+  const r1 = drawField('Obra / Projeto', obra?obra.nome:'—', col1, y);
+  const r2 = drawField('Cliente', cliente?cliente.nome:'—', col2, y);
+  y += Math.max(r1,r2)*5 + 6;
+
+  const r3 = drawField('Responsável', resp?resp.nome:'—', col1, y);
+  const r4 = drawField('Agendamento', fmtDate(os.dataAgend), col2, y);
+  y += Math.max(r3,r4)*5 + 6;
+
+  const r5 = drawField('Início Real', fmtDT(os.dataInicio), col1, y);
+  const r6 = drawField('Término Real', fmtDT(os.dataTermino), col2, y);
+  y += Math.max(r5,r6)*5 + 6;
+
+  const tecnicos = (os.tecnicos||[]).map(t=>{ const u=db.usuarios.find(x=>x.id===t.usuarioId); return u?u.nome:null; }).filter(Boolean);
+  if(tecnicos.length){
+    drawField('Equipe Técnica', tecnicos.join(', '), col1, y);
+    y += 12;
+  }
+
+  // ── LINHA DIVISÓRIA ───────────────────────────────────────
+  doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
+  y += 7;
+
+  // ── DESCRIÇÃO DO CHAMADO ───────────────────────────────────
+  if(os.descricaoChamado?.trim()){
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('DESCRIÇÃO DO CHAMADO', M, y);
+    y += 5;
+    doc.setFontSize(10); doc.setFont(undefined,'normal'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(os.descricaoChamado, lineW);
+    doc.text(lines, M, y);
+    y += lines.length * 5 + 7;
+  }
+
+  // ── ITENS / MATERIAIS ─────────────────────────────────────
+  const itens = os.produtos||[];
+  if(itens.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('ITENS / MATERIAIS', M, y);
+    y += 3;
+    const total = itens.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    doc.autoTable({
+      startY: y,
+      margin:{left:M,right:M},
+      head:[['Descrição','Qtd','Un','Vl. Unit.','Total']],
+      body: itens.map(it=>[
+        it.descricao||'—',
+        String(it.qtd||1),
+        it.unit||'un',
+        it.valorUnit!=null?fmtMoney(it.valorUnit):'—',
+        it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'
+      ]),
+      foot:[['','','','Total:', fmtMoney(total)]],
+      headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
+      footStyles:{fillColor:[235,235,235],fontStyle:'bold',fontSize:9,textColor:[30,30,30]},
+      bodyStyles:{fontSize:9},
+      columnStyles:{1:{halign:'center'},2:{halign:'center'},3:{halign:'right'},4:{halign:'right'}},
+      theme:'striped',
+      alternateRowStyles:{fillColor:[248,248,248]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // ── HISTÓRICO ─────────────────────────────────────────────
+  const hist = (os.historico||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  if(hist.length){
+    if(y > 240){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('HISTÓRICO', M, y);
+    y += 5;
+    hist.forEach(h=>{
+      if(y > 272){ doc.addPage(); y = M; }
+      doc.setFontSize(8); doc.setFont(undefined,'normal'); doc.setTextColor(140,140,140);
+      doc.text(h.data?fmtData(h.data):'—', M, y);
+      doc.setTextColor(30,30,30); doc.setFontSize(9);
+      const lines = doc.splitTextToSize(h.texto||'', lineW-4);
+      doc.text(lines, M, y+4);
+      y += 4 + lines.length*4.8 + 4;
+    });
+  }
+
+  // ── RODAPÉ em todas as páginas ────────────────────────────
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    doc.setFontSize(7.5); doc.setTextColor(160,160,160); doc.setFont(undefined,'normal');
+    doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+    doc.line(M, 288, W-M, 288);
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${empresa.fantasia||empresa.razao||''}`, M, 292);
+    doc.text(`Pág. ${i}/${totalPages}`, W-M, 292, {align:'right'});
+  }
+
+  const filename = `OS_${os.numero.replace(/\//g,'-')}_${(os.titulo||'avulsa').slice(0,30).replace(/[\s/\\:*?"<>|]+/g,'_')}.pdf`;
+
+  if(modo==='visualizar'){
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    window.open(url,'_blank');
+  } else {
+    doc.save(filename);
+  }
 }
 
 function salvarDadosOSAvulsa(osId, cardId){
