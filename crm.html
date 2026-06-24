@@ -4129,9 +4129,22 @@ function abaObraContatos(c, ob){
       </tbody>
     </table>`;
 
+  // Verifica se há contatos na aba Dados que ainda não foram importados para a obra
+  const cardCts = (db.cardContatos||[]).filter(ct=>ct.cardId===c.id);
+  const nomesJaNaObra = new Set(cts.map(ct=>ct.nome.toLowerCase().trim()));
+  const importaveis = cardCts.filter(ct=>!nomesJaNaObra.has(ct.nome.toLowerCase().trim()));
+
   return `
     ${equipeHTML}
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos da Obra</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Contatos da Obra</div>
+      ${cardCts.length ? `
+        <button class="btn sm neutral" title="${importaveis.length ? `${importaveis.length} contato${importaveis.length>1?'s':''} disponível${importaveis.length>1?'is':''} para importar` : 'Todos os contatos da aba Dados já estão aqui'}"
+          onclick="importarContatosCard(${c.id},${ob.id})"
+          ${importaveis.length===0 ? 'style="opacity:.5;cursor:default"' : ''}>
+          ↙ Importar da aba Dados${importaveis.length ? ` (${importaveis.length})` : ''}
+        </button>` : ''}
+    </div>
     ${cts.length ? `
     <table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:13px">
       <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
@@ -9131,6 +9144,47 @@ async function excluirContatoCard(id, cardId){
   db.cardContatos = (db.cardContatos||[]).filter(x=>x.id!==id);
   saveLocal(); syncDadosSupabase();
   abrirEditarCartao(cardId, 'dados');
+}
+
+/* importarContatosCard(cardId, obraId):
+   Copia os "Outros Contatos" da aba Dados do cartão para os Contatos da Obra.
+   Pula contatos cujo nome (case-insensitive) já exista na obra.
+   Exibe um resumo do resultado ao usuário. */
+async function importarContatosCard(cardId, obraId){
+  const cardCts   = (db.cardContatos||[]).filter(ct=>ct.cardId===cardId);
+  if(!cardCts.length){
+    alert('Nenhum contato cadastrado na aba Dados deste cartão.');
+    return;
+  }
+  if(!db.obraContatos) db.obraContatos=[];
+  const nomesJaNaObra = new Set(
+    db.obraContatos.filter(ct=>ct.obraId===obraId).map(ct=>ct.nome.toLowerCase().trim())
+  );
+  const novos   = cardCts.filter(ct=>!nomesJaNaObra.has(ct.nome.toLowerCase().trim()));
+  const pulados = cardCts.filter(ct=> nomesJaNaObra.has(ct.nome.toLowerCase().trim()));
+
+  if(!novos.length){
+    alert(`Todos os contatos da aba Dados já existem nos Contatos da Obra.\n(${pulados.map(p=>p.nome).join(', ')})`);
+    return;
+  }
+
+  // Importa em sequência para garantir IDs seguros e únicos
+  for(const ct of novos){
+    const id = await proximoIdSeguro('obra_contatos', db.obraContatos);
+    const novo = {id, obraId, nome:ct.nome, funcao:ct.funcao||'', tel:ct.tel||''};
+    db.obraContatos.push(novo);
+    registrarLog('criar','obra_contato',id,`Importado da aba Dados → obra #${obraId}: ${ct.nome}${ct.funcao?' ('+ct.funcao+')':''}`);
+  }
+
+  saveLocal(); syncDadosSupabase();
+
+  // Mensagem de resultado
+  let msg = `${novos.length} contato${novos.length>1?'s':''} importado${novos.length>1?'s':''}!`;
+  if(pulados.length)
+    msg += `\n\n${pulados.length} já existia${pulados.length>1?'m':''} e foi${pulados.length>1?'ram':''} ignorado${pulados.length>1?'s':''}: ${pulados.map(p=>p.nome).join(', ')}.`;
+  alert(msg);
+
+  voltarParaContatos(cardId);
 }
 
 /* ── CRUD de Contatos da Obra ───────────────────────────────────────────── */
