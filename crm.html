@@ -1305,7 +1305,8 @@ async function carregarDadosSupabase(){
         id:o.id, clienteId:o.cliente_id, nome:o.nome,
         faseId: o.fase_id || null,
         status: o.status || 'ativa',
-        endereco: (o.endereco && Object.keys(o.endereco).length) ? o.endereco : enderecoVazio('')
+        endereco: (o.endereco && Object.keys(o.endereco).length) ? o.endereco : enderecoVazio(''),
+        outrosCustos: Array.isArray(o.outros_custos) ? o.outros_custos : []
       }));
     if(cards.data){
       db.cards = cards.data.map(c=>({
@@ -4134,10 +4135,186 @@ async function removerMOOS(osId, idx, cardId){
   save(); abrirSeletorMOOS(osId, cardId);
 }
 
-function abaObraOutrosCustos(c, ob){
+function abaObraOutrosCustos(c, ob, editandoId=null){
+  const custos = ob.outrosCustos || [];
+  const fmtR = v => v>0 ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'R$ 0,00';
+  const fmtDt = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+
+  const catLabel = {frete:'🚚 Frete', alimentacao:'🍽 Alimentação', material:'🔧 Material', outros:'📦 Outros'};
+  const catOpts  = Object.entries(catLabel).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+
+  const totalEfetivado = custos.filter(x=>x.status==='efetivado').reduce((s,x)=>s+(+x.valor||0),0);
+  const totalEstimado  = custos.filter(x=>x.status==='estimativa').reduce((s,x)=>s+(+x.valor||0),0);
+  const totalGeral     = totalEfetivado + totalEstimado;
+
+  const linhas = custos.length ? custos.map(cu=>{
+    if(editandoId === cu.id){
+      return `
+        <tr style="background:#fff8e1">
+          <td style="padding:6px 4px"><input id="oc-edit-data" type="date" value="${cu.data||''}" style="width:130px;font-size:12px"></td>
+          <td style="padding:6px 4px">
+            <select id="oc-edit-cat" style="font-size:12px;width:130px">
+              ${Object.entries(catLabel).map(([v,l])=>`<option value="${v}" ${cu.categoria===v?'selected':''}>${l}</option>`).join('')}
+            </select>
+          </td>
+          <td style="padding:6px 4px"><input id="oc-edit-desc" value="${(cu.descricao||'').replace(/"/g,'&quot;')}" placeholder="Descrição" style="width:100%;font-size:12px"></td>
+          <td style="padding:6px 4px"><input id="oc-edit-obs" value="${(cu.obs||'').replace(/"/g,'&quot;')}" placeholder="Obs." style="width:100%;font-size:12px"></td>
+          <td style="padding:6px 4px"><input id="oc-edit-valor" type="number" min="0" step="0.01" value="${cu.valor||0}" style="width:90px;text-align:right;font-size:12px"></td>
+          <td style="padding:6px 4px">
+            <select id="oc-edit-status" style="font-size:12px">
+              <option value="efetivado" ${cu.status==='efetivado'?'selected':''}>✅ Efetivado</option>
+              <option value="estimativa" ${cu.status==='estimativa'?'selected':''}>⏳ Estimativa</option>
+            </select>
+          </td>
+          <td style="padding:6px 4px;white-space:nowrap">
+            <button class="btn sm primary" onclick="salvarEdicaoOutroCusto('${cu.id}',${ob.id},${c.id})">💾 Salvar</button>
+            <button class="btn sm neutral" style="margin-left:4px" onclick="trocarAbaObra(${c.id},'outrosCustos')">✕</button>
+          </td>
+        </tr>`;
+    }
+    const statusBadge = cu.status==='efetivado'
+      ? `<span style="background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700">✅ Efetivado</span>`
+      : `<span style="background:#fff8e1;color:#f57f17;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700">⏳ Estimativa</span>`;
+    return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${fmtDt(cu.data)}</td>
+        <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${catLabel[cu.categoria]||cu.categoria||'—'}</td>
+        <td style="padding:8px 4px;font-size:13px;font-weight:600">${cu.descricao||'—'}</td>
+        <td style="padding:8px 4px;font-size:12px;color:var(--muted)">${cu.obs||''}</td>
+        <td style="padding:8px 4px;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;${cu.status==='efetivado'?'color:#2e7d32':'color:#f57f17'}">${fmtR(cu.valor)}</td>
+        <td style="padding:8px 4px">${statusBadge}</td>
+        <td style="padding:8px 4px;white-space:nowrap">
+          <button class="icon-btn" title="Editar" onclick="abrirEdicaoOutroCusto('${cu.id}',${ob.id},${c.id})">✏️</button>
+          <button class="icon-btn del" title="Excluir" onclick="excluirOutroCusto('${cu.id}',${ob.id},${c.id})">🗑</button>
+        </td>
+      </tr>`;
+  }).join('') : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Nenhum custo lançado ainda.</td></tr>`;
+
   return `
-    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Outros Custos</div>
-    <div class="empty">Em breve — lançamento de outros custos avulsos desta obra.</div>`;
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">💰 Outros Custos da Obra</div>
+
+    <div style="overflow-x:auto;margin-bottom:16px">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--surface);border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Data</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Categoria</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Descrição</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Obs.</th>
+            <th style="text-align:right;padding:7px 4px;font-size:11px;color:var(--muted)">Valor</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Status</th>
+            <th style="width:70px"></th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+        ${custos.length ? `
+        <tfoot>
+          <tr style="background:var(--surface)">
+            <td colspan="4" style="padding:8px 4px;text-align:right;font-size:12px;color:var(--muted)">
+              <span style="margin-right:16px">✅ Efetivado: <b style="color:#2e7d32">${fmtR(totalEfetivado)}</b></span>
+              <span>⏳ Estimativa: <b style="color:#f57f17">${fmtR(totalEstimado)}</b></span>
+            </td>
+            <td style="padding:8px 4px;text-align:right;font-size:15px;font-weight:800;color:var(--blue-dark)">${fmtR(totalGeral)}</td>
+            <td colspan="2" style="padding:8px 4px;font-size:11px;color:var(--muted)">Total geral</td>
+          </tr>
+        </tfoot>` : ''}
+      </table>
+    </div>
+
+    <!-- Formulário adicionar -->
+    <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">＋ Novo lançamento</div>
+      <div class="form-row" style="flex-wrap:wrap;gap:8px">
+        <div style="flex:0 0 140px">
+          <label style="font-size:11px;color:var(--muted)">Data</label>
+          <input id="oc-data" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;font-size:13px">
+        </div>
+        <div style="flex:0 0 150px">
+          <label style="font-size:11px;color:var(--muted)">Categoria</label>
+          <select id="oc-cat" style="width:100%;font-size:13px">${catOpts}</select>
+        </div>
+        <div style="flex:2;min-width:160px">
+          <label style="font-size:11px;color:var(--muted)">Descrição *</label>
+          <input id="oc-desc" placeholder="Ex.: Frete de material" style="width:100%;font-size:13px">
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="font-size:11px;color:var(--muted)">Obs. (opcional)</label>
+          <input id="oc-obs" placeholder="Detalhe..." style="width:100%;font-size:13px">
+        </div>
+      </div>
+      <div class="form-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:flex-end">
+        <div style="flex:0 0 130px">
+          <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+          <input id="oc-valor" type="number" min="0" step="0.01" value="0" style="width:100%;text-align:right;font-size:14px;font-weight:700">
+        </div>
+        <div style="flex:0 0 160px">
+          <label style="font-size:11px;color:var(--muted)">Status</label>
+          <select id="oc-status" style="width:100%;font-size:13px">
+            <option value="efetivado">✅ Efetivado</option>
+            <option value="estimativa">⏳ Estimativa</option>
+          </select>
+        </div>
+        <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarOutroCusto(${ob.id},${c.id})">＋ Lançar</button>
+      </div>
+    </div>`;
+}
+
+async function adicionarOutroCusto(obraId, cardId){
+  const desc = (document.getElementById('oc-desc')?.value||'').trim();
+  if(!desc){ alert('Informe a descrição do custo.'); return; }
+  const ob = db.obras.find(x=>x.id===obraId);
+  if(!ob.outrosCustos) ob.outrosCustos = [];
+  ob.outrosCustos.push({
+    id: crypto.randomUUID(),
+    data:       document.getElementById('oc-data')?.value   || new Date().toISOString().slice(0,10),
+    categoria:  document.getElementById('oc-cat')?.value    || 'outros',
+    descricao:  desc,
+    obs:        (document.getElementById('oc-obs')?.value||'').trim(),
+    valor:      +(document.getElementById('oc-valor')?.value)||0,
+    status:     document.getElementById('oc-status')?.value || 'efetivado'
+  });
+  await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  save();
+  const c = db.cards.find(x=>x.id===cardId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraOutrosCustos(c, ob);
+}
+
+function abrirEdicaoOutroCusto(custoId, obraId, cardId){
+  const ob = db.obras.find(x=>x.id===obraId);
+  const c  = db.cards.find(x=>x.id===cardId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraOutrosCustos(c, ob, custoId);
+}
+
+async function salvarEdicaoOutroCusto(custoId, obraId, cardId){
+  const ob = db.obras.find(x=>x.id===obraId);
+  const cu = ob.outrosCustos.find(x=>x.id===custoId);
+  if(!cu) return;
+  const desc = (document.getElementById('oc-edit-desc')?.value||'').trim();
+  if(!desc){ alert('Informe a descrição.'); return; }
+  cu.data      = document.getElementById('oc-edit-data')?.value   || cu.data;
+  cu.categoria = document.getElementById('oc-edit-cat')?.value    || cu.categoria;
+  cu.descricao = desc;
+  cu.obs       = (document.getElementById('oc-edit-obs')?.value||'').trim();
+  cu.valor     = +(document.getElementById('oc-edit-valor')?.value)||0;
+  cu.status    = document.getElementById('oc-edit-status')?.value || 'efetivado';
+  await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  save();
+  const c  = db.cards.find(x=>x.id===cardId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraOutrosCustos(c, ob);
+}
+
+async function excluirOutroCusto(custoId, obraId, cardId){
+  if(!confirm('Excluir este lançamento?')) return;
+  const ob = db.obras.find(x=>x.id===obraId);
+  ob.outrosCustos = ob.outrosCustos.filter(x=>x.id!==custoId);
+  await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  save();
+  const c  = db.cards.find(x=>x.id===cardId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraOutrosCustos(c, ob);
 }
 
 /* ================= COMPRAS DA OBRA ================= */
