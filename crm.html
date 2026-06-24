@@ -1826,7 +1826,8 @@ async function confirmarUploadDl(catId){
   btnCancelar.disabled = true;
   progWrap.style.display = ''; erroEl.style.display = 'none';
   const arqId = 'dl'+Date.now()+Math.random().toString(36).slice(2,7);
-  const path  = `${catId}/${arqId}_${file.name}`;
+  const safeName = file.name.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g,'');
+  const path  = `${catId}/${arqId}_${safeName}`;
   const {error:errUp} = await uploadOSArquivoXHR('downloads', path, file, (loaded, total)=>{
     const pct = Math.round(loaded/total*100);
     if(progBar) progBar.style.width = pct+'%';
