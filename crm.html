@@ -1301,6 +1301,7 @@ function load(){
   });
   if(!Array.isArray(db.obras)) db.obras=[];
   db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; });
+  if(!Array.isArray(db.cardContatos))    db.cardContatos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1484,7 +1485,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1493,6 +1494,7 @@ async function carregarDadosSupabase(){
       sb.from('proposta_itens').select('*').order('id'),
       sb.from('proposta_arquivos').select('*').order('id'),
       sb.from('ordens_servico').select('*').order('id'),
+      sb.from('card_contatos').select('*').order('id'),
       sb.from('obra_contatos').select('*').order('id'),
       sb.from('obra_equipamentos').select('*').order('id'),
       sb.from('obra_compras').select('*').order('id'),
@@ -1605,6 +1607,10 @@ async function carregarDadosSupabase(){
         descricao:r.descricao||'',
         status:r.status||'registrada',
         criadoEm:r.created_at||''
+      }));
+    if(cardContatos.data)
+      db.cardContatos = cardContatos.data.map(c=>({
+        id:c.id, cardId:c.card_id, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
       }));
     if(obraContatos.data)
       db.obraContatos = obraContatos.data.map(c=>({
@@ -1738,6 +1744,9 @@ function syncDadosSupabase(){
     }));
     await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
+    await sincronizarTabela('card_contatos', db.cardContatos||[], c=>({
+      id:c.id, card_id:Number(c.cardId)||null, nome:c.nome, funcao:c.funcao||null, tel:c.tel||null
+    }));
     await sincronizarTabela('obra_contatos', db.obraContatos||[], c=>({
       id:c.id, obra_id:Number(c.obraId)||null, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
     }));
@@ -3888,6 +3897,12 @@ function abrirEditarCartao(id, aba='dados'){
   const nOS=db.ordensServico.filter(o=>o.cardId===id).length;
   let corpo='';
   if(aba==='dados') corpo=`
+    <datalist id="dl-funcoes-contato">
+      <option>Esposa</option><option>Esposo</option><option>Secretária</option>
+      <option>Arquiteto</option><option>Arquiteta</option><option>Decorador</option>
+      <option>Engenheiro</option><option>Sócio</option><option>Gerente</option>
+      <option>Empreiteiro</option><option>Assistente</option>
+    </datalist>
     <div class="dados-grid">
       <div>
         <label>Cliente</label>
@@ -3898,7 +3913,8 @@ function abrirEditarCartao(id, aba='dados'){
         ${camposCartaoForm(c)}
       </div>
       <div class="col-hist">${camposCartaoContato(c)}</div>
-    </div>`;
+    </div>
+    ${secaoOutrosContatosCard(c)}`;
   else if(aba==='emitidas') corpo=abaPropostasHTML(c);
   else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
   else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
@@ -3923,6 +3939,48 @@ function abrirEditarCartao(id, aba='dados'){
       <button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
     </div>`, 'cartao');
   if(aba==='dados') wireValidacao(c.id);
+}
+
+/* secaoOutrosContatosCard(c):
+   Seção inline na aba Dados do cartão CRM com os contatos extras do lead:
+   esposa, arquiteto, secretária, etc. Opera de forma independente do botão
+   Salvar principal — cada contato tem seu próprio botão ＋ Adicionar / ✏️ / 🗑. */
+function secaoOutrosContatosCard(c){
+  const cts = (db.cardContatos||[]).filter(ct=>ct.cardId===c.id);
+  return `
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Outros Contatos</div>
+      ${cts.length ? `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
+        <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+          <th style="text-align:left;padding:4px 6px">Nome</th>
+          <th style="text-align:left;padding:4px 6px">Função</th>
+          <th style="text-align:left;padding:4px 6px">Telefone</th>
+          <th style="width:60px"></th>
+        </tr></thead>
+        <tbody id="card-contatos-lista">
+          ${cts.map(ct=>`
+          <tr id="cc-row-${ct.id}" style="border-top:1px solid var(--border)">
+            <td style="padding:7px 6px;font-weight:600">${ct.nome}</td>
+            <td style="padding:7px 6px;color:var(--muted)">${ct.funcao||'—'}</td>
+            <td style="padding:7px 6px">${ct.tel?`<a href="tel:${ct.tel.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${ct.tel}</a>`:'—'}</td>
+            <td style="padding:7px 4px;text-align:center;white-space:nowrap">
+              <button class="btn sm neutral" title="Editar" onclick="editarContatoCard(${ct.id},${c.id})">✏️</button>
+              <button class="btn sm neutral" title="Remover" onclick="excluirContatoCard(${ct.id},${c.id})">🗑</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div id="card-contatos-lista" style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato extra cadastrado.</div>`}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
+        <input id="cc-nome" placeholder="Nome *">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="cc-funcao" list="dl-funcoes-contato" placeholder="Função (ex.: Esposa)">
+          <input id="cc-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+        </div>
+        <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoCard(${c.id})">＋ Adicionar</button>
+      </div>
+    </div>`;
 }
 
 function abaObrasCartaoHTML(c, abaAtiva){
@@ -9014,6 +9072,68 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
 
 
 
+/* ── CRUD de Outros Contatos do Cartão CRM ──────────────────────────────── */
+async function adicionarContatoCard(cardId){
+  const nome = (document.getElementById('cc-nome')?.value||'').trim();
+  if(!nome){ alert('Informe o nome do contato.'); document.getElementById('cc-nome')?.focus(); return; }
+  const funcao = (document.getElementById('cc-funcao')?.value||'').trim();
+  const tel    = (document.getElementById('cc-tel')?.value||'').trim();
+  if(!db.cardContatos) db.cardContatos=[];
+  const novo = {id: await proximoIdSeguro('card_contatos', db.cardContatos), cardId, nome, funcao, tel};
+  db.cardContatos.push(novo);
+  registrarLog('criar','card_contato',novo.id,`Contato adicionado ao cartão CRM #${db.cards.find(x=>x.id===cardId)?.num||cardId}: ${nome}${funcao?' ('+funcao+')':''}`);
+  saveLocal(); syncDadosSupabase();
+  // recarrega apenas a seção de contatos sem fechar o modal
+  abrirEditarCartao(cardId, 'dados');
+}
+
+function editarContatoCard(id, cardId){
+  const ct = (db.cardContatos||[]).find(x=>x.id===id);
+  if(!ct){ alert('Contato não encontrado.'); return; }
+  abrirModal(`
+    <h3>Editar Contato</h3>
+    <label>Nome</label>
+    <input id="ecc-nome" value="${(ct.nome||'').replace(/"/g,'&quot;')}">
+    <label>Função</label>
+    <input id="ecc-funcao" list="dl-funcoes-contato-modal" value="${(ct.funcao||'').replace(/"/g,'&quot;')}" placeholder="Ex.: Esposa, Arquiteto…">
+    <datalist id="dl-funcoes-contato-modal">
+      <option>Esposa</option><option>Esposo</option><option>Secretária</option>
+      <option>Arquiteto</option><option>Arquiteta</option><option>Decorador</option>
+      <option>Engenheiro</option><option>Sócio</option><option>Gerente</option>
+      <option>Empreiteiro</option><option>Assistente</option>
+    </datalist>
+    <label>Telefone</label>
+    <input id="ecc-tel" value="${ct.tel||''}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'dados')">← Voltar</button>
+      <button class="btn primary" style="margin-left:auto" onclick="salvarEdicaoContatoCard(${id},${cardId})">Salvar</button>
+    </div>`);
+}
+
+function salvarEdicaoContatoCard(id, cardId){
+  const nome = (document.getElementById('ecc-nome')?.value||'').trim();
+  if(!nome){ alert('Informe o nome do contato.'); return; }
+  const ct = (db.cardContatos||[]).find(x=>x.id===id);
+  if(!ct){ alert('Contato não encontrado.'); return; }
+  ct.nome   = nome;
+  ct.funcao = (document.getElementById('ecc-funcao')?.value||'').trim();
+  ct.tel    = (document.getElementById('ecc-tel')?.value||'').trim();
+  registrarLog('editar','card_contato',id,`Contato editado no cartão CRM #${db.cards.find(x=>x.id===cardId)?.num||cardId}: ${nome}${ct.funcao?' ('+ct.funcao+')':''}`);
+  saveLocal(); syncDadosSupabase();
+  abrirEditarCartao(cardId, 'dados');
+}
+
+async function excluirContatoCard(id, cardId){
+  const ct = (db.cardContatos||[]).find(x=>x.id===id);
+  if(!confirm(`Remover o contato "${ct?.nome||'?'}"?`)) return;
+  registrarLog('excluir','card_contato',id,`Contato removido do cartão CRM #${db.cards.find(x=>x.id===cardId)?.num||cardId}: ${ct?.nome||'?'}`);
+  await excluirDoSupabase('card_contatos', id);
+  db.cardContatos = (db.cardContatos||[]).filter(x=>x.id!==id);
+  saveLocal(); syncDadosSupabase();
+  abrirEditarCartao(cardId, 'dados');
+}
+
+/* ── CRUD de Contatos da Obra ───────────────────────────────────────────── */
 async function adicionarContatoObra(obraId, cardId){
   const nome = (document.getElementById('nc-nome')?.value||'').trim();
   if(!nome){ alert('Informe o nome do contato.'); return; }
