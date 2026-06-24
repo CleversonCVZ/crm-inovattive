@@ -5377,7 +5377,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
       </div>
       ${!os.fechada?`<div class="actions" style="justify-content:flex-end;padding-top:10px;margin-top:4px">
-        <button class="btn primary" onclick="salvarDadosOSAvulsa(${osId},${cardId})">💾 Salvar</button>
+        <button class="btn primary" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>
       </div>`:''}`;
   }
   else if(aba === 'itens'){
