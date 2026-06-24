@@ -5105,6 +5105,240 @@ function _itensPropostasAprovadas(cardId){
     .flatMap(p=>(p.itens||[]).map((it,i)=>({propostaId:p.id, idx:i, propostaNum:p.numero, ...it})));
 }
 
+async function exportarPDFOSExecucao(osId, modo='download'){
+  // Carregar jsPDF dinamicamente
+  if(!window.jspdf){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+  if(typeof window.jspdf?.jsPDF?.prototype?.autoTable === 'undefined'){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+
+  const os      = db.ordensServico.find(x=>x.id===osId); if(!os) return;
+  const obra    = db.obras.find(x=>x.id===os.obraId);
+  const cliente = db.clientes.find(x=>x.id===obra?.clienteId);
+  const resp    = db.usuarios.find(u=>u.id===os.responsavelId);
+  const empresa = db.empresa||{};
+  const faseObraNome = faseObra(os.faseObraId)?.nome||'—';
+  const faseOSNome   = fasesOSOrdenadas().find(f=>f.id===os.faseId)?.nome||'—';
+
+  const W = 210; const M = 15; const lineW = W - M*2;
+  const fmtDT   = dt => dt ? new Date(dt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}) : '—';
+  const fmtDate = d  => d  ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const labelColor = [120,120,120];
+  const accentColor = [38,166,154]; // teal #26a69a
+
+  let y = M;
+
+  // ── CABEÇALHO ─────────────────────────────────────────────
+  doc.setFillColor(42,42,40);
+  doc.rect(0,0,W,30,'F');
+
+  if(empresa.logo){
+    try{ doc.addImage(empresa.logo,'JPEG',M,5,18,18); } catch(e){}
+    doc.setFontSize(14); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M+22, 14);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M+22, 21);
+  } else {
+    doc.setFontSize(15); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M, 15);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M, 22);
+  }
+
+  doc.setFontSize(12); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+  doc.text(os.numero, W-M, 14, {align:'right'});
+  doc.setFontSize(8); doc.setFont(undefined,'normal');
+  doc.text('Ordem de Serviço — Execução/Obra', W-M, 21, {align:'right'});
+
+  y = 38;
+
+  // ── TÍTULO ────────────────────────────────────────────────
+  doc.setFontSize(14); doc.setTextColor(30,30,30); doc.setFont(undefined,'bold');
+  doc.text(os.titulo||'(sem título)', M, y);
+  y += 7;
+
+  // ── BADGE STATUS ─────────────────────────────────────────
+  doc.setFontSize(8); doc.setTextColor(255,255,255);
+  doc.setFillColor(...(os.fechada?[80,80,80]:accentColor));
+  doc.roundedRect(M, y-4, 22, 6, 1.5,1.5,'F');
+  doc.text(os.fechada?'FECHADA':'ABERTA', M+11, y, {align:'center'});
+  y += 10;
+
+  // ── DIVISÓRIA ────────────────────────────────────────────
+  doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+  doc.line(M, y, W-M, y);
+  y += 7;
+
+  // ── GRID INFO ────────────────────────────────────────────
+  const col1=M, col2=W/2+4;
+  const drawField = (label, value, x, yy) => {
+    doc.setFontSize(7); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor);
+    doc.text(label.toUpperCase(), x, yy);
+    doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(value||'—', (W/2)-M-4);
+    doc.text(lines, x, yy+5);
+    return lines.length;
+  };
+
+  const r1=drawField('Obra / Projeto', obra?obra.nome:'—', col1, y);
+  const r2=drawField('Cliente', cliente?cliente.nome:'—', col2, y);
+  y += Math.max(r1,r2)*5 + 6;
+
+  const r3=drawField('Responsável Principal', resp?resp.nome:'—', col1, y);
+  const r4=drawField('Agendamento', fmtDate(os.dataAgend), col2, y);
+  y += Math.max(r3,r4)*5 + 6;
+
+  const r5=drawField('Fase da O.S.', faseOSNome, col1, y);
+  const r6=drawField('Fase da Obra', os.faseObraId ? faseObraNome : '—', col2, y);
+  y += Math.max(r5,r6)*5 + 6;
+
+  const r7=drawField('Início Real', fmtDT(os.dataInicio), col1, y);
+  const r8=drawField('Término Real', fmtDT(os.dataTermino), col2, y);
+  y += Math.max(r7,r8)*5 + 6;
+
+  // Equipe
+  const tecnicos = (os.tecnicos||[]).map(t=>{ const u=db.usuarios.find(x=>x.id===t.usuarioId); return u?u.nome:null; }).filter(Boolean);
+  if(resp || tecnicos.length){
+    const equipeCompleta = [resp?resp.nome+' (responsável)':null, ...tecnicos].filter(Boolean).join(', ');
+    drawField('Equipe Técnica', equipeCompleta, col1, y);
+    y += 12;
+  }
+
+  // ── DIVISÓRIA ────────────────────────────────────────────
+  doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
+  y += 7;
+
+  // ── INSTRUÇÕES ───────────────────────────────────────────
+  if(os.instrucoes?.trim()){
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('INSTRUÇÕES PARA OS TÉCNICOS', M, y);
+    y += 5;
+    doc.setFontSize(10); doc.setFont(undefined,'normal'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(os.instrucoes, lineW);
+    doc.text(lines, M, y);
+    y += lines.length * 5 + 7;
+  }
+
+  // ── ITENS DE TRABALHO ─────────────────────────────────────
+  const todosItens = _itensPropostasAprovadas(os.cardId);
+  const alocados   = (os.itensTrabalho||[]).filter(m=>m.qtdOS>0);
+  if(alocados.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('ITENS DE TRABALHO', M, y);
+    y += 3;
+    doc.autoTable({
+      startY: y,
+      margin:{left:M,right:M},
+      head:[['Descrição','Categoria','Qtd','Obs.']],
+      body: alocados.map(reg=>{
+        const it = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+        return [
+          reg.descricao||it?.descricao||it?.item||'—',
+          it?.categoria||'—',
+          `${reg.qtdOS} ${reg.tipo||it?.tipo||'un'}`,
+          it?.clienteFornece ? 'Cliente fornece' : ''
+        ];
+      }),
+      headStyles:{fillColor:[38,166,154],textColor:255,fontSize:8,fontStyle:'bold'},
+      bodyStyles:{fontSize:9},
+      columnStyles:{2:{halign:'center'},3:{halign:'center',fontSize:8,textColor:[150,100,0]}},
+      theme:'striped',
+      alternateRowStyles:{fillColor:[240,250,249]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // ── PENDÊNCIAS ───────────────────────────────────────────
+  const pends = (os.pendencias||[]);
+  if(pends.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('PENDÊNCIAS', M, y);
+    y += 3;
+    doc.autoTable({
+      startY: y,
+      margin:{left:M,right:M},
+      head:[['','Descrição','Responsabilidade','Status']],
+      body: pends.map(p=>[
+        p.resolvida?'✓':p.transferida?'↪':'○',
+        p.texto||'—',
+        p.origem==='cliente'?'🏠 Cliente':'🏢 Empresa',
+        p.resolvida?'Resolvida':p.transferida?'Transferida':'Aberta'
+      ]),
+      headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
+      bodyStyles:{fontSize:9},
+      columnStyles:{0:{halign:'center',cellWidth:8},2:{halign:'center'},3:{halign:'center'}},
+      theme:'striped',
+      alternateRowStyles:{fillColor:[248,248,248]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // ── DIÁRIO DE OBRA ────────────────────────────────────────
+  const diario = (os.diario||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+  if(diario.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('DIÁRIO DE OBRA', M, y);
+    y += 5;
+    diario.forEach(d=>{
+      if(y > 265){ doc.addPage(); y = M; }
+      const autor = db.usuarios.find(u=>u.id===d.autorId);
+      // cabeçalho da entrada
+      doc.setFillColor(240,250,249);
+      doc.rect(M, y-4, lineW, 7, 'F');
+      doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(...accentColor);
+      doc.text(fmtDia2?fmtDia2(d.data):d.data||'—', M+2, y);
+      if(autor){ doc.setFontSize(8); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor); doc.text('por '+autor.nome, M+40, y); }
+      y += 5;
+      if(d.descricao?.trim()){
+        doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(30,30,30);
+        const lines = doc.splitTextToSize(d.descricao, lineW-4);
+        doc.text(lines, M+2, y);
+        y += lines.length*4.8 + 3;
+      }
+      const nFotos = (d.imagens||[]).length;
+      if(nFotos){ doc.setFontSize(8); doc.setTextColor(...labelColor); doc.text(`📷 ${nFotos} foto(s) anexada(s)`, M+2, y); y += 5; }
+      y += 3;
+    });
+  }
+
+  // ── RODAPÉ ───────────────────────────────────────────────
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    doc.setFontSize(7.5); doc.setTextColor(160,160,160); doc.setFont(undefined,'normal');
+    doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+    doc.line(M,288,W-M,288);
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${empresa.fantasia||empresa.razao||''}`, M, 292);
+    doc.text(`Pág. ${i}/${totalPages}`, W-M, 292, {align:'right'});
+  }
+
+  const filename = `OS_${os.numero.replace(/\//g,'-')}_${(os.titulo||'execucao').slice(0,30).replace(/[\s/\\:*?"<>|]+/g,'_')}.pdf`;
+  if(modo==='visualizar'){
+    const blob = doc.output('blob');
+    window.open(URL.createObjectURL(blob),'_blank');
+  } else {
+    doc.save(filename);
+  }
+}
+
 function abrirVerOSExecucao(osId, cardId, aba='geral'){
   const os   = db.ordensServico.find(x=>x.id===osId); if(!os) return;
   const obra = db.obras.find(x=>x.id===os.obraId);
@@ -5327,9 +5561,13 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
 
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
-      ${os.fechada
-        ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
-        : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSExecucao(${osId},'visualizar')">👁 Visualizar PDF</button>
+        <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSExecucao(${osId},'download')">⬇ Exportar PDF</button>
+        ${os.fechada
+          ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
+          : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
+      </div>
     </div>`, 'cartao');
 }
 
