@@ -1232,6 +1232,7 @@ function load(){
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
   if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
+  if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -1357,7 +1358,7 @@ async function carregarConfigSupabase(){
    e sobrescreve as cópias locais (db.clientes, db.obras, db.cards). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1373,7 +1374,8 @@ async function carregarDadosSupabase(){
       sb.from('download_categorias').select('*').order('ordem'),
       sb.from('download_arquivos').select('*').order('criado_em', {ascending:false}),
       sb.from('os_tecnicos').select('*').order('id'),
-      sb.from('os_diario').select('*').order('data', {ascending:false})
+      sb.from('os_diario').select('*').order('data', {ascending:false}),
+      sb.from('obra_retiradas').select('*').order('data_retirada', {ascending:false})
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1469,6 +1471,15 @@ async function carregarDadosSupabase(){
         if(os) os.diario.push({id:d.id, data:d.data, autorId:d.autor_id||null, descricao:d.descricao||'', imagens:Array.isArray(d.imagens)?d.imagens:[]});
       });
     }
+    if(obraRetiradas.data)
+      db.obraRetiradas = obraRetiradas.data.map(r=>({
+        id:r.id, obraId:r.obra_id,
+        data:r.data_retirada ? r.data_retirada.slice(0,10) : '',
+        valor:Number(r.valor)||0,
+        descricao:r.descricao||'',
+        status:r.status||'registrada',
+        criadoEm:r.created_at||''
+      }));
     if(obraContatos.data)
       db.obraContatos = obraContatos.data.map(c=>({
         id:c.id, obraId:c.obra_id, nome:c.nome, funcao:c.funcao||'', tel:c.tel||''
@@ -4538,6 +4549,69 @@ function abaObraResultadoAparente(c, ob){
         Inclui mais ${fmtR(totalOCEst)} em estimativas de outros custos
       </div>
     </div>` : ''}
+
+    ${(()=>{
+      // ── 6. Retiradas do Lucro ─────────────────────────────────────────────
+      const retiradas     = (db.obraRetiradas||[]).filter(x => x.obraId === ob.id)
+                              .sort((a,b) => b.data.localeCompare(a.data));
+      const totalRetirado = retiradas.reduce((s,x) => s + x.valor, 0);
+      const baseRetirada  = ocEstimativas.length ? resultadoComEst : resultadoEfet;
+      const saldoDisp     = baseRetirada - totalRetirado;
+      const fmtDt         = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+
+      const linhasRet = retiradas.length
+        ? retiradas.map(r => `
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+            <span style="color:var(--muted);white-space:nowrap;min-width:80px">${fmtDt(r.data)}</span>
+            <span style="flex:1;color:var(--text)">${r.descricao||'—'}</span>
+            <span style="font-weight:700;color:#dc2626;white-space:nowrap">− ${fmtR(r.valor)}</span>
+            <button onclick="excluirRetirada(${r.id},${ob.id},${c.id})"
+              style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;color:var(--muted)" title="Excluir">🗑</button>
+          </div>`).join('')
+        : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma retirada registrada</div>`;
+
+      return `
+      ${secTitle('💸','Retiradas do Lucro')}
+
+      <div style="background:var(--hover);border-radius:10px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;gap:0;justify-content:space-between">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Resultado base</div>
+            <div style="font-size:13px;font-weight:700;color:${cor(baseRetirada)}">${fmtR(baseRetirada)}</div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Total retirado</div>
+            <div style="font-size:13px;font-weight:700;color:#dc2626">${retiradas.length ? '− '+fmtR(totalRetirado) : fmtR(0)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--muted);margin-bottom:2px">Saldo disponível</div>
+            <div style="font-size:15px;font-weight:700;color:${cor(saldoDisp)}">${fmtR(saldoDisp)}</div>
+          </div>
+        </div>
+      </div>
+
+      ${linhasRet}
+
+      <div style="background:var(--hover);border-radius:10px;padding:14px;margin-top:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">➕ Registrar retirada</div>
+        <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:8px">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Data</label>
+            <input id="ret-data" type="date" class="input-field" value="${new Date().toISOString().slice(0,10)}" style="width:100%">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Valor</label>
+            <input id="ret-valor" type="text" inputmode="decimal" class="input-field" value="0,00"
+              oninput="mascaraMoeda(this)" style="width:100%;text-align:right;font-weight:700">
+          </div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Descrição (opcional)</label>
+          <input id="ret-desc" type="text" class="input-field" placeholder="Ex: Adiantamento sócio, 13º técnico…" style="width:100%">
+        </div>
+        <button class="btn btn-primary" style="width:100%" onclick="adicionarRetirada(${ob.id},${c.id})">Registrar Retirada</button>
+      </div>`;
+    })()}
   `;
 }
 
@@ -4717,6 +4791,36 @@ async function excluirOutroCusto(custoId, obraId, cardId){
   const c  = db.cards.find(x=>x.id===cardId);
   const el = document.getElementById('obra-content-'+cardId);
   if(el) el.innerHTML = abaObraOutrosCustos(c, ob);
+}
+
+/* ================= RETIRADAS DA OBRA ================= */
+async function adicionarRetirada(obraId, cardId){
+  const data  = document.getElementById('ret-data')?.value;
+  const valor = lerMoeda('ret-valor');
+  const desc  = document.getElementById('ret-desc')?.value?.trim()||'';
+  if(!data)  { alert('Informe a data da retirada.'); return; }
+  if(!valor) { alert('Informe o valor da retirada.'); return; }
+  const {data:row, error} = await sb.from('obra_retiradas').insert({
+    obra_id:obraId, data_retirada:data, valor, descricao:desc, status:'registrada'
+  }).select().single();
+  if(error){ alert('Erro ao salvar retirada: '+error.message); return; }
+  if(!Array.isArray(db.obraRetiradas)) db.obraRetiradas=[];
+  db.obraRetiradas.push({id:row.id, obraId, data:data, valor, descricao:desc, status:'registrada', criadoEm:row.created_at||''});
+  const c  = db.cards.find(x=>x.id===cardId);
+  const ob = db.obras.find(x=>x.id===obraId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraResultadoAparente(c, ob);
+}
+
+async function excluirRetirada(retId, obraId, cardId){
+  if(!confirm('Excluir esta retirada?')) return;
+  const {error} = await sb.from('obra_retiradas').delete().eq('id', retId);
+  if(error){ alert('Erro ao excluir: '+error.message); return; }
+  db.obraRetiradas = (db.obraRetiradas||[]).filter(x=>x.id!==retId);
+  const c  = db.cards.find(x=>x.id===cardId);
+  const ob = db.obras.find(x=>x.id===obraId);
+  const el = document.getElementById('obra-content-'+cardId);
+  if(el) el.innerHTML = abaObraResultadoAparente(c, ob);
 }
 
 /* ================= COMPRAS DA OBRA ================= */
