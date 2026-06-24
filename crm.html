@@ -319,6 +319,7 @@
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
       <hr>
+      <button id="gm-cat-custos" onclick="irParaView('cat-outros-custos')">💰 Categorias de Outros Custos</button>
       <button id="gm-downloads" onclick="irParaView('downloads')">📥 Downloads</button>
       <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
@@ -432,6 +433,22 @@
     <table class="fases-table">
       <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>Obras</th><th></th></tr></thead>
       <tbody id="obras-fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- CATEGORIAS OUTROS CUSTOS -->
+  <div class="view" id="view-cat-outros-custos">
+    <div class="bar">
+      <h2>Categorias — Outros Custos</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaCategoriaCusto()">+ Nova Categoria</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Categorias disponíveis ao lançar custos avulsos em obras (fretes, alimentação, materiais, etc.). Edite nome e emoji direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Emoji</th><th>Nome</th><th>Ordem</th><th></th></tr></thead>
+      <tbody id="cat-custos-tbody"></tbody>
     </table>
   </div>
 
@@ -1053,8 +1070,9 @@ const TELAS = [
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
   {id:'gerais',      nome:'Configurações do Sistema'},
-  {id:'auditoria',   nome:'Auditoria & Logs'},
-  {id:'downloads',   nome:'Downloads'}
+  {id:'auditoria',        nome:'Auditoria & Logs'},
+  {id:'downloads',        nome:'Downloads'},
+  {id:'cat-outros-custos', nome:'Categorias — Outros Custos'}
 ];
 
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
@@ -1236,7 +1254,7 @@ function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',b
    db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
 async function carregarConfigSupabase(){
   try{
-    const [fasesCrm, fasesProp, fasesObra, fasesOS, origens, funcoes, grupos, empresa] = await Promise.all([
+    const [fasesCrm, fasesProp, fasesObra, fasesOS, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
       sb.from('fases_crm').select('*').order('ordem'),
       sb.from('fases_proposta').select('*').order('ordem'),
       sb.from('fases_obra').select('*').order('ordem'),
@@ -1244,7 +1262,8 @@ async function carregarConfigSupabase(){
       sb.from('origens').select('*').order('id'),
       sb.from('funcoes').select('*').order('id'),
       sb.from('grupos').select('*').order('id'),
-      sb.from('empresa').select('*').limit(1).maybeSingle()
+      sb.from('empresa').select('*').limit(1).maybeSingle(),
+      sb.from('categorias_outros_custos').select('*').order('ordem')
     ]);
     if(fasesCrm.data && fasesCrm.data.length)
       db.fases = fasesCrm.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
@@ -1260,6 +1279,8 @@ async function carregarConfigSupabase(){
       db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
     if(grupos.data && grupos.data.length)
       db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null}));
+    if(catOutrosCustos.data && catOutrosCustos.data.length)
+      db.catOutrosCustos = catOutrosCustos.data.map(c=>({id:c.id, nome:c.nome, emoji:c.emoji||'📦', ordem:c.ordem||0}));
     if(empresa.data){
       db.empresa = {
         id:empresa.data.id, logo:empresa.data.logo||'', razao:empresa.data.razao||'', fantasia:empresa.data.fantasia||'',
@@ -2711,7 +2732,7 @@ function aplicarPermissoes(){
   renderNavTelas();
   // view ativa precisa ser permitida (telas da engrenagem também valem)
   const atual = viewAtiva();
-  const gearViews = ['usuarios','grupos','grupo-form','funcoes','gerais','auditoria','downloads'];
+  const gearViews = ['usuarios','grupos','grupo-form','funcoes','gerais','auditoria','downloads','cat-outros-custos'];
   const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
     : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
   if(!permitida && mod){
@@ -2719,7 +2740,7 @@ function aplicarPermissoes(){
     if(primeira) ativarView(primeira);
   }
   // itens do menu engrenagem conforme o grupo
-  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria'};
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria','gm-cat-custos':'cat-outros-custos'};
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
@@ -2742,6 +2763,7 @@ function ativarView(viewId){
   if(viewId==='gerais') renderGerais();
   if(viewId==='auditoria') carregarLogs();
   if(viewId==='downloads') renderDownloads();
+  if(viewId==='cat-outros-custos') renderCatOutrosCustos();
   renderAll();
 }
 
@@ -4151,13 +4173,74 @@ async function removerMOOS(osId, idx, cardId){
   save(); abrirSeletorMOOS(osId, cardId);
 }
 
+/* ===== Categorias de Outros Custos (CRUD global) ===== */
+function renderCatOutrosCustos(){
+  const cats = db.catOutrosCustos || [];
+  const tbody = document.getElementById('cat-custos-tbody');
+  if(!tbody) return;
+  if(!cats.length){
+    tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--muted)">Nenhuma categoria cadastrada.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = cats.map(cat=>`
+    <tr>
+      <td style="padding:8px 6px;color:var(--muted);font-size:12px">${cat.id}</td>
+      <td style="padding:8px 6px">
+        <input value="${cat.emoji||'📦'}" maxlength="2" style="width:44px;text-align:center;font-size:18px;border:1px solid var(--border);border-radius:6px;padding:2px"
+          onchange="atualizarCategoriaCusto(${cat.id},{emoji:this.value.trim()||'📦'})">
+      </td>
+      <td style="padding:8px 6px">
+        <input value="${(cat.nome||'').replace(/"/g,'&quot;')}" style="width:200px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 8px"
+          onchange="atualizarCategoriaCusto(${cat.id},{nome:this.value.trim()})">
+      </td>
+      <td style="padding:8px 6px">
+        <input type="number" value="${cat.ordem||0}" min="0" style="width:60px;text-align:center;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px"
+          onchange="atualizarCategoriaCusto(${cat.id},{ordem:+this.value})">
+      </td>
+      <td style="padding:8px 6px">
+        <button class="btn sm danger" onclick="excluirCategoriaCusto(${cat.id})">🗑 Excluir</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function novaCategoriaCusto(){
+  const nome = prompt('Nome da nova categoria:');
+  if(!nome || !nome.trim()) return;
+  const emoji = prompt('Emoji da categoria (ex: 🚚):', '📦') || '📦';
+  const ordem = (db.catOutrosCustos||[]).reduce((m,c)=>Math.max(m,c.ordem||0),0)+1;
+  const {data, error} = await sb.from('categorias_outros_custos').insert({nome:nome.trim(), emoji:emoji.trim()||'📦', ordem}).select().single();
+  if(error){ alert('Erro ao criar categoria: '+error.message); return; }
+  if(!db.catOutrosCustos) db.catOutrosCustos = [];
+  db.catOutrosCustos.push({id:data.id, nome:data.nome, emoji:data.emoji, ordem:data.ordem});
+  db.catOutrosCustos.sort((a,b)=>a.ordem-b.ordem);
+  renderCatOutrosCustos();
+}
+
+async function atualizarCategoriaCusto(id, campos){
+  const cat = (db.catOutrosCustos||[]).find(c=>c.id===id);
+  if(!cat) return;
+  Object.assign(cat, campos);
+  await sb.from('categorias_outros_custos').update(campos).eq('id',id);
+  db.catOutrosCustos.sort((a,b)=>a.ordem-b.ordem);
+}
+
+async function excluirCategoriaCusto(id){
+  if(!confirm('Excluir esta categoria? Os lançamentos existentes manterão o valor da categoria, mas ela não aparecerá mais no seletor.')) return;
+  await sb.from('categorias_outros_custos').delete().eq('id',id);
+  db.catOutrosCustos = (db.catOutrosCustos||[]).filter(c=>c.id!==id);
+  renderCatOutrosCustos();
+}
+
 function abaObraOutrosCustos(c, ob, editandoId=null){
   const custos = ob.outrosCustos || [];
   const fmtR = v => v>0 ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'R$ 0,00';
   const fmtDt = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
 
-  const catLabel = {frete:'🚚 Frete', alimentacao:'🍽 Alimentação', material:'🔧 Material', outros:'📦 Outros'};
-  const catOpts  = Object.entries(catLabel).map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  const cats = (db.catOutrosCustos||[]).length
+    ? db.catOutrosCustos
+    : [{id:1,nome:'Frete',emoji:'🚚'},{id:2,nome:'Alimentação',emoji:'🍽'},{id:3,nome:'Material',emoji:'🔧'},{id:4,nome:'Outros',emoji:'📦'}];
+  const catLabel = cat => { const c=cats.find(x=>String(x.id)===String(cat)||x.nome===cat); return c ? `${c.emoji} ${c.nome}` : cat||'—'; };
+  const catOpts  = cats.map(c=>`<option value="${c.id}">${c.emoji} ${c.nome}</option>`).join('');
 
   const totalEfetivado = custos.filter(x=>x.status==='efetivado').reduce((s,x)=>s+(+x.valor||0),0);
   const totalEstimado  = custos.filter(x=>x.status==='estimativa').reduce((s,x)=>s+(+x.valor||0),0);
@@ -4170,7 +4253,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
           <td style="padding:6px 4px"><input id="oc-edit-data" type="date" value="${cu.data||''}" style="width:130px;font-size:12px"></td>
           <td style="padding:6px 4px">
             <select id="oc-edit-cat" style="font-size:12px;width:130px">
-              ${Object.entries(catLabel).map(([v,l])=>`<option value="${v}" ${cu.categoria===v?'selected':''}>${l}</option>`).join('')}
+              ${cats.map(cat=>`<option value="${cat.id}" ${String(cu.categoria)===String(cat.id)?'selected':''}>${cat.emoji} ${cat.nome}</option>`).join('')}
             </select>
           </td>
           <td style="padding:6px 4px"><input id="oc-edit-desc" value="${(cu.descricao||'').replace(/"/g,'&quot;')}" placeholder="Descrição" style="width:100%;font-size:12px"></td>
@@ -4194,7 +4277,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${fmtDt(cu.data)}</td>
-        <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${catLabel[cu.categoria]||cu.categoria||'—'}</td>
+        <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${catLabel(cu.categoria)}</td>
         <td style="padding:8px 4px;font-size:13px;font-weight:600">${cu.descricao||'—'}</td>
         <td style="padding:8px 4px;font-size:12px;color:var(--muted)">${cu.obs||''}</td>
         <td style="padding:8px 4px;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;${cu.status==='efetivado'?'color:#2e7d32':'color:#f57f17'}">${fmtR(cu.valor)}</td>
