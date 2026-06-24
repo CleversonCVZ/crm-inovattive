@@ -4380,11 +4380,165 @@ async function excluirCategoriaCusto(id){
 }
 
 function abaObraResultadoAparente(c, ob){
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const cor   = v => v >= 0 ? '#16a34a' : '#dc2626';
+
+  // ── 1. Valor de Venda (proposta aprovada) ─────────────────────────────────
+  const propostasAprov = (db.propostas||[]).filter(p => p.cardId === c.id && p.status === 'aprovada');
+  const valorVenda     = propostasAprov.reduce((s,p) => s + (p.valor||0), 0);
+  const semProposta    = propostasAprov.length === 0;
+
+  // ── 2. Compras ─────────────────────────────────────────────────────────────
+  const compras        = (db.obraCompras||[]).filter(x => x.obraId === ob.id);
+  const comprasSemValor= compras.filter(x => x.valorPedido == null);
+  const totalCompras   = compras.reduce((s,x) => s + (x.valorPedido||0), 0);
+
+  // ── 3. Mão de Obra (todas OS vinculadas à obra) ────────────────────────────
+  const osObra         = (db.ordensServico||[]).filter(o => o.obraId === ob.id);
+  const totalMO        = osObra.reduce((s,o) =>
+    s + ((o.custoMO?.tecnicos||[]).reduce((ss,t) => ss + (+t.valor||0), 0)), 0);
+
+  // ── 4. Outros Custos ───────────────────────────────────────────────────────
+  const outrosCustos   = ob.outrosCustos || [];
+  const ocEfetivados   = outrosCustos.filter(x => x.status === 'efetivado');
+  const ocEstimativas  = outrosCustos.filter(x => x.status === 'estimativa');
+  const totalOCEfet    = ocEfetivados.reduce((s,x) => s + (+x.valor||0), 0);
+  const totalOCEst     = ocEstimativas.reduce((s,x) => s + (+x.valor||0), 0);
+
+  // ── 5. Resultados ──────────────────────────────────────────────────────────
+  const totalCustosEfet   = totalCompras + totalMO + totalOCEfet;
+  const resultadoEfet     = valorVenda - totalCustosEfet;
+  const resultadoComEst   = valorVenda - totalCustosEfet - totalOCEst;
+  const margemEfet        = valorVenda > 0 ? (resultadoEfet / valorVenda * 100) : null;
+  const margemComEst      = valorVenda > 0 ? (resultadoComEst / valorVenda * 100) : null;
+
+  // ── helpers de bloco ────────────────────────────────────────────────────────
+  const secTitle = (icone, titulo) => `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+                letter-spacing:.5px;margin:20px 0 8px;padding-bottom:6px;
+                border-bottom:1px solid var(--border)">${icone} ${titulo}</div>`;
+
+  const linha = (label, valor, opts={}) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;
+                ${opts.muted ? 'color:var(--muted)' : ''}">
+      <span>${label}</span>
+      <span style="font-weight:${opts.bold?'700':'500'};white-space:nowrap;
+                   ${opts.color ? 'color:'+opts.color : ''}">${valor}</span>
+    </div>`;
+
+  const totalLinha = (label, valor, corVal) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:8px 10px;margin-top:4px;border-radius:8px;
+                background:var(--hover);font-size:13px;font-weight:700">
+      <span>${label}</span>
+      <span style="color:${corVal}">${fmtR(valor)}</span>
+    </div>`;
+
+  // ── render compras ─────────────────────────────────────────────────────────
+  const linhasCompras = compras.length
+    ? compras.map(cp => linha(
+        cp.nomeFornecedor || cp.descricao || `Pedido #${cp.num||'?'}`,
+        cp.valorPedido != null ? fmtR(cp.valorPedido) : '<span style="color:#f59e0b">⚠ sem valor</span>',
+        {}
+      )).join('')
+    : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma compra registrada</div>`;
+
+  // ── render MO por OS ───────────────────────────────────────────────────────
+  const linhasMO = osObra.length
+    ? osObra.map(os => {
+        const moOS = (os.custoMO?.tecnicos||[]).reduce((s,t) => s + (+t.valor||0), 0);
+        const nTecs = (os.custoMO?.tecnicos||[]).length;
+        if(!moOS && !nTecs) return '';
+        return linha(
+          `OS #${os.numero}${os.descricao ? ' — '+os.descricao : ''}` +
+          (nTecs ? ` <span style="color:var(--muted);font-size:11px">(${nTecs} técnico${nTecs>1?'s':''})</span>` : ''),
+          fmtR(moOS),
+          {}
+        );
+      }).filter(Boolean).join('') ||
+      `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhum custo de M.O. lançado</div>`
+    : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma OS vinculada</div>`;
+
+  // ── render outros custos ──────────────────────────────────────────────────
+  const cats     = (db.catOutrosCustos||[]);
+  const catLabel = cat => { const f=cats.find(x=>String(x.id)===String(cat)||x.nome===cat); return f?`${f.emoji} ${f.nome}`:cat||'—'; };
+
+  const linhasOC = outrosCustos.length
+    ? [
+        ...ocEfetivados.map(cu => linha(catLabel(cu.categoria), fmtR(cu.valor), {})),
+        ...ocEstimativas.map(cu => linha(
+          `${catLabel(cu.categoria)} <span style="font-size:10px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px">⏳ estimativa</span>`,
+          fmtR(cu.valor),
+          {color:'#b45309'}
+        ))
+      ].join('')
+    : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhum custo registrado</div>`;
+
+  // ── avisos ─────────────────────────────────────────────────────────────────
+  const avisos = [
+    semProposta ? `<div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:10px 14px;font-size:12px;color:#854d0e;margin-bottom:12px">
+      ⚠ Nenhuma proposta aprovada encontrada — o valor de venda é R$ 0,00.
+    </div>` : '',
+    comprasSemValor.length ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#9a3412;margin-bottom:12px">
+      ⚠ ${comprasSemValor.length} compra(s) sem valor preenchido — o total de compras pode estar subestimado.
+    </div>` : ''
+  ].join('');
+
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">📊 Resultado Aparente da Obra</div>
-    <div class="empty" style="padding:40px;text-align:center;color:var(--muted)">
-      Em construção — em breve esta seção exibirá o resultado financeiro consolidado da obra.
-    </div>`;
+
+    ${avisos}
+
+    ${secTitle('💰','Valor de Venda')}
+    ${linha('Proposta aprovada', `<b style="color:var(--primary)">${fmtR(valorVenda)}</b>`, {bold:true})}
+
+    ${secTitle('🛒','Compras')}
+    ${linhasCompras}
+    ${totalLinha('Total Compras', totalCompras, '#374151')}
+
+    ${secTitle('👷','Mão de Obra')}
+    ${linhasMO}
+    ${totalLinha('Total M.O.', totalMO, '#374151')}
+
+    ${secTitle('💸','Outros Custos')}
+    ${linhasOC}
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <div style="flex:1;padding:8px 10px;border-radius:8px;background:var(--hover);font-size:12px">
+        <div style="color:var(--muted);margin-bottom:2px">✅ Efetivados</div>
+        <div style="font-weight:700">${fmtR(totalOCEfet)}</div>
+      </div>
+      <div style="flex:1;padding:8px 10px;border-radius:8px;background:#fef3c7;font-size:12px">
+        <div style="color:#92400e;margin-bottom:2px">⏳ Estimativas</div>
+        <div style="font-weight:700;color:#b45309">${fmtR(totalOCEst)}</div>
+      </div>
+    </div>
+
+    ${secTitle('📊','Resultado Aparente')}
+
+    <div style="border-radius:10px;border:2px solid ${cor(resultadoEfet)};padding:14px 16px;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Considerando apenas custos efetivados</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:700;color:${cor(resultadoEfet)}">${resultadoEfet >= 0 ? '▲' : '▼'} ${fmtR(resultadoEfet)}</span>
+        ${margemEfet !== null ? `<span style="font-size:12px;color:var(--muted)">margem ${margemEfet.toFixed(1)}%</span>` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">
+        ${fmtR(valorVenda)} − ${fmtR(totalCustosEfet)} (compras + M.O. + outros efetivados)
+      </div>
+    </div>
+
+    ${ocEstimativas.length ? `
+    <div style="border-radius:10px;border:2px dashed ${cor(resultadoComEst)};padding:14px 16px;background:#fffbeb">
+      <div style="font-size:11px;color:#92400e;margin-bottom:4px">Projetado — incluindo estimativas de outros custos</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:15px;font-weight:700;color:${cor(resultadoComEst)}">${resultadoComEst >= 0 ? '▲' : '▼'} ${fmtR(resultadoComEst)}</span>
+        ${margemComEst !== null ? `<span style="font-size:12px;color:#92400e">margem ${margemComEst.toFixed(1)}%</span>` : ''}
+      </div>
+      <div style="font-size:11px;color:#92400e;margin-top:6px">
+        Inclui mais ${fmtR(totalOCEst)} em estimativas de outros custos
+      </div>
+    </div>` : ''}
+  `;
 }
 
 function abaObraOutrosCustos(c, ob, editandoId=null){
