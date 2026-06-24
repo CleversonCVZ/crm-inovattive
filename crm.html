@@ -5258,6 +5258,11 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
   const resp = db.usuarios.find(u=>u.id===os.responsavelId);
   const tipoColor = ostipoInfo(os.tipo).cor;
   const dis = os.fechada ? 'disabled' : '';
+  // Sugestão: usa primeiro histórico do cartão se descrição ainda estiver vazia
+  const cCard = db.cards.find(x=>x.id===os.cardId);
+  const histSugestao = !os.descricaoChamado && cCard?.historico?.length
+    ? (cCard.historico[0].texto || '')
+    : '';
 
   const tabBtn = (id, label) =>
     `<button onclick="abrirVerOSAvulsa(${osId},${cardId},'${id}')"
@@ -5309,7 +5314,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       </div>
       <div style="margin-top:8px">
         <label>Descrição do Chamado</label>
-        <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
+        <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado || histSugestao).replace(/</g,'&lt;')}</textarea>
       </div>
       ${!os.fechada?`<div class="actions" style="justify-content:flex-end;padding-top:10px;margin-top:4px">
         <button class="btn primary" onclick="salvarDadosOSAvulsa(${osId},${cardId})">💾 Salvar</button>
