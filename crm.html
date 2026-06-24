@@ -2660,7 +2660,7 @@ async function salvarMeuUsuario(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
 
   if(senha){
     const {error} = await sb.auth.updateUser({password:senha});
@@ -3589,7 +3589,7 @@ async function confirmarPerdido(cardId){
 
   const btn = btnModalPerigo();
   btnSalvando(btn, 'Salvando…');
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   try{
     const {error:errCard} = await sb.from('cards').upsert({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null,
@@ -3691,7 +3691,7 @@ async function salvarNovoCartao(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   try{
     if(box.classList.contains('open')){
       const cli = db.clientes.find(x=>x.id===clienteId);
@@ -7833,13 +7833,16 @@ async function salvarEdicaoProposta(id){
   propEditandoId=null;
   registrarLog('editar', 'proposta', id, `Proposta editada: ${p.numero} (${fmtMoney(p.valor)||'sem valor'})`);
   // UPDATE imediato no Supabase — não depende do debounce de 800ms do syncDadosSupabase
-  const {error:errProp} = await sb.from('propostas').update({
-    numero: p.numero,
-    data_emissao: toISO(p.dataEmissao),
-    valor: p.valor||0,
-    validade_dias: Number(p.validadeDias)||0,
-    fase_id: Number(p.faseId)||null
-  }).eq('id', id);
+  const [, {error:errProp}] = await Promise.all([
+    new Promise(r=>setTimeout(r,800)),
+    sb.from('propostas').update({
+      numero: p.numero,
+      data_emissao: toISO(p.dataEmissao),
+      valor: p.valor||0,
+      validade_dias: Number(p.validadeDias)||0,
+      fase_id: Number(p.faseId)||null
+    }).eq('id', id)
+  ]);
   if(errProp) console.error('Erro ao salvar proposta no Supabase:', errProp);
   save(); renderAll(); abrirEditarCartao(p.cardId,'emitidas');
 }
@@ -8579,7 +8582,7 @@ async function salvarEdicaoCartao(id){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   try{
     const {error} = await sb.from('cards').upsert({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null,
@@ -8611,7 +8614,7 @@ async function excluirCartao(id){
   if(!confirm(aviso)) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
   for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
   for(const os of oss){
@@ -8733,7 +8736,7 @@ async function salvarNovoCliente(){
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   try{
     const {error} = await sb.from('clientes').upsert({
       id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
@@ -8949,6 +8952,7 @@ function copiarEnderecoCliente(clienteId){
 async function salvarObra(id, clienteId, returnCardId=null){
   const btnSalvar = document.querySelector('#modal .btn.primary');
   if(btnSalvar){ if(btnSalvar.disabled) return; btnSalvar.disabled=true; btnSalvar.textContent='Salvando…'; }
+  const _delay = new Promise(r=>setTimeout(r,800));
   const nome=document.getElementById('o-nome').value.trim();
   if(!nome){ alert('Informe o nome da obra.'); if(btnSalvar){ btnSalvar.disabled=false; btnSalvar.textContent='Salvar'; } return; }
   const end=lerEndereco('o');
@@ -8963,6 +8967,7 @@ async function salvarObra(id, clienteId, returnCardId=null){
     db.obras.push(novaObra);
     registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
+  await _delay;
   save(); renderAll();
   if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
   else abrirEditarCliente(clienteId);
@@ -9001,7 +9006,7 @@ async function excluirCliente(id){
   if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
   const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
   // propostas vinculadas às obras e ao cliente
@@ -9133,10 +9138,9 @@ async function salvarUsuario(id){
   if(senha) payload.senha=senha;
 
   btn.disabled=true; btn.textContent='Salvando...';
+  const _delay = new Promise(r=>setTimeout(r,800));
   const res = await chamarAdminUsuarios(payload);
-  btn.disabled=false; btn.textContent='Salvar';
-
-  if(res.error){ erroEl.textContent=res.error; return; }
+  if(res.error){ btn.disabled=false; btn.textContent='Salvar'; erroEl.textContent=res.error; return; }
 
   await carregarUsuariosSupabase();
   if(usuarioAtual && id===usuarioAtual.id){
@@ -9144,6 +9148,7 @@ async function salvarUsuario(id){
     if(me) iniciarApp(me);
   }
   registrarLog(id?'editar':'criar', 'usuario', id||db.usuarios.find(x=>x.login===login)?.id, id ? `Usuário editado: "${nome}" (login: ${login})` : `Novo usuário criado: "${nome}" (login: ${login})`);
+  await _delay;
   saveLocal(); fecharModal(); renderAll();
   if(!id) alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
 }
@@ -9157,7 +9162,7 @@ async function excluirUsuario(id){
   if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
   const btnExc = btnModalPerigo();
   btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,500));
+  const _delay = new Promise(r=>setTimeout(r,800));
   const res = await chamarAdminUsuarios({acao:'excluir', id});
   if(res.error){ btnRestaurar(btnExc); alert(res.error); return; }
   registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
