@@ -4257,7 +4257,6 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
             </select>
           </td>
           <td style="padding:6px 4px"><input id="oc-edit-desc" value="${(cu.descricao||'').replace(/"/g,'&quot;')}" placeholder="Descrição" style="width:100%;font-size:12px"></td>
-          <td style="padding:6px 4px"><input id="oc-edit-obs" value="${(cu.obs||'').replace(/"/g,'&quot;')}" placeholder="Obs." style="width:100%;font-size:12px"></td>
           <td style="padding:6px 4px"><input id="oc-edit-valor" type="text" inputmode="decimal" value="${Number(cu.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}" oninput="mascaraMoeda(this)" style="width:90px;text-align:right;font-size:12px"></td>
           <td style="padding:6px 4px">
             <select id="oc-edit-status" style="font-size:12px">
@@ -4279,7 +4278,6 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
         <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${fmtDt(cu.data)}</td>
         <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${catLabel(cu.categoria)}</td>
         <td style="padding:8px 4px;font-size:13px;font-weight:600">${cu.descricao||'—'}</td>
-        <td style="padding:8px 4px;font-size:12px;color:var(--muted)">${cu.obs||''}</td>
         <td style="padding:8px 4px;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;${cu.status==='efetivado'?'color:#2e7d32':'color:#f57f17'}">${fmtR(cu.valor)}</td>
         <td style="padding:8px 4px">${statusBadge}</td>
         <td style="padding:8px 4px;white-space:nowrap">
@@ -4287,7 +4285,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
           <button class="icon-btn del" title="Excluir" onclick="excluirOutroCusto('${cu.id}',${ob.id},${c.id})">🗑</button>
         </td>
       </tr>`;
-  }).join('') : `<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Nenhum custo lançado ainda.</td></tr>`;
+  }).join('') : `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Nenhum custo lançado ainda.</td></tr>`;
 
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">💰 Outros Custos da Obra</div>
@@ -4299,7 +4297,6 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Data</th>
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Categoria</th>
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Descrição</th>
-            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Obs.</th>
             <th style="text-align:right;padding:7px 4px;font-size:11px;color:var(--muted)">Valor</th>
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Status</th>
             <th style="width:70px"></th>
@@ -4309,7 +4306,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
         ${custos.length ? `
         <tfoot>
           <tr style="background:var(--surface)">
-            <td colspan="4" style="padding:8px 4px;text-align:right;font-size:12px;color:var(--muted)">
+            <td colspan="3" style="padding:8px 4px;text-align:right;font-size:12px;color:var(--muted)">
               <span style="margin-right:16px">✅ Efetivado: <b style="color:#2e7d32">${fmtR(totalEfetivado)}</b></span>
               <span>⏳ Estimativa: <b style="color:#f57f17">${fmtR(totalEstimado)}</b></span>
             </td>
@@ -4335,10 +4332,6 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
         <div style="flex:2;min-width:160px">
           <label style="font-size:11px;color:var(--muted)">Descrição *</label>
           <input id="oc-desc" placeholder="Ex.: Frete de material" style="width:100%;font-size:13px">
-        </div>
-        <div style="flex:1;min-width:120px">
-          <label style="font-size:11px;color:var(--muted)">Obs. (opcional)</label>
-          <input id="oc-obs" placeholder="Detalhe..." style="width:100%;font-size:13px">
         </div>
       </div>
       <div class="form-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:flex-end">
@@ -4368,7 +4361,7 @@ async function adicionarOutroCusto(obraId, cardId){
     data:       document.getElementById('oc-data')?.value   || new Date().toISOString().slice(0,10),
     categoria:  document.getElementById('oc-cat')?.value    || 'outros',
     descricao:  desc,
-    obs:        (document.getElementById('oc-obs')?.value||'').trim(),
+    obs:        '',
     valor:      lerMoeda('oc-valor'),
     status:     document.getElementById('oc-status')?.value || 'efetivado'
   });
@@ -4395,7 +4388,7 @@ async function salvarEdicaoOutroCusto(custoId, obraId, cardId){
   cu.data      = document.getElementById('oc-edit-data')?.value   || cu.data;
   cu.categoria = document.getElementById('oc-edit-cat')?.value    || cu.categoria;
   cu.descricao = desc;
-  cu.obs       = (document.getElementById('oc-edit-obs')?.value||'').trim();
+  cu.obs       = cu.obs||'';
   cu.valor     = lerMoeda('oc-edit-valor');
   cu.status    = document.getElementById('oc-edit-status')?.value || 'efetivado';
   await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
