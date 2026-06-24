@@ -438,17 +438,25 @@
   <!-- CATEGORIAS OUTROS CUSTOS -->
   <div class="view" id="view-cat-outros-custos">
     <div class="bar">
-      <h2>Categorias — Outros Custos</h2>
+      <h2>Categoria Custos Obra</h2>
       <div class="spacer"></div>
       <button class="btn primary" onclick="novaCategoriaCusto()">+ Nova Categoria</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Categorias disponíveis ao lançar custos avulsos em obras (fretes, alimentação, materiais, etc.). Edite nome e emoji direto na tabela.
+      Categorias disponíveis ao lançar custos avulsos em obras. Clique no ícone para escolher outro, edite o nome diretamente na linha.
     </p>
-    <table class="fases-table">
-      <thead><tr><th>ID</th><th>Emoji</th><th>Nome</th><th>Ordem</th><th></th></tr></thead>
+    <table class="lista" style="max-width:600px">
+      <thead><tr><th style="width:60px">Ícone</th><th>Nome</th><th style="width:80px;text-align:center">Ordem</th><th style="width:40px"></th></tr></thead>
       <tbody id="cat-custos-tbody"></tbody>
     </table>
+    <!-- Picker de emojis (oculto por padrão) -->
+    <div id="emoji-picker" style="display:none;position:fixed;z-index:9999;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:12px;width:320px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        Escolha um ícone
+        <button onclick="fecharEmojiPicker()" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted)">✕</button>
+      </div>
+      <div id="emoji-picker-grid" style="display:grid;grid-template-columns:repeat(10,1fr);gap:4px"></div>
+    </div>
   </div>
 
   <!-- OBRAS: LISTA -->
@@ -4229,41 +4237,123 @@ async function removerMOOS(osId, idx, cardId){
 }
 
 /* ===== Categorias de Outros Custos (CRUD global) ===== */
+const EMOJIS_CUSTO = [
+  // Transporte & Logística
+  '🚚','🚛','🚗','🚕','🚙','🛻','🏎','🚌','🚑','🚒','✈️','🚢','🛵','🛺','🚲','🛞',
+  // Alimentação
+  '🍽','🍔','🍕','🥗','🥙','☕','🍱','🥘','🍳','🧃','🥤','🍺',
+  // Ferramentas & Material
+  '🔧','🔨','⚙️','🛠','🪛','🔩','🪚','⛏','🪝','🧰','🔌','💡','🪜','🧱','🪟','🚪','🛁','🚿','🪣',
+  // Embalagem & Estoque
+  '📦','📫','📋','📁','🗂','🧾','🏷',
+  // Financeiro & Admin
+  '💰','💵','💳','🏦','📊','📈','💹','🧮','📑',
+  // Pessoas & Serviços
+  '👷','🧑‍🔧','👨‍💼','🤝','🧹','🧺','🧽',
+  // Natureza & Outros
+  '⭐','🔴','🟡','🟢','🔵','🟠','⬛','🏗','🏠','🏢','🚧'
+];
+
+let _emojiPickerCatId = null;
+
+function abrirEmojiPicker(catId, el){
+  _emojiPickerCatId = catId;
+  const picker = document.getElementById('emoji-picker');
+  const grid   = document.getElementById('emoji-picker-grid');
+  if(!picker || !grid) return;
+  grid.innerHTML = EMOJIS_CUSTO.map(e=>
+    `<button onclick="selecionarEmoji('${e}')" title="${e}"
+      style="font-size:20px;background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;line-height:1"
+      onmouseover="this.style.background='#f1f3f5'" onmouseout="this.style.background='none'">${e}</button>`
+  ).join('');
+  // Posicionar próximo ao botão clicado
+  const r = el.getBoundingClientRect();
+  picker.style.display = 'block';
+  picker.style.top  = (r.bottom + 6 + window.scrollY) + 'px';
+  picker.style.left = Math.min(r.left, window.innerWidth - 340) + 'px';
+}
+
+function fecharEmojiPicker(){
+  const p = document.getElementById('emoji-picker');
+  if(p) p.style.display = 'none';
+  _emojiPickerCatId = null;
+}
+
+async function selecionarEmoji(emoji){
+  if(!_emojiPickerCatId) return;
+  await atualizarCategoriaCusto(_emojiPickerCatId, {emoji});
+  fecharEmojiPicker();
+  renderCatOutrosCustos();
+}
+
+// Fechar picker ao clicar fora
+document.addEventListener('click', e=>{
+  const p = document.getElementById('emoji-picker');
+  if(p && p.style.display!=='none' && !p.contains(e.target) && !e.target.closest('[data-emoji-btn]'))
+    fecharEmojiPicker();
+});
+
 function renderCatOutrosCustos(){
-  const cats = db.catOutrosCustos || [];
+  const cats  = db.catOutrosCustos || [];
   const tbody = document.getElementById('cat-custos-tbody');
   if(!tbody) return;
   if(!cats.length){
-    tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--muted)">Nenhuma categoria cadastrada.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--muted)">Nenhuma categoria cadastrada. Clique em + Nova Categoria para começar.</td></tr>`;
     return;
   }
-  tbody.innerHTML = cats.map(cat=>`
-    <tr>
-      <td style="padding:8px 6px;color:var(--muted);font-size:12px">${cat.id}</td>
-      <td style="padding:8px 6px">
-        <input value="${cat.emoji||'📦'}" maxlength="2" style="width:44px;text-align:center;font-size:18px;border:1px solid var(--border);border-radius:6px;padding:2px"
-          onchange="atualizarCategoriaCusto(${cat.id},{emoji:this.value.trim()||'📦'})">
+  tbody.innerHTML = '';
+  cats.forEach(cat=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="padding:8px 10px;text-align:center">
+        <button data-emoji-btn title="Clique para escolher outro ícone"
+          onclick="abrirEmojiPicker(${cat.id}, this)"
+          style="font-size:24px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;width:44px;height:44px;cursor:pointer;line-height:1;transition:background .15s"
+          onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">${cat.emoji||'📦'}</button>
       </td>
-      <td style="padding:8px 6px">
-        <input value="${(cat.nome||'').replace(/"/g,'&quot;')}" style="width:200px;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px 8px"
-          onchange="atualizarCategoriaCusto(${cat.id},{nome:this.value.trim()})">
+      <td style="padding:8px 10px">
+        <input type="text" value="${(cat.nome||'').replace(/"/g,'&quot;')}" data-id="${cat.id}"
+          style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:5px 8px;border-radius:6px"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='none'">
       </td>
-      <td style="padding:8px 6px">
-        <input type="number" value="${cat.ordem||0}" min="0" style="width:60px;text-align:center;font-size:13px;border:1px solid var(--border);border-radius:6px;padding:4px"
-          onchange="atualizarCategoriaCusto(${cat.id},{ordem:+this.value})">
+      <td style="padding:8px 10px;text-align:center">
+        <input type="number" value="${cat.ordem||0}" min="0" data-ord="${cat.id}"
+          style="width:56px;text-align:center;border:1px solid transparent;background:none;font-size:13px;padding:4px;border-radius:6px"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='none'">
       </td>
-      <td style="padding:8px 6px">
-        <button class="btn sm danger" onclick="excluirCategoriaCusto(${cat.id})">🗑 Excluir</button>
-      </td>
-    </tr>`).join('');
+      <td style="padding:8px 10px;text-align:right">
+        <button class="icon-btn del" data-del="${cat.id}" title="Excluir categoria">🗑</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  // Salvar nome ao sair do campo
+  tbody.querySelectorAll('input[data-id]').forEach(inp=>{
+    inp.onchange = ()=>{
+      const nome = inp.value.trim();
+      if(!nome){ alert('O nome não pode ficar vazio.'); renderCatOutrosCustos(); return; }
+      atualizarCategoriaCusto(+inp.dataset.id, {nome});
+    };
+  });
+  // Salvar ordem ao sair do campo
+  tbody.querySelectorAll('input[data-ord]').forEach(inp=>{
+    inp.onchange = ()=>{
+      atualizarCategoriaCusto(+inp.dataset.ord, {ordem:+inp.value});
+      setTimeout(()=>{ db.catOutrosCustos.sort((a,b)=>a.ordem-b.ordem); renderCatOutrosCustos(); }, 300);
+    };
+  });
+  // Excluir
+  tbody.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick = ()=> excluirCategoriaCusto(+btn.dataset.del);
+  });
 }
 
 async function novaCategoriaCusto(){
   const nome = prompt('Nome da nova categoria:');
   if(!nome || !nome.trim()) return;
-  const emoji = prompt('Emoji da categoria (ex: 🚚):', '📦') || '📦';
   const ordem = (db.catOutrosCustos||[]).reduce((m,c)=>Math.max(m,c.ordem||0),0)+1;
-  const {data, error} = await sb.from('categorias_outros_custos').insert({nome:nome.trim(), emoji:emoji.trim()||'📦', ordem}).select().single();
+  const {data, error} = await sb.from('categorias_outros_custos').insert({nome:nome.trim(), emoji:'📦', ordem}).select().single();
   if(error){ alert('Erro ao criar categoria: '+error.message); return; }
   if(!db.catOutrosCustos) db.catOutrosCustos = [];
   db.catOutrosCustos.push({id:data.id, nome:data.nome, emoji:data.emoji, ordem:data.ordem});
@@ -4276,11 +4366,11 @@ async function atualizarCategoriaCusto(id, campos){
   if(!cat) return;
   Object.assign(cat, campos);
   await sb.from('categorias_outros_custos').update(campos).eq('id',id);
-  db.catOutrosCustos.sort((a,b)=>a.ordem-b.ordem);
 }
 
 async function excluirCategoriaCusto(id){
-  if(!confirm('Excluir esta categoria? Os lançamentos existentes manterão o valor da categoria, mas ela não aparecerá mais no seletor.')) return;
+  const cat = (db.catOutrosCustos||[]).find(c=>c.id===id);
+  if(!confirm(`Excluir a categoria "${cat?.nome||id}"? Os lançamentos existentes manterão o texto da categoria, mas ela não aparecerá mais no seletor.`)) return;
   await sb.from('categorias_outros_custos').delete().eq('id',id);
   db.catOutrosCustos = (db.catOutrosCustos||[]).filter(c=>c.id!==id);
   renderCatOutrosCustos();
