@@ -4879,8 +4879,13 @@ function abaObraResultadoAparente(c, ob){
 
   // ── 1. Valor de Venda (proposta aprovada) ─────────────────────────────────
   const propostasAprov = (db.propostas||[]).filter(p => p.cardId === c.id && p.status === 'aprovada');
-  const valorVenda     = propostasAprov.reduce((s,p) => s + (p.valor||0), 0);
+  // valorVenda exclui itens fornecidos pelo cliente (clienteFornece=true) — eles não são faturados
+  const valorVenda     = propostasAprov.reduce((s,p) => s + valorReceberProposta(p), 0);
   const semProposta    = propostasAprov.length === 0;
+  // detecta quais propostas têm itens clienteFornece para exibir aviso
+  const propostasComClienteFornece = propostasAprov.filter(p =>
+    (p.itens||[]).some(it => it.clienteFornece)
+  );
 
   // ── 2. Compras ─────────────────────────────────────────────────────────────
   const compras        = (db.obraCompras||[]).filter(x => x.obraId === ob.id);
@@ -4976,6 +4981,12 @@ function abaObraResultadoAparente(c, ob){
     </div>` : '',
     comprasSemValor.length ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#9a3412;margin-bottom:12px">
       ⚠ ${comprasSemValor.length} compra(s) sem valor preenchido — o total de compras pode estar subestimado.
+    </div>` : '',
+    propostasComClienteFornece.length ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e40af;margin-bottom:12px">
+      ℹ️ ${propostasComClienteFornece.length === 1
+        ? `A proposta <b>${propostasComClienteFornece[0].numero}</b> possui`
+        : `As propostas <b>${propostasComClienteFornece.map(p=>p.numero).join(', ')}</b> possuem`}
+      itens com fornecimento direto pelo cliente — esses valores não estão sendo computados no resultado.
     </div>` : ''
   ].join('');
 
