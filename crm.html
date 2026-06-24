@@ -319,7 +319,6 @@
       <button id="gm-funcoes" onclick="irParaView('funcoes')">🏷️ Funções na empresa</button>
       <button id="gm-gerais" onclick="irParaView('gerais')">🏢 Configurações do sistema</button>
       <hr>
-      <button id="gm-cat-custos" onclick="irParaView('cat-outros-custos')">💰 Categorias de Outros Custos</button>
       <button id="gm-downloads" onclick="irParaView('downloads')">📥 Downloads</button>
       <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
@@ -1122,7 +1121,7 @@ const TELAS = [
   {id:'gerais',      nome:'Configurações do Sistema'},
   {id:'auditoria',        nome:'Auditoria & Logs'},
   {id:'downloads',        nome:'Downloads'},
-  {id:'cat-outros-custos', nome:'Categorias — Outros Custos'}
+  {id:'cat-outros-custos', nome:'Financeiro — Categoria Custos Obra', menu:'Categoria Custos Obra'}
 ];
 
 /* Recursos: permissões mais finas que telas (ex.: abas dentro do cartão CRM) */
@@ -1151,7 +1150,7 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-fases','fin-contas-correntes','fin-contas-pagar','fin-contas-receber']}
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-fases','cat-outros-custos','fin-contas-correntes','fin-contas-pagar','fin-contas-receber']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -2784,7 +2783,7 @@ function aplicarPermissoes(){
   renderNavTelas();
   // view ativa precisa ser permitida (telas da engrenagem também valem)
   const atual = viewAtiva();
-  const gearViews = ['usuarios','grupos','grupo-form','funcoes','gerais','auditoria','downloads','cat-outros-custos'];
+  const gearViews = ['usuarios','grupos','grupo-form','funcoes','gerais','auditoria','downloads'];
   const permitida = atual && (gearViews.includes(atual) ? podeVer(usuarioAtual, atual)
     : (mod && mod.telas.includes(atual) && podeVer(usuarioAtual, atual)));
   if(!permitida && mod){
@@ -2792,7 +2791,7 @@ function aplicarPermissoes(){
     if(primeira) ativarView(primeira);
   }
   // itens do menu engrenagem conforme o grupo
-  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria','gm-cat-custos':'cat-outros-custos'};
+  const itens = {'gm-sistema':'usuarios','gm-grupos':'grupos','gm-funcoes':'funcoes','gm-gerais':'gerais','gm-downloads':'downloads','gm-auditoria':'auditoria'};
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
