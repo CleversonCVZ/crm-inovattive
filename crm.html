@@ -5063,7 +5063,8 @@ function salvarDadosOS(osId, cardId){
     }
   }
   registrarLog('editar', 'os', osId, `O.S. atualizada: ${os.numero}`);
-  save(); renderAll(); abrirVerOSProjeto(osId, cardId, 'geral');
+  save(); renderAll();
+  setTimeout(()=>{ abrirVerOS(osId, cardId); }, 400);
 }
 
 /* =============== OS EXECUÇÃO — modal com abas =============== */
@@ -5317,7 +5318,8 @@ function salvarDadosOSExec(osId, cardId){
   os.dataTermino= document.getElementById('exec-dt').value||'';
   os.instrucoes = document.getElementById('exec-instrucoes').value||'';
   registrarLog('editar', 'os', osId, `O.S. Execução atualizada: ${os.numero}`);
-  save(); renderAll(); abrirVerOSExecucao(osId, cardId, 'geral');
+  save(); renderAll();
+  setTimeout(()=>{ abrirVerOSExecucao(osId, cardId, 'geral'); }, 400);
 }
 
 /* =============== OS AVULSA — modal com abas =============== */
@@ -5550,7 +5552,8 @@ function salvarDadosOSAvulsa(osId, cardId){
   os.dataTermino     = document.getElementById('avl-dt').value || '';
   os.descricaoChamado = document.getElementById('avl-descricao').value || '';
   registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
-  save(); renderAll(); abrirVerOSAvulsa(osId, cardId, 'geral');
+  save(); renderAll();
+  setTimeout(()=>{ abrirVerOSAvulsa(osId, cardId, 'geral'); }, 400);
 }
 
 async function adicionarTecnicoAVL(osId, cardId){
