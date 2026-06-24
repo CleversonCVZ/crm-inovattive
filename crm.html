@@ -877,11 +877,20 @@ async function enviarParaAgendaGoogle(tipo, id){
   let title, description, date, eventId;
   if(tipo === 'card'){
     const c = db.cards.find(x=>x.id===id);
-    if(!c?.agenda){ alert('Este cartão não tem data agendada.'); return; }
+    // Lê data do campo na tela (pode não ter sido salvo ainda)
+    const inputAgenda = document.getElementById('m-agenda');
+    const dataDigitada = inputAgenda ? inputAgenda.value : null;
+    const dataFinal = dataDigitada || c?.agenda;
+    if(!dataFinal){ alert('Preencha a data de agenda antes de enviar.'); return; }
+    // Auto-salva a data se for diferente do que está em db
+    if(dataDigitada && dataDigitada !== c?.agenda){
+      c.agenda = dataDigitada;
+      await sb.from('cards').update({agenda: dataDigitada}).eq('id', id);
+    }
     const ob = obraDe(c);
     title = `CRM: ${cliente(c.clienteId).nome}`;
     description = `Cartão #${c.num} · Responsável: ${c.responsavel}${ob?'\nObra: '+ob.nome:''}`;
-    date = c.agenda.slice(0,10);
+    date = dataFinal.slice(0,10);
     eventId = c.googleEventId || null;
   } else {
     const os = db.ordensServico.find(x=>x.id===id);
