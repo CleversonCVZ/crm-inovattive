@@ -373,9 +373,11 @@
       <div class="spacer"></div>
       <select id="cli-filtro-tipo" onchange="renderClientes()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
         <option value="">Todos os tipos</option>
+        <option value="ativo">🟢 Clientes Ativos</option>
         <option value="cliente">🟢 Clientes</option>
         <option value="prospect">🟡 Prospects</option>
         <option value="frio">🔴 Leads Frios</option>
+        <option value="sem">⚪ Sem classificação</option>
       </select>
       <select id="cli-filtro-cidade" onchange="renderClientes()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
         <option value="">Todas as cidades</option>
@@ -3013,17 +3015,43 @@ function excluirFase(id){
 /* ================= CLIENTES ================= */
 function classificarCliente(clienteId){
   const cardsCliente = db.cards.filter(x=>x.clienteId===clienteId);
-  // Tem proposta aprovada? → Cliente
+  const temObra = (db.obras||[]).some(o=>o.clienteId===clienteId);
+  const fasesInativas = new Set(db.fases.filter(f=>f.tipo==='perdido'||f.tipo==='concluido').map(f=>f.id));
+
+  // Cards abertos = não perdido/concluido por fase nem por flag
+  const cardsAbertos = cardsCliente.filter(c=>!fasesInativas.has(c.faseId) && !c.perdido && !c.concluido);
+
+  // Proposta aprovada em qualquer card do cliente
   const temAprovada = cardsCliente.some(card=>
     (db.propostas||[]).some(p=>p.cardId===card.id && p.status==='aprovada')
   );
-  if(temAprovada) return {selo:'🟢 Cliente', cor:'#1d8348'};
-  // Tem card ativo (fora de perdido/concluido e sem flag perdido/concluido)? → Prospect
-  const fasesInatvas = new Set(db.fases.filter(f=>f.tipo==='perdido'||f.tipo==='concluido').map(f=>f.id));
-  const temAtivo = cardsCliente.some(card=>!fasesInatvas.has(card.faseId) && !card.perdido && !card.concluido);
-  if(temAtivo) return {selo:'🟡 Prospect', cor:'#b7950b'};
-  // Só tem cards perdidos/concluidos ou nenhum card → Lead Frio
-  return {selo:'🔴 Lead Frio', cor:'#922b21'};
+
+  // Proposta emitida (em aberto) em algum card aberto
+  const temEmitida = cardsAbertos.some(card=>
+    (db.propostas||[]).some(p=>p.cardId===card.id && p.status==='emitida')
+  );
+
+  // Cards com flag perdido (não concluido)
+  const temPerdido = cardsCliente.some(c=>c.perdido || (fasesInativas.has(c.faseId) && db.fases.find(f=>f.id===c.faseId)?.tipo==='perdido'));
+
+  // Regra 1: Cliente Ativo — card aberto + proposta aprovada + obra
+  if(cardsAbertos.length > 0 && temAprovada && temObra)
+    return {selo:'🟢 Cliente Ativo', cor:'#1d8348'};
+
+  // Regra 2: Cliente — sem card aberto + obra cadastrada + proposta aprovada
+  if(cardsAbertos.length === 0 && temObra && temAprovada)
+    return {selo:'🟢 Cliente', cor:'#1a7a4a'};
+
+  // Regra 3: Prospect — card aberto + proposta emitida + nenhuma aprovada
+  if(cardsAbertos.length > 0 && temEmitida && !temAprovada)
+    return {selo:'🟡 Prospect', cor:'#b7950b'};
+
+  // Regra 4: Lead Frio — tem card perdido + sem proposta aprovada + sem obra
+  if(temPerdido && !temAprovada && !temObra)
+    return {selo:'🔴 Lead Frio', cor:'#922b21'};
+
+  // Sem classificação definida
+  return {selo:'⚪ Sem classificação', cor:'#888'};
 }
 
 function renderClientes(){
@@ -3045,12 +3073,14 @@ function renderClientes(){
   }
 
   // stats globais
-  const nCliente  = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Cliente')).length;
+  const nAtivo    = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Cliente Ativo')).length;
+  const nCliente  = db.clientes.filter(c=>classificarCliente(c.id).selo==='🟢 Cliente').length;
   const nProspect = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Prospect')).length;
   const nFrio     = db.clientes.filter(c=>classificarCliente(c.id).selo.includes('Lead Frio')).length;
   if(st) st.innerHTML=`
     <div class="stat"><div class="n">${db.clientes.length}</div><div class="l">Total</div></div>
-    <div class="stat"><div class="n" style="color:#1d8348">${nCliente}</div><div class="l">🟢 Clientes</div></div>
+    <div class="stat"><div class="n" style="color:#1d8348">${nAtivo}</div><div class="l">🟢 Clientes Ativos</div></div>
+    <div class="stat"><div class="n" style="color:#1a7a4a">${nCliente}</div><div class="l">🟢 Clientes</div></div>
     <div class="stat"><div class="n" style="color:#b7950b">${nProspect}</div><div class="l">🟡 Prospects</div></div>
     <div class="stat"><div class="n" style="color:#922b21">${nFrio}</div><div class="l">🔴 Leads Frios</div></div>`;
 
@@ -3060,9 +3090,11 @@ function renderClientes(){
     if(filtroCidade && (c.cidade||'')!==filtroCidade) return false;
     if(filtroTipo){
       const {selo} = classificarCliente(c.id);
-      if(filtroTipo==='cliente'  && !selo.includes('Cliente'))  return false;
-      if(filtroTipo==='prospect' && !selo.includes('Prospect')) return false;
-      if(filtroTipo==='frio'     && !selo.includes('Lead Frio')) return false;
+      if(filtroTipo==='ativo'    && selo !== '🟢 Cliente Ativo')    return false;
+      if(filtroTipo==='cliente'  && selo !== '🟢 Cliente')          return false;
+      if(filtroTipo==='prospect' && !selo.includes('Prospect'))      return false;
+      if(filtroTipo==='frio'     && !selo.includes('Lead Frio'))     return false;
+      if(filtroTipo==='sem'      && !selo.includes('Sem classificação')) return false;
     }
     return true;
   });
