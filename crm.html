@@ -5989,7 +5989,7 @@ function abrirNovaParcelaReceber(cardId){
       </div>
       <div>
         <label>Valor (R$)</label>
-        <input id="nr-valor" type="number" min="0" step="0.01" placeholder="0,00">
+        <input id="nr-valor" type="text" inputmode="decimal" placeholder="0,00" oninput="mascaraMoeda(this)">
       </div>
     </div>
     <div class="form-row">
@@ -6049,7 +6049,7 @@ function toggleNrVenc(){
 
 async function salvarNovaParcelaReceber(cardId){
   const desc  = document.getElementById('nr-desc').value.trim();
-  const valor = parseFloat(document.getElementById('nr-valor').value||0);
+  const valor = parseFloat((document.getElementById('nr-valor').value||'0').replace(/\./g,'').replace(',','.'));
   const tipo  = document.getElementById('nr-tipo').value;
   const origem= document.getElementById('nr-origem').value;
   const status= document.getElementById('nr-status').value;
@@ -6094,7 +6094,7 @@ function editarParcelaReceber(id, cardId){
       </div>
       <div>
         <label>Valor (R$)</label>
-        <input id="er-valor" type="number" min="0" step="0.01" value="${r.valor}">
+        <input id="er-valor" type="text" inputmode="decimal" value="${fmtMoney(r.valor)}" oninput="mascaraMoeda(this)">
       </div>
     </div>
     <div class="form-row">
@@ -6140,7 +6140,7 @@ function salvarEdicaoParcelaReceber(id, cardId){
   const tipo   = document.getElementById('er-tipo').value;
   const origem = document.getElementById('er-origem').value;
   r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
-  r.valor     = parseFloat(document.getElementById('er-valor').value||r.valor);
+  r.valor     = parseFloat((document.getElementById('er-valor').value||'0').replace(/\./g,'').replace(',','.')) || r.valor;
   r.tipo      = tipo;
   if(origem.startsWith('proposta:')){ r.propostaId=Number(origem.split(':')[1]); r.osId=null; }
   else if(origem.startsWith('os:')){ r.osId=Number(origem.split(':')[1]); r.propostaId=null; }
