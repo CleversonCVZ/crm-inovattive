@@ -1277,7 +1277,7 @@ async function carregarDadosSupabase(){
     if(cards.data){
       db.cards = cards.data.map(c=>({
         id:c.id, num:c.num, clienteId:c.cliente_id, obraId:c.obra_id, origemId:c.origem_id,
-        faseId:c.fase_id, responsavel:c.responsavel||'', agenda: c.agenda ? c.agenda.slice(0,10) : '',
+        faseId:c.fase_id, responsavel:c.responsavel||'', agenda: c.agenda ? c.agenda.slice(0,16) : '',
         valor:Number(c.valor)||0, perdido:!!c.perdido, concluido:!!c.concluido, historico:[],
         googleEventId: c.google_event_id || null
       }));
