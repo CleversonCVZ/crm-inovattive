@@ -4290,35 +4290,8 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
   return `
     <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px">💰 Outros Custos da Obra</div>
 
-    <div style="overflow-x:auto;margin-bottom:16px">
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead>
-          <tr style="background:var(--surface);border-bottom:2px solid var(--border)">
-            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Data</th>
-            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Categoria</th>
-            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Descrição</th>
-            <th style="text-align:right;padding:7px 4px;font-size:11px;color:var(--muted)">Valor</th>
-            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Status</th>
-            <th style="width:70px"></th>
-          </tr>
-        </thead>
-        <tbody>${linhas}</tbody>
-        ${custos.length ? `
-        <tfoot>
-          <tr style="background:var(--surface)">
-            <td colspan="3" style="padding:8px 4px;text-align:right;font-size:12px;color:var(--muted)">
-              <span style="margin-right:16px">✅ Efetivado: <b style="color:#2e7d32">${fmtR(totalEfetivado)}</b></span>
-              <span>⏳ Estimativa: <b style="color:#f57f17">${fmtR(totalEstimado)}</b></span>
-            </td>
-            <td style="padding:8px 4px;text-align:right;font-size:15px;font-weight:800;color:var(--blue-dark)">${fmtR(totalGeral)}</td>
-            <td colspan="2" style="padding:8px 4px;font-size:11px;color:var(--muted)">Total geral</td>
-          </tr>
-        </tfoot>` : ''}
-      </table>
-    </div>
-
     <!-- Formulário adicionar -->
-    <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px">
+    <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">＋ Novo lançamento</div>
       <div class="form-row" style="flex-wrap:wrap;gap:8px">
         <div style="flex:0 0 140px">
@@ -4348,6 +4321,33 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
         </div>
         <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarOutroCusto(${ob.id},${c.id})">＋ Lançar</button>
       </div>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--surface);border-bottom:2px solid var(--border)">
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Data</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Categoria</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Descrição</th>
+            <th style="text-align:right;padding:7px 4px;font-size:11px;color:var(--muted)">Valor</th>
+            <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Status</th>
+            <th style="width:70px"></th>
+          </tr>
+        </thead>
+        <tbody>${linhas}</tbody>
+        ${custos.length ? `
+        <tfoot>
+          <tr style="background:var(--surface)">
+            <td colspan="3" style="padding:8px 4px;text-align:right;font-size:12px;color:var(--muted)">
+              <span style="margin-right:16px">✅ Efetivado: <b style="color:#2e7d32">${fmtR(totalEfetivado)}</b></span>
+              <span>⏳ Estimativa: <b style="color:#f57f17">${fmtR(totalEstimado)}</b></span>
+            </td>
+            <td style="padding:8px 4px;text-align:right;font-size:15px;font-weight:800;color:var(--blue-dark)">${fmtR(totalGeral)}</td>
+            <td colspan="2" style="padding:8px 4px;font-size:11px;color:var(--muted)">Total geral</td>
+          </tr>
+        </tfoot>` : ''}
+      </table>
     </div>`;
 }
 
