@@ -1286,6 +1286,8 @@ function load(){
     RECURSOS.forEach(r=>{ if(g.admin && !g.recursos.includes(r.id)) g.recursos.push(r.id); });
     // fasesPermitidas: null = sem restrição (todos veem tudo)
     if(!('fasesPermitidas' in g)) g.fasesPermitidas = null;
+    // filtrarOS: true = o grupo só enxerga OS onde consta como responsável ou técnico
+    if(!('filtrarOS' in g)) g.filtrarOS = false;
   });
   const gAdmin = db.grupos.find(g=>g.admin);
   db.usuarios.forEach(u=>{
@@ -1459,7 +1461,7 @@ async function carregarConfigSupabase(){
     if(funcoes.data && funcoes.data.length)
       db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
     if(grupos.data && grupos.data.length)
-      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null}));
+      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os}));
     if(catOutrosCustos.data && catOutrosCustos.data.length)
       db.catOutrosCustos = catOutrosCustos.data.map(c=>({id:c.id, nome:c.nome, emoji:c.emoji||'📦', ordem:c.ordem||0}));
     if(empresa.data){
@@ -1698,7 +1700,7 @@ function syncConfigSupabase(){
     sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -9596,6 +9598,18 @@ function formGrupo(g){
           <div id="fases-perm-box" class="perm-box" style="${restringirFases?'':'display:none'}">${fasesCk||'<span style="font-size:12px;color:var(--muted)">Nenhuma fase cadastrada.</span>'}</div>
         </div>
         <div>
+          <div class="perm-section-label">Restrições de visibilidade</div>
+          <div class="perm-box">
+            <label class="perm-item" style="gap:8px">
+              <input type="checkbox" id="ck-filtrar-os" ${g&&g.filtrarOS?'checked':''}>
+              <span>
+                <b>Ver apenas as próprias O.S.</b><br>
+                <span style="font-size:11px;color:var(--muted)">O usuário só vê OS em que consta como responsável ou técnico.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div>
           <div class="perm-section-label">Downloads — categorias</div>
           <div class="perm-box">${dlCatsCk}</div>
         </div>
@@ -9638,13 +9652,14 @@ async function salvarGrupo(id){
   const recursos=[...document.querySelectorAll('.ck-grec:checked')].map(c=>c.value);
   const restringirFases = document.getElementById('ck-restringir-fases')?.checked || false;
   const fasesPermitidas = restringirFases ? [...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)) : null;
+  const filtrarOS = document.getElementById('ck-filtrar-os')?.checked || false;
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; }
+    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; }
     registrarLog('editar', 'grupo', id, `Grupo editado: "${nome}"`);
   } else {
-    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos, fasesPermitidas};
+    const ng={id: await proximoIdSeguro('grupos', db.grupos), nome, admin:false, telas, recursos, fasesPermitidas, filtrarOS};
     db.grupos.push(ng);
     registrarLog('criar', 'grupo', ng.id, `Novo grupo criado: "${nome}"`);
   }
@@ -9664,6 +9679,19 @@ function excluirGrupo(id){
   excluirDoSupabase('grupos', id);
   db.grupos=db.grupos.filter(x=>x.id!==id);
   save(); renderAll(); ativarView('grupos');
+}
+
+/* osVisivelParaUsuario(os):
+   Retorna true se o usuário logado tem permissão para ver esta OS.
+   Se o grupo do usuário tiver filtrarOS === true (e não for admin),
+   a OS só é visível se o usuário for o responsável ou estiver na equipe (tecnicos[]). */
+function osVisivelParaUsuario(os){
+  if(!usuarioAtual) return false;
+  const g = grupoDe(usuarioAtual);
+  if(g.admin || !g.filtrarOS) return true; // admin ou sem restrição: vê tudo
+  if(os.responsavelId === usuarioAtual.id) return true;
+  if((os.tecnicos||[]).some(t=>t.usuarioId===usuarioAtual.id)) return true;
+  return false;
 }
 
 function renderOSLista(){
@@ -9686,6 +9714,7 @@ function renderOSLista(){
   const t = termoBusca();
   const lista = (db.ordensServico||[])
     .filter(os=>{
+      if(!osVisivelParaUsuario(os)) return false; // restrição por grupo
       if(filtroTipo   && os.tipo !== filtroTipo) return false;
       if(filtroFase   && String(os.faseId) !== filtroFase) return false;
       if(filtroStatus === 'aberta'  &&  os.fechada) return false;
@@ -10001,6 +10030,7 @@ function renderOSPainel(){
 
   const todas = db.ordensServico || [];
   let lista = todas.filter(o=>{
+    if(!osVisivelParaUsuario(o)) return false; // restrição por grupo
     if(filtroTipo && o.tipo !== filtroTipo) return false;
     if(t){
       const cli = cliente(o.clienteId)?.nome||'';
