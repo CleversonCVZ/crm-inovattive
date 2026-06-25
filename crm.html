@@ -678,10 +678,29 @@
 
   <!-- FINANCEIRO: CONTAS CORRENTES -->
   <div class="view" id="view-fin-contas-correntes">
-    <div class="bar"><h2>Contas Correntes</h2></div>
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      🏦 <b>Contas Correntes</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Gerencie suas contas bancárias e caixas internos.</small>
+    <div class="bar">
+      <h2>🏦 Contas Correntes</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaContaCorrente()">＋ Nova Conta</button>
+    </div>
+    <div id="cc-saldo-total-bar" style="display:none;background:var(--sidebar-bg);border-radius:10px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap"></div>
+    <table class="fases-table" id="contas-table" style="display:none">
+      <thead>
+        <tr>
+          <th style="width:40px">ID</th>
+          <th>Nome / Banco</th>
+          <th style="width:120px">Tipo</th>
+          <th style="width:140px;text-align:right">Saldo Inicial</th>
+          <th style="width:140px;text-align:right">Saldo Atual</th>
+          <th style="width:60px;text-align:center">Ativo</th>
+          <th style="width:100px"></th>
+        </tr>
+      </thead>
+      <tbody id="contas-tbody"></tbody>
+    </table>
+    <div id="contas-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
+      🏦 Nenhuma conta cadastrada ainda.<br>
+      <small>Clique em <b>＋ Nova Conta</b> para começar.</small>
     </div>
   </div>
 
@@ -1355,6 +1374,8 @@ function load(){
   if(!Array.isArray(db.cardContatos))    db.cardContatos=[];
   if(!Array.isArray(db.recebimentos))    db.recebimentos=[];
   if(!Array.isArray(db.centrosCusto))    db.centrosCusto=[];
+  if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
+  if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1538,7 +1559,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1558,7 +1579,9 @@ async function carregarDadosSupabase(){
       sb.from('os_diario').select('*').order('data', {ascending:false}),
       sb.from('obra_retiradas').select('*').order('data_retirada', {ascending:false}),
       sb.from('financeiro_recebimentos').select('*').order('id'),
-      sb.from('centros_custo').select('*').order('id')
+      sb.from('centros_custo').select('*').order('id'),
+      sb.from('contas_correntes').select('*').order('id'),
+      sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false})
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1717,6 +1740,25 @@ async function carregarDadosSupabase(){
       db.centrosCusto = centrosCusto.data.map(c=>({
         id:c.id, nome:c.nome, descricao:c.descricao||'',
         tipo:c.tipo||'fixo', ativo:!!c.ativo
+      }));
+    if(contasCorrente.data)
+      db.contasCorrente = contasCorrente.data.map(c=>({
+        id:c.id, nome:c.nome, banco:c.banco||'', agencia:c.agencia||'',
+        conta:c.conta||'', tipo:c.tipo||'corrente',
+        saldoInicial:Number(c.saldo_inicial)||0, ativo:!!c.ativo
+      }));
+    if(movimentacoes.data)
+      db.movimentacoes = movimentacoes.data.map(m=>({
+        id:m.id, contaId:m.conta_id,
+        tipo:m.tipo||'entrada',
+        valor:Number(m.valor)||0,
+        descricao:m.descricao||'',
+        dataMovimento:m.data_movimento ? m.data_movimento.slice(0,10) : null,
+        centroCustoId:m.centro_custo_id||null,
+        origemTipo:m.origem_tipo||'manual',
+        origemId:m.origem_id||null,
+        contaDestinoId:m.conta_destino_id||null,
+        criadoEm:m.created_at||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1879,6 +1921,20 @@ function syncDadosSupabase(){
     await sincronizarTabela('centros_custo', db.centrosCusto||[], c=>({
       id:c.id, nome:c.nome, descricao:c.descricao||null,
       tipo:c.tipo||'fixo', ativo:!!c.ativo
+    }));
+    await sincronizarTabela('contas_correntes', db.contasCorrente||[], c=>({
+      id:c.id, nome:c.nome, banco:c.banco||null, agencia:c.agencia||null,
+      conta:c.conta||null, tipo:c.tipo||'corrente',
+      saldo_inicial:c.saldoInicial, ativo:!!c.ativo
+    }));
+    await sincronizarTabela('movimentacoes_financeiras', db.movimentacoes||[], m=>({
+      id:m.id, conta_id:m.contaId, tipo:m.tipo||'entrada',
+      valor:m.valor, descricao:m.descricao||'',
+      data_movimento:m.dataMovimento,
+      centro_custo_id:m.centroCustoId||null,
+      origem_tipo:m.origemTipo||'manual',
+      origem_id:m.origemId||null,
+      conta_destino_id:m.contaDestinoId||null
     }));
   }, 800);
 }
@@ -3189,7 +3245,8 @@ function ativarView(viewId){
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
   if(viewId==='fin-contas-receber') renderFinanceiroPainel();
-  if(viewId==='fin-centros-custo') renderCentrosCusto();
+  if(viewId==='fin-centros-custo')   renderCentrosCusto();
+  if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
@@ -4994,6 +5051,401 @@ async function excluirCentroCusto(id){
   renderCentrosCusto();
 }
 
+// ──────────────────────────────────────────────────────────────
+// CONTAS CORRENTES — lista, CRUD de contas e lançamentos manuais
+// ──────────────────────────────────────────────────────────────
+
+/** Calcula saldo atual de uma conta: saldoInicial + Σentradas - Σsaídas */
+function saldoContaCorrente(contaId){
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(!c) return 0;
+  const movs = (db.movimentacoes||[]).filter(m=>m.contaId===contaId);
+  return movs.reduce((acc,m)=>{
+    if(m.tipo==='entrada')  return acc + m.valor;
+    if(m.tipo==='saida')    return acc - m.valor;
+    if(m.tipo==='transferencia'){
+      // saiu desta conta
+      if(m.contaId===contaId)        return acc - m.valor;
+      // chegou nesta conta (registrado via contaDestinoId)
+    }
+    return acc;
+  }, c.saldoInicial);
+}
+
+/** Saldo total consolidado (soma de todas as contas ativas) */
+function saldoTotalContas(){
+  return (db.contasCorrente||[])
+    .filter(c=>c.ativo)
+    .reduce((t,c)=>t+saldoContaCorrente(c.id),0);
+}
+
+/** Renderiza a tela principal de Contas Correntes */
+function renderContasCorrente(){
+  const contas  = db.contasCorrente || [];
+  const table   = document.getElementById('contas-table');
+  const tbody   = document.getElementById('contas-tbody');
+  const empty   = document.getElementById('contas-empty');
+  const totalBar= document.getElementById('cc-saldo-total-bar');
+  if(!tbody) return;
+
+  // Barra de saldo total
+  if(totalBar){
+    const saldoTotal = saldoTotalContas();
+    const corTotal = saldoTotal >= 0 ? '#16a34a' : '#dc2626';
+    totalBar.style.display = 'flex';
+    totalBar.innerHTML = `
+      <span style="font-size:13px;color:var(--muted)">Saldo consolidado (contas ativas)</span>
+      <span style="font-size:22px;font-weight:700;color:${corTotal};margin-left:auto">${fmtMoney(saldoTotal)}</span>`;
+  }
+
+  if(!contas.length){
+    if(table)  table.style.display = 'none';
+    if(empty)  empty.style.display = '';
+    return;
+  }
+  if(table)  table.style.display = '';
+  if(empty)  empty.style.display = 'none';
+
+  const TIPO_LABEL = {corrente:'Corrente', poupanca:'Poupança', caixa:'Caixa interno'};
+  // Cores por tipo
+  const CORES = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7'};
+
+  tbody.innerHTML = '';
+  contas.forEach(c=>{
+    const saldoAtual = saldoContaCorrente(c.id);
+    const corSaldo   = saldoAtual >= 0 ? '#16a34a' : '#dc2626';
+    const bgRow      = CORES[c.tipo] || '#f9fafb';
+    const inativo    = !c.ativo ? 'opacity:.5' : '';
+    const nomeExtra  = [c.banco, c.agencia?`Ag. ${c.agencia}`:'', c.conta?`Cc. ${c.conta}`:''].filter(Boolean).join(' · ');
+
+    const tr = document.createElement('tr');
+    tr.className = 'fase-row';
+    tr.style.cssText = `background:${bgRow};${inativo}`;
+    tr.innerHTML = `
+      <td style="color:var(--muted);font-size:12px">${c.id}</td>
+      <td>
+        <input type="text" value="${escHtml(c.nome)}" placeholder="Nome da conta"
+          onchange="salvarCampoContaCorrente(${c.id},'nome',this.value)"
+          style="font-weight:600;max-width:200px">
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">
+          <input type="text" value="${escHtml(c.banco)}" placeholder="Banco"
+            onchange="salvarCampoContaCorrente(${c.id},'banco',this.value)"
+            style="font-size:11px;font-weight:normal;max-width:100px;color:var(--muted)">
+          <input type="text" value="${escHtml(c.agencia)}" placeholder="Agência"
+            onchange="salvarCampoContaCorrente(${c.id},'agencia',this.value)"
+            style="font-size:11px;font-weight:normal;max-width:70px;color:var(--muted)">
+          <input type="text" value="${escHtml(c.conta)}" placeholder="N° Conta"
+            onchange="salvarCampoContaCorrente(${c.id},'conta',this.value)"
+            style="font-size:11px;font-weight:normal;max-width:90px;color:var(--muted)">
+        </div>
+      </td>
+      <td>
+        <select onchange="salvarCampoContaCorrente(${c.id},'tipo',this.value)"
+          style="border:1px solid transparent;background:rgba(255,255,255,.5);border-radius:6px;padding:4px 8px;font-size:13px">
+          <option value="corrente" ${c.tipo==='corrente'?'selected':''}>Corrente</option>
+          <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Poupança</option>
+          <option value="caixa"    ${c.tipo==='caixa'   ?'selected':''}>Caixa interno</option>
+        </select>
+      </td>
+      <td style="text-align:right;font-size:13px;color:var(--muted)">${fmtMoney(c.saldoInicial)}</td>
+      <td style="text-align:right;font-weight:700;font-size:14px;color:${corSaldo}">${fmtMoney(saldoAtual)}</td>
+      <td style="text-align:center">
+        <input type="checkbox" ${c.ativo?'checked':''} title="Ativo"
+          onchange="salvarCampoContaCorrente(${c.id},'ativo',this.checked)">
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn" style="font-size:12px;padding:4px 8px" onclick="abrirMovimentacoesContaCorrente(${c.id})">📋 Extratos</button>
+        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px" onclick="abrirLancamentoManual(${c.id})">＋ Lançar</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/** Salva um campo inline de uma conta corrente */
+async function salvarCampoContaCorrente(id, campo, valor){
+  const c = (db.contasCorrente||[]).find(x=>x.id===id);
+  if(!c) return;
+  if(campo==='ativo')        c.ativo = !!valor;
+  else if(campo==='saldoInicial') c.saldoInicial = Number(String(valor).replace(/\./g,'').replace(',','.')) || 0;
+  else                             c[campo] = valor;
+
+  // Persiste direto no Supabase (sem debounce — campo inline importante)
+  await sb.from('contas_correntes').upsert({
+    id: c.id,
+    nome: c.nome,
+    banco: c.banco||null,
+    agencia: c.agencia||null,
+    conta: c.conta||null,
+    tipo: c.tipo||'corrente',
+    saldo_inicial: c.saldoInicial,
+    ativo: !!c.ativo
+  });
+  save();
+  renderContasCorrente();
+}
+
+/** Abre modal para cadastrar nova conta corrente */
+function abrirNovaContaCorrente(){
+  const html = `
+    <div class="modal-header"><h3>Nova Conta Corrente</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <label>Nome da conta *
+        <input id="ncc-nome" type="text" placeholder="Ex: Bradesco Principal" class="input" style="margin-top:4px">
+      </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Banco
+          <input id="ncc-banco" type="text" placeholder="Ex: Bradesco" class="input" style="margin-top:4px">
+        </label>
+        <label>Tipo
+          <select id="ncc-tipo" class="input" style="margin-top:4px">
+            <option value="corrente">Conta Corrente</option>
+            <option value="poupanca">Conta Poupança</option>
+            <option value="caixa">Caixa Interno</option>
+          </select>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Agência
+          <input id="ncc-agencia" type="text" placeholder="0000" class="input" style="margin-top:4px">
+        </label>
+        <label>N° Conta
+          <input id="ncc-conta" type="text" placeholder="00000-0" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <label>Saldo Inicial (R$)
+        <input id="ncc-saldo" type="text" inputmode="decimal" placeholder="0,00" class="input"
+          oninput="mascaraMoeda(this)" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarNovaContaCorrente()">Salvar</button>
+    </div>`;
+  abrirModal(html);
+}
+
+/** Persiste nova conta corrente */
+async function salvarNovaContaCorrente(){
+  const nome = (document.getElementById('ncc-nome').value||'').trim();
+  if(!nome){ alert('Informe o nome da conta.'); return; }
+  const banco   = (document.getElementById('ncc-banco').value||'').trim();
+  const tipo    = document.getElementById('ncc-tipo').value;
+  const agencia = (document.getElementById('ncc-agencia').value||'').trim();
+  const conta   = (document.getElementById('ncc-conta').value||'').trim();
+  const saldoInicial = parseFloat(
+    (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
+  ) || 0;
+
+  const id = await proximoIdSeguro('contas_correntes');
+  const row = {id, nome, banco, agencia, conta, tipo, saldoInicial, ativo:true};
+
+  const {error} = await sb.from('contas_correntes').insert({
+    id, nome, banco:banco||null, agencia:agencia||null, conta:conta||null,
+    tipo, saldo_inicial:saldoInicial, ativo:true
+  });
+  if(error){ alert('Erro ao salvar: '+error.message); return; }
+
+  db.contasCorrente = db.contasCorrente || [];
+  db.contasCorrente.push(row);
+  save();
+  fecharModal();
+  renderContasCorrente();
+}
+
+/** Abre modal de lançamento manual (entrada ou saída) numa conta */
+function abrirLancamentoManual(contaId){
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(!c) return;
+  const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
+    .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
+  const contasOpts = (db.contasCorrente||[]).filter(x=>x.ativo && x.id!==contaId)
+    .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
+
+  const html = `
+    <div class="modal-header"><h3>Lançamento — ${escHtml(c.nome)}</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <label>Tipo de lançamento *
+        <select id="lm-tipo" class="input" style="margin-top:4px" onchange="toggleTransfDestino()">
+          <option value="entrada">➕ Entrada</option>
+          <option value="saida">➖ Saída</option>
+          <option value="transferencia">🔁 Transferência para outra conta</option>
+        </select>
+      </label>
+      <div id="lm-destino-wrap" style="display:none">
+        <label>Conta de destino *
+          <select id="lm-destino" class="input" style="margin-top:4px">
+            ${contasOpts||'<option value="">— nenhuma conta ativa disponível —</option>'}
+          </select>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="lm-valor" type="text" inputmode="decimal" placeholder="0,00" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+        <label>Data *
+          <input id="lm-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}" style="margin-top:4px">
+        </label>
+      </div>
+      <label>Descrição *
+        <input id="lm-descricao" type="text" placeholder="Ex: Depósito recebido, Pagamento fornecedor..." class="input" style="margin-top:4px">
+      </label>
+      <label>Centro de Custo
+        <select id="lm-cc" class="input" style="margin-top:4px">
+          <option value="">— nenhum —</option>
+          ${ccOpts}
+        </select>
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarLancamentoManual(${contaId})">Lançar</button>
+    </div>`;
+  abrirModal(html);
+}
+
+/** Mostra/oculta o campo de conta destino quando tipo = transferência */
+function toggleTransfDestino(){
+  const tipo = document.getElementById('lm-tipo').value;
+  const wrap = document.getElementById('lm-destino-wrap');
+  if(wrap) wrap.style.display = tipo==='transferencia' ? '' : 'none';
+}
+
+/** Persiste lançamento manual */
+async function salvarLancamentoManual(contaId){
+  const tipo      = document.getElementById('lm-tipo').value;
+  const valorStr  = (document.getElementById('lm-valor').value||'0');
+  const valor     = parseFloat(valorStr.replace(/\./g,'').replace(',','.')) || 0;
+  const data      = document.getElementById('lm-data').value;
+  const descricao = (document.getElementById('lm-descricao').value||'').trim();
+  const ccId      = parseInt(document.getElementById('lm-cc').value) || null;
+  const destinoId = tipo==='transferencia'
+    ? (parseInt(document.getElementById('lm-destino').value) || null)
+    : null;
+
+  if(!valor)    { alert('Informe o valor.'); return; }
+  if(!data)     { alert('Informe a data.'); return; }
+  if(!descricao){ alert('Informe uma descrição.'); return; }
+  if(tipo==='transferencia' && !destinoId){ alert('Selecione a conta de destino.'); return; }
+
+  const id = await proximoIdSeguro('movimentacoes_financeiras');
+  const rowBase = {
+    id, conta_id:contaId, tipo, valor,
+    descricao, data_movimento:data,
+    centro_custo_id:ccId||null,
+    origem_tipo:'manual', origem_id:null,
+    conta_destino_id:destinoId
+  };
+
+  const {error} = await sb.from('movimentacoes_financeiras').insert(rowBase);
+  if(error){ alert('Erro ao lançar: '+error.message); return; }
+
+  const movObj = {
+    id, contaId, tipo, valor, descricao, dataMovimento:data,
+    centroCustoId:ccId, origemTipo:'manual', origemId:null,
+    contaDestinoId:destinoId, criadoEm:new Date().toISOString()
+  };
+  db.movimentacoes = db.movimentacoes || [];
+  db.movimentacoes.push(movObj);
+
+  // Se for transferência, registra também a entrada na conta de destino
+  if(tipo==='transferencia' && destinoId){
+    const idDest = await proximoIdSeguro('movimentacoes_financeiras');
+    const rowDest = {
+      id:idDest, conta_id:destinoId, tipo:'entrada', valor,
+      descricao:`Transferência de: ${(db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId}`,
+      data_movimento:data, centro_custo_id:null,
+      origem_tipo:'transferencia', origem_id:id,
+      conta_destino_id:null
+    };
+    const {error:e2} = await sb.from('movimentacoes_financeiras').insert(rowDest);
+    if(!e2) db.movimentacoes.push({
+      id:idDest, contaId:destinoId, tipo:'entrada', valor,
+      descricao:rowDest.descricao, dataMovimento:data,
+      centroCustoId:null, origemTipo:'transferencia', origemId:id,
+      contaDestinoId:null, criadoEm:new Date().toISOString()
+    });
+  }
+
+  save();
+  fecharModal();
+  renderContasCorrente();
+}
+
+/** Abre modal de extrato de movimentações de uma conta */
+function abrirMovimentacoesContaCorrente(contaId){
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(!c) return;
+  const movs = (db.movimentacoes||[])
+    .filter(m=>m.contaId===contaId)
+    .sort((a,b)=>b.dataMovimento?.localeCompare(a.dataMovimento)||0);
+
+  const saldo = saldoContaCorrente(contaId);
+  const corSaldo = saldo>=0?'#16a34a':'#dc2626';
+
+  const TIPO_ICON = {entrada:'➕','saida':'➖',transferencia:'🔁'};
+
+  const linhas = movs.length
+    ? movs.map(m=>{
+        const cc = (db.centrosCusto||[]).find(x=>x.id===m.centroCustoId);
+        const cor = m.tipo==='entrada' ? '#16a34a' : '#dc2626';
+        const sinal = m.tipo==='entrada' ? '+' : '-';
+        return `<tr>
+          <td style="color:var(--muted);font-size:12px">${m.dataMovimento||''}</td>
+          <td>${TIPO_ICON[m.tipo]||''} ${escHtml(m.descricao)}</td>
+          <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):''}</td>
+          <td style="text-align:right;font-weight:700;color:${cor}">${sinal} ${fmtMoney(m.valor)}</td>
+          <td style="text-align:right">
+            <button class="btn" style="font-size:11px;padding:3px 8px;color:#dc2626"
+              onclick="excluirMovimentacao(${m.id},${contaId})">🗑</button>
+          </td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--muted)">Nenhuma movimentação ainda.</td></tr>`;
+
+  const html = `
+    <div class="modal-header">
+      <h3>📋 Extrato — ${escHtml(c.nome)}</h3>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div style="padding:12px 20px;background:var(--sidebar-bg);display:flex;align-items:center;gap:16px">
+        <span style="font-size:13px;color:var(--muted)">Saldo atual</span>
+        <span style="font-size:20px;font-weight:700;color:${corSaldo};margin-left:auto">${fmtMoney(saldo)}</span>
+        <button class="btn primary" style="font-size:12px" onclick="fecharModal();abrirLancamentoManual(${contaId})">＋ Lançar</button>
+      </div>
+      <div style="overflow:auto;max-height:400px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead style="position:sticky;top:0;background:#f8fafc">
+            <tr>
+              <th style="padding:8px 12px;text-align:left;width:100px">Data</th>
+              <th style="padding:8px 12px;text-align:left">Descrição</th>
+              <th style="padding:8px 12px;text-align:left;width:120px">Centro Custo</th>
+              <th style="padding:8px 12px;text-align:right;width:120px">Valor</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Fechar</button>
+    </div>`;
+  abrirModal(html, 'modal-lg');
+}
+
+/** Exclui uma movimentação individual */
+async function excluirMovimentacao(id, contaId){
+  if(!confirm('Excluir este lançamento?')) return;
+  await excluirDoSupabase('movimentacoes_financeiras', id);
+  db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
+  save();
+  fecharModal();
+  abrirMovimentacoesContaCorrente(contaId);
+}
+
+// ──────────────────────────────────────────────────────────────
+
 function renderCatOutrosCustos(){
   const cats  = db.catOutrosCustos || [];
   const tbody = document.getElementById('cat-custos-tbody');
@@ -6360,27 +6812,79 @@ function marcarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
   const hoje = new Date().toISOString().slice(0,10);
+
+  // Monta opções de contas correntes ativas
+  const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
+  const contasOpts = contasAtivas.length
+    ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
+    : '<option value="">— nenhuma conta cadastrada —</option>';
+
   abrirModal(`
-    <h3>Confirmar Recebimento</h3>
-    <p style="margin-bottom:12px">Parcela: <b>${r.descricao}</b> — ${fmtMoney(r.valor)}</p>
-    <div class="form-row">
-      <div>
-        <label>Data de recebimento</label>
-        <input id="mr-data" type="date" value="${hoje}">
+    <div class="modal-header"><h3>✅ Confirmar Recebimento</h3></div>
+    <div class="modal-body" style="display:grid;gap:14px">
+      <p style="margin:0">Parcela: <b>${escHtml(r.descricao)}</b> — <b style="color:#16a34a">${fmtMoney(r.valor)}</b></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Data de recebimento *
+          <input id="mr-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
+        </label>
+        <label>Creditar em *
+          <select id="mr-conta" class="input" style="margin-top:4px">
+            <option value="">— não vincular a conta —</option>
+            ${contasOpts}
+          </select>
+        </label>
       </div>
+      ${!contasAtivas.length ? `<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada. <a href="#" onclick="fecharModal();ativarView('fin-contas-correntes')">Cadastrar agora</a>.</p>` : ''}
     </div>
-    <p style="font-size:12px;color:var(--muted);margin-top:8px">Em breve: escolha a conta corrente para creditar este valor.</p>
-    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+    <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="confirmarParcelaRecebida(${id},${cardId})">Confirmar</button>
+      <button class="btn primary" onclick="confirmarParcelaRecebida(${id},${cardId})">Confirmar recebimento</button>
     </div>`);
 }
 
-function confirmarParcelaRecebida(id, cardId){
+async function confirmarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
+  const dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
+  const contaId = parseInt(document.getElementById('mr-conta').value) || null;
+
+  // Atualiza status da parcela
   r.status = 'recebido';
-  r.dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
+  r.dataRecebimento = dataRecebimento;
+
+  // Persiste alteração da parcela diretamente no Supabase
+  await sb.from('financeiro_recebimentos').update({
+    status:'recebido', data_recebimento:dataRecebimento
+  }).eq('id', id);
+
+  // Se escolheu uma conta, cria movimentação de entrada
+  if(contaId){
+    const conta = (db.contasCorrente||[]).find(c=>c.id===contaId);
+    const descMovimento = `Recebimento: ${r.descricao}`;
+    const idMov = await proximoIdSeguro('movimentacoes_financeiras');
+    const {error} = await sb.from('movimentacoes_financeiras').insert({
+      id: idMov,
+      conta_id: contaId,
+      tipo: 'entrada',
+      valor: r.valor,
+      descricao: descMovimento,
+      data_movimento: dataRecebimento,
+      centro_custo_id: null,
+      origem_tipo: 'recebimento',
+      origem_id: id,
+      conta_destino_id: null
+    });
+    if(!error){
+      db.movimentacoes = db.movimentacoes || [];
+      db.movimentacoes.push({
+        id:idMov, contaId, tipo:'entrada', valor:r.valor,
+        descricao:descMovimento, dataMovimento:dataRecebimento,
+        centroCustoId:null, origemTipo:'recebimento', origemId:id,
+        contaDestinoId:null, criadoEm:new Date().toISOString()
+      });
+    }
+  }
+
   save();
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
