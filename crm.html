@@ -745,28 +745,25 @@
     <div class="bar">
       <h2>Contas a Pagar</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
-    </div>
-    <!-- Stats bar -->
-    <div class="stats" id="cp-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
-    <!-- Filtros -->
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-      <select id="cp-filtro-status" class="input" style="width:160px;font-size:13px" onchange="renderContasPagar()">
+      <select id="cp-filtro-status" class="input" style="font-size:13px" onchange="renderContasPagar()">
         <option value="">Todos os status</option>
         <option value="pendente">Pendentes</option>
         <option value="vencido">Vencidas</option>
         <option value="pago">Pagas</option>
       </select>
-      <select id="cp-filtro-cc" class="input" style="width:180px;font-size:13px" onchange="renderContasPagar()">
+      <select id="cp-filtro-cc" class="input" style="font-size:13px" onchange="renderContasPagar()">
         <option value="">Todos os centros</option>
       </select>
       <div class="search">
-        <input id="cp-filtro-busca" type="text" placeholder="Buscar descrição ou fornecedor…"
+        <input id="cp-filtro-busca" type="text" placeholder="Buscar…"
           oninput="renderContasPagar();document.getElementById('cp-busca-clear').style.display=this.value?'block':'none'">
         <button class="search-clear" id="cp-busca-clear" style="display:none"
           onclick="document.getElementById('cp-filtro-busca').value='';this.style.display='none';renderContasPagar()">✕</button>
       </div>
+      <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
     </div>
+    <!-- Stats bar -->
+    <div class="stats" id="cp-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <!-- Tabela -->
     <table class="lista" id="cp-table" style="display:none">
       <thead>
