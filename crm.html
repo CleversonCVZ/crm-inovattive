@@ -2196,12 +2196,14 @@ function renderFinanceiroPainel(){
   const todos = db.recebimentos||[];
   const totPendente = todos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
   const totRecebido = todos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
+  const totGeral    = totPendente + totRecebido;
   const totVencido  = todos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje).reduce((s,r)=>s+r.valor,0);
 
   const statsEl = document.getElementById('fin-stats');
   if(statsEl) statsEl.innerHTML = `
-    <div class="stat"><div class="n">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">A Receber</div></div>
+    <div class="stat"><div class="n">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">A Receber</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totRecebido)||'R$ 0,00'}</div><div class="l">Recebido</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">Pendente</div></div>
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}
   `;
 
