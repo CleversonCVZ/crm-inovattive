@@ -1599,7 +1599,7 @@ async function carregarConfigSupabase(){
     if(funcoes.data && funcoes.data.length)
       db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
     if(grupos.data && grupos.data.length)
-      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os}));
+      db.grupos = grupos.data.map(g=>({id:g.id, nome:g.nome, admin:g.admin, telas:g.telas||[], recursos:g.recursos||[], fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico}));
     if(catOutrosCustos.data && catOutrosCustos.data.length)
       db.catOutrosCustos = catOutrosCustos.data.map(c=>({id:c.id, nome:c.nome, emoji:c.emoji||'📦', ordem:c.ordem||0}));
     if(empresa.data){
@@ -1913,7 +1913,7 @@ function syncConfigSupabase(){
     sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -12160,6 +12160,25 @@ function formGrupo(g){
           </div>
         </div>
         <div>
+          <div class="perm-section-label">OMNI-MOBILE — acesso</div>
+          <div class="perm-box">
+            <label class="perm-item" style="gap:8px">
+              <input type="checkbox" id="ck-acesso-comercial" ${g&&g.acessoComercial?'checked':''}>
+              <span>
+                <b>Visão Comercial</b><br>
+                <span style="font-size:11px;color:var(--muted)">Acessa CRM e Propostas no app mobile.</span>
+              </span>
+            </label>
+            <label class="perm-item" style="gap:8px;margin-top:8px">
+              <input type="checkbox" id="ck-acesso-tecnico" ${g&&g.acessoTecnico?'checked':''}>
+              <span>
+                <b>Visão Técnica</b><br>
+                <span style="font-size:11px;color:var(--muted)">Acessa OS, Obras e Diário no app mobile.</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div>
           <div class="perm-section-label">Downloads — categorias</div>
           <div class="perm-box">${dlCatsCk}</div>
         </div>
@@ -12210,21 +12229,23 @@ async function salvarGrupo(id){
   const restringirFases=document.getElementById('ck-restringir-fases')?.checked||false;
   const fasesPermitidas=restringirFases?[...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)):null;
   const filtrarOS=document.getElementById('ck-filtrar-os')?.checked||false;
+  const acessoComercial=document.getElementById('ck-acesso-comercial')?.checked||false;
+  const acessoTecnico=document.getElementById('ck-acesso-tecnico')?.checked||false;
   let row;
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; }
+    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; }
     row=g;
     registrarLog('editar','grupo',id,`Grupo editado: "${nome}"`);
   } else {
-    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,recursos,fasesPermitidas,filtrarOS};
+    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,recursos,fasesPermitidas,filtrarOS,acessoComercial,acessoTecnico};
     db.grupos.push(ng);
     row=ng;
     registrarLog('criar','grupo',ng.id,`Novo grupo criado: "${nome}"`);
   }
   try{
-    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],recursos:row.recursos||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS});
+    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],recursos:row.recursos||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico});
     if(error) throw error;
     await _delay;
   }catch(e){
