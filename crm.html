@@ -8130,23 +8130,28 @@ function toggleErVenc(){
   document.getElementById('er-venc-cond').style.display = fixo?'none':'';
 }
 
-/** Persiste edição de parcela a receber (salva apenas no array local + save(), sem roundtrip Supabase extra) */
-function salvarEdicaoParcelaReceber(id, cardId){
+/** Persiste edição de parcela a receber */
+async function salvarEdicaoParcelaReceber(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
-  const tipo   = document.getElementById('er-tipo').value;
-  const origem = document.getElementById('er-origem').value;
-  r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
-  r.valor     = parseFloat((document.getElementById('er-valor').value||'0').replace(/\./g,'').replace(',','.')) || r.valor;
-  r.tipo      = tipo;
-  if(origem.startsWith('proposta:')){ r.propostaId=Number(origem.split(':')[1]); r.osId=null; }
-  else if(origem.startsWith('os:')){ r.osId=Number(origem.split(':')[1]); r.propostaId=null; }
-  else { r.propostaId=null; r.osId=null; }
-  r.dataVencimento = tipo==='fixo' ? (document.getElementById('er-data').value||null) : null;
-  r.condicao       = tipo==='condicional' ? (document.getElementById('er-cond').value.trim()||null) : null;
-  save();
-  fecharModal();
-  abrirEditarCartao(cardId,'financeiro');
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(res=>setTimeout(res,800));
+  try{
+    const tipo   = document.getElementById('er-tipo').value;
+    const origem = document.getElementById('er-origem').value;
+    r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
+    r.valor     = parseFloat((document.getElementById('er-valor').value||'0').replace(/\./g,'').replace(',','.')) || r.valor;
+    r.tipo      = tipo;
+    if(origem.startsWith('proposta:')){ r.propostaId=Number(origem.split(':')[1]); r.osId=null; }
+    else if(origem.startsWith('os:')){ r.osId=Number(origem.split(':')[1]); r.propostaId=null; }
+    else { r.propostaId=null; r.osId=null; }
+    r.dataVencimento = tipo==='fixo' ? (document.getElementById('er-data').value||null) : null;
+    r.condicao       = tipo==='condicional' ? (document.getElementById('er-cond').value.trim()||null) : null;
+    await Promise.all([save(), _delay]);
+    fecharModal();
+    abrirEditarCartao(cardId,'financeiro');
+  } catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); }
 }
 
 /**
