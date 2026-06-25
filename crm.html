@@ -746,12 +746,6 @@
       <select id="cp-filtro-cc" class="input" style="font-size:13px" onchange="renderContasPagar()">
         <option value="">Todos os centros</option>
       </select>
-      <div class="search">
-        <input id="cp-filtro-busca" type="text" placeholder="Buscar…"
-          oninput="renderContasPagar();document.getElementById('cp-busca-clear').style.display=this.value?'block':'none'">
-        <button class="search-clear" id="cp-busca-clear" style="display:none"
-          onclick="document.getElementById('cp-filtro-busca').value='';this.style.display='none';renderContasPagar()">✕</button>
-      </div>
       <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
     </div>
     <!-- Stats bar -->
@@ -6347,7 +6341,7 @@ function renderContasPagar(){
   // Filtros
   const fStatus = (document.getElementById('cp-filtro-status')||{}).value||'';
   const fCC     = (document.getElementById('cp-filtro-cc')||{}).value||'';
-  const fBusca  = ((document.getElementById('cp-filtro-busca')||{}).value||'').toLowerCase();
+  const fBusca  = termoBusca();
 
   let lista = todas.slice().sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
   if(fStatus) lista = lista.filter(p=>p.status===fStatus);
@@ -12744,7 +12738,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); }
 load();
 atualizarMarca();
 (async function(){
