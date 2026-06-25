@@ -717,6 +717,7 @@
       </label>
       <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
     </div>
+    <div class="stats" id="forn-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <table class="lista" id="forn-table" style="display:none">
       <thead>
         <tr>
@@ -5826,7 +5827,25 @@ function renderFornecedores(){
   const tbody = document.getElementById('forn-tbody');
   const table = document.getElementById('forn-table');
   const empty = document.getElementById('forn-empty');
+  const stats = document.getElementById('forn-stats-bar');
   if(!tbody) return;
+
+  // Stats: total de compras (contas_pagar pagas) no mês e no ano
+  if(stats){
+    const hoje     = new Date().toISOString().slice(0,10);
+    const mesAtual = hoje.slice(0,7);
+    const anoAtual = hoje.slice(0,4);
+    const pagas    = (db.contasPagar||[]).filter(p=>p.status==='pago' && p.fornecedorId);
+    const totalMes = pagas.filter(p=>(p.dataPagamento||p.dataVencimento||'').slice(0,7)===mesAtual)
+                          .reduce((s,p)=>s+p.valor,0);
+    const totalAno = pagas.filter(p=>(p.dataPagamento||p.dataVencimento||'').slice(0,4)===anoAtual)
+                          .reduce((s,p)=>s+p.valor,0);
+    const nForn    = (db.fornecedores||[]).filter(f=>f.ativo).length;
+    stats.innerHTML = `
+      <div class="stat"><div class="n">${fmtMoney(totalMes)||'R$ 0,00'}</div><div class="l">Compras este mês</div></div>
+      <div class="stat"><div class="n">${fmtMoney(totalAno)||'R$ 0,00'}</div><div class="l">Compras este ano</div></div>
+      <div class="stat"><div class="n">${nForn}</div><div class="l">Fornecedor${nForn!==1?'es':''} ativo${nForn!==1?'s':''}</div></div>`;
+  }
 
   const busca    = ((document.getElementById('forn-busca')||{}).value||'').toLowerCase();
   const verInat  = (document.getElementById('forn-inativos')||{}).checked;
