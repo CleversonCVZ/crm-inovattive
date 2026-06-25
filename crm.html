@@ -3078,7 +3078,7 @@ function renderGerais(){
   document.getElementById('emp-fantasia').value = e.fantasia||'';
   document.getElementById('emp-cnpj').value = e.cnpj||'';
   document.getElementById('emp-ie').value = e.ie||'';
-  document.getElementById('emp-tel').value = e.tel||'';
+  document.getElementById('emp-tel').value = fmtTel(e.tel||'');
   document.getElementById('emp-email').value = e.email||'';
   document.getElementById('emp-site').value = e.site||'';
   document.getElementById('emp-endereco').innerHTML = camposEndereco(e.endereco, 'emp', 'Endereço da Empresa');
@@ -5983,7 +5983,7 @@ function editarContatoFornecedor(ctId, fornId){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
         <input id="fce-nome-${ctId}" class="input" value="${escHtml(ct.nome)}" placeholder="Nome *">
         <input id="fce-cargo-${ctId}" class="input" value="${escHtml(ct.cargo||'')}" placeholder="Cargo">
-        <input id="fce-tel-${ctId}" class="input" value="${escHtml(ct.telefone||'')}" placeholder="Telefone" maxlength="15" oninput="mascaraTel(this)">
+        <input id="fce-tel-${ctId}" class="input" value="${escHtml(fmtTel(ct.telefone||''))}" placeholder="Telefone" maxlength="15" oninput="mascaraTel(this)">
         <input id="fce-email-${ctId}" class="input" type="email" value="${escHtml(ct.email||'')}" placeholder="E-mail">
       </div>
     </td>
@@ -11391,7 +11391,7 @@ function abrirEditarCliente(id){
   abrirModal(`
     <h3>Cliente — ${c.nome}</h3>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
-    <label>Telefone</label><input id="m-tel" value="${c.tel||''}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
     <label>E-mail</label><input id="m-email" value="${c.email||''}">
     ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
     ${obrasDoClienteHTML(c)}
@@ -11427,7 +11427,7 @@ function abrirEditarClienteDoCartao(clienteId, cardId){
   abrirModal(`
     <h3>Cliente — ${c.nome}</h3>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
-    <label>Telefone</label><input id="m-tel" value="${c.tel||''}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
+    <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
     <label>E-mail</label><input id="m-email" value="${c.email||''}">
     ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
     <div class="actions">
