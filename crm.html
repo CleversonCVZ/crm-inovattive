@@ -5864,8 +5864,8 @@ function renderFornecedores(){
 
   tbody.innerHTML='';
   lista.forEach(f=>{
-    const cor  = f.ativo ? '#16a34a' : '#ca8a04';
-    const selo = f.ativo ? '● Ativo' : '● Inativo';
+    const cor  = f.ativo ? '#1d8348' : '#b7950b';
+    const selo = f.ativo ? '🟢 Ativo' : '🟡 Inativo';
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.onclick = ()=>abrirEditarFornecedor(f.id);
