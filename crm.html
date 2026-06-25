@@ -5395,8 +5395,10 @@ function abrirMovimentacoesContaCorrente(contaId){
           <td>${TIPO_ICON[m.tipo]||''} ${escHtml(m.descricao)}</td>
           <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):''}</td>
           <td style="text-align:right;font-weight:700;color:${cor}">${sinal} ${fmtMoney(m.valor)}</td>
-          <td style="text-align:right">
-            <button class="btn" style="font-size:11px;padding:3px 8px;color:#dc2626"
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn" style="font-size:11px;padding:3px 8px"
+              onclick="editarMovimentacao(${m.id},${contaId})">✏️</button>
+            <button class="btn" style="font-size:11px;padding:3px 8px;color:#dc2626;margin-left:4px"
               onclick="excluirMovimentacao(${m.id},${contaId})">🗑</button>
           </td>
         </tr>`;
@@ -5432,6 +5434,76 @@ function abrirMovimentacoesContaCorrente(contaId){
       <button class="btn" onclick="fecharModal()">Fechar</button>
     </div>`;
   abrirModal(html, 'modal-lg');
+}
+
+/** Abre modal de edição de uma movimentação existente */
+function editarMovimentacao(id, contaId){
+  const m = (db.movimentacoes||[]).find(x=>x.id===id);
+  if(!m) return;
+  const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
+    .map(x=>`<option value="${x.id}" ${m.centroCustoId===x.id?'selected':''}>${escHtml(x.nome)}</option>`).join('');
+  const valorFmt = m.valor.toFixed(2).replace('.',',');
+
+  abrirModal(`
+    <div class="modal-header"><h3>✏️ Editar Lançamento</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <label>Tipo
+        <select id="em-tipo" class="input" style="margin-top:4px" ${m.origemTipo!=='manual'?'disabled title="Não é possível alterar o tipo de lançamentos automáticos"':''}>
+          <option value="entrada"      ${m.tipo==='entrada'     ?'selected':''}>➕ Entrada</option>
+          <option value="saida"        ${m.tipo==='saida'       ?'selected':''}>➖ Saída</option>
+          <option value="transferencia"${m.tipo==='transferencia'?'selected':''}>🔁 Transferência</option>
+        </select>
+      </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="em-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+        <label>Data *
+          <input id="em-data" type="date" value="${m.dataMovimento||''}" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <label>Descrição *
+        <input id="em-descricao" type="text" value="${escHtml(m.descricao)}" class="input" style="margin-top:4px">
+      </label>
+      <label>Centro de Custo
+        <select id="em-cc" class="input" style="margin-top:4px">
+          <option value="">— nenhum —</option>
+          ${ccOpts}
+        </select>
+      </label>
+      ${m.origemTipo!=='manual'?'<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</p>':''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoMovimentacao(${id},${contaId})">Salvar</button>
+    </div>`);
+}
+
+/** Persiste edição de movimentação */
+async function salvarEdicaoMovimentacao(id, contaId){
+  const m = (db.movimentacoes||[]).find(x=>x.id===id);
+  if(!m) return;
+  const tipo      = document.getElementById('em-tipo').value;
+  const valor     = parseFloat((document.getElementById('em-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
+  const data      = document.getElementById('em-data').value;
+  const descricao = (document.getElementById('em-descricao').value||'').trim();
+  const ccId      = parseInt(document.getElementById('em-cc').value) || null;
+
+  if(!valor)    { alert('Informe o valor.'); return; }
+  if(!data)     { alert('Informe a data.'); return; }
+  if(!descricao){ alert('Informe uma descrição.'); return; }
+
+  const {error} = await sb.from('movimentacoes_financeiras').update({
+    tipo, valor, descricao, data_movimento:data, centro_custo_id:ccId||null
+  }).eq('id', id);
+  if(error){ alert('Erro ao salvar: '+error.message); return; }
+
+  m.tipo = tipo; m.valor = valor; m.descricao = descricao;
+  m.dataMovimento = data; m.centroCustoId = ccId;
+  save();
+  fecharModal();
+  abrirMovimentacoesContaCorrente(contaId);
 }
 
 /** Exclui uma movimentação individual */
