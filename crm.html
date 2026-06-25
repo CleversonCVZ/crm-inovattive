@@ -5519,6 +5519,7 @@ async function salvarEdicaoMovimentacao(id, contaId){
   m.dataMovimento = data; m.centroCustoId = ccId;
   save();
   await _delay;
+  renderContasCorrente(); // atualiza saldo na tela principal
   fecharModal();
   abrirMovimentacoesContaCorrente(contaId);
 }
@@ -5529,6 +5530,7 @@ async function excluirMovimentacao(id, contaId){
   await excluirDoSupabase('movimentacoes_financeiras', id);
   db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
   save();
+  renderContasCorrente(); // atualiza saldo na tela principal
   fecharModal();
   abrirMovimentacoesContaCorrente(contaId);
 }
