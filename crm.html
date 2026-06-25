@@ -2175,11 +2175,18 @@ function renderFinanceiroPainel(){
   const filtroStatus = (document.getElementById('fin-filtro-status')||{}).value||'';
   const filtroTipo   = (document.getElementById('fin-filtro-tipo')||{}).value||'';
 
+  const fBusca = termoBusca();
   let lista = (db.recebimentos||[]).slice();
   if(filtroTipo) lista = lista.filter(r=>r.tipo===filtroTipo);
   // "vencido" não é um status no banco — é filtrado como pendente com data passada
   if(filtroStatus==='vencido') lista = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
   else if(filtroStatus) lista = lista.filter(r=>r.status===filtroStatus);
+  if(fBusca) lista = lista.filter(r=>{
+    const c = db.cards.find(x=>x.id===r.cardId);
+    const cl = c ? cliente(c.clienteId) : null;
+    return (r.descricao||'').toLowerCase().includes(fBusca)
+      || (cl?.nome||'').toLowerCase().includes(fBusca);
+  });
   lista.sort((a,b)=>{
     if(a.status!==b.status) return a.status==='pendente'?-1:1; // pendentes primeiro
     if(a.dataVencimento && b.dataVencimento) return a.dataVencimento.localeCompare(b.dataVencimento);
@@ -5050,7 +5057,13 @@ function renderCentrosCusto(){
   const tb     = document.getElementById('cc-tbody');
   if(!banner || !table || !tb) return;
 
-  const lista = (db.centrosCusto||[]).sort((a,b)=>{
+  const fBusca = termoBusca();
+  const lista = (db.centrosCusto||[]).filter(c=>{
+    if(!fBusca) return true;
+    return (c.nome||'').toLowerCase().includes(fBusca)
+      || (c.descricao||'').toLowerCase().includes(fBusca)
+      || (c.tipo||'').toLowerCase().includes(fBusca);
+  }).sort((a,b)=>{
     if(a.tipo!==b.tipo) return a.tipo==='fixo'?-1:1; // fixos antes dos variáveis
     return a.nome.localeCompare(b.nome,'pt-BR');
   });
@@ -5272,7 +5285,11 @@ function saldoTotalContas(){
 
 /** Renderiza a tela principal de Contas Correntes */
 function renderContasCorrente(){
-  const contas  = db.contasCorrente || [];
+  const fBusca  = termoBusca();
+  const contas  = (db.contasCorrente || []).filter(c=>!fBusca
+    || (c.nome||'').toLowerCase().includes(fBusca)
+    || (c.banco||'').toLowerCase().includes(fBusca)
+    || (c.tipo||'').toLowerCase().includes(fBusca));
   const table   = document.getElementById('contas-table');
   const tbody   = document.getElementById('contas-tbody');
   const empty   = document.getElementById('contas-empty');
@@ -6713,7 +6730,8 @@ async function excluirContaPagar(id){
 // ──────────────────────────────────────────────────────────────
 
 function renderCatOutrosCustos(){
-  const cats  = db.catOutrosCustos || [];
+  const fBusca = termoBusca();
+  const cats  = (db.catOutrosCustos || []).filter(c=>!fBusca || (c.nome||'').toLowerCase().includes(fBusca));
   const tbody = document.getElementById('cat-custos-tbody');
   if(!tbody) return;
   if(!cats.length){
@@ -12738,7 +12756,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); }
 load();
 atualizarMarca();
 (async function(){
