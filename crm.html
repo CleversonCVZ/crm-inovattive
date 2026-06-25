@@ -706,10 +706,45 @@
 
   <!-- FINANCEIRO: CONTAS A PAGAR -->
   <div class="view" id="view-fin-contas-pagar">
-    <div class="bar"><h2>Contas a Pagar</h2></div>
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      📤 <b>Contas a Pagar</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Controle vencimentos, fornecedores e pagamentos realizados.</small>
+    <div class="bar">
+      <h2>📤 Contas a Pagar</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
+    </div>
+    <!-- Stats bar -->
+    <div id="cp-stats-bar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <!-- Filtros -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <select id="cp-filtro-status" class="input" style="width:160px;font-size:13px" onchange="renderContasPagar()">
+        <option value="">Todos os status</option>
+        <option value="pendente">Pendentes</option>
+        <option value="vencido">Vencidas</option>
+        <option value="pago">Pagas</option>
+      </select>
+      <select id="cp-filtro-cc" class="input" style="width:180px;font-size:13px" onchange="renderContasPagar()">
+        <option value="">Todos os centros</option>
+      </select>
+      <input id="cp-filtro-busca" type="text" placeholder="Buscar descrição ou fornecedor…"
+        class="input" style="width:220px;font-size:13px" oninput="renderContasPagar()">
+    </div>
+    <!-- Tabela -->
+    <table class="fases-table" id="cp-table" style="display:none">
+      <thead>
+        <tr>
+          <th style="width:100px">Vencimento</th>
+          <th>Descrição / Fornecedor</th>
+          <th style="width:140px">Centro de Custo</th>
+          <th style="width:100px">Obra</th>
+          <th style="width:120px;text-align:right">Valor</th>
+          <th style="width:100px;text-align:center">Status</th>
+          <th style="width:120px"></th>
+        </tr>
+      </thead>
+      <tbody id="cp-tbody"></tbody>
+    </table>
+    <div id="cp-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
+      📤 Nenhuma conta a pagar cadastrada.<br>
+      <small>Clique em <b>＋ Nova Conta</b> para começar.</small>
     </div>
   </div>
 
@@ -1376,6 +1411,7 @@ function load(){
   if(!Array.isArray(db.centrosCusto))    db.centrosCusto=[];
   if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
+  if(!Array.isArray(db.contasPagar))     db.contasPagar=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1559,7 +1595,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1581,7 +1617,8 @@ async function carregarDadosSupabase(){
       sb.from('financeiro_recebimentos').select('*').order('id'),
       sb.from('centros_custo').select('*').order('id'),
       sb.from('contas_correntes').select('*').order('id'),
-      sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false})
+      sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
+      sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true})
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1760,6 +1797,20 @@ async function carregarDadosSupabase(){
         contaDestinoId:m.conta_destino_id||null,
         criadoEm:m.created_at||''
       }));
+    if(contasPagar.data)
+      db.contasPagar = contasPagar.data.map(p=>({
+        id:p.id, descricao:p.descricao||'', fornecedor:p.fornecedor||'',
+        valor:Number(p.valor)||0,
+        dataVencimento:p.data_vencimento ? p.data_vencimento.slice(0,10) : null,
+        dataPagamento:p.data_pagamento ? p.data_pagamento.slice(0,10) : null,
+        status:p.status||'pendente',
+        centroCustoId:p.centro_custo_id||null,
+        obraId:p.obra_id||null,
+        osId:p.os_id||null,
+        contaId:p.conta_id||null,
+        observacao:p.observacao||'',
+        criadoEm:p.created_at||''
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -1935,6 +1986,14 @@ function syncDadosSupabase(){
       origem_tipo:m.origemTipo||'manual',
       origem_id:m.origemId||null,
       conta_destino_id:m.contaDestinoId||null
+    }));
+    await sincronizarTabela('contas_pagar', db.contasPagar||[], p=>({
+      id:p.id, descricao:p.descricao||'', fornecedor:p.fornecedor||null,
+      valor:p.valor, data_vencimento:p.dataVencimento,
+      data_pagamento:p.dataPagamento||null, status:p.status||'pendente',
+      centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
+      os_id:p.osId||null, conta_id:p.contaId||null,
+      observacao:p.observacao||null
     }));
   }, 800);
 }
@@ -3247,6 +3306,7 @@ function ativarView(viewId){
   if(viewId==='fin-contas-receber') renderFinanceiroPainel();
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
+  if(viewId==='fin-contas-pagar')    renderContasPagar();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
@@ -5533,6 +5593,404 @@ async function excluirMovimentacao(id, contaId){
   renderContasCorrente(); // atualiza saldo na tela principal
   fecharModal();
   abrirMovimentacoesContaCorrente(contaId);
+}
+
+// ──────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────
+// CONTAS A PAGAR — tela, CRUD e integração com contas correntes
+// ──────────────────────────────────────────────────────────────
+
+/** Atualiza status de contas vencidas no array local */
+function atualizarStatusVencidas(){
+  const hoje = new Date().toISOString().slice(0,10);
+  (db.contasPagar||[]).forEach(p=>{
+    if(p.status==='pendente' && p.dataVencimento && p.dataVencimento < hoje)
+      p.status = 'vencido';
+  });
+}
+
+/** Renderiza a tela Contas a Pagar */
+function renderContasPagar(){
+  const table  = document.getElementById('cp-table');
+  const tbody  = document.getElementById('cp-tbody');
+  const empty  = document.getElementById('cp-empty');
+  const stats  = document.getElementById('cp-stats-bar');
+  const selCC  = document.getElementById('cp-filtro-cc');
+  if(!tbody) return;
+
+  atualizarStatusVencidas();
+
+  const todas = db.contasPagar || [];
+  const hoje  = new Date().toISOString().slice(0,10);
+  const mesAtual = hoje.slice(0,7);
+
+  // Stats
+  const totalPendente = todas.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
+  const totalVencido  = todas.filter(p=>p.status==='vencido').reduce((s,p)=>s+p.valor,0);
+  const totalPagoMes  = todas.filter(p=>p.status==='pago' && (p.dataPagamento||'').slice(0,7)===mesAtual).reduce((s,p)=>s+p.valor,0);
+  if(stats) stats.innerHTML = `
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 16px;min-width:140px">
+      <div style="font-size:11px;color:#dc2626;font-weight:600;text-transform:uppercase">A Pagar</div>
+      <div style="font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(totalPendente)}</div>
+    </div>
+    ${totalVencido>0?`<div style="background:#7f1d1d;border-radius:8px;padding:10px 16px;min-width:140px">
+      <div style="font-size:11px;color:#fca5a5;font-weight:600;text-transform:uppercase">⚠ Vencidas</div>
+      <div style="font-size:18px;font-weight:700;color:#fff">${fmtMoney(totalVencido)}</div>
+    </div>`:''}
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;min-width:140px">
+      <div style="font-size:11px;color:#16a34a;font-weight:600;text-transform:uppercase">Pago este mês</div>
+      <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtMoney(totalPagoMes)}</div>
+    </div>`;
+
+  // Popular select de centros de custo no filtro (só na primeira vez ou se mudou)
+  if(selCC && selCC.options.length<=1){
+    (db.centrosCusto||[]).filter(c=>c.ativo).forEach(c=>{
+      const o=document.createElement('option'); o.value=c.id; o.textContent=c.nome; selCC.appendChild(o);
+    });
+  }
+
+  // Filtros
+  const fStatus = (document.getElementById('cp-filtro-status')||{}).value||'';
+  const fCC     = (document.getElementById('cp-filtro-cc')||{}).value||'';
+  const fBusca  = ((document.getElementById('cp-filtro-busca')||{}).value||'').toLowerCase();
+
+  let lista = todas.slice().sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
+  if(fStatus) lista = lista.filter(p=>p.status===fStatus);
+  if(fCC)     lista = lista.filter(p=>String(p.centroCustoId)===fCC);
+  if(fBusca)  lista = lista.filter(p=>
+    (p.descricao||'').toLowerCase().includes(fBusca) ||
+    (p.fornecedor||'').toLowerCase().includes(fBusca)
+  );
+
+  if(!lista.length){
+    if(table) table.style.display='none';
+    if(empty) empty.style.display='';
+    return;
+  }
+  if(table) table.style.display='';
+  if(empty) empty.style.display='none';
+
+  const STATUS_STYLE = {
+    pendente: 'background:#fef9c3;color:#92400e;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600',
+    vencido:  'background:#fee2e2;color:#dc2626;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600',
+    pago:     'background:#dcfce7;color:#16a34a;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600'
+  };
+  const STATUS_LABEL = {pendente:'Pendente', vencido:'⚠ Vencida', pago:'✅ Paga'};
+  const ROW_BG = {pendente:'#fffbeb', vencido:'#fff1f2', pago:'#f0fdf4'};
+
+  tbody.innerHTML = '';
+  lista.forEach(p=>{
+    const cc   = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
+    const obra = (db.obras||[]).find(o=>o.id===p.obraId);
+    const tr   = document.createElement('tr');
+    tr.className = 'fase-row';
+    tr.style.background = ROW_BG[p.status]||'#fff';
+    tr.innerHTML = `
+      <td style="font-size:13px;white-space:nowrap">${p.dataVencimento ? fmtDia2(p.dataVencimento) : '—'}</td>
+      <td>
+        <div style="font-weight:600;font-size:14px">${escHtml(p.descricao)}</div>
+        ${p.fornecedor?`<div style="font-size:12px;color:var(--muted)">${escHtml(p.fornecedor)}</div>`:''}
+        ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
+      </td>
+      <td style="font-size:13px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${obra?escHtml(obra.nome):'—'}</td>
+      <td style="text-align:right;font-weight:700;font-size:14px">${fmtMoney(p.valor)}</td>
+      <td style="text-align:center"><span style="${STATUS_STYLE[p.status]||''}">${STATUS_LABEL[p.status]||p.status}</span>
+        ${p.status==='pago'&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        ${p.status!=='pago'?`<button class="btn primary" style="font-size:12px;padding:4px 8px" onclick="abrirPagarConta(${p.id})">✅ Pagar</button>`:''}
+        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px" onclick="abrirEditarContaPagar(${p.id})">✏️</button>
+        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px;color:#dc2626" onclick="excluirContaPagar(${p.id})">🗑</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/** Abre modal para cadastrar nova conta a pagar */
+function abrirNovaContaPagar(){
+  const ccOpts = (db.centrosCusto||[]).filter(c=>c.ativo)
+    .map(c=>`<option value="${c.id}">${escHtml(c.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
+    .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
+
+  abrirModal(`
+    <div class="modal-header"><h3>Nova Conta a Pagar</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Descrição *
+          <input id="ncp-desc" type="text" placeholder="Ex: Aluguel, Fornecedor XYZ…" class="input" style="margin-top:4px">
+        </label>
+        <label>Fornecedor
+          <input id="ncp-forn" type="text" placeholder="Nome do fornecedor" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="ncp-valor" type="text" inputmode="decimal" placeholder="0,00" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+        <label>Data de Vencimento *
+          <input id="ncp-venc" type="date" class="input" style="margin-top:4px"
+            value="${new Date().toISOString().slice(0,10)}">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Centro de Custo *
+          <select id="ncp-cc" class="input" style="margin-top:4px">
+            <option value="">— selecione —</option>
+            ${ccOpts}
+          </select>
+        </label>
+        <label>Obra (opcional)
+          <select id="ncp-obra" class="input" style="margin-top:4px">
+            <option value="">— nenhuma —</option>
+            ${obraOpts}
+          </select>
+        </label>
+      </div>
+      <label>Observação
+        <input id="ncp-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaContaPagar()">Salvar</button>
+    </div>`);
+}
+
+/** Persiste nova conta a pagar */
+async function salvarNovaContaPagar(){
+  const descricao = (document.getElementById('ncp-desc').value||'').trim();
+  const fornecedor= (document.getElementById('ncp-forn').value||'').trim();
+  const valor     = parseFloat((document.getElementById('ncp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
+  const dataVenc  = document.getElementById('ncp-venc').value;
+  const ccId      = parseInt(document.getElementById('ncp-cc').value) || null;
+  const obraId    = parseInt(document.getElementById('ncp-obra').value) || null;
+  const observacao= (document.getElementById('ncp-obs').value||'').trim();
+
+  if(!descricao){ alert('Informe a descrição.'); return; }
+  if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(!ccId){ alert('Selecione o centro de custo.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+
+  const hoje = new Date().toISOString().slice(0,10);
+  const status = dataVenc < hoje ? 'vencido' : 'pendente';
+  const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+  const row = {id, descricao, fornecedor, valor, dataVencimento:dataVenc,
+    dataPagamento:null, status, centroCustoId:ccId, obraId, osId:null,
+    contaId:null, observacao, criadoEm:new Date().toISOString()};
+
+  const {error} = await sb.from('contas_pagar').insert({
+    id, descricao, fornecedor:fornecedor||null, valor,
+    data_vencimento:dataVenc, status,
+    centro_custo_id:ccId, obra_id:obraId||null,
+    observacao:observacao||null
+  });
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+
+  db.contasPagar = db.contasPagar || [];
+  db.contasPagar.push(row);
+  save();
+  await _delay;
+  fecharModal();
+  renderContasPagar();
+}
+
+/** Abre modal para editar uma conta a pagar existente */
+function abrirEditarContaPagar(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const ccOpts = (db.centrosCusto||[]).filter(c=>c.ativo)
+    .map(c=>`<option value="${c.id}" ${p.centroCustoId===c.id?'selected':''}>${escHtml(c.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa'||o.id===p.obraId)
+    .map(o=>`<option value="${o.id}" ${p.obraId===o.id?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+  const valorFmt = p.valor.toFixed(2).replace('.',',');
+
+  abrirModal(`
+    <div class="modal-header"><h3>✏️ Editar Conta a Pagar</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Descrição *
+          <input id="ecp-desc" type="text" value="${escHtml(p.descricao)}" class="input" style="margin-top:4px">
+        </label>
+        <label>Fornecedor
+          <input id="ecp-forn" type="text" value="${escHtml(p.fornecedor)}" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="ecp-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+        <label>Data de Vencimento *
+          <input id="ecp-venc" type="date" value="${p.dataVencimento||''}" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Centro de Custo *
+          <select id="ecp-cc" class="input" style="margin-top:4px">
+            <option value="">— selecione —</option>
+            ${ccOpts}
+          </select>
+        </label>
+        <label>Obra (opcional)
+          <select id="ecp-obra" class="input" style="margin-top:4px">
+            <option value="">— nenhuma —</option>
+            ${obraOpts}
+          </select>
+        </label>
+      </div>
+      <label>Observação
+        <input id="ecp-obs" type="text" value="${escHtml(p.observacao)}" class="input" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaPagar(${id})">Salvar</button>
+    </div>`);
+}
+
+/** Persiste edição de conta a pagar */
+async function salvarEdicaoContaPagar(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const descricao = (document.getElementById('ecp-desc').value||'').trim();
+  const fornecedor= (document.getElementById('ecp-forn').value||'').trim();
+  const valor     = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
+  const dataVenc  = document.getElementById('ecp-venc').value;
+  const ccId      = parseInt(document.getElementById('ecp-cc').value) || null;
+  const obraId    = parseInt(document.getElementById('ecp-obra').value) || null;
+  const observacao= (document.getElementById('ecp-obs').value||'').trim();
+
+  if(!descricao){ alert('Informe a descrição.'); return; }
+  if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(!ccId){ alert('Selecione o centro de custo.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+
+  const {error} = await sb.from('contas_pagar').update({
+    descricao, fornecedor:fornecedor||null, valor,
+    data_vencimento:dataVenc,
+    centro_custo_id:ccId, obra_id:obraId||null,
+    observacao:observacao||null
+  }).eq('id', id);
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+
+  p.descricao=descricao; p.fornecedor=fornecedor; p.valor=valor;
+  p.dataVencimento=dataVenc; p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
+  save();
+  await _delay;
+  fecharModal();
+  renderContasPagar();
+}
+
+/** Abre modal de confirmação de pagamento */
+function abrirPagarConta(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
+  const contasOpts = contasAtivas.length
+    ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
+    : '<option value="">— nenhuma conta cadastrada —</option>';
+
+  abrirModal(`
+    <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
+    <div class="modal-body" style="display:grid;gap:14px">
+      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${p.fornecedor?' — '+escHtml(p.fornecedor):''}</p>
+      <p style="margin:0;font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(p.valor)}</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Data do pagamento *
+          <input id="pp-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
+        </label>
+        <label>Debitar de *
+          <select id="pp-conta" class="input" style="margin-top:4px">
+            <option value="">— selecione a conta —</option>
+            ${contasOpts}
+          </select>
+        </label>
+      </div>
+      ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada.</p>`:''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoConta(${id})">Confirmar pagamento</button>
+    </div>`);
+}
+
+/** Confirma pagamento: atualiza status e cria movimentação de saída */
+async function confirmarPagamentoConta(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const dataPagamento = document.getElementById('pp-data').value;
+  const contaId = parseInt(document.getElementById('pp-conta').value) || null;
+
+  if(!dataPagamento){ alert('Informe a data do pagamento.'); return; }
+  if(!contaId){ alert('Selecione a conta corrente a debitar.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn, 'Confirmando…');
+  const _delay = new Promise(r=>setTimeout(r,800));
+
+  // Atualiza conta a pagar
+  const {error:ePagar} = await sb.from('contas_pagar').update({
+    status:'pago', data_pagamento:dataPagamento, conta_id:contaId
+  }).eq('id', id);
+  if(ePagar){ btnRestaurar(btn); alert('Erro ao confirmar: '+ePagar.message); return; }
+
+  p.status='pago'; p.dataPagamento=dataPagamento; p.contaId=contaId;
+
+  // Cria movimentação de saída na conta corrente
+  const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
+  const descMov = `Pagamento: ${p.descricao}${p.fornecedor?' — '+p.fornecedor:''}`;
+  const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
+  const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
+    id:idMov, conta_id:contaId, tipo:'saida', valor:p.valor,
+    descricao:descMov, data_movimento:dataPagamento,
+    centro_custo_id:p.centroCustoId||null,
+    origem_tipo:'pagamento', origem_id:id,
+    conta_destino_id:null
+  });
+  if(!eMov){
+    db.movimentacoes = db.movimentacoes || [];
+    db.movimentacoes.push({
+      id:idMov, contaId, tipo:'saida', valor:p.valor,
+      descricao:descMov, dataMovimento:dataPagamento,
+      centroCustoId:p.centroCustoId||null,
+      origemTipo:'pagamento', origemId:id,
+      contaDestinoId:null, criadoEm:new Date().toISOString()
+    });
+  }
+
+  save();
+  await _delay;
+  renderContasCorrente(); // atualiza saldo nas contas correntes
+  fecharModal();
+  renderContasPagar();
+}
+
+/** Exclui uma conta a pagar */
+async function excluirContaPagar(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  if(p.status==='pago'){
+    if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nAtenção: a movimentação de saída na conta corrente NÃO será removida automaticamente.`)) return;
+  } else {
+    if(!confirm(`Excluir "${p.descricao}"?`)) return;
+  }
+  await excluirDoSupabase('contas_pagar', id);
+  db.contasPagar = db.contasPagar.filter(x=>x.id!==id);
+  save();
+  renderContasPagar();
 }
 
 // ──────────────────────────────────────────────────────────────
