@@ -2938,6 +2938,14 @@ function mascaraTel(el){
   else if(v.length>0) v = '('+v;
   el.value = v;
 }
+/* Formata uma string de telefone já salva (ex: "11912345678" → "(11) 91234-5678").
+   Usado ao carregar valores do banco em campos de formulário. */
+function fmtTel(v){
+  if(!v) return '';
+  const el = {value: String(v)};
+  mascaraTel(el);
+  return el.value;
+}
 
 /* Texto preto ou branco conforme a cor de fundo */
 function textColor(hex){
@@ -5821,7 +5829,7 @@ function _fornFormHTML(f={}){
     <!-- Linha 2: Telefone e E-mail -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>Telefone
-        <input id="ff-tel" type="text" value="${escHtml(f.telefone||'')}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)">
+        <input id="ff-tel" type="text" value="${escHtml(fmtTel(f.telefone||''))}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)">
       </label>
       <label>E-mail
         <input id="ff-email" type="email" value="${escHtml(f.email||'')}" class="input" style="margin-top:4px" placeholder="contato@fornecedor.com">
