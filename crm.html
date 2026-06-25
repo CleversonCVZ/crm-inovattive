@@ -708,9 +708,6 @@
     <div class="bar">
       <h2>Fornecedores</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
-    </div>
-    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
       <div class="search">
         <input id="forn-busca" type="text" placeholder="Buscar por nome, CNPJ/CPF ou cidade…"
           oninput="renderFornecedores();document.getElementById('forn-busca-clear').style.display=this.value?'block':'none'">
@@ -720,6 +717,7 @@
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="forn-inativos" onchange="renderFornecedores()"> Ver inativos
       </label>
+      <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
     </div>
     <table class="lista" id="forn-table" style="display:none">
       <thead>
