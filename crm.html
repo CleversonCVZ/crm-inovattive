@@ -1864,7 +1864,7 @@ async function carregarDadosSupabase(){
       }));
     if(fornecedores.data)
       db.fornecedores = fornecedores.data.map(f=>({
-        id:f.id, nome:f.nome||'', cnpjCpf:f.cnpj_cpf||'',
+        id:f.id, nome:f.nome||'', nomeFantasia:f.nome_fantasia||'', cnpjCpf:f.cnpj_cpf||'',
         telefone:f.telefone||'', email:f.email||'',
         logradouro:f.logradouro||'', numero:f.numero||'',
         complemento:f.complemento||'', bairro:f.bairro||'',
@@ -5750,7 +5750,10 @@ function renderFornecedores(){
     const tr=document.createElement('tr');
     if(!f.ativo) tr.style.opacity='0.5';
     tr.innerHTML=`
-      <td style="font-weight:600">${escHtml(f.nome)}</td>
+      <td>
+        <div style="font-weight:600">${escHtml(f.nome)}</div>
+        ${f.nomeFantasia?`<div style="font-size:12px;color:var(--muted)">${escHtml(f.nomeFantasia)}</div>`:''}
+      </td>
       <td style="font-size:13px;font-family:monospace">${escHtml(f.cnpjCpf)||'—'}</td>
       <td style="font-size:13px">${escHtml(f.telefone)||'—'}</td>
       <td style="font-size:13px">${escHtml(f.email)||'—'}</td>
@@ -5771,14 +5774,21 @@ function _fornFormHTML(f={}){
   const UFs = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
   const ufOpts = UFs.map(u=>`<option value="${u}" ${(f.estado||'')==u?'selected':''}>${u}</option>`).join('');
   return `
-    <!-- Linha 1: Nome e CNPJ/CPF -->
+    <!-- Linha 1: Nome e Nome Fantasia -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <label>Nome *
+      <label>Razão Social / Nome *
         <input id="ff-nome" type="text" value="${escHtml(f.nome||'')}" class="input" style="margin-top:4px" placeholder="Razão social ou nome">
       </label>
+      <label>Nome Fantasia
+        <input id="ff-fantasia" type="text" value="${escHtml(f.nomeFantasia||'')}" class="input" style="margin-top:4px" placeholder="Nome comercial (opcional)">
+      </label>
+    </div>
+    <!-- Linha 1b: CNPJ/CPF -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>CNPJ / CPF
         <input id="ff-cnpj" type="text" value="${escHtml(f.cnpjCpf||'')}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00">
       </label>
+      <div></div>
     </div>
     <!-- Linha 2: Telefone e E-mail -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -5834,8 +5844,9 @@ function _fornFormHTML(f={}){
 /** Lê os campos do formulário de fornecedor */
 function _fornFormLer(){
   return {
-    nome:       (document.getElementById('ff-nome').value||'').trim(),
-    cnpjCpf:    (document.getElementById('ff-cnpj').value||'').trim(),
+    nome:         (document.getElementById('ff-nome').value||'').trim(),
+    nomeFantasia: (document.getElementById('ff-fantasia')?.value||'').trim(),
+    cnpjCpf:      (document.getElementById('ff-cnpj').value||'').trim(),
     telefone:   (document.getElementById('ff-tel').value||'').trim(),
     email:      (document.getElementById('ff-email').value||'').trim(),
     cep:        (document.getElementById('ff-cep').value||'').trim(),
@@ -6017,7 +6028,8 @@ async function salvarNovoFornecedor(callbackSelectId=null){
   const id = await proximoIdSeguro('fornecedores', db.fornecedores||[]);
   const row = {...d, id, criadoEm:new Date().toISOString()};
   const {error} = await sb.from('fornecedores').insert({
-    id, nome:d.nome, cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
+    id, nome:d.nome, nome_fantasia:d.nomeFantasia||null,
+    cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
     email:d.email||null, logradouro:d.logradouro||null, numero:d.numero||null,
     complemento:d.complemento||null, bairro:d.bairro||null,
     cidade:d.cidade||null, estado:d.estado||null, cep:d.cep||null,
@@ -6077,7 +6089,8 @@ async function salvarEdicaoFornecedor(id){
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
   const {error} = await sb.from('fornecedores').update({
-    nome:d.nome, cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
+    nome:d.nome, nome_fantasia:d.nomeFantasia||null,
+    cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
     email:d.email||null, logradouro:d.logradouro||null, numero:d.numero||null,
     complemento:d.complemento||null, bairro:d.bairro||null,
     cidade:d.cidade||null, estado:d.estado||null, cep:d.cep||null,
