@@ -763,13 +763,12 @@
     <table class="lista" id="cp-table" style="display:none">
       <thead>
         <tr>
-          <th style="width:100px">Vencimento</th>
+          <th style="width:110px">Vencimento</th>
           <th>Descrição / Fornecedor</th>
-          <th style="width:140px">Centro de Custo</th>
-          <th style="width:100px">Obra</th>
-          <th style="width:120px;text-align:right">Valor</th>
-          <th style="width:100px;text-align:center">Status</th>
-          <th style="width:120px"></th>
+          <th style="width:150px">Centro de Custo</th>
+          <th style="width:110px">Obra</th>
+          <th style="width:130px;text-align:right">Valor</th>
+          <th style="width:110px;text-align:center">Status</th>
         </tr>
       </thead>
       <tbody id="cp-tbody"></tbody>
@@ -6362,25 +6361,26 @@ function renderContasPagar(){
   lista.forEach(p=>{
     const cc   = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra = (db.obras||[]).find(o=>o.id===p.obraId);
+    const forn = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
     const tr   = document.createElement('tr');
     tr.style.background = ROW_BG[p.status]||'#fff';
+    tr.style.cursor = 'pointer';
+    tr.onclick = ()=>abrirEditarContaPagar(p.id);
+    tr.onmouseenter = ()=>{ tr.style.background='var(--hover)'; };
+    tr.onmouseleave = ()=>{ tr.style.background=ROW_BG[p.status]||''; };
     tr.innerHTML = `
       <td style="font-size:13px;white-space:nowrap">${p.dataVencimento ? fmtDia2(p.dataVencimento) : '—'}</td>
       <td>
         <div style="font-weight:600;font-size:14px">${escHtml(p.descricao)}</div>
-        ${p.fornecedorId?(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?`<div style="font-size:12px;color:var(--muted)">${escHtml(f.nome)}</div>`:''})():''}
+        ${forn?`<div style="font-size:12px;color:var(--muted)">${escHtml(forn.nome)}</div>`:''}
         ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
       </td>
       <td style="font-size:13px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${obra?escHtml(obra.nome):'—'}</td>
       <td style="text-align:right;font-weight:700;font-size:14px">${fmtMoney(p.valor)}</td>
-      <td style="text-align:center"><span style="${STATUS_STYLE[p.status]||''}">${STATUS_LABEL[p.status]||p.status}</span>
+      <td style="text-align:center">
+        <span style="${STATUS_STYLE[p.status]||''}">${STATUS_LABEL[p.status]||p.status}</span>
         ${p.status==='pago'&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}
-      </td>
-      <td style="text-align:right;white-space:nowrap">
-        ${p.status!=='pago'?`<button class="btn primary" style="font-size:12px;padding:4px 8px" onclick="abrirPagarConta(${p.id})">✅ Pagar</button>`:''}
-        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px" onclick="abrirEditarContaPagar(${p.id})">✏️</button>
-        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px;color:#dc2626" onclick="excluirContaPagar(${p.id})">🗑</button>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -6501,8 +6501,8 @@ function abrirEditarContaPagar(id){
   const valorFmt = p.valor.toFixed(2).replace('.',',');
 
   abrirModal(`
-    <div class="modal-header"><h3>✏️ Editar Conta a Pagar</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px">
+    <h3>${escHtml(p.descricao)}</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Descrição *
           <input id="ecp-desc" type="text" value="${escHtml(p.descricao)}" class="input" style="margin-top:4px">
@@ -6545,9 +6545,15 @@ function abrirEditarContaPagar(id){
         <input id="ecp-obs" type="text" value="${escHtml(p.observacao)}" class="input" style="margin-top:4px">
       </label>
     </div>
-    <div class="modal-footer rodape-cartao">
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaPagar(${id})">Salvar</button>
+    <div class="actions rodape-cartao" style="justify-content:space-between">
+      <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="excluirContaPagar(${id})">Excluir</button>
+        ${p.status!=='pago'?`<button class="btn primary" onclick="fecharModal();abrirPagarConta(${id})">✅ Pagar</button>`:''}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+        <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaPagar(${id})">Salvar</button>
+      </div>
     </div>`, 'cartao');
 }
 
