@@ -5106,7 +5106,7 @@ function renderContasCorrente(){
   if(table)  table.style.display = '';
   if(empty)  empty.style.display = 'none';
 
-  const TIPO_LABEL = {corrente:'Corrente', poupanca:'Poupança', caixa:'Caixa interno'};
+  const TIPO_LABEL = {corrente:'Corrente', poupanca:'Aplicação', caixa:'Caixa interno'};
   // Cores por tipo
   const CORES = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7'};
 
@@ -5143,7 +5143,7 @@ function renderContasCorrente(){
         <select onchange="salvarCampoContaCorrente(${c.id},'tipo',this.value)"
           style="border:1px solid transparent;background:rgba(255,255,255,.5);border-radius:6px;padding:4px 8px;font-size:13px">
           <option value="corrente" ${c.tipo==='corrente'?'selected':''}>Corrente</option>
-          <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Poupança</option>
+          <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Aplicação</option>
           <option value="caixa"    ${c.tipo==='caixa'   ?'selected':''}>Caixa interno</option>
         </select>
       </td>
@@ -5199,7 +5199,7 @@ function abrirNovaContaCorrente(){
         <label>Tipo
           <select id="ncc-tipo" class="input" style="margin-top:4px">
             <option value="corrente">Conta Corrente</option>
-            <option value="poupanca">Conta Poupança</option>
+            <option value="poupanca">Aplicação</option>
             <option value="caixa">Caixa Interno</option>
           </select>
         </label>
