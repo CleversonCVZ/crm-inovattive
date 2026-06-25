@@ -1813,7 +1813,8 @@ async function carregarDadosSupabase(){
     if(centrosCusto.data)
       db.centrosCusto = centrosCusto.data.map(c=>({
         id:c.id, nome:c.nome, descricao:c.descricao||'',
-        tipo:c.tipo||'fixo', ativo:!!c.ativo
+        tipo:c.tipo||'fixo', ativo:!!c.ativo,
+        slug:c.slug||null, protegido:!!c.protegido
       }));
     if(contasCorrente.data)
       db.contasCorrente = contasCorrente.data.map(c=>({
@@ -2018,7 +2019,8 @@ function syncDadosSupabase(){
     }));
     await sincronizarTabela('centros_custo', db.centrosCusto||[], c=>({
       id:c.id, nome:c.nome, descricao:c.descricao||null,
-      tipo:c.tipo||'fixo', ativo:!!c.ativo
+      tipo:c.tipo||'fixo', ativo:!!c.ativo,
+      slug:c.slug||null, protegido:!!c.protegido
     }));
     await sincronizarTabela('contas_correntes', db.contasCorrente||[], c=>({
       id:c.id, nome:c.nome, banco:c.banco||null, agencia:c.agencia||null,
@@ -5058,6 +5060,7 @@ function renderCentrosCusto(){
 
     const cor  = c.tipo === 'fixo' ? COR_FIXO : COR_VAR;
     const corT = c.tipo === 'fixo' ? COR_FIXO_T : COR_VAR_T;
+    const lock = c.protegido;
     const tr = document.createElement('tr');
     tr.className = 'fase-row';
     tr.style.background = cor;
@@ -5065,19 +5068,38 @@ function renderCentrosCusto(){
     tr.style.opacity = c.ativo ? '1' : '0.5';
     tr.innerHTML = `
       <td style="width:44px">${c.id}</td>
-      <td><input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome" style="color:${corT}"></td>
-      <td><input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="color:${corT};font-weight:400;max-width:340px"></td>
+      <td>
+        ${lock
+          ? `<span style="font-weight:700;font-size:14px">${escHtml(c.nome)}</span>
+             <span title="Registro protegido pelo sistema — não pode ser renomeado ou excluído"
+               style="margin-left:6px;font-size:12px;cursor:default">🔒</span>`
+          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome" style="color:${corT}">`
+        }
+      </td>
+      <td>
+        ${lock
+          ? `<span style="font-size:13px;font-weight:400">${escHtml(c.descricao||'')}</span>`
+          : `<input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="color:${corT};font-weight:400;max-width:340px">`
+        }
+      </td>
       <td style="width:160px">
-        <select data-id="${c.id}" data-campo="tipo" style="border:none;background:rgba(255,255,255,.65);border-radius:6px;padding:5px 8px;font-size:13px;font-weight:600;color:${corT}">
-          <option value="fixo" ${c.tipo==='fixo'?'selected':''}>Fixo</option>
-          <option value="variavel" ${c.tipo==='variavel'?'selected':''}>Variável</option>
-        </select>
+        ${lock
+          ? `<span style="font-size:13px">${c.tipo==='fixo'?'Fixo':'Variável'}</span>`
+          : `<select data-id="${c.id}" data-campo="tipo" style="border:none;background:rgba(255,255,255,.65);border-radius:6px;padding:5px 8px;font-size:13px;font-weight:600;color:${corT}">
+               <option value="fixo" ${c.tipo==='fixo'?'selected':''}>Fixo</option>
+               <option value="variavel" ${c.tipo==='variavel'?'selected':''}>Variável</option>
+             </select>`
+        }
       </td>
       <td style="width:70px;text-align:center">
-        <input type="checkbox" ${c.ativo?'checked':''} data-id="${c.id}" data-campo="ativo" title="Ativo" style="width:16px;height:16px;cursor:pointer">
+        <input type="checkbox" ${c.ativo?'checked':''} data-id="${c.id}" data-campo="ativo" title="Ativo"
+          style="width:16px;height:16px;cursor:pointer" ${lock?'disabled':''}>
       </td>
       <td style="text-align:right;width:44px">
-        <button class="icon-btn del" data-del="${c.id}" title="Excluir">🗑</button>
+        ${lock
+          ? `<span title="Protegido — não pode ser excluído" style="opacity:.3;cursor:not-allowed;font-size:16px">🗑</span>`
+          : `<button class="icon-btn del" data-del="${c.id}" title="Excluir">🗑</button>`
+        }
       </td>`;
     tb.appendChild(tr);
   });
@@ -5164,6 +5186,7 @@ async function salvarNovoCentroCusto(){
 async function excluirCentroCusto(id){
   const c = db.centrosCusto.find(x=>x.id===id);
   if(!c) return;
+  if(c.protegido){ alert(`"${c.nome}" é um registro protegido pelo sistema e não pode ser excluído.`); return; }
   if(!confirm(`Excluir "${c.nome}"? Esta ação não pode ser desfeita.`)) return;
   await excluirDoSupabase('centros_custo', id);
   db.centrosCusto = db.centrosCusto.filter(x=>x.id!==id);
@@ -5653,6 +5676,22 @@ async function excluirMovimentacao(id, contaId){
 
 // ──────────────────────────────────────────────────────────────
 
+/** Mostra/oculta o campo Obra no modal de Contas a Pagar conforme o CC selecionado */
+function toggleObraCampoCp(rowId, ccSelId){
+  const sel  = document.getElementById(ccSelId);
+  const row  = document.getElementById(rowId);
+  if(!sel || !row) return;
+  const ccId = parseInt(sel.value) || null;
+  const cc   = (db.centrosCusto||[]).find(c=>c.id===ccId);
+  const show = cc && cc.slug === 'material_obra';
+  row.style.display = show ? 'block' : 'none';
+  // limpa seleção de obra se escondeu
+  if(!show){
+    const obrasel = row.querySelector('select');
+    if(obrasel) obrasel.value = '';
+  }
+}
+
 // ──────────────────────────────────────────────────────────────
 // FORNECEDORES — cadastro completo
 // ──────────────────────────────────────────────────────────────
@@ -6057,17 +6096,19 @@ function abrirNovaContaPagar(){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Centro de Custo *
-          <select id="ncp-cc" class="input" style="margin-top:4px">
+          <select id="ncp-cc" class="input" style="margin-top:4px" onchange="toggleObraCampoCp('ncp-obra-row','ncp-cc')">
             <option value="">— selecione —</option>
             ${ccOpts}
           </select>
         </label>
-        <label>Obra (opcional)
-          <select id="ncp-obra" class="input" style="margin-top:4px">
-            <option value="">— nenhuma —</option>
-            ${obraOpts}
-          </select>
-        </label>
+        <div id="ncp-obra-row" style="display:none">
+          <label>Obra
+            <select id="ncp-obra" class="input" style="margin-top:4px">
+              <option value="">— selecione a obra —</option>
+              ${obraOpts}
+            </select>
+          </label>
+        </div>
       </div>
       <label>Observação
         <input id="ncp-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
@@ -6086,13 +6127,15 @@ async function salvarNovaContaPagar(){
   const valor     = parseFloat((document.getElementById('ncp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   const dataVenc  = document.getElementById('ncp-venc').value;
   const ccId      = parseInt(document.getElementById('ncp-cc').value) || null;
-  const obraId    = parseInt(document.getElementById('ncp-obra').value) || null;
+  const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
+  const obraId    = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ncp-obra').value)||null) : null;
   const observacao= (document.getElementById('ncp-obs').value||'').trim();
 
   if(!descricao){ alert('Informe a descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
   if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -6160,17 +6203,19 @@ function abrirEditarContaPagar(id){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Centro de Custo *
-          <select id="ecp-cc" class="input" style="margin-top:4px">
+          <select id="ecp-cc" class="input" style="margin-top:4px" onchange="toggleObraCampoCp('ecp-obra-row','ecp-cc')">
             <option value="">— selecione —</option>
             ${ccOpts}
           </select>
         </label>
-        <label>Obra (opcional)
-          <select id="ecp-obra" class="input" style="margin-top:4px">
-            <option value="">— nenhuma —</option>
-            ${obraOpts}
-          </select>
-        </label>
+        <div id="ecp-obra-row" style="display:${(()=>{const cc=(db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);return cc&&cc.slug==='material_obra'?'block':'none'})()}">
+          <label>Obra
+            <select id="ecp-obra" class="input" style="margin-top:4px">
+              <option value="">— selecione a obra —</option>
+              ${obraOpts}
+            </select>
+          </label>
+        </div>
       </div>
       <label>Observação
         <input id="ecp-obs" type="text" value="${escHtml(p.observacao)}" class="input" style="margin-top:4px">
@@ -6191,13 +6236,15 @@ async function salvarEdicaoContaPagar(id){
   const valor     = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   const dataVenc  = document.getElementById('ecp-venc').value;
   const ccId      = parseInt(document.getElementById('ecp-cc').value) || null;
-  const obraId    = parseInt(document.getElementById('ecp-obra').value) || null;
+  const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
+  const obraId    = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
   const observacao= (document.getElementById('ecp-obs').value||'').trim();
 
   if(!descricao){ alert('Informe a descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
   if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
