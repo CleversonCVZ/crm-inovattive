@@ -684,16 +684,14 @@
       <button class="btn primary" onclick="abrirNovaContaCorrente()">＋ Nova Conta</button>
     </div>
     <div class="stats" id="cc-saldo-total-bar" style="display:none;flex-wrap:wrap"></div>
-    <table class="fases-table" id="contas-table" style="display:none">
+    <table class="lista" id="contas-table" style="display:none">
       <thead>
         <tr>
-          <th style="width:40px">ID</th>
           <th>Nome / Banco</th>
-          <th style="width:120px">Tipo</th>
-          <th style="width:140px;text-align:right">Saldo Inicial</th>
-          <th style="width:140px;text-align:right">Saldo Atual</th>
-          <th style="width:60px;text-align:center">Ativo</th>
-          <th style="width:100px"></th>
+          <th style="width:130px">Tipo</th>
+          <th style="width:150px;text-align:right">Saldo Inicial</th>
+          <th style="width:150px;text-align:right">Saldo Atual</th>
+          <th style="width:70px;text-align:center">Situação</th>
         </tr>
       </thead>
       <tbody id="contas-tbody"></tbody>
@@ -5315,48 +5313,30 @@ function renderContasCorrente(){
   contas.forEach(c=>{
     const saldoAtual = saldoContaCorrente(c.id);
     const corSaldo   = saldoAtual >= 0 ? '#16a34a' : '#dc2626';
-    const bgRow      = CORES[c.tipo] || '#f9fafb';
-    const inativo    = !c.ativo ? 'opacity:.5' : '';
     const nomeExtra  = [c.banco, c.agencia?`Ag. ${c.agencia}`:'', c.conta?`Cc. ${c.conta}`:''].filter(Boolean).join(' · ');
+    const TIPO_BADGE = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7'};
+    const bg = TIPO_BADGE[c.tipo] || '#f3f4f6';
 
     const tr = document.createElement('tr');
-    tr.className = 'fase-row';
-    tr.style.cssText = `background:${bgRow};${inativo}`;
+    tr.style.cursor = 'pointer';
+    if(!c.ativo) tr.style.opacity = '0.5';
+    tr.onclick = ()=>abrirEditarContaCorrente(c.id);
+    tr.onmouseenter = ()=>{ tr.style.background='var(--hover)'; };
+    tr.onmouseleave = ()=>{ tr.style.background=''; };
     tr.innerHTML = `
-      <td style="color:var(--muted);font-size:12px">${c.id}</td>
       <td>
-        <input type="text" value="${escHtml(c.nome)}" placeholder="Nome da conta"
-          onchange="salvarCampoContaCorrente(${c.id},'nome',this.value)"
-          style="font-weight:600;max-width:200px">
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">
-          <input type="text" value="${escHtml(c.banco)}" placeholder="Banco"
-            onchange="salvarCampoContaCorrente(${c.id},'banco',this.value)"
-            style="font-size:11px;font-weight:normal;max-width:100px;color:var(--muted)">
-          <input type="text" value="${escHtml(c.agencia)}" placeholder="Agência"
-            onchange="salvarCampoContaCorrente(${c.id},'agencia',this.value)"
-            style="font-size:11px;font-weight:normal;max-width:70px;color:var(--muted)">
-          <input type="text" value="${escHtml(c.conta)}" placeholder="N° Conta"
-            onchange="salvarCampoContaCorrente(${c.id},'conta',this.value)"
-            style="font-size:11px;font-weight:normal;max-width:90px;color:var(--muted)">
-        </div>
+        <div style="font-weight:600;font-size:14px">${escHtml(c.nome)}</div>
+        ${nomeExtra?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${escHtml(nomeExtra)}</div>`:''}
       </td>
       <td>
-        <select onchange="salvarCampoContaCorrente(${c.id},'tipo',this.value)"
-          style="border:1px solid transparent;background:rgba(255,255,255,.5);border-radius:6px;padding:4px 8px;font-size:13px">
-          <option value="corrente" ${c.tipo==='corrente'?'selected':''}>Corrente</option>
-          <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Aplicação</option>
-          <option value="caixa"    ${c.tipo==='caixa'   ?'selected':''}>Caixa interno</option>
-        </select>
+        <span style="font-size:12px;padding:3px 10px;border-radius:12px;font-weight:600;background:${bg}">
+          ${TIPO_LABEL[c.tipo]||c.tipo}
+        </span>
       </td>
-      <td style="text-align:right;font-size:13px;color:var(--muted)">${fmtMoney(c.saldoInicial)}</td>
-      <td style="text-align:right;font-weight:700;font-size:14px;color:${corSaldo}">${fmtMoney(saldoAtual)}</td>
+      <td style="text-align:right;font-size:13px;color:var(--muted)">${fmtMoney(c.saldoInicial)||'—'}</td>
+      <td style="text-align:right;font-weight:700;font-size:15px;color:${corSaldo}">${fmtMoney(saldoAtual)||'R$ 0,00'}</td>
       <td style="text-align:center">
-        <input type="checkbox" ${c.ativo?'checked':''} title="Ativo"
-          onchange="salvarCampoContaCorrente(${c.id},'ativo',this.checked)">
-      </td>
-      <td style="text-align:right;white-space:nowrap">
-        <button class="btn" style="font-size:12px;padding:4px 8px" onclick="abrirMovimentacoesContaCorrente(${c.id})">📋 Extratos</button>
-        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px" onclick="abrirLancamentoManual(${c.id})">＋ Lançar</button>
+        <span style="font-size:12px;font-weight:600;color:${c.ativo?'#16a34a':'#dc2626'}">${c.ativo?'Ativa':'Inativa'}</span>
       </td>`;
     tbody.appendChild(tr);
   });
@@ -5385,45 +5365,132 @@ async function salvarCampoContaCorrente(id, campo, valor){
   renderContasCorrente();
 }
 
-/** Abre modal para cadastrar nova conta corrente */
-function abrirNovaContaCorrente(){
-  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
-  const html = `
-    <div class="modal-header"><h3>Nova Conta Corrente</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px">
+/** HTML compartilhado do formulário de conta corrente */
+function _ccFormHTML(c={}){
+  return `
+    <div style="display:grid;gap:14px">
       <label>Nome da conta *
-        <input id="ncc-nome" type="text" placeholder="Ex: Bradesco Principal" class="input" style="margin-top:4px">
+        <input id="ncc-nome" type="text" placeholder="Ex: Bradesco Principal" class="input" style="margin-top:4px"
+          value="${escHtml(c.nome||'')}">
       </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Banco
-          <input id="ncc-banco" type="text" placeholder="Ex: Bradesco" class="input" style="margin-top:4px">
+          <input id="ncc-banco" type="text" placeholder="Ex: Bradesco" class="input" style="margin-top:4px"
+            value="${escHtml(c.banco||'')}">
         </label>
         <label>Tipo
           <select id="ncc-tipo" class="input" style="margin-top:4px">
-            <option value="corrente">Conta Corrente</option>
-            <option value="poupanca">Aplicação</option>
-            <option value="caixa">Caixa Interno</option>
+            <option value="corrente" ${(c.tipo||'corrente')==='corrente'?'selected':''}>Conta Corrente</option>
+            <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Aplicação</option>
+            <option value="caixa"    ${c.tipo==='caixa'?'selected':''}>Caixa Interno</option>
           </select>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Agência
-          <input id="ncc-agencia" type="text" placeholder="0000" class="input" style="margin-top:4px">
+          <input id="ncc-agencia" type="text" placeholder="0000" class="input" style="margin-top:4px"
+            value="${escHtml(c.agencia||'')}">
         </label>
         <label>N° Conta
-          <input id="ncc-conta" type="text" placeholder="00000-0" class="input" style="margin-top:4px">
+          <input id="ncc-conta" type="text" placeholder="00000-0" class="input" style="margin-top:4px"
+            value="${escHtml(c.conta||'')}">
         </label>
       </div>
-      <label>Saldo Inicial (R$)
-        <input id="ncc-saldo" type="text" inputmode="decimal" placeholder="0,00" class="input"
-          oninput="mascaraMoeda(this)" style="margin-top:4px">
-      </label>
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarNovaContaCorrente()">Salvar</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Saldo Inicial (R$)
+          <input id="ncc-saldo" type="text" inputmode="decimal" placeholder="0,00" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px"
+            value="${c.saldoInicial!=null?fmtMoney(c.saldoInicial).replace('R$','').trim():''}">
+        </label>
+        <label style="display:flex;flex-direction:column;justify-content:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <input type="checkbox" id="ncc-ativo" ${c.ativo!==false?'checked':''}>
+            <span>Conta ativa</span>
+          </label>
+        </label>
+      </div>
     </div>`;
-  abrirModal(html);
+}
+
+/** Abre modal para cadastrar nova conta corrente */
+function abrirNovaContaCorrente(){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
+  abrirModal(`
+    <h3>Nova Conta Corrente</h3>
+    <div class="aba-corpo">${_ccFormHTML()}</div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaContaCorrente()">Salvar</button>
+    </div>`, 'cartao');
+}
+
+/** Abre modal para editar conta corrente existente */
+function abrirEditarContaCorrente(id){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
+  const c = (db.contasCorrente||[]).find(x=>x.id===id);
+  if(!c) return;
+  abrirModal(`
+    <h3>${escHtml(c.nome)}</h3>
+    <div class="aba-corpo">${_ccFormHTML(c)}</div>
+    <div class="actions rodape-cartao" style="justify-content:space-between">
+      <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>
+        <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${id})">📋 Extrato</button>
+        <button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+        <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaCorrente(${id})">Salvar</button>
+      </div>
+    </div>`, 'cartao');
+}
+
+/** Persiste edição de conta corrente */
+async function salvarEdicaoContaCorrente(id){
+  const c = (db.contasCorrente||[]).find(x=>x.id===id);
+  if(!c) return;
+  const nome = (document.getElementById('ncc-nome').value||'').trim();
+  if(!nome){ alert('Informe o nome da conta.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+  const banco    = (document.getElementById('ncc-banco').value||'').trim();
+  const tipo     = document.getElementById('ncc-tipo').value;
+  const agencia  = (document.getElementById('ncc-agencia').value||'').trim();
+  const conta    = (document.getElementById('ncc-conta').value||'').trim();
+  const ativo    = document.getElementById('ncc-ativo').checked;
+  const saldoInicial = parseFloat(
+    (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
+  ) || 0;
+  const {error} = await sb.from('contas_correntes').update({
+    nome, banco:banco||null, agencia:agencia||null, conta:conta||null,
+    tipo, saldo_inicial:saldoInicial, ativo
+  }).eq('id', id);
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+  Object.assign(c, {nome, banco, agencia, conta, tipo, saldoInicial, ativo});
+  save();
+  await _delay;
+  fecharModal();
+  renderContasCorrente();
+}
+
+/** Exclui conta corrente (só se sem movimentações) */
+async function excluirContaCorrente(id){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão.'); return; }
+  const c = (db.contasCorrente||[]).find(x=>x.id===id);
+  if(!c) return;
+  const movs = (db.movimentacoes||[]).filter(m=>m.contaId===id);
+  if(movs.length){
+    alert(`"${c.nome}" possui ${movs.length} movimentação(ões) e não pode ser excluída.\nDesative-a em vez disso.`);
+    return;
+  }
+  if(!confirm(`Excluir a conta "${c.nome}"?`)) return;
+  const {error} = await sb.from('contas_correntes').delete().eq('id', id);
+  if(error){ alert('Erro ao excluir: '+error.message); return; }
+  db.contasCorrente = (db.contasCorrente||[]).filter(x=>x.id!==id);
+  save();
+  fecharModal();
+  renderContasCorrente();
 }
 
 /** Persiste nova conta corrente */
