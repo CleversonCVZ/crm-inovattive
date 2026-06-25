@@ -1447,7 +1447,8 @@ function load(){
   if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
   if(!Array.isArray(db.contasPagar))     db.contasPagar=[];
-  if(!Array.isArray(db.fornecedores))    db.fornecedores=[];
+  if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
+  if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1631,7 +1632,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1655,7 +1656,8 @@ async function carregarDadosSupabase(){
       sb.from('contas_correntes').select('*').order('id'),
       sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
       sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true}),
-      sb.from('fornecedores').select('*').order('nome')
+      sb.from('fornecedores').select('*').order('nome'),
+      sb.from('fornecedor_contatos').select('*').order('id')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1859,6 +1861,12 @@ async function carregarDadosSupabase(){
         observacao:f.observacao||'', ativo:!!f.ativo,
         criadoEm:f.created_at||''
       }));
+    if(fornecedorContatos.data)
+      db.fornecedorContatos = fornecedorContatos.data.map(c=>({
+        id:c.id, fornecedorId:c.fornecedor_id, nome:c.nome||'',
+        cargo:c.cargo||'', telefone:c.telefone||'', email:c.email||'',
+        criadoEm:c.created_at||''
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -2051,6 +2059,10 @@ function syncDadosSupabase(){
       complemento:f.complemento||null, bairro:f.bairro||null,
       cidade:f.cidade||null, estado:f.estado||null, cep:f.cep||null,
       observacao:f.observacao||null, ativo:!!f.ativo
+    }));
+    await sincronizarTabela('fornecedor_contatos', db.fornecedorContatos||[], c=>({
+      id:c.id, fornecedor_id:c.fornecedorId, nome:c.nome||'',
+      cargo:c.cargo||null, telefone:c.telefone||null, email:c.email||null
     }));
   }, 800);
 }
@@ -5843,6 +5855,134 @@ async function buscarCepFornecedor(cep){
   }catch(e){}
 }
 
+/** Seção de contatos do fornecedor (exibida apenas no modal de edição) */
+function _secaoContatosFornecedor(fornId){
+  const cts = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===fornId);
+  return `
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos do Fornecedor</div>
+      ${cts.length ? `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
+        <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+          <th style="text-align:left;padding:4px 6px">Nome</th>
+          <th style="text-align:left;padding:4px 6px">Cargo</th>
+          <th style="text-align:left;padding:4px 6px">Telefone</th>
+          <th style="text-align:left;padding:4px 6px">E-mail</th>
+          <th style="width:64px"></th>
+        </tr></thead>
+        <tbody id="fc-contatos-lista">
+          ${cts.map(ct=>`
+          <tr id="fc-row-${ct.id}" style="border-top:1px solid var(--border)">
+            <td style="padding:7px 6px;font-weight:600">${escHtml(ct.nome)}</td>
+            <td style="padding:7px 6px;color:var(--muted)">${escHtml(ct.cargo)||'—'}</td>
+            <td style="padding:7px 6px">${ct.telefone?`<a href="tel:${ct.telefone.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${escHtml(ct.telefone)}</a>`:'—'}</td>
+            <td style="padding:7px 6px">${ct.email?`<a href="mailto:${ct.email}" style="color:var(--blue-dark);text-decoration:none">${escHtml(ct.email)}</a>`:'—'}</td>
+            <td style="padding:7px 4px;text-align:center;white-space:nowrap">
+              <button class="btn sm neutral" title="Editar" onclick="editarContatoFornecedor(${ct.id},${fornId})">✏️</button>
+              <button class="btn sm neutral" title="Remover" onclick="excluirContatoFornecedor(${ct.id},${fornId})">🗑</button>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>` : `<div id="fc-contatos-lista" style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato cadastrado.</div>`}
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+        <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="fc-nome" placeholder="Nome *" class="input">
+          <input id="fc-cargo" placeholder="Cargo / Função" class="input">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <input id="fc-tel" placeholder="(41) 99999-9999" maxlength="15" class="input" oninput="mascaraTel(this)">
+          <input id="fc-email" type="email" placeholder="email@exemplo.com" class="input">
+        </div>
+        <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoFornecedor(${fornId})">＋ Adicionar</button>
+      </div>
+    </div>`;
+}
+
+/** Adiciona contato ao fornecedor */
+async function adicionarContatoFornecedor(fornId){
+  const nome = (document.getElementById('fc-nome').value||'').trim();
+  if(!nome){ alert('Informe o nome do contato.'); return; }
+  const id = await proximoIdSeguro('fornecedor_contatos', db.fornecedorContatos||[]);
+  const cargo    = (document.getElementById('fc-cargo').value||'').trim();
+  const telefone = (document.getElementById('fc-tel').value||'').trim();
+  const email    = (document.getElementById('fc-email').value||'').trim();
+  const {error} = await sb.from('fornecedor_contatos').insert({
+    id, fornecedor_id:fornId, nome, cargo:cargo||null, telefone:telefone||null, email:email||null
+  });
+  if(error){ alert('Erro ao salvar contato: '+error.message); return; }
+  const row = {id, fornecedorId:fornId, nome, cargo, telefone, email, criadoEm:new Date().toISOString()};
+  db.fornecedorContatos = db.fornecedorContatos||[];
+  db.fornecedorContatos.push(row);
+  save();
+  // Atualiza a lista sem fechar o modal
+  const el = document.getElementById('fc-contatos-lista');
+  if(el){
+    // Rerender: substitui a div/tbody pelo novo HTML
+    const section = el.closest('div[style*="border-top"]')||el.closest('div');
+    if(section) section.outerHTML = _secaoContatosFornecedor(fornId);
+    else el.outerHTML = _secaoContatosFornecedor(fornId);
+  } else {
+    // fallback: reabrir modal
+    abrirEditarFornecedor(fornId);
+  }
+}
+
+/** Editar contato inline (abre mini-modal) */
+function editarContatoFornecedor(ctId, fornId){
+  const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
+  if(!ct) return;
+  const row = document.getElementById('fc-row-'+ctId);
+  if(!row) return;
+  row.innerHTML = `
+    <td colspan="4" style="padding:8px 6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+        <input id="fce-nome-${ctId}" class="input" value="${escHtml(ct.nome)}" placeholder="Nome *">
+        <input id="fce-cargo-${ctId}" class="input" value="${escHtml(ct.cargo||'')}" placeholder="Cargo">
+        <input id="fce-tel-${ctId}" class="input" value="${escHtml(ct.telefone||'')}" placeholder="Telefone" maxlength="15" oninput="mascaraTel(this)">
+        <input id="fce-email-${ctId}" class="input" type="email" value="${escHtml(ct.email||'')}" placeholder="E-mail">
+      </div>
+    </td>
+    <td style="padding:8px 4px;white-space:nowrap">
+      <button class="btn sm primary" onclick="salvarEdicaoContatoFornecedor(${ctId},${fornId})">✔</button>
+      <button class="btn sm neutral" onclick="abrirEditarFornecedor(${fornId})">✕</button>
+    </td>`;
+}
+
+/** Persiste edição de contato */
+async function salvarEdicaoContatoFornecedor(ctId, fornId){
+  const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
+  if(!ct) return;
+  const nome     = (document.getElementById('fce-nome-'+ctId).value||'').trim();
+  const cargo    = (document.getElementById('fce-cargo-'+ctId).value||'').trim();
+  const telefone = (document.getElementById('fce-tel-'+ctId).value||'').trim();
+  const email    = (document.getElementById('fce-email-'+ctId).value||'').trim();
+  if(!nome){ alert('Informe o nome do contato.'); return; }
+  const {error} = await sb.from('fornecedor_contatos').update({
+    nome, cargo:cargo||null, telefone:telefone||null, email:email||null
+  }).eq('id', ctId);
+  if(error){ alert('Erro ao salvar: '+error.message); return; }
+  ct.nome=nome; ct.cargo=cargo; ct.telefone=telefone; ct.email=email;
+  save();
+  abrirEditarFornecedor(fornId);
+}
+
+/** Exclui contato do fornecedor */
+async function excluirContatoFornecedor(ctId, fornId){
+  if(!confirm('Remover este contato?')) return;
+  await excluirDoSupabase('fornecedor_contatos', ctId);
+  db.fornecedorContatos = (db.fornecedorContatos||[]).filter(x=>x.id!==ctId);
+  save();
+  const row = document.getElementById('fc-row-'+ctId);
+  if(row) row.remove();
+  // se não restarem contatos, exibir mensagem
+  const tbody = document.getElementById('fc-contatos-lista');
+  if(tbody && !tbody.querySelector('tr')){
+    const tbl = tbody.closest('table');
+    if(tbl) tbl.outerHTML = `<div id="fc-contatos-lista" style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato cadastrado.</div>`;
+  }
+}
+
 /** Abre modal para novo fornecedor */
 function abrirNovoFornecedor(opts={}){
   // opts.callbackId: select a atualizar após salvar (para uso inline no modal de contas a pagar)
@@ -5855,7 +5995,7 @@ function abrirNovoFornecedor(opts={}){
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(${cbId?`'${cbId}'`:'null'})">Salvar</button>
-    </div>`);
+    </div>`, 'cartao');
 }
 
 /** Persiste novo fornecedor */
@@ -5879,9 +6019,9 @@ async function salvarNovoFornecedor(callbackSelectId=null){
   db.fornecedores.push(row);
   save();
   await _delay;
-  fecharModal();
-  // Se chamado de dentro de outro modal (contas a pagar), atualiza o select
+  // Se chamado de dentro de outro modal (contas a pagar), atualiza o select e fecha
   if(callbackSelectId){
+    fecharModal();
     const sel = document.getElementById(callbackSelectId);
     if(sel){
       const opt = document.createElement('option');
@@ -5889,6 +6029,8 @@ async function salvarNovoFornecedor(callbackSelectId=null){
       sel.appendChild(opt);
     }
   } else {
+    // Reabre como edição para permitir adicionar contatos imediatamente
+    abrirEditarFornecedor(id);
     renderFornecedores();
   }
 }
@@ -5898,14 +6040,16 @@ function abrirEditarFornecedor(id){
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
   abrirModal(`
-    <div class="modal-header"><h3>✏️ Editar Fornecedor</h3></div>
+    <div class="modal-header"><h3>✏️ ${escHtml(f.nome||'Fornecedor')}</h3></div>
     <div class="modal-body" style="display:grid;gap:12px">
       ${_fornFormHTML(f)}
+      ${_secaoContatosFornecedor(id)}
     </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+    <div class="modal-footer rodape-cartao">
+      <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>
-    </div>`);
+    </div>`, 'cartao');
 }
 
 /** Persiste edição de fornecedor */
@@ -6075,14 +6219,12 @@ function abrirNovaContaPagar(){
           <input id="ncp-desc" type="text" placeholder="Ex: Aluguel, Fornecedor XYZ…" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-            <select id="ncp-forn" class="input" style="flex:1">
-              <option value="">— nenhum —</option>
-              ${(db.fornecedores||[]).filter(f=>f.ativo).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('')}
-            </select>
-            <button type="button" class="btn" style="white-space:nowrap;font-size:12px"
-              onclick="abrirNovoFornecedor({callbackId:'ncp-forn'})">＋ Novo</button>
-          </div>
+          <select id="ncp-forn" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>
+            ${(db.fornecedores||[]).filter(f=>f.ativo).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('')}
+          </select>
+          <button type="button" class="link-btn" style="margin-top:2px"
+            onclick="abrirNovoFornecedor({callbackId:'ncp-forn'})">＋ Cadastrar novo fornecedor</button>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -6115,10 +6257,10 @@ function abrirNovaContaPagar(){
         <input id="ncp-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
       </label>
     </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+    <div class="modal-footer rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarNovaContaPagar()">Salvar</button>
-    </div>`);
+    </div>`, 'cartao');
 }
 
 /** Persiste nova conta a pagar */
@@ -6183,14 +6325,12 @@ function abrirEditarContaPagar(id){
           <input id="ecp-desc" type="text" value="${escHtml(p.descricao)}" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-            <select id="ecp-forn" class="input" style="flex:1">
-              <option value="">— nenhum —</option>
-              ${(db.fornecedores||[]).filter(f=>f.ativo||f.id===p.fornecedorId).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}" ${p.fornecedorId===f.id?'selected':''}>${escHtml(f.nome)}</option>`).join('')}
-            </select>
-            <button type="button" class="btn" style="white-space:nowrap;font-size:12px"
-              onclick="abrirNovoFornecedor({callbackId:'ecp-forn'})">＋ Novo</button>
-          </div>
+          <select id="ecp-forn" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>
+            ${(db.fornecedores||[]).filter(f=>f.ativo||f.id===p.fornecedorId).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}" ${p.fornecedorId===f.id?'selected':''}>${escHtml(f.nome)}</option>`).join('')}
+          </select>
+          <button type="button" class="link-btn" style="margin-top:2px"
+            onclick="abrirNovoFornecedor({callbackId:'ecp-forn'})">＋ Cadastrar novo fornecedor</button>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -6222,10 +6362,10 @@ function abrirEditarContaPagar(id){
         <input id="ecp-obs" type="text" value="${escHtml(p.observacao)}" class="input" style="margin-top:4px">
       </label>
     </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+    <div class="modal-footer rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaPagar(${id})">Salvar</button>
-    </div>`);
+    </div>`, 'cartao');
 }
 
 /** Persiste edição de conta a pagar */
