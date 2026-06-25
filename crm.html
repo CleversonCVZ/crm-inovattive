@@ -6091,18 +6091,77 @@ async function salvarNovoFornecedor(callbackSelectId=null){
   }
 }
 
+/** Conteúdo da aba Pedidos — lista contas a pagar vinculadas ao fornecedor */
+function _abaFornecedorPedidos(fornId){
+  const pagamentos = (db.contasPagar||[])
+    .filter(p=>p.fornecedorId===fornId)
+    .sort((a,b)=>(b.dataVencimento||'').localeCompare(a.dataVencimento||''));
+
+  if(!pagamentos.length) return `
+    <div style="text-align:center;padding:40px 20px;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">📦</div>
+      <div style="font-weight:600;margin-bottom:6px">Nenhum pedido registrado</div>
+      <div style="font-size:13px">Os pagamentos lançados para este fornecedor em Contas a Pagar aparecerão aqui.</div>
+    </div>`;
+
+  const STATUS_STYLE = {
+    pendente: 'background:#fef9c3;color:#92400e',
+    vencido:  'background:#fee2e2;color:#dc2626',
+    pago:     'background:#dcfce7;color:#16a34a'
+  };
+  const STATUS_LABEL = {pendente:'Pendente', vencido:'⚠ Vencida', pago:'✅ Pago'};
+
+  const totalPago    = pagamentos.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
+  const totalPendente= pagamentos.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor,0);
+
+  return `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat"><div class="n" style="color:#16a34a">${fmtMoney(totalPago)||'R$ 0,00'}</div><div class="l">Total Pago</div></div>
+      ${totalPendente>0?`<div class="stat"><div class="n" style="color:#dc2626">${fmtMoney(totalPendente)}</div><div class="l">A Pagar / Vencido</div></div>`:''}
+      <div class="stat"><div class="n">${pagamentos.length}</div><div class="l">Lançamento${pagamentos.length!==1?'s':''}</div></div>
+    </div>
+    <table class="lista" style="width:100%">
+      <thead><tr>
+        <th>Descrição</th>
+        <th style="width:110px">Vencimento</th>
+        <th style="width:110px;text-align:right">Valor</th>
+        <th style="width:100px;text-align:center">Status</th>
+        <th style="width:110px">Pgto em</th>
+      </tr></thead>
+      <tbody>
+        ${pagamentos.map(p=>{
+          const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
+          return `<tr style="background:${p.status==='pago'?'#f0fdf4':p.status==='vencido'?'#fff1f2':'#fffbeb'}">
+            <td>
+              <div style="font-weight:600;font-size:13px">${escHtml(p.descricao)}</div>
+              ${cc?`<div style="font-size:11px;color:var(--muted)">${escHtml(cc.nome)}</div>`:''}
+            </td>
+            <td style="font-size:13px">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
+            <td style="text-align:right;font-weight:700;font-size:13px">${fmtMoney(p.valor)}</td>
+            <td style="text-align:center"><span style="font-size:11px;padding:2px 8px;border-radius:12px;font-weight:600;${STATUS_STYLE[p.status]||''}">${STATUS_LABEL[p.status]||p.status}</span></td>
+            <td style="font-size:12px;color:var(--muted)">${p.dataPagamento?fmtDia2(p.dataPagamento):'—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
 /** Abre modal para editar fornecedor existente */
 function abrirEditarFornecedor(id, aba='dados'){
   if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para editar Fornecedores.'); return; }
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
-  const nCt = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===id).length;
-  const corpo = aba==='dados' ? _fornFormHTML(f) : _abaContatosFornecedor(id);
+  const nCt  = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===id).length;
+  const nPed = (db.contasPagar||[]).filter(p=>p.fornecedorId===id).length;
+  const corpo = aba==='dados' ? _fornFormHTML(f)
+              : aba==='contatos' ? _abaContatosFornecedor(id)
+              : _abaFornecedorPedidos(id);
   abrirModal(`
     <h3>${escHtml(f.nome||'Fornecedor')}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'dados')">Dados</button>
       <button class="aba ${aba==='contatos'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'contatos')">Contatos${nCt?' ('+nCt+')':''}</button>
+      <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'pedidos')">Pedidos${nPed?' ('+nPed+')':''}</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -6110,7 +6169,9 @@ function abrirEditarFornecedor(id, aba='dados'){
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       ${aba==='dados'
         ? `<button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>`
-        : `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">Salvar Dados</button>`}
+        : aba==='contatos'
+          ? `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">Salvar Dados</button>`
+          : ''}
     </div>`, 'cartao');
 }
 
