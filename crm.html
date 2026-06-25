@@ -5863,47 +5863,44 @@ async function buscarCepFornecedor(cep){
   }catch(e){}
 }
 
-/** Seção de contatos do fornecedor (exibida apenas no modal de edição) */
-function _secaoContatosFornecedor(fornId){
+/** Conteúdo da aba Contatos do fornecedor */
+function _abaContatosFornecedor(fornId){
   const cts = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===fornId);
   return `
-    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Contatos do Fornecedor</div>
-      ${cts.length ? `
-      <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">
-        <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
-          <th style="text-align:left;padding:4px 6px">Nome</th>
-          <th style="text-align:left;padding:4px 6px">Cargo</th>
-          <th style="text-align:left;padding:4px 6px">Telefone</th>
-          <th style="text-align:left;padding:4px 6px">E-mail</th>
-          <th style="width:64px"></th>
-        </tr></thead>
-        <tbody id="fc-contatos-lista">
-          ${cts.map(ct=>`
-          <tr id="fc-row-${ct.id}" style="border-top:1px solid var(--border)">
-            <td style="padding:7px 6px;font-weight:600">${escHtml(ct.nome)}</td>
-            <td style="padding:7px 6px;color:var(--muted)">${escHtml(ct.cargo)||'—'}</td>
-            <td style="padding:7px 6px">${ct.telefone?`<a href="tel:${ct.telefone.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${escHtml(ct.telefone)}</a>`:'—'}</td>
-            <td style="padding:7px 6px">${ct.email?`<a href="mailto:${ct.email}" style="color:var(--blue-dark);text-decoration:none">${escHtml(ct.email)}</a>`:'—'}</td>
-            <td style="padding:7px 4px;text-align:center;white-space:nowrap">
-              <button class="btn sm neutral" title="Editar" onclick="editarContatoFornecedor(${ct.id},${fornId})">✏️</button>
-              <button class="btn sm neutral" title="Remover" onclick="excluirContatoFornecedor(${ct.id},${fornId})">🗑</button>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>` : `<div id="fc-contatos-lista" style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato cadastrado.</div>`}
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
-        <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <input id="fc-nome" placeholder="Nome *" class="input">
-          <input id="fc-cargo" placeholder="Cargo / Função" class="input">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <input id="fc-tel" placeholder="(41) 99999-9999" maxlength="15" class="input" oninput="mascaraTel(this)">
-          <input id="fc-email" type="email" placeholder="email@exemplo.com" class="input">
-        </div>
-        <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoFornecedor(${fornId})">＋ Adicionar</button>
+    ${cts.length ? `
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">
+      <thead><tr style="color:var(--muted);font-size:11px;text-transform:uppercase">
+        <th style="text-align:left;padding:4px 6px">Nome</th>
+        <th style="text-align:left;padding:4px 6px">Cargo</th>
+        <th style="text-align:left;padding:4px 6px">Telefone</th>
+        <th style="text-align:left;padding:4px 6px">E-mail</th>
+        <th style="width:64px"></th>
+      </tr></thead>
+      <tbody id="fc-contatos-lista">
+        ${cts.map(ct=>`
+        <tr id="fc-row-${ct.id}" style="border-top:1px solid var(--border)">
+          <td style="padding:7px 6px;font-weight:600">${escHtml(ct.nome)}</td>
+          <td style="padding:7px 6px;color:var(--muted)">${escHtml(ct.cargo)||'—'}</td>
+          <td style="padding:7px 6px">${ct.telefone?`<a href="tel:${ct.telefone.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${escHtml(ct.telefone)}</a>`:'—'}</td>
+          <td style="padding:7px 6px">${ct.email?`<a href="mailto:${ct.email}" style="color:var(--blue-dark);text-decoration:none">${escHtml(ct.email)}</a>`:'—'}</td>
+          <td style="padding:7px 4px;text-align:center;white-space:nowrap">
+            <button class="btn sm neutral" title="Editar" onclick="editarContatoFornecedor(${ct.id},${fornId})">✏️</button>
+            <button class="btn sm neutral" title="Remover" onclick="excluirContatoFornecedor(${ct.id},${fornId})">🗑</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">Nenhum contato cadastrado.</div>`}
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="fc-nome" placeholder="Nome *" class="input">
+        <input id="fc-cargo" placeholder="Cargo / Função" class="input">
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <input id="fc-tel" placeholder="(41) 99999-9999" maxlength="15" class="input" oninput="mascaraTel(this)">
+        <input id="fc-email" type="email" placeholder="email@exemplo.com" class="input">
+      </div>
+      <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoFornecedor(${fornId})">＋ Adicionar</button>
     </div>`;
 }
 
@@ -5923,17 +5920,7 @@ async function adicionarContatoFornecedor(fornId){
   db.fornecedorContatos = db.fornecedorContatos||[];
   db.fornecedorContatos.push(row);
   save();
-  // Atualiza a lista sem fechar o modal
-  const el = document.getElementById('fc-contatos-lista');
-  if(el){
-    // Rerender: substitui a div/tbody pelo novo HTML
-    const section = el.closest('div[style*="border-top"]')||el.closest('div');
-    if(section) section.outerHTML = _secaoContatosFornecedor(fornId);
-    else el.outerHTML = _secaoContatosFornecedor(fornId);
-  } else {
-    // fallback: reabrir modal
-    abrirEditarFornecedor(fornId);
-  }
+  abrirEditarFornecedor(fornId, 'contatos');
 }
 
 /** Editar contato inline (abre mini-modal) */
@@ -5953,7 +5940,7 @@ function editarContatoFornecedor(ctId, fornId){
     </td>
     <td style="padding:8px 4px;white-space:nowrap">
       <button class="btn sm primary" onclick="salvarEdicaoContatoFornecedor(${ctId},${fornId})">✔</button>
-      <button class="btn sm neutral" onclick="abrirEditarFornecedor(${fornId})">✕</button>
+      <button class="btn sm neutral" onclick="abrirEditarFornecedor(${fornId},'contatos')">✕</button>
     </td>`;
 }
 
@@ -5972,7 +5959,7 @@ async function salvarEdicaoContatoFornecedor(ctId, fornId){
   if(error){ alert('Erro ao salvar: '+error.message); return; }
   ct.nome=nome; ct.cargo=cargo; ct.telefone=telefone; ct.email=email;
   save();
-  abrirEditarFornecedor(fornId);
+  abrirEditarFornecedor(fornId, 'contatos');
 }
 
 /** Exclui contato do fornecedor */
@@ -5981,14 +5968,7 @@ async function excluirContatoFornecedor(ctId, fornId){
   await excluirDoSupabase('fornecedor_contatos', ctId);
   db.fornecedorContatos = (db.fornecedorContatos||[]).filter(x=>x.id!==ctId);
   save();
-  const row = document.getElementById('fc-row-'+ctId);
-  if(row) row.remove();
-  // se não restarem contatos, exibir mensagem
-  const tbody = document.getElementById('fc-contatos-lista');
-  if(tbody && !tbody.querySelector('tr')){
-    const tbl = tbody.closest('table');
-    if(tbl) tbl.outerHTML = `<div id="fc-contatos-lista" style="font-size:12px;color:var(--muted);margin-bottom:12px">Nenhum contato cadastrado.</div>`;
-  }
+  abrirEditarFornecedor(fornId, 'contatos');
 }
 
 /** Abre modal para novo fornecedor */
@@ -5996,21 +5976,33 @@ function abrirNovoFornecedor(opts={}){
   // opts.callbackId: select a atualizar após salvar (para uso inline no modal de contas a pagar)
   const cbId = opts.callbackId||null;
   if(!cbId && !podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para gerenciar Fornecedores.'); return; }
-  const contatosPlaceholder = cbId ? '' : `
-    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;opacity:.4;pointer-events:none;user-select:none">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Contatos do Fornecedor</div>
-      <div style="font-size:12px;color:var(--muted);font-style:italic">Salve os dados acima para ativar esta seção.</div>
-    </div>`;
-  abrirModal(`
-    <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px" id="ff-form-body">
-      ${_fornFormHTML({})}
-      ${contatosPlaceholder}
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(${cbId?`'${cbId}'`:'null'})">Salvar</button>
-    </div>`, 'cartao');
+  // Modo standalone: layout com abas igual ao cartão CRM
+  if(!cbId){
+    abrirModal(`
+      <h3>🏭 Novo Fornecedor</h3>
+      <div class="abas">
+        <button class="aba ativa">Dados</button>
+        <button class="aba" style="opacity:.4;pointer-events:none;cursor:default" title="Salve os dados primeiro">Contatos</button>
+      </div>
+      <div class="aba-corpo">
+        ${_fornFormHTML({})}
+      </div>
+      <div class="actions rodape-cartao">
+        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+        <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(null)">Salvar</button>
+      </div>`, 'cartao');
+  } else {
+    // Modo callback (vindo de Contas a Pagar): modal simples sem abas
+    abrirModal(`
+      <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
+      <div class="modal-body" style="display:grid;gap:12px">
+        ${_fornFormHTML({})}
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="fecharModal()">Cancelar</button>
+        <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor('${cbId}')">Salvar</button>
+      </div>`, 'cartao');
+  }
 }
 
 /** Persiste novo fornecedor */
@@ -6044,38 +6036,32 @@ async function salvarNovoFornecedor(callbackSelectId=null){
       sel.appendChild(opt);
     }
   } else {
-    // Atualiza o modal no lugar (sem fechar/reabrir) para modo edição com contatos ativos
-    const f = (db.fornecedores||[]).find(x=>x.id===id);
-    document.getElementById('modal').innerHTML = `
-      <div class="modal-header"><h3>✏️ ${escHtml(f.nome||'Fornecedor')}</h3></div>
-      <div class="modal-body" style="display:grid;gap:12px">
-        ${_fornFormHTML(f)}
-        ${_secaoContatosFornecedor(id)}
-      </div>
-      <div class="modal-footer rodape-cartao">
-        <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
-        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-        <button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>
-      </div>`;
+    // Abre modo edição direto na aba Contatos para o usuário já adicionar
+    abrirEditarFornecedor(id, 'contatos');
     renderFornecedores();
   }
 }
 
 /** Abre modal para editar fornecedor existente */
-function abrirEditarFornecedor(id){
+function abrirEditarFornecedor(id, aba='dados'){
   if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para editar Fornecedores.'); return; }
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
+  const nCt = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===id).length;
+  const corpo = aba==='dados' ? _fornFormHTML(f) : _abaContatosFornecedor(id);
   abrirModal(`
-    <div class="modal-header"><h3>✏️ ${escHtml(f.nome||'Fornecedor')}</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px">
-      ${_fornFormHTML(f)}
-      ${_secaoContatosFornecedor(id)}
+    <h3>🏭 ${escHtml(f.nome||'Fornecedor')}</h3>
+    <div class="abas">
+      <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'dados')">Dados</button>
+      <button class="aba ${aba==='contatos'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'contatos')">Contatos${nCt?' ('+nCt+')':''}</button>
     </div>
-    <div class="modal-footer rodape-cartao">
+    <div class="aba-corpo">${corpo}</div>
+    <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>
+      ${aba==='dados'
+        ? `<button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>`
+        : `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">Salvar Dados</button>`}
     </div>`, 'cartao');
 }
 
