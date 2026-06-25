@@ -1796,7 +1796,8 @@ async function carregarDadosSupabase(){
     if(recebimentos.data)
       db.recebimentos = recebimentos.data.map(r=>({
         id:r.id, cardId:r.card_id,
-        propostaId:r.proposta_id||null, osId:r.os_id||null,
+        propostaId:r.proposta_id ? Number(r.proposta_id) : null,
+        osId:r.os_id ? Number(r.os_id) : null,
         descricao:r.descricao||'', valor:Number(r.valor)||0,
         tipo:r.tipo||'fixo',
         dataVencimento:r.data_vencimento ? r.data_vencimento.slice(0,10) : null,
@@ -2214,8 +2215,8 @@ function renderFinanceiroPainel(){
   tbody.innerHTML = lista.map(r=>{
     const c = db.cards.find(x=>x.id===r.cardId);
     const cl = c ? cliente(c.clienteId) : null;
-    const proposta = r.propostaId ? db.propostas.find(p=>p.id===r.propostaId) : null;
-    const os = r.osId ? db.ordensServico.find(o=>o.id===r.osId) : null;
+    const proposta = r.propostaId ? db.propostas.find(p=>Number(p.id)===Number(r.propostaId)) : null;
+    const os = r.osId ? db.ordensServico.find(o=>Number(o.id)===Number(r.osId)) : null;
     const origemLabel = proposta ? `Prop. ${proposta.numero}` : os ? `OS ${os.numero}` : '—';
     const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
     const statusBadge = r.status==='recebido'
