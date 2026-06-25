@@ -663,8 +663,8 @@
       Centros de custo classificam os gastos da empresa por área ou finalidade. Edite nome e descrição direto na tabela — as alterações salvam automaticamente.
     </p>
     <div id="cc-seed-banner"></div>
-    <table class="lista" id="cc-table" style="display:none">
-      <thead><tr><th>ID</th><th>Nome</th><th>Descrição</th><th>Tipo</th><th>Ativo</th><th></th></tr></thead>
+    <table class="fases-table" id="cc-table" style="display:none">
+      <thead><tr><th style="width:44px">ID</th><th>Nome</th><th>Descrição</th><th style="width:140px">Tipo</th><th style="width:60px;text-align:center">Ativo</th><th style="width:44px"></th></tr></thead>
       <tbody id="cc-tbody"></tbody>
     </table>
   </div>
@@ -5085,42 +5085,42 @@ function renderCentrosCusto(){
     const corT = c.tipo === 'fixo' ? COR_FIXO_T : COR_VAR_T;
     const lock = c.protegido;
     const tr = document.createElement('tr');
+    tr.className = 'fase-row';
     tr.style.background = cor;
     tr.style.color = corT;
     tr.style.opacity = c.ativo ? '1' : '0.5';
     tr.innerHTML = `
-      <td style="width:44px">${c.id}</td>
+      <td>${c.id}</td>
       <td>
         ${lock
-          ? `<span style="font-weight:700;font-size:14px;cursor:pointer"
-               onclick="alert('⚠️ Centro de custo de sistema — o nome não pode ser alterado.')">${escHtml(c.nome)}</span>
-             <span title="Registro protegido pelo sistema — não pode ser renomeado ou excluído"
-               style="margin-left:6px;font-size:12px;cursor:default">🔒</span>`
-          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome" style="color:${corT}">`
+          ? `<span onclick="alert('⚠️ Centro de custo de sistema — o nome não pode ser alterado.')"
+               style="cursor:pointer">${escHtml(c.nome)}</span>
+             <small title="Protegido pelo sistema" style="margin-left:4px">🔒</small>`
+          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome">`
         }
       </td>
       <td>
         ${lock
-          ? `<span style="font-size:13px;font-weight:400">${escHtml(c.descricao||'')}</span>`
-          : `<input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="color:${corT};font-weight:400;max-width:340px">`
+          ? `<span style="font-weight:400">${escHtml(c.descricao||'')}</span>`
+          : `<input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="font-weight:400;max-width:380px">`
         }
       </td>
-      <td style="width:160px">
+      <td>
         ${lock
-          ? `<span style="font-size:13px">${c.tipo==='fixo'?'Fixo':'Variável'}</span>`
-          : `<select data-id="${c.id}" data-campo="tipo" style="border:none;background:rgba(255,255,255,.65);border-radius:6px;padding:5px 8px;font-size:13px;font-weight:600;color:${corT}">
+          ? `<span>${c.tipo==='fixo'?'Fixo':'Variável'}</span>`
+          : `<select data-id="${c.id}" data-campo="tipo">
                <option value="fixo" ${c.tipo==='fixo'?'selected':''}>Fixo</option>
                <option value="variavel" ${c.tipo==='variavel'?'selected':''}>Variável</option>
              </select>`
         }
       </td>
-      <td style="width:70px;text-align:center">
-        <input type="checkbox" ${c.ativo?'checked':''} data-id="${c.id}" data-campo="ativo" title="Ativo"
-          style="width:16px;height:16px;cursor:pointer" ${lock?'disabled':''}>
+      <td style="text-align:center">
+        <input type="checkbox" ${c.ativo?'checked':''} data-id="${c.id}" data-campo="ativo"
+          title="Ativo" style="width:16px;height:16px;cursor:pointer" ${lock?'disabled':''}>
       </td>
-      <td style="text-align:right;width:44px">
+      <td style="text-align:right">
         ${lock
-          ? `<span title="Protegido — não pode ser excluído" style="opacity:.3;cursor:not-allowed;font-size:16px">🗑</span>`
+          ? `<span title="Protegido" style="opacity:.3;cursor:not-allowed">🗑</span>`
           : `<button class="icon-btn del" data-del="${c.id}" title="Excluir">🗑</button>`
         }
       </td>`;
