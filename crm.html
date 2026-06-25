@@ -5821,7 +5821,7 @@ function _fornFormHTML(f={}){
     <!-- Linha 2: Telefone e E-mail -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>Telefone
-        <input id="ff-tel" type="text" value="${escHtml(f.telefone||'')}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000">
+        <input id="ff-tel" type="text" value="${escHtml(f.telefone||'')}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)">
       </label>
       <label>E-mail
         <input id="ff-email" type="email" value="${escHtml(f.email||'')}" class="input" style="margin-top:4px" placeholder="contato@fornecedor.com">
