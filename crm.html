@@ -655,7 +655,7 @@
   <!-- FINANCEIRO: CENTROS DE CUSTO -->
   <div class="view" id="view-fin-centros-custo">
     <div class="bar">
-      <h2>🏷️ Centros de Custo</h2>
+      <h2>Centros de Custo</h2>
       <div class="spacer"></div>
       <button class="btn primary" onclick="abrirNovoCentroCusto()">＋ Novo Centro de Custo</button>
     </div>
@@ -663,7 +663,7 @@
       Centros de custo classificam os gastos da empresa por área ou finalidade. Edite nome e descrição direto na tabela — as alterações salvam automaticamente.
     </p>
     <div id="cc-seed-banner"></div>
-    <table class="fases-table" id="cc-table" style="display:none">
+    <table class="lista" id="cc-table" style="display:none">
       <thead><tr><th>ID</th><th>Nome</th><th>Descrição</th><th>Tipo</th><th>Ativo</th><th></th></tr></thead>
       <tbody id="cc-tbody"></tbody>
     </table>
@@ -679,12 +679,12 @@
   <!-- FINANCEIRO: CONTAS CORRENTES -->
   <div class="view" id="view-fin-contas-correntes">
     <div class="bar">
-      <h2>🏦 Contas Correntes</h2>
+      <h2>Contas Correntes</h2>
       <div class="spacer"></div>
       <button class="btn primary" onclick="abrirNovaContaCorrente()">＋ Nova Conta</button>
     </div>
-    <div id="cc-saldo-total-bar" style="display:none;background:var(--sidebar-bg);border-radius:10px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap"></div>
-    <table class="fases-table" id="contas-table" style="display:none">
+    <div class="stats" id="cc-saldo-total-bar" style="display:none;flex-wrap:wrap"></div>
+    <table class="lista" id="contas-table" style="display:none">
       <thead>
         <tr>
           <th style="width:40px">ID</th>
@@ -698,27 +698,30 @@
       </thead>
       <tbody id="contas-tbody"></tbody>
     </table>
-    <div id="contas-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
-      🏦 Nenhuma conta cadastrada ainda.<br>
-      <small>Clique em <b>＋ Nova Conta</b> para começar.</small>
+    <div id="contas-empty" class="empty" style="display:none">
+      Nenhuma conta cadastrada ainda. Clique em <b>＋ Nova Conta</b> para começar.
     </div>
   </div>
 
   <!-- FINANCEIRO: FORNECEDORES -->
   <div class="view" id="view-fin-fornecedores">
     <div class="bar">
-      <h2>🏭 Fornecedores</h2>
+      <h2>Fornecedores</h2>
       <div class="spacer"></div>
       <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
     </div>
     <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
-      <input id="forn-busca" type="text" placeholder="Buscar por nome, CNPJ/CPF ou cidade…"
-        class="input" style="width:300px;font-size:13px" oninput="renderFornecedores()">
+      <div class="search">
+        <input id="forn-busca" type="text" placeholder="Buscar por nome, CNPJ/CPF ou cidade…"
+          oninput="renderFornecedores();document.getElementById('forn-busca-clear').style.display=this.value?'block':'none'">
+        <button class="search-clear" id="forn-busca-clear" style="display:none"
+          onclick="document.getElementById('forn-busca').value='';this.style.display='none';renderFornecedores()">✕</button>
+      </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="forn-inativos" onchange="renderFornecedores()"> Ver inativos
       </label>
     </div>
-    <table class="fases-table" id="forn-table" style="display:none">
+    <table class="lista" id="forn-table" style="display:none">
       <thead>
         <tr>
           <th>Nome</th>
@@ -732,21 +735,20 @@
       </thead>
       <tbody id="forn-tbody"></tbody>
     </table>
-    <div id="forn-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
-      🏭 Nenhum fornecedor cadastrado ainda.<br>
-      <small>Clique em <b>＋ Novo Fornecedor</b> para começar.</small>
+    <div id="forn-empty" class="empty" style="display:none">
+      Nenhum fornecedor cadastrado ainda. Clique em <b>＋ Novo Fornecedor</b> para começar.
     </div>
   </div>
 
   <!-- FINANCEIRO: CONTAS A PAGAR -->
   <div class="view" id="view-fin-contas-pagar">
     <div class="bar">
-      <h2>📤 Contas a Pagar</h2>
+      <h2>Contas a Pagar</h2>
       <div class="spacer"></div>
       <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
     </div>
     <!-- Stats bar -->
-    <div id="cp-stats-bar" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px"></div>
+    <div class="stats" id="cp-stats-bar" style="flex-wrap:wrap"></div>
     <!-- Filtros -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       <select id="cp-filtro-status" class="input" style="width:160px;font-size:13px" onchange="renderContasPagar()">
@@ -758,11 +760,15 @@
       <select id="cp-filtro-cc" class="input" style="width:180px;font-size:13px" onchange="renderContasPagar()">
         <option value="">Todos os centros</option>
       </select>
-      <input id="cp-filtro-busca" type="text" placeholder="Buscar descrição ou fornecedor…"
-        class="input" style="width:220px;font-size:13px" oninput="renderContasPagar()">
+      <div class="search">
+        <input id="cp-filtro-busca" type="text" placeholder="Buscar descrição ou fornecedor…"
+          oninput="renderContasPagar();document.getElementById('cp-busca-clear').style.display=this.value?'block':'none'">
+        <button class="search-clear" id="cp-busca-clear" style="display:none"
+          onclick="document.getElementById('cp-filtro-busca').value='';this.style.display='none';renderContasPagar()">✕</button>
+      </div>
     </div>
     <!-- Tabela -->
-    <table class="fases-table" id="cp-table" style="display:none">
+    <table class="lista" id="cp-table" style="display:none">
       <thead>
         <tr>
           <th style="width:100px">Vencimento</th>
@@ -776,9 +782,8 @@
       </thead>
       <tbody id="cp-tbody"></tbody>
     </table>
-    <div id="cp-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
-      📤 Nenhuma conta a pagar cadastrada.<br>
-      <small>Clique em <b>＋ Nova Conta</b> para começar.</small>
+    <div id="cp-empty" class="empty" style="display:none">
+      Nenhuma conta a pagar cadastrada. Clique em <b>＋ Nova Conta</b> para começar.
     </div>
   </div>
 
@@ -5080,7 +5085,6 @@ function renderCentrosCusto(){
     const corT = c.tipo === 'fixo' ? COR_FIXO_T : COR_VAR_T;
     const lock = c.protegido;
     const tr = document.createElement('tr');
-    tr.className = 'fase-row';
     tr.style.background = cor;
     tr.style.color = corT;
     tr.style.opacity = c.ativo ? '1' : '0.5';
@@ -5257,8 +5261,8 @@ function renderContasCorrente(){
     const corTotal = saldoTotal >= 0 ? '#16a34a' : '#dc2626';
     totalBar.style.display = 'flex';
     totalBar.innerHTML = `
-      <span style="font-size:13px;color:var(--muted)">Saldo consolidado (contas ativas)</span>
-      <span style="font-size:22px;font-weight:700;color:${corTotal};margin-left:auto">${fmtMoney(saldoTotal)}</span>`;
+      <div class="stat"><div class="n" style="color:${corTotal}">${fmtMoney(saldoTotal)||'R$ 0,00'}</div><div class="l">Saldo Consolidado</div></div>
+      <div class="stat"><div class="n">${contas.filter(c=>c.ativo).length}</div><div class="l">Contas Ativas</div></div>`;
   }
 
   if(!contas.length){
@@ -5282,7 +5286,6 @@ function renderContasCorrente(){
     const nomeExtra  = [c.banco, c.agencia?`Ag. ${c.agencia}`:'', c.conta?`Cc. ${c.conta}`:''].filter(Boolean).join(' · ');
 
     const tr = document.createElement('tr');
-    tr.className = 'fase-row';
     tr.style.cssText = `background:${bgRow};${inativo}`;
     tr.innerHTML = `
       <td style="color:var(--muted);font-size:12px">${c.id}</td>
@@ -5745,7 +5748,6 @@ function renderFornecedores(){
   tbody.innerHTML='';
   lista.forEach(f=>{
     const tr=document.createElement('tr');
-    tr.className='fase-row';
     if(!f.ativo) tr.style.opacity='0.5';
     tr.innerHTML=`
       <td style="font-weight:600">${escHtml(f.nome)}</td>
@@ -6139,18 +6141,9 @@ function renderContasPagar(){
   const totalVencido  = todas.filter(p=>p.status==='vencido').reduce((s,p)=>s+p.valor,0);
   const totalPagoMes  = todas.filter(p=>p.status==='pago' && (p.dataPagamento||'').slice(0,7)===mesAtual).reduce((s,p)=>s+p.valor,0);
   if(stats) stats.innerHTML = `
-    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 16px;min-width:140px">
-      <div style="font-size:11px;color:#dc2626;font-weight:600;text-transform:uppercase">A Pagar</div>
-      <div style="font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(totalPendente)}</div>
-    </div>
-    ${totalVencido>0?`<div style="background:#7f1d1d;border-radius:8px;padding:10px 16px;min-width:140px">
-      <div style="font-size:11px;color:#fca5a5;font-weight:600;text-transform:uppercase">⚠ Vencidas</div>
-      <div style="font-size:18px;font-weight:700;color:#fff">${fmtMoney(totalVencido)}</div>
-    </div>`:''}
-    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 16px;min-width:140px">
-      <div style="font-size:11px;color:#16a34a;font-weight:600;text-transform:uppercase">Pago este mês</div>
-      <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtMoney(totalPagoMes)}</div>
-    </div>`;
+    <div class="stat"><div class="n" style="color:#dc2626">${fmtMoney(totalPendente)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
+    ${totalVencido>0?`<div class="stat"><div class="n" style="color:#dc2626">${fmtMoney(totalVencido)}</div><div class="l">⚠ Vencidas</div></div>`:''}
+    <div class="stat"><div class="n" style="color:#16a34a">${fmtMoney(totalPagoMes)||'R$ 0,00'}</div><div class="l">Pago este mês</div></div>`;
 
   // Popular select de centros de custo no filtro (só na primeira vez ou se mudou)
   if(selCC && selCC.options.length<=1){
@@ -6194,7 +6187,6 @@ function renderContasPagar(){
     const cc   = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra = (db.obras||[]).find(o=>o.id===p.obraId);
     const tr   = document.createElement('tr');
-    tr.className = 'fase-row';
     tr.style.background = ROW_BG[p.status]||'#fff';
     tr.innerHTML = `
       <td style="font-size:13px;white-space:nowrap">${p.dataVencimento ? fmtDia2(p.dataVencimento) : '—'}</td>
