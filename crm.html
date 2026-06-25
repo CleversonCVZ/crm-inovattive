@@ -2174,6 +2174,14 @@ function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || 
    Lista todos os recebimentos com filtro de status/tipo.
    Nota: itens com clienteFornece=true NÃO entram no total.
    ═══════════════════════════════════════════════════════════ */
+/**
+ * Renderiza o painel global de Contas a Receber (view-financeiro).
+ * - Agrega todos os recebimentos de todos os cartões.
+ * - Aplica filtros de status ("pendente", "recebido", "vencido") e tipo ("fixo"/"condicional").
+ * - "Vencido" é um pseudo-status calculado: pendente + tipo fixo + dataVencimento < hoje.
+ * - Os totalizadores (cards de stat) são sempre calculados sobre o total geral,
+ *   independentemente dos filtros ativos, para dar visão consolidada.
+ */
 function renderFinanceiroPainel(){
   if(!document.getElementById('fin-tbody')) return;
   const hoje = new Date().toISOString().slice(0,10);
@@ -2182,10 +2190,11 @@ function renderFinanceiroPainel(){
 
   let lista = (db.recebimentos||[]).slice();
   if(filtroTipo) lista = lista.filter(r=>r.tipo===filtroTipo);
+  // "vencido" não é um status no banco — é filtrado como pendente com data passada
   if(filtroStatus==='vencido') lista = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
   else if(filtroStatus) lista = lista.filter(r=>r.status===filtroStatus);
   lista.sort((a,b)=>{
-    if(a.status!==b.status) return a.status==='pendente'?-1:1;
+    if(a.status!==b.status) return a.status==='pendente'?-1:1; // pendentes primeiro
     if(a.dataVencimento && b.dataVencimento) return a.dataVencimento.localeCompare(b.dataVencimento);
     return a.id-b.id;
   });
@@ -5030,6 +5039,14 @@ const CENTROS_CUSTO_SEED = [
   {nome:'Impostos / Taxas',      descricao:'Tributos, alvarás, taxas municipais e federais',       tipo:'fixo'},
 ];
 
+/**
+ * Renderiza a tela de Centros de Custo.
+ * - Ordena: fixos primeiro, depois variáveis; dentro de cada grupo, ordem alfabética.
+ * - Se não houver registros, exibe o banner com opção de importar o seed padrão.
+ * - Centros protegidos (slug do sistema, ex: "material_obra") bloqueiam edição e exclusão via UI.
+ * - As edições de nome/descrição/tipo/ativo são feitas inline (onchange → save imediato).
+ * - Mudar o tipo força re-render para mover o item ao grupo correto.
+ */
 function renderCentrosCusto(){
   const banner = document.getElementById('cc-seed-banner');
   const table  = document.getElementById('cc-table');
@@ -5037,7 +5054,7 @@ function renderCentrosCusto(){
   if(!banner || !table || !tb) return;
 
   const lista = (db.centrosCusto||[]).sort((a,b)=>{
-    if(a.tipo!==b.tipo) return a.tipo==='fixo'?-1:1;
+    if(a.tipo!==b.tipo) return a.tipo==='fixo'?-1:1; // fixos antes dos variáveis
     return a.nome.localeCompare(b.nome,'pt-BR');
   });
 
@@ -5146,6 +5163,11 @@ function renderCentrosCusto(){
   });
 }
 
+/**
+ * Importa todos os centros de custo padrão definidos em CENTROS_CUSTO_SEED.
+ * Exibido apenas quando db.centrosCusto está vazio (primeiro acesso).
+ * Gera IDs seguros para cada item consultando o Supabase antes de inserir.
+ */
 async function importarCentrosSeed(){
   for(const s of CENTROS_CUSTO_SEED){
     const id = await proximoIdSeguro('centros_custo', db.centrosCusto);
@@ -5155,6 +5177,7 @@ async function importarCentrosSeed(){
   renderCentrosCusto();
 }
 
+/** Abre modal para cadastrar novo centro de custo (requer permissão fin-centros-custo-gerenciar) */
 function abrirNovoCentroCusto(){
   if(!podeUsar(usuarioAtual,'fin-centros-custo-gerenciar')){ alert('Sem permissão para gerenciar Centros de Custo.'); return; }
   abrirModal(`
@@ -5182,6 +5205,10 @@ function abrirNovoCentroCusto(){
     </div>`);
 }
 
+/**
+ * Persiste novo centro de custo.
+ * Usa _delay de 800ms em paralelo com save() para feedback visual mínimo no botão.
+ */
 async function salvarNovoCentroCusto(){
   const nome = document.getElementById('cc-nome').value.trim();
   if(!nome){ alert('Informe um nome.'); return; }
@@ -5202,6 +5229,11 @@ async function salvarNovoCentroCusto(){
   renderCentrosCusto();
 }
 
+/**
+ * Exclui centro de custo.
+ * - Registros com `protegido = true` (ex: "Material de Obra") são bloqueados — use desativação.
+ * - Não verifica vínculos com contas a pagar; centros protegidos já cobrem o caso crítico.
+ */
 async function excluirCentroCusto(id){
   const c = db.centrosCusto.find(x=>x.id===id);
   if(!c) return;
@@ -7709,6 +7741,12 @@ function parcelaReceberItemHTML(r, cardId){
     </div>`;
 }
 
+/**
+ * Abre modal para lançar nova parcela a receber vinculada a um cartão CRM.
+ * - Vínculo opcional: proposta aprovada/concluída ou OS avulsa do mesmo cartão.
+ * - Tipo "fixo" exige data de vencimento; "condicional" aceita texto livre (ex: "após entrega").
+ * - Status inicial pode ser "já recebido" (lançamento retroativo), o que exige informar a data.
+ */
 function abrirNovaParcelaReceber(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   const propostas = db.propostas.filter(p=>p.cardId===cardId && ['aprovada','concluida'].includes(p.status));
@@ -7779,12 +7817,18 @@ function abrirNovaParcelaReceber(cardId){
   });
 }
 
+/** Mostra/oculta o campo de data ou condição conforme o tipo de vencimento no modal de nova parcela */
 function toggleNrVenc(){
   const fixo = document.getElementById('nr-tipo').value==='fixo';
   document.getElementById('nr-venc-fixo').style.display = fixo?'':'none';
   document.getElementById('nr-venc-cond').style.display = fixo?'none':'';
 }
 
+/**
+ * Persiste nova parcela a receber na tabela financeiro_recebimentos.
+ * O vínculo com proposta/OS é decodificado a partir do valor do select de origem
+ * (formato "proposta:ID" ou "os:ID").
+ */
 async function salvarNovaParcelaReceber(cardId){
   const desc  = document.getElementById('nr-desc').value.trim();
   const valor = parseFloat((document.getElementById('nr-valor').value||'0').replace(/\./g,'').replace(',','.'));
@@ -7815,6 +7859,7 @@ async function salvarNovaParcelaReceber(cardId){
   abrirEditarCartao(cardId,'financeiro');
 }
 
+/** Abre modal para editar uma parcela existente — exibe propostas aprovadas e OS avulsas como opções de vínculo */
 function editarParcelaReceber(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
@@ -7870,12 +7915,14 @@ function editarParcelaReceber(id, cardId){
     </div>`);
 }
 
+/** Mostra/oculta o campo de data ou condição conforme o tipo de vencimento no modal de edição de parcela */
 function toggleErVenc(){
   const fixo = document.getElementById('er-tipo').value==='fixo';
   document.getElementById('er-venc-fixo').style.display = fixo?'':'none';
   document.getElementById('er-venc-cond').style.display = fixo?'none':'';
 }
 
+/** Persiste edição de parcela a receber (salva apenas no array local + save(), sem roundtrip Supabase extra) */
 function salvarEdicaoParcelaReceber(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
@@ -7894,6 +7941,11 @@ function salvarEdicaoParcelaReceber(id, cardId){
   abrirEditarCartao(cardId,'financeiro');
 }
 
+/**
+ * Abre modal de confirmação de recebimento.
+ * O usuário escolhe a data real de recebimento e a conta corrente a creditar.
+ * Se não há contas ativas, exibe aviso e link para a tela de Contas Correntes.
+ */
 function marcarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
@@ -7928,6 +7980,12 @@ function marcarParcelaRecebida(id, cardId){
     </div>`);
 }
 
+/**
+ * Confirma o recebimento de uma parcela:
+ * 1. Atualiza status da parcela para "recebido" no Supabase.
+ * 2. Insere movimentação de ENTRADA na conta corrente escolhida, com origemTipo="recebimento"
+ *    e origemId=id, permitindo rastreabilidade bidirecional (extrato ↔ parcela).
+ */
 async function confirmarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
@@ -7983,6 +8041,7 @@ async function confirmarParcelaRecebida(id, cardId){
   abrirEditarCartao(cardId,'financeiro');
 }
 
+/** Exclui parcela a receber (sem reversão de movimentação — se já foi marcada como recebida, o extrato permanece) */
 async function excluirParcelaReceber(id, cardId){
   if(!confirm('Excluir esta parcela?')) return;
   await excluirDoSupabase('financeiro_recebimentos', id);
