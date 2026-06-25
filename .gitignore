@@ -1,0 +1,16 @@
+# Arquivos de proposta e documentos gerados
+*.pdf
+*.xlsx
+*.xls
+*.docx
+*.pptx
+*.csv
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
