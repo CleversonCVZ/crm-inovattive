@@ -5996,10 +5996,16 @@ function abrirNovoFornecedor(opts={}){
   // opts.callbackId: select a atualizar após salvar (para uso inline no modal de contas a pagar)
   const cbId = opts.callbackId||null;
   if(!cbId && !podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para gerenciar Fornecedores.'); return; }
+  const contatosPlaceholder = cbId ? '' : `
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;opacity:.4;pointer-events:none;user-select:none">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Contatos do Fornecedor</div>
+      <div style="font-size:12px;color:var(--muted);font-style:italic">Salve os dados acima para ativar esta seção.</div>
+    </div>`;
   abrirModal(`
     <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
     <div class="modal-body" style="display:grid;gap:12px" id="ff-form-body">
       ${_fornFormHTML({})}
+      ${contatosPlaceholder}
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
@@ -6038,8 +6044,19 @@ async function salvarNovoFornecedor(callbackSelectId=null){
       sel.appendChild(opt);
     }
   } else {
-    // Reabre como edição para permitir adicionar contatos imediatamente
-    abrirEditarFornecedor(id);
+    // Atualiza o modal no lugar (sem fechar/reabrir) para modo edição com contatos ativos
+    const f = (db.fornecedores||[]).find(x=>x.id===id);
+    document.getElementById('modal').innerHTML = `
+      <div class="modal-header"><h3>✏️ ${escHtml(f.nome||'Fornecedor')}</h3></div>
+      <div class="modal-body" style="display:grid;gap:12px">
+        ${_fornFormHTML(f)}
+        ${_secaoContatosFornecedor(id)}
+      </div>
+      <div class="modal-footer rodape-cartao">
+        <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+        <button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>
+      </div>`;
     renderFornecedores();
   }
 }
