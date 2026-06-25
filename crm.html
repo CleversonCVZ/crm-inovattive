@@ -706,12 +706,6 @@
     <div class="bar">
       <h2>Fornecedores</h2>
       <div class="spacer"></div>
-      <div class="search">
-        <input id="forn-busca" type="text" placeholder="Buscar por nome, CNPJ/CPF ou cidade…"
-          oninput="renderFornecedores();document.getElementById('forn-busca-clear').style.display=this.value?'block':'none'">
-        <button class="search-clear" id="forn-busca-clear" style="display:none"
-          onclick="document.getElementById('forn-busca').value='';this.style.display='none';renderFornecedores()">✕</button>
-      </div>
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
         <input type="checkbox" id="forn-inativos" onchange="renderFornecedores()"> Ver inativos
       </label>
@@ -5847,7 +5841,7 @@ function renderFornecedores(){
       <div class="stat"><div class="n">${nForn}</div><div class="l">Fornecedor${nForn!==1?'es':''} ativo${nForn!==1?'s':''}</div></div>`;
   }
 
-  const busca    = ((document.getElementById('forn-busca')||{}).value||'').toLowerCase();
+  const busca    = termoBusca();
   const verInat  = (document.getElementById('forn-inativos')||{}).checked;
   let lista = (db.fornecedores||[]).filter(f=>{
     if(!verInat && !f.ativo) return false;
@@ -12746,7 +12740,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); }
 load();
 atualizarMarca();
 (async function(){
