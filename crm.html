@@ -6924,7 +6924,7 @@ function marcarParcelaRecebida(id, cardId){
         </label>
         <label>Creditar em *
           <select id="mr-conta" class="input" style="margin-top:4px">
-            <option value="">— não vincular a conta —</option>
+            <option value="">— selecione a conta —</option>
             ${contasOpts}
           </select>
         </label>
@@ -6942,6 +6942,7 @@ async function confirmarParcelaRecebida(id, cardId){
   if(!r) return;
   const dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
   const contaId = parseInt(document.getElementById('mr-conta').value) || null;
+  if(!contaId){ alert('Selecione a conta corrente para creditar o recebimento.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn, 'Confirmando…');
