@@ -706,21 +706,23 @@
     <div class="bar">
       <h2>Fornecedores</h2>
       <div class="spacer"></div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
-        <input type="checkbox" id="forn-inativos" onchange="renderFornecedores()"> Ver inativos
-      </label>
+      <select id="forn-filtro-status" class="input" style="font-size:13px" onchange="renderFornecedores()">
+        <option value="ativo">Ativos</option>
+        <option value="inativo">Inativos</option>
+        <option value="todos">Todos</option>
+      </select>
       <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
     </div>
     <div class="stats" id="forn-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <table class="lista" id="forn-table" style="display:none">
       <thead>
         <tr>
+          <th style="width:36px"></th>
           <th>Nome</th>
           <th style="width:140px">CNPJ / CPF</th>
           <th style="width:130px">Telefone</th>
           <th style="width:180px">E-mail</th>
-          <th style="width:140px">Cidade / UF</th>
-          <th style="width:80px;text-align:center">Status</th>
+          <th style="width:150px">Cidade / UF</th>
         </tr>
       </thead>
       <tbody id="forn-tbody"></tbody>
@@ -5841,10 +5843,11 @@ function renderFornecedores(){
       <div class="stat"><div class="n">${nForn}</div><div class="l">Fornecedor${nForn!==1?'es':''} ativo${nForn!==1?'s':''}</div></div>`;
   }
 
-  const busca    = termoBusca();
-  const verInat  = (document.getElementById('forn-inativos')||{}).checked;
+  const busca       = termoBusca();
+  const filtroStatus= (document.getElementById('forn-filtro-status')||{}).value || 'ativo';
   let lista = (db.fornecedores||[]).filter(f=>{
-    if(!verInat && !f.ativo) return false;
+    if(filtroStatus==='ativo'  && !f.ativo) return false;
+    if(filtroStatus==='inativo' && f.ativo) return false;
     if(busca) return (f.nome||'').toLowerCase().includes(busca)
       || (f.cnpjCpf||'').toLowerCase().includes(busca)
       || (f.cidade||'').toLowerCase().includes(busca);
@@ -5861,13 +5864,15 @@ function renderFornecedores(){
 
   tbody.innerHTML='';
   lista.forEach(f=>{
+    const cor  = f.ativo ? '#16a34a' : '#ca8a04';
+    const selo = f.ativo ? '● Ativo' : '● Inativo';
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
-    if(!f.ativo) tr.style.opacity='0.5';
     tr.onclick = ()=>abrirEditarFornecedor(f.id);
     tr.onmouseenter = ()=>{ tr.style.background='var(--hover)'; };
     tr.onmouseleave = ()=>{ tr.style.background=''; };
     tr.innerHTML=`
+      <td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td>
       <td>
         <div style="font-weight:600">${escHtml(f.nome)}</div>
         ${f.nomeFantasia?`<div style="font-size:12px;color:var(--muted)">${escHtml(f.nomeFantasia)}</div>`:''}
@@ -5875,10 +5880,7 @@ function renderFornecedores(){
       <td style="font-size:13px;font-family:monospace">${escHtml(f.cnpjCpf)||'—'}</td>
       <td style="font-size:13px">${escHtml(fmtTel(f.telefone))||'—'}</td>
       <td style="font-size:13px">${escHtml(f.email)||'—'}</td>
-      <td style="font-size:13px">${f.cidade?escHtml(f.cidade)+(f.estado?' / '+f.estado:''):'—'}</td>
-      <td style="text-align:center">
-        <span style="font-size:12px;padding:2px 8px;border-radius:12px;${f.ativo?'background:#dcfce7;color:#16a34a':'background:#f3f4f6;color:#6b7280'}">${f.ativo?'Ativo':'Inativo'}</span>
-      </td>`;
+      <td style="font-size:13px">${f.cidade?escHtml(f.cidade)+(f.estado?' / '+f.estado:''):'—'}</td>`;
     tbody.appendChild(tr);
   });
 }
