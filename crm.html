@@ -7743,7 +7743,7 @@ function parcelaReceberItemHTML(r, cardId){
 
 /**
  * Abre modal para lançar nova parcela a receber vinculada a um cartão CRM.
- * - Vínculo opcional: proposta aprovada/concluída ou OS avulsa do mesmo cartão.
+ * - Exibe bloco de referência com valor restante por proposta/OS para guiar o lançamento.
  * - Tipo "fixo" exige data de vencimento; "condicional" aceita texto livre (ex: "após entrega").
  * - Status inicial pode ser "já recebido" (lançamento retroativo), o que exige informar a data.
  */
@@ -7751,6 +7751,42 @@ function abrirNovaParcelaReceber(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   const propostas = db.propostas.filter(p=>p.cardId===cardId && ['aprovada','concluida'].includes(p.status));
   const osAvulsas = db.ordensServico.filter(o=>o.cardId===cardId && o.tipo==='avulsa');
+  const recebimentos = (db.recebimentos||[]).filter(r=>r.cardId===cardId);
+
+  // Calcula restante por origem (total da proposta/OS - soma das parcelas já lançadas)
+  const restProp = propostas.map(p=>{
+    const total = valorReceberProposta(p);
+    const parcelado = recebimentos.filter(r=>r.propostaId===p.id).reduce((s,r)=>s+r.valor,0);
+    return {label:`Proposta ${p.numero}${p.aditivo?' (Aditivo)':''}`, total, parcelado, restante:total-parcelado};
+  });
+  const restOS = osAvulsas.map(o=>{
+    const total = o.valor||0;
+    const parcelado = recebimentos.filter(r=>r.osId===o.id).reduce((s,r)=>s+r.valor,0);
+    return {label:`OS ${o.numero}${o.titulo?' — '+o.titulo:''}`, total, parcelado, restante:total-parcelado};
+  });
+  const totalRestante = [...restProp,...restOS].reduce((s,x)=>s+x.restante,0);
+
+  // Bloco de referência — só exibe se houver ao menos uma proposta/OS com valor
+  const temReferencia = restProp.length>0 || restOS.length>0;
+  const blocoRef = temReferencia ? `
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px">
+      <div style="font-size:11px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">💰 Valor a parcelar</div>
+      ${[...restProp,...restOS].map(x=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;gap:8px">
+          <span style="color:#374151">${escHtml(x.label)}</span>
+          <span style="display:flex;gap:10px;white-space:nowrap">
+            <span style="color:var(--muted);font-size:11px">Total: ${fmtMoney(x.total)}</span>
+            ${x.parcelado>0?`<span style="color:var(--muted);font-size:11px">Parcelado: ${fmtMoney(x.parcelado)}</span>`:''}
+            <span style="font-weight:700;color:${x.restante>0.01?'#15803d':x.restante<-0.01?'#dc2626':'#6b7280'}">${x.restante>0.01?fmtMoney(x.restante):x.restante<-0.01?'Excedeu '+fmtMoney(-x.restante):'✔ Quitado'}</span>
+          </span>
+        </div>`).join('')}
+      ${restProp.length+restOS.length>1?`
+      <div style="border-top:1px solid #86efac;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700">
+        <span style="color:#166534">Restante total</span>
+        <span style="color:${totalRestante>0.01?'#15803d':totalRestante<-0.01?'#dc2626':'#6b7280'}">${totalRestante>0.01?fmtMoney(totalRestante):'✔ Tudo parcelado'}</span>
+      </div>`:''}
+    </div>` : '';
+
   const origemOptions = [
     '<option value="">Sem vínculo específico</option>',
     ...propostas.map(p=>`<option value="proposta:${p.id}">Proposta ${p.numero}${p.aditivo?' (Aditivo)':''} — ${fmtMoney(valorReceberProposta(p))} (a receber)</option>`),
@@ -7758,6 +7794,7 @@ function abrirNovaParcelaReceber(cardId){
   ].join('');
   abrirModal(`
     <h3>Nova Parcela a Receber — Cartão #${c.num}</h3>
+    ${blocoRef}
     <div class="form-row">
       <div>
         <label>Descrição</label>
