@@ -5236,7 +5236,7 @@ async function salvarNovaContaCorrente(){
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
 
-  const id = await proximoIdSeguro('contas_correntes');
+  const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
   const row = {id, nome, banco, agencia, conta, tipo, saldoInicial, ativo:true};
 
   const {error} = await sb.from('contas_correntes').insert({
@@ -5328,7 +5328,7 @@ async function salvarLancamentoManual(contaId){
   if(!descricao){ alert('Informe uma descrição.'); return; }
   if(tipo==='transferencia' && !destinoId){ alert('Selecione a conta de destino.'); return; }
 
-  const id = await proximoIdSeguro('movimentacoes_financeiras');
+  const id = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const rowBase = {
     id, conta_id:contaId, tipo, valor,
     descricao, data_movimento:data,
@@ -5350,7 +5350,7 @@ async function salvarLancamentoManual(contaId){
 
   // Se for transferência, registra também a entrada na conta de destino
   if(tipo==='transferencia' && destinoId){
-    const idDest = await proximoIdSeguro('movimentacoes_financeiras');
+    const idDest = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
     const rowDest = {
       id:idDest, conta_id:destinoId, tipo:'entrada', valor,
       descricao:`Transferência de: ${(db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId}`,
@@ -6861,7 +6861,7 @@ async function confirmarParcelaRecebida(id, cardId){
   if(contaId){
     const conta = (db.contasCorrente||[]).find(c=>c.id===contaId);
     const descMovimento = `Recebimento: ${r.descricao}`;
-    const idMov = await proximoIdSeguro('movimentacoes_financeiras');
+    const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
     const {error} = await sb.from('movimentacoes_financeiras').insert({
       id: idMov,
       conta_id: contaId,
