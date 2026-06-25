@@ -684,7 +684,7 @@
       <button class="btn primary" onclick="abrirNovaContaCorrente()">＋ Nova Conta</button>
     </div>
     <div class="stats" id="cc-saldo-total-bar" style="display:none;flex-wrap:wrap"></div>
-    <table class="lista" id="contas-table" style="display:none">
+    <table class="fases-table" id="contas-table" style="display:none">
       <thead>
         <tr>
           <th style="width:40px">ID</th>
@@ -5286,6 +5286,7 @@ function renderContasCorrente(){
     const nomeExtra  = [c.banco, c.agencia?`Ag. ${c.agencia}`:'', c.conta?`Cc. ${c.conta}`:''].filter(Boolean).join(' · ');
 
     const tr = document.createElement('tr');
+    tr.className = 'fase-row';
     tr.style.cssText = `background:${bgRow};${inativo}`;
     tr.innerHTML = `
       <td style="color:var(--muted);font-size:12px">${c.id}</td>
