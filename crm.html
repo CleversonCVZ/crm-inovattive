@@ -5979,7 +5979,7 @@ function abrirNovoFornecedor(opts={}){
   // Modo standalone: layout com abas igual ao cartão CRM
   if(!cbId){
     abrirModal(`
-      <h3>🏭 Novo Fornecedor</h3>
+      <h3>Novo Fornecedor</h3>
       <div class="abas">
         <button class="aba ativa">Dados</button>
         <button class="aba" style="opacity:.4;pointer-events:none;cursor:default" title="Salve os dados primeiro">Contatos</button>
@@ -6050,7 +6050,7 @@ function abrirEditarFornecedor(id, aba='dados'){
   const nCt = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===id).length;
   const corpo = aba==='dados' ? _fornFormHTML(f) : _abaContatosFornecedor(id);
   abrirModal(`
-    <h3>🏭 ${escHtml(f.nome||'Fornecedor')}</h3>
+    <h3>${escHtml(f.nome||'Fornecedor')}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'dados')">Dados</button>
       <button class="aba ${aba==='contatos'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'contatos')">Contatos${nCt?' ('+nCt+')':''}</button>
