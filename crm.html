@@ -728,7 +728,6 @@
           <th style="width:180px">E-mail</th>
           <th style="width:140px">Cidade / UF</th>
           <th style="width:80px;text-align:center">Status</th>
-          <th style="width:90px"></th>
         </tr>
       </thead>
       <tbody id="forn-tbody"></tbody>
@@ -5784,22 +5783,22 @@ function renderFornecedores(){
   tbody.innerHTML='';
   lista.forEach(f=>{
     const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
     if(!f.ativo) tr.style.opacity='0.5';
+    tr.onclick = ()=>abrirEditarFornecedor(f.id);
+    tr.onmouseenter = ()=>{ tr.style.background='var(--hover)'; };
+    tr.onmouseleave = ()=>{ tr.style.background=''; };
     tr.innerHTML=`
       <td>
         <div style="font-weight:600">${escHtml(f.nome)}</div>
         ${f.nomeFantasia?`<div style="font-size:12px;color:var(--muted)">${escHtml(f.nomeFantasia)}</div>`:''}
       </td>
       <td style="font-size:13px;font-family:monospace">${escHtml(f.cnpjCpf)||'—'}</td>
-      <td style="font-size:13px">${escHtml(f.telefone)||'—'}</td>
+      <td style="font-size:13px">${escHtml(fmtTel(f.telefone))||'—'}</td>
       <td style="font-size:13px">${escHtml(f.email)||'—'}</td>
       <td style="font-size:13px">${f.cidade?escHtml(f.cidade)+(f.estado?' / '+f.estado:''):'—'}</td>
       <td style="text-align:center">
         <span style="font-size:12px;padding:2px 8px;border-radius:12px;${f.ativo?'background:#dcfce7;color:#16a34a':'background:#f3f4f6;color:#6b7280'}">${f.ativo?'Ativo':'Inativo'}</span>
-      </td>
-      <td style="text-align:right;white-space:nowrap">
-        <button class="btn" style="font-size:12px;padding:4px 8px" onclick="abrirEditarFornecedor(${f.id})">✏️</button>
-        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px;color:#dc2626" onclick="excluirFornecedor(${f.id})">🗑</button>
       </td>`;
     tbody.appendChild(tr);
   });
