@@ -1332,7 +1332,13 @@ const RECURSOS = [
   {id:'obra-outros-custos',    grupo:'obras', nome:'Aba Obras — Outros Custos'},
   {id:'obra-resultado-aparente', grupo:'obras', nome:'Aba Obras — Resultado Aparente'},
   // ── Downloads
-  {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'}
+  {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'},
+  // ── Financeiro
+  {id:'fin-fornecedores-gerenciar',     grupo:'financeiro', nome:'Fornecedores — Adicionar, Editar e Excluir'},
+  {id:'fin-contas-pagar-gerenciar',     grupo:'financeiro', nome:'Contas a Pagar — Adicionar e Editar'},
+  {id:'fin-contas-pagar-pagar',         grupo:'financeiro', nome:'Contas a Pagar — Registrar Pagamento'},
+  {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Gerenciar contas e lançamentos'},
+  {id:'fin-centros-custo-gerenciar',    grupo:'financeiro', nome:'Centros de Custo — Adicionar e Editar'}
 ];
 
 /* MODULOS: agrupamentos de telas que formam o menu lateral esquerdo.
@@ -1569,8 +1575,8 @@ function btnSalvando(btn, texto='Salvando…'){
 }
 function btnRestaurar(btn){
   if(!btn) return;
-  btn.disabled    = false;
-  btn.textContent = btn._textoOrig || 'Salvar';
+  btn.disabled = false;
+  if(btn._textoOrig !== undefined) btn.textContent = btn._textoOrig;
 }
 /* Atalhos para encontrar o botão principal dentro do modal aberto */
 function btnModalPrimario(){ return document.querySelector('.modal [data-btn-salvar]'); }
@@ -5151,6 +5157,7 @@ async function importarCentrosSeed(){
 }
 
 function abrirNovoCentroCusto(){
+  if(!podeUsar(usuarioAtual,'fin-centros-custo-gerenciar')){ alert('Sem permissão para gerenciar Centros de Custo.'); return; }
   abrirModal(`
     <h3>Novo Centro de Custo</h3>
     <div class="form-row">
@@ -5342,6 +5349,7 @@ async function salvarCampoContaCorrente(id, campo, valor){
 
 /** Abre modal para cadastrar nova conta corrente */
 function abrirNovaContaCorrente(){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
   const html = `
     <div class="modal-header"><h3>Nova Conta Corrente</h3></div>
     <div class="modal-body" style="display:grid;gap:12px">
@@ -5987,6 +5995,7 @@ async function excluirContatoFornecedor(ctId, fornId){
 function abrirNovoFornecedor(opts={}){
   // opts.callbackId: select a atualizar após salvar (para uso inline no modal de contas a pagar)
   const cbId = opts.callbackId||null;
+  if(!cbId && !podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para gerenciar Fornecedores.'); return; }
   abrirModal(`
     <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
     <div class="modal-body" style="display:grid;gap:12px" id="ff-form-body">
@@ -6037,6 +6046,7 @@ async function salvarNovoFornecedor(callbackSelectId=null){
 
 /** Abre modal para editar fornecedor existente */
 function abrirEditarFornecedor(id){
+  if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para editar Fornecedores.'); return; }
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
   abrirModal(`
@@ -6078,6 +6088,7 @@ async function salvarEdicaoFornecedor(id){
 
 /** Exclui fornecedor (só se não tiver contas a pagar vinculadas) */
 async function excluirFornecedor(id){
+  if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para excluir Fornecedores.'); return; }
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
   const vinculado = (db.contasPagar||[]).some(p=>p.fornecedorId===id);
@@ -6206,6 +6217,7 @@ function renderContasPagar(){
 
 /** Abre modal para cadastrar nova conta a pagar */
 function abrirNovaContaPagar(){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
   const ccOpts = (db.centrosCusto||[]).filter(c=>c.ativo)
     .map(c=>`<option value="${c.id}">${escHtml(c.nome)}</option>`).join('');
   const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
@@ -6409,6 +6421,7 @@ async function salvarEdicaoContaPagar(id){
 
 /** Abre modal de confirmação de pagamento */
 function abrirPagarConta(id){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamentos.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const hoje = new Date().toISOString().slice(0,10);
@@ -6495,6 +6508,7 @@ async function confirmarPagamentoConta(id){
 
 /** Exclui uma conta a pagar */
 async function excluirContaPagar(id){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para excluir Contas a Pagar.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   if(p.status==='pago'){
@@ -11795,8 +11809,9 @@ function formGrupo(g){
     <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
   const mkRecursosCk = (grupo) => RECURSOS.filter(r=>r.grupo===grupo).map(r=>`
     <label class="perm-item"><input type="checkbox" class="ck-grec" value="${r.id}" ${!g||(g.recursos||[]).includes(r.id)?'checked':''}> ${r.nome}</label>`).join('');
-  const recursosCk    = mkRecursosCk('crm');
-  const recursosObras = mkRecursosCk('obras');
+  const recursosCk         = mkRecursosCk('crm');
+  const recursosObras      = mkRecursosCk('obras');
+  const recursosFinanceiro = mkRecursosCk('financeiro');
   const restringirFases = g && Array.isArray(g.fasesPermitidas);
   const fasesCk = (db.fases||[]).map(f=>`
     <label class="perm-item"><input type="checkbox" class="ck-gfase" value="${f.id}" ${!restringirFases || (g.fasesPermitidas||[]).includes(f.id)?'checked':''}> ${f.nome}</label>`).join('');
@@ -11840,6 +11855,10 @@ function formGrupo(g){
         <div>
           <div class="perm-section-label">Permissões — Sub-itens Obras</div>
           <div class="perm-box">${recursosObras}</div>
+        </div>
+        <div>
+          <div class="perm-section-label">Permissões — Financeiro</div>
+          <div class="perm-box">${recursosFinanceiro}</div>
         </div>
       </div>
       <!-- COL 3: FASES + DOWNLOADS -->
