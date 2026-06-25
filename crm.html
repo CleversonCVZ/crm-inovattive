@@ -704,6 +704,40 @@
     </div>
   </div>
 
+  <!-- FINANCEIRO: FORNECEDORES -->
+  <div class="view" id="view-fin-fornecedores">
+    <div class="bar">
+      <h2>🏭 Fornecedores</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
+      <input id="forn-busca" type="text" placeholder="Buscar por nome, CNPJ/CPF ou cidade…"
+        class="input" style="width:300px;font-size:13px" oninput="renderFornecedores()">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="forn-inativos" onchange="renderFornecedores()"> Ver inativos
+      </label>
+    </div>
+    <table class="fases-table" id="forn-table" style="display:none">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th style="width:140px">CNPJ / CPF</th>
+          <th style="width:130px">Telefone</th>
+          <th style="width:180px">E-mail</th>
+          <th style="width:140px">Cidade / UF</th>
+          <th style="width:80px;text-align:center">Status</th>
+          <th style="width:90px"></th>
+        </tr>
+      </thead>
+      <tbody id="forn-tbody"></tbody>
+    </table>
+    <div id="forn-empty" style="display:none;padding:60px;text-align:center;color:var(--muted)">
+      🏭 Nenhum fornecedor cadastrado ainda.<br>
+      <small>Clique em <b>＋ Novo Fornecedor</b> para começar.</small>
+    </div>
+  </div>
+
   <!-- FINANCEIRO: CONTAS A PAGAR -->
   <div class="view" id="view-fin-contas-pagar">
     <div class="bar">
@@ -1265,6 +1299,7 @@ const TELAS = [
   {id:'fin-painel',             nome:'Financeiro — Painel',             menu:'Painel'},
   {id:'fin-centros-custo',      nome:'Financeiro — Centros de Custo',   menu:'Centros de Custo'},
   {id:'fin-contas-correntes',   nome:'Financeiro — Contas Correntes',   menu:'Contas Correntes'},
+  {id:'fin-fornecedores',       nome:'Financeiro — Fornecedores',       menu:'Fornecedores'},
   {id:'fin-contas-pagar',       nome:'Financeiro — Contas a Pagar',     menu:'Contas a Pagar'},
   {id:'fin-contas-receber',     nome:'Financeiro — Contas a Receber',   menu:'Contas a Receber'},
   {id:'usuarios',    nome:'Cadastro de Usuários'},
@@ -1308,7 +1343,7 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','cat-outros-custos','fin-contas-correntes','fin-contas-pagar','fin-contas-receber']}
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','cat-outros-custos','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -1412,6 +1447,7 @@ function load(){
   if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
   if(!Array.isArray(db.contasPagar))     db.contasPagar=[];
+  if(!Array.isArray(db.fornecedores))    db.fornecedores=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1595,7 +1631,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1618,7 +1654,8 @@ async function carregarDadosSupabase(){
       sb.from('centros_custo').select('*').order('id'),
       sb.from('contas_correntes').select('*').order('id'),
       sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
-      sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true})
+      sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true}),
+      sb.from('fornecedores').select('*').order('nome')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1799,7 +1836,7 @@ async function carregarDadosSupabase(){
       }));
     if(contasPagar.data)
       db.contasPagar = contasPagar.data.map(p=>({
-        id:p.id, descricao:p.descricao||'', fornecedor:p.fornecedor||'',
+        id:p.id, descricao:p.descricao||'', fornecedorId:p.fornecedor_id||null,
         valor:Number(p.valor)||0,
         dataVencimento:p.data_vencimento ? p.data_vencimento.slice(0,10) : null,
         dataPagamento:p.data_pagamento ? p.data_pagamento.slice(0,10) : null,
@@ -1810,6 +1847,16 @@ async function carregarDadosSupabase(){
         contaId:p.conta_id||null,
         observacao:p.observacao||'',
         criadoEm:p.created_at||''
+      }));
+    if(fornecedores.data)
+      db.fornecedores = fornecedores.data.map(f=>({
+        id:f.id, nome:f.nome||'', cnpjCpf:f.cnpj_cpf||'',
+        telefone:f.telefone||'', email:f.email||'',
+        logradouro:f.logradouro||'', numero:f.numero||'',
+        complemento:f.complemento||'', bairro:f.bairro||'',
+        cidade:f.cidade||'', estado:f.estado||'', cep:f.cep||'',
+        observacao:f.observacao||'', ativo:!!f.ativo,
+        criadoEm:f.created_at||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -1988,12 +2035,20 @@ function syncDadosSupabase(){
       conta_destino_id:m.contaDestinoId||null
     }));
     await sincronizarTabela('contas_pagar', db.contasPagar||[], p=>({
-      id:p.id, descricao:p.descricao||'', fornecedor:p.fornecedor||null,
+      id:p.id, descricao:p.descricao||'', fornecedor_id:p.fornecedorId||null,
       valor:p.valor, data_vencimento:p.dataVencimento,
       data_pagamento:p.dataPagamento||null, status:p.status||'pendente',
       centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
       os_id:p.osId||null, conta_id:p.contaId||null,
       observacao:p.observacao||null
+    }));
+    await sincronizarTabela('fornecedores', db.fornecedores||[], f=>({
+      id:f.id, nome:f.nome||'', cnpj_cpf:f.cnpjCpf||null,
+      telefone:f.telefone||null, email:f.email||null,
+      logradouro:f.logradouro||null, numero:f.numero||null,
+      complemento:f.complemento||null, bairro:f.bairro||null,
+      cidade:f.cidade||null, estado:f.estado||null, cep:f.cep||null,
+      observacao:f.observacao||null, ativo:!!f.ativo
     }));
   }, 800);
 }
@@ -3306,6 +3361,7 @@ function ativarView(viewId){
   if(viewId==='fin-contas-receber') renderFinanceiroPainel();
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
+  if(viewId==='fin-fornecedores')    renderFornecedores();
   if(viewId==='fin-contas-pagar')    renderContasPagar();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
@@ -5598,6 +5654,261 @@ async function excluirMovimentacao(id, contaId){
 // ──────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────
+// FORNECEDORES — cadastro completo
+// ──────────────────────────────────────────────────────────────
+
+/** Renderiza a tela de listagem de fornecedores */
+function renderFornecedores(){
+  const tbody = document.getElementById('forn-tbody');
+  const table = document.getElementById('forn-table');
+  const empty = document.getElementById('forn-empty');
+  if(!tbody) return;
+
+  const busca    = ((document.getElementById('forn-busca')||{}).value||'').toLowerCase();
+  const verInat  = (document.getElementById('forn-inativos')||{}).checked;
+  let lista = (db.fornecedores||[]).filter(f=>{
+    if(!verInat && !f.ativo) return false;
+    if(busca) return (f.nome||'').toLowerCase().includes(busca)
+      || (f.cnpjCpf||'').toLowerCase().includes(busca)
+      || (f.cidade||'').toLowerCase().includes(busca);
+    return true;
+  }).sort((a,b)=>a.nome.localeCompare(b.nome));
+
+  if(!lista.length){
+    if(table) table.style.display='none';
+    if(empty) empty.style.display='';
+    return;
+  }
+  if(table) table.style.display='';
+  if(empty) empty.style.display='none';
+
+  tbody.innerHTML='';
+  lista.forEach(f=>{
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    if(!f.ativo) tr.style.opacity='0.5';
+    tr.innerHTML=`
+      <td style="font-weight:600">${escHtml(f.nome)}</td>
+      <td style="font-size:13px;font-family:monospace">${escHtml(f.cnpjCpf)||'—'}</td>
+      <td style="font-size:13px">${escHtml(f.telefone)||'—'}</td>
+      <td style="font-size:13px">${escHtml(f.email)||'—'}</td>
+      <td style="font-size:13px">${f.cidade?escHtml(f.cidade)+(f.estado?' / '+f.estado:''):'—'}</td>
+      <td style="text-align:center">
+        <span style="font-size:12px;padding:2px 8px;border-radius:12px;${f.ativo?'background:#dcfce7;color:#16a34a':'background:#f3f4f6;color:#6b7280'}">${f.ativo?'Ativo':'Inativo'}</span>
+      </td>
+      <td style="text-align:right;white-space:nowrap">
+        <button class="btn" style="font-size:12px;padding:4px 8px" onclick="abrirEditarFornecedor(${f.id})">✏️</button>
+        <button class="btn" style="font-size:12px;padding:4px 8px;margin-left:4px;color:#dc2626" onclick="excluirFornecedor(${f.id})">🗑</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/** HTML do formulário de fornecedor (reutilizado em novo e editar) */
+function _fornFormHTML(f={}){
+  const UFs = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
+  const ufOpts = UFs.map(u=>`<option value="${u}" ${(f.estado||'')==u?'selected':''}>${u}</option>`).join('');
+  return `
+    <!-- Linha 1: Nome e CNPJ/CPF -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <label>Nome *
+        <input id="ff-nome" type="text" value="${escHtml(f.nome||'')}" class="input" style="margin-top:4px" placeholder="Razão social ou nome">
+      </label>
+      <label>CNPJ / CPF
+        <input id="ff-cnpj" type="text" value="${escHtml(f.cnpjCpf||'')}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00">
+      </label>
+    </div>
+    <!-- Linha 2: Telefone e E-mail -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <label>Telefone
+        <input id="ff-tel" type="text" value="${escHtml(f.telefone||'')}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000">
+      </label>
+      <label>E-mail
+        <input id="ff-email" type="email" value="${escHtml(f.email||'')}" class="input" style="margin-top:4px" placeholder="contato@fornecedor.com">
+      </label>
+    </div>
+    <!-- Linha 3: CEP e Logradouro -->
+    <div style="display:grid;grid-template-columns:120px 1fr;gap:12px">
+      <label>CEP
+        <input id="ff-cep" type="text" value="${escHtml(f.cep||'')}" class="input" style="margin-top:4px" placeholder="00000-000"
+          oninput="buscarCepFornecedor(this.value)">
+      </label>
+      <label>Logradouro
+        <input id="ff-logr" type="text" value="${escHtml(f.logradouro||'')}" class="input" style="margin-top:4px" placeholder="Rua, Avenida…">
+      </label>
+    </div>
+    <!-- Linha 4: Número, Complemento, Bairro -->
+    <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:12px">
+      <label>Número
+        <input id="ff-num" type="text" value="${escHtml(f.numero||'')}" class="input" style="margin-top:4px">
+      </label>
+      <label>Complemento
+        <input id="ff-comp" type="text" value="${escHtml(f.complemento||'')}" class="input" style="margin-top:4px" placeholder="Sala, apto…">
+      </label>
+      <label>Bairro
+        <input id="ff-bairro" type="text" value="${escHtml(f.bairro||'')}" class="input" style="margin-top:4px">
+      </label>
+    </div>
+    <!-- Linha 5: Cidade e UF -->
+    <div style="display:grid;grid-template-columns:1fr 100px;gap:12px">
+      <label>Cidade
+        <input id="ff-cidade" type="text" value="${escHtml(f.cidade||'')}" class="input" style="margin-top:4px">
+      </label>
+      <label>UF
+        <select id="ff-uf" class="input" style="margin-top:4px">
+          <option value="">—</option>${ufOpts}
+        </select>
+      </label>
+    </div>
+    <!-- Observação e ativo -->
+    <label>Observação
+      <input id="ff-obs" type="text" value="${escHtml(f.observacao||'')}" class="input" style="margin-top:4px" placeholder="Condições, prazo de pagamento, contato…">
+    </label>
+    ${f.id!==undefined?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="ff-ativo" ${f.ativo!==false?'checked':''}> Fornecedor ativo
+    </label>`:''}`;
+}
+
+/** Lê os campos do formulário de fornecedor */
+function _fornFormLer(){
+  return {
+    nome:       (document.getElementById('ff-nome').value||'').trim(),
+    cnpjCpf:    (document.getElementById('ff-cnpj').value||'').trim(),
+    telefone:   (document.getElementById('ff-tel').value||'').trim(),
+    email:      (document.getElementById('ff-email').value||'').trim(),
+    cep:        (document.getElementById('ff-cep').value||'').trim(),
+    logradouro: (document.getElementById('ff-logr').value||'').trim(),
+    numero:     (document.getElementById('ff-num').value||'').trim(),
+    complemento:(document.getElementById('ff-comp').value||'').trim(),
+    bairro:     (document.getElementById('ff-bairro').value||'').trim(),
+    cidade:     (document.getElementById('ff-cidade').value||'').trim(),
+    estado:     (document.getElementById('ff-uf').value||'').trim(),
+    observacao: (document.getElementById('ff-obs').value||'').trim(),
+    ativo:      document.getElementById('ff-ativo') ? document.getElementById('ff-ativo').checked : true
+  };
+}
+
+/** Consulta ViaCEP e preenche campos de endereço */
+async function buscarCepFornecedor(cep){
+  const c = cep.replace(/\D/g,'');
+  if(c.length!==8) return;
+  try{
+    const r = await fetch(`https://viacep.com.br/ws/${c}/json/`);
+    const d = await r.json();
+    if(d.erro) return;
+    if(document.getElementById('ff-logr'))  document.getElementById('ff-logr').value  = d.logradouro||'';
+    if(document.getElementById('ff-bairro'))document.getElementById('ff-bairro').value= d.bairro||'';
+    if(document.getElementById('ff-cidade'))document.getElementById('ff-cidade').value= d.localidade||'';
+    if(document.getElementById('ff-uf'))    document.getElementById('ff-uf').value     = d.uf||'';
+  }catch(e){}
+}
+
+/** Abre modal para novo fornecedor */
+function abrirNovoFornecedor(opts={}){
+  // opts.callbackId: select a atualizar após salvar (para uso inline no modal de contas a pagar)
+  const cbId = opts.callbackId||null;
+  abrirModal(`
+    <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px" id="ff-form-body">
+      ${_fornFormHTML({})}
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(${cbId?`'${cbId}'`:'null'})">Salvar</button>
+    </div>`);
+}
+
+/** Persiste novo fornecedor */
+async function salvarNovoFornecedor(callbackSelectId=null){
+  const d = _fornFormLer();
+  if(!d.nome){ alert('Informe o nome do fornecedor.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+  const id = await proximoIdSeguro('fornecedores', db.fornecedores||[]);
+  const row = {...d, id, criadoEm:new Date().toISOString()};
+  const {error} = await sb.from('fornecedores').insert({
+    id, nome:d.nome, cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
+    email:d.email||null, logradouro:d.logradouro||null, numero:d.numero||null,
+    complemento:d.complemento||null, bairro:d.bairro||null,
+    cidade:d.cidade||null, estado:d.estado||null, cep:d.cep||null,
+    observacao:d.observacao||null, ativo:true
+  });
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+  db.fornecedores = db.fornecedores||[];
+  db.fornecedores.push(row);
+  save();
+  await _delay;
+  fecharModal();
+  // Se chamado de dentro de outro modal (contas a pagar), atualiza o select
+  if(callbackSelectId){
+    const sel = document.getElementById(callbackSelectId);
+    if(sel){
+      const opt = document.createElement('option');
+      opt.value=id; opt.textContent=d.nome; opt.selected=true;
+      sel.appendChild(opt);
+    }
+  } else {
+    renderFornecedores();
+  }
+}
+
+/** Abre modal para editar fornecedor existente */
+function abrirEditarFornecedor(id){
+  const f = (db.fornecedores||[]).find(x=>x.id===id);
+  if(!f) return;
+  abrirModal(`
+    <div class="modal-header"><h3>✏️ Editar Fornecedor</h3></div>
+    <div class="modal-body" style="display:grid;gap:12px">
+      ${_fornFormHTML(f)}
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>
+    </div>`);
+}
+
+/** Persiste edição de fornecedor */
+async function salvarEdicaoFornecedor(id){
+  const f = (db.fornecedores||[]).find(x=>x.id===id);
+  if(!f) return;
+  const d = _fornFormLer();
+  if(!d.nome){ alert('Informe o nome do fornecedor.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+  const {error} = await sb.from('fornecedores').update({
+    nome:d.nome, cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
+    email:d.email||null, logradouro:d.logradouro||null, numero:d.numero||null,
+    complemento:d.complemento||null, bairro:d.bairro||null,
+    cidade:d.cidade||null, estado:d.estado||null, cep:d.cep||null,
+    observacao:d.observacao||null, ativo:!!d.ativo
+  }).eq('id', id);
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+  Object.assign(f, d);
+  save();
+  await _delay;
+  fecharModal();
+  renderFornecedores();
+}
+
+/** Exclui fornecedor (só se não tiver contas a pagar vinculadas) */
+async function excluirFornecedor(id){
+  const f = (db.fornecedores||[]).find(x=>x.id===id);
+  if(!f) return;
+  const vinculado = (db.contasPagar||[]).some(p=>p.fornecedorId===id);
+  if(vinculado){
+    alert(`"${f.nome}" possui contas a pagar vinculadas e não pode ser excluído.\nDesative-o em vez disso.`);
+    return;
+  }
+  if(!confirm(`Excluir o fornecedor "${f.nome}"?`)) return;
+  await excluirDoSupabase('fornecedores', id);
+  db.fornecedores = db.fornecedores.filter(x=>x.id!==id);
+  save();
+  renderFornecedores();
+}
+
+// ──────────────────────────────────────────────────────────────
 // CONTAS A PAGAR — tela, CRUD e integração com contas correntes
 // ──────────────────────────────────────────────────────────────
 
@@ -5658,10 +5969,11 @@ function renderContasPagar(){
   let lista = todas.slice().sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
   if(fStatus) lista = lista.filter(p=>p.status===fStatus);
   if(fCC)     lista = lista.filter(p=>String(p.centroCustoId)===fCC);
-  if(fBusca)  lista = lista.filter(p=>
-    (p.descricao||'').toLowerCase().includes(fBusca) ||
-    (p.fornecedor||'').toLowerCase().includes(fBusca)
-  );
+  if(fBusca)  lista = lista.filter(p=>{
+    const fNome = ((db.fornecedores||[]).find(f=>f.id===p.fornecedorId)||{}).nome||'';
+    return (p.descricao||'').toLowerCase().includes(fBusca) ||
+           fNome.toLowerCase().includes(fBusca);
+  });
 
   if(!lista.length){
     if(table) table.style.display='none';
@@ -5690,7 +6002,7 @@ function renderContasPagar(){
       <td style="font-size:13px;white-space:nowrap">${p.dataVencimento ? fmtDia2(p.dataVencimento) : '—'}</td>
       <td>
         <div style="font-weight:600;font-size:14px">${escHtml(p.descricao)}</div>
-        ${p.fornecedor?`<div style="font-size:12px;color:var(--muted)">${escHtml(p.fornecedor)}</div>`:''}
+        ${p.fornecedorId?(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?`<div style="font-size:12px;color:var(--muted)">${escHtml(f.nome)}</div>`:''})():''}
         ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
       </td>
       <td style="font-size:13px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
@@ -5723,7 +6035,14 @@ function abrirNovaContaPagar(){
           <input id="ncp-desc" type="text" placeholder="Ex: Aluguel, Fornecedor XYZ…" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <input id="ncp-forn" type="text" placeholder="Nome do fornecedor" class="input" style="margin-top:4px">
+          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+            <select id="ncp-forn" class="input" style="flex:1">
+              <option value="">— nenhum —</option>
+              ${(db.fornecedores||[]).filter(f=>f.ativo).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('')}
+            </select>
+            <button type="button" class="btn" style="white-space:nowrap;font-size:12px"
+              onclick="abrirNovoFornecedor({callbackId:'ncp-forn'})">＋ Novo</button>
+          </div>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -5762,8 +6081,8 @@ function abrirNovaContaPagar(){
 
 /** Persiste nova conta a pagar */
 async function salvarNovaContaPagar(){
-  const descricao = (document.getElementById('ncp-desc').value||'').trim();
-  const fornecedor= (document.getElementById('ncp-forn').value||'').trim();
+  const descricao   = (document.getElementById('ncp-desc').value||'').trim();
+  const fornecedorId= parseInt(document.getElementById('ncp-forn').value) || null;
   const valor     = parseFloat((document.getElementById('ncp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   const dataVenc  = document.getElementById('ncp-venc').value;
   const ccId      = parseInt(document.getElementById('ncp-cc').value) || null;
@@ -5782,12 +6101,12 @@ async function salvarNovaContaPagar(){
   const hoje = new Date().toISOString().slice(0,10);
   const status = dataVenc < hoje ? 'vencido' : 'pendente';
   const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
-  const row = {id, descricao, fornecedor, valor, dataVencimento:dataVenc,
+  const row = {id, descricao, fornecedorId, valor, dataVencimento:dataVenc,
     dataPagamento:null, status, centroCustoId:ccId, obraId, osId:null,
     contaId:null, observacao, criadoEm:new Date().toISOString()};
 
   const {error} = await sb.from('contas_pagar').insert({
-    id, descricao, fornecedor:fornecedor||null, valor,
+    id, descricao, fornecedor_id:fornecedorId||null, valor,
     data_vencimento:dataVenc, status,
     centro_custo_id:ccId, obra_id:obraId||null,
     observacao:observacao||null
@@ -5820,7 +6139,14 @@ function abrirEditarContaPagar(id){
           <input id="ecp-desc" type="text" value="${escHtml(p.descricao)}" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <input id="ecp-forn" type="text" value="${escHtml(p.fornecedor)}" class="input" style="margin-top:4px">
+          <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+            <select id="ecp-forn" class="input" style="flex:1">
+              <option value="">— nenhum —</option>
+              ${(db.fornecedores||[]).filter(f=>f.ativo||f.id===p.fornecedorId).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}" ${p.fornecedorId===f.id?'selected':''}>${escHtml(f.nome)}</option>`).join('')}
+            </select>
+            <button type="button" class="btn" style="white-space:nowrap;font-size:12px"
+              onclick="abrirNovoFornecedor({callbackId:'ecp-forn'})">＋ Novo</button>
+          </div>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -5861,7 +6187,7 @@ async function salvarEdicaoContaPagar(id){
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const descricao = (document.getElementById('ecp-desc').value||'').trim();
-  const fornecedor= (document.getElementById('ecp-forn').value||'').trim();
+  const fornecedorId= parseInt(document.getElementById('ecp-forn').value) || null;
   const valor     = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   const dataVenc  = document.getElementById('ecp-venc').value;
   const ccId      = parseInt(document.getElementById('ecp-cc').value) || null;
@@ -5878,14 +6204,14 @@ async function salvarEdicaoContaPagar(id){
   const _delay = new Promise(r=>setTimeout(r,800));
 
   const {error} = await sb.from('contas_pagar').update({
-    descricao, fornecedor:fornecedor||null, valor,
+    descricao, fornecedor_id:fornecedorId||null, valor,
     data_vencimento:dataVenc,
     centro_custo_id:ccId, obra_id:obraId||null,
     observacao:observacao||null
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
-  p.descricao=descricao; p.fornecedor=fornecedor; p.valor=valor;
+  p.descricao=descricao; p.fornecedorId=fornecedorId; p.valor=valor;
   p.dataVencimento=dataVenc; p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
   save();
   await _delay;
@@ -5906,7 +6232,7 @@ function abrirPagarConta(id){
   abrirModal(`
     <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
     <div class="modal-body" style="display:grid;gap:14px">
-      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${p.fornecedor?' — '+escHtml(p.fornecedor):''}</p>
+      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?' — '+escHtml(f.nome):''})()}</p>
       <p style="margin:0;font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(p.valor)}</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Data do pagamento *
@@ -5951,7 +6277,8 @@ async function confirmarPagamentoConta(id){
 
   // Cria movimentação de saída na conta corrente
   const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
-  const descMov = `Pagamento: ${p.descricao}${p.fornecedor?' — '+p.fornecedor:''}`;
+  const _forn = (db.fornecedores||[]).find(x=>x.id===p.fornecedorId);
+  const descMov = `Pagamento: ${p.descricao}${_forn?' — '+_forn.nome:''}`;
   const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
     id:idMov, conta_id:contaId, tipo:'saida', valor:p.valor,
