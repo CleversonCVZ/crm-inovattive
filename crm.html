@@ -5028,6 +5028,9 @@ function abrirNovoCentroCusto(){
 async function salvarNovoCentroCusto(){
   const nome = document.getElementById('cc-nome').value.trim();
   if(!nome){ alert('Informe um nome.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
   const novo = {
     id: await proximoIdSeguro('centros_custo', db.centrosCusto),
     nome,
@@ -5036,7 +5039,8 @@ async function salvarNovoCentroCusto(){
     ativo: true
   };
   db.centrosCusto.push(novo);
-  save();
+  try{ await Promise.all([save(), _delay]); }
+  catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); return; }
   fecharModal();
   renderCentrosCusto();
 }
@@ -5219,7 +5223,7 @@ function abrirNovaContaCorrente(){
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarNovaContaCorrente()">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaContaCorrente()">Salvar</button>
     </div>`;
   abrirModal(html);
 }
@@ -5228,6 +5232,9 @@ function abrirNovaContaCorrente(){
 async function salvarNovaContaCorrente(){
   const nome = (document.getElementById('ncc-nome').value||'').trim();
   if(!nome){ alert('Informe o nome da conta.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
   const banco   = (document.getElementById('ncc-banco').value||'').trim();
   const tipo    = document.getElementById('ncc-tipo').value;
   const agencia = (document.getElementById('ncc-agencia').value||'').trim();
@@ -5243,11 +5250,12 @@ async function salvarNovaContaCorrente(){
     id, nome, banco:banco||null, agencia:agencia||null, conta:conta||null,
     tipo, saldo_inicial:saldoInicial, ativo:true
   });
-  if(error){ alert('Erro ao salvar: '+error.message); return; }
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
   db.contasCorrente = db.contasCorrente || [];
   db.contasCorrente.push(row);
   save();
+  await _delay;
   fecharModal();
   renderContasCorrente();
 }
@@ -5299,7 +5307,7 @@ function abrirLancamentoManual(contaId){
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarLancamentoManual(${contaId})">Lançar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarLancamentoManual(${contaId})">Lançar</button>
     </div>`;
   abrirModal(html);
 }
@@ -5327,6 +5335,9 @@ async function salvarLancamentoManual(contaId){
   if(!data)     { alert('Informe a data.'); return; }
   if(!descricao){ alert('Informe uma descrição.'); return; }
   if(tipo==='transferencia' && !destinoId){ alert('Selecione a conta de destino.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
 
   const id = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const rowBase = {
@@ -5338,7 +5349,7 @@ async function salvarLancamentoManual(contaId){
   };
 
   const {error} = await sb.from('movimentacoes_financeiras').insert(rowBase);
-  if(error){ alert('Erro ao lançar: '+error.message); return; }
+  if(error){ btnRestaurar(btn); alert('Erro ao lançar: '+error.message); return; }
 
   const movObj = {
     id, contaId, tipo, valor, descricao, dataMovimento:data,
@@ -5368,6 +5379,7 @@ async function salvarLancamentoManual(contaId){
   }
 
   save();
+  await _delay;
   fecharModal();
   renderContasCorrente();
 }
@@ -5476,7 +5488,7 @@ function editarMovimentacao(id, contaId){
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">Cancelar</button>
-      <button class="btn primary" onclick="salvarEdicaoMovimentacao(${id},${contaId})">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoMovimentacao(${id},${contaId})">Salvar</button>
     </div>`);
 }
 
@@ -5494,14 +5506,19 @@ async function salvarEdicaoMovimentacao(id, contaId){
   if(!data)     { alert('Informe a data.'); return; }
   if(!descricao){ alert('Informe uma descrição.'); return; }
 
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+
   const {error} = await sb.from('movimentacoes_financeiras').update({
     tipo, valor, descricao, data_movimento:data, centro_custo_id:ccId||null
   }).eq('id', id);
-  if(error){ alert('Erro ao salvar: '+error.message); return; }
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
   m.tipo = tipo; m.valor = valor; m.descricao = descricao;
   m.dataMovimento = data; m.centroCustoId = ccId;
   save();
+  await _delay;
   fecharModal();
   abrirMovimentacoesContaCorrente(contaId);
 }
@@ -6783,6 +6800,9 @@ async function salvarNovaParcelaReceber(cardId){
   const status= document.getElementById('nr-status').value;
   if(!desc){ alert('Informe uma descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
   let propostaId=null, osId=null;
   if(origem.startsWith('proposta:')) propostaId=Number(origem.split(':')[1]);
   else if(origem.startsWith('os:')) osId=Number(origem.split(':')[1]);
@@ -6796,7 +6816,8 @@ async function salvarNovaParcelaReceber(cardId){
     criadoEm: new Date().toISOString()
   };
   db.recebimentos.push(novo);
-  save();
+  try{ await Promise.all([save(), _delay]); }
+  catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); return; }
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
 }
@@ -6910,7 +6931,7 @@ function marcarParcelaRecebida(id, cardId){
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="confirmarParcelaRecebida(${id},${cardId})">Confirmar recebimento</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarParcelaRecebida(${id},${cardId})">Confirmar recebimento</button>
     </div>`);
 }
 
@@ -6920,14 +6941,19 @@ async function confirmarParcelaRecebida(id, cardId){
   const dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
   const contaId = parseInt(document.getElementById('mr-conta').value) || null;
 
+  const btn = btnModalPrimario();
+  btnSalvando(btn, 'Confirmando…');
+  const _delay = new Promise(r=>setTimeout(r,800));
+
   // Atualiza status da parcela
   r.status = 'recebido';
   r.dataRecebimento = dataRecebimento;
 
   // Persiste alteração da parcela diretamente no Supabase
-  await sb.from('financeiro_recebimentos').update({
+  const {error:eParcela} = await sb.from('financeiro_recebimentos').update({
     status:'recebido', data_recebimento:dataRecebimento
   }).eq('id', id);
+  if(eParcela){ btnRestaurar(btn); alert('Erro ao confirmar: '+eParcela.message); return; }
 
   // Se escolheu uma conta, cria movimentação de entrada
   if(contaId){
@@ -6958,6 +6984,7 @@ async function confirmarParcelaRecebida(id, cardId){
   }
 
   save();
+  await _delay;
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
 }
