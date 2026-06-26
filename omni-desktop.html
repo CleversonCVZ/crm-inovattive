@@ -35,6 +35,7 @@
   .sidebar button:hover{background:rgba(255,255,255,.10)}
   .sidebar button.ativo{color:#fff;background:var(--green);border-left-color:#fff}
   .sidebar-sep{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);margin-bottom:4px}
+  .sidebar-sep-mid{border-top:1px solid rgba(255,255,255,.12);margin:6px 0}
   .stat-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:13px;font-weight:500}
   .conteudo{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
@@ -886,6 +887,39 @@
     </table>
   </div>
 
+  <!-- SRM: PAINEL -->
+  <div class="view" id="view-srm-painel">
+    <div class="bar">
+      <h2>SRM — Painel</h2>
+    </div>
+    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
+      🤝 <b>SRM — Supplier Relationship Management</b><br>
+      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Gestão de relacionamento com fornecedores.</small>
+    </div>
+  </div>
+
+  <!-- COMPRAS: PAINEL -->
+  <div class="view" id="view-compras-painel">
+    <div class="bar">
+      <h2>Compras — Painel</h2>
+    </div>
+    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
+      🛒 <b>Compras</b><br>
+      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Controle de ordens de compra e pedidos a fornecedores.</small>
+    </div>
+  </div>
+
+  <!-- ESTOQUE: PAINEL -->
+  <div class="view" id="view-estoque-painel">
+    <div class="bar">
+      <h2>Estoque — Painel</h2>
+    </div>
+    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
+      📦 <b>Estoque</b><br>
+      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Controle de inventário e movimentação de materiais.</small>
+    </div>
+  </div>
+
   <!-- DOWNLOADS -->
   <div class="view" id="view-downloads">
     <div class="bar">
@@ -1298,6 +1332,12 @@ const TELAS = [
   {id:'fin-fornecedores',       nome:'Financeiro — Fornecedores',       menu:'Fornecedores'},
   {id:'fin-contas-pagar',       nome:'Financeiro — Contas a Pagar',     menu:'Contas a Pagar'},
   {id:'fin-contas-receber',     nome:'Financeiro — Contas a Receber',   menu:'Contas a Receber'},
+  // ── SRM
+  {id:'srm-painel',      nome:'SRM — Painel',       menu:'Painel'},
+  // ── Compras
+  {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
+  // ── Estoque
+  {id:'estoque-painel',  nome:'Estoque — Painel',   menu:'Painel'},
   {id:'usuarios',    nome:'Cadastro de Usuários'},
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
@@ -1345,7 +1385,10 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','cat-outros-custos','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber']}
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','cat-outros-custos','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber']},
+  {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel'],     sepAntes:true},
+  {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
+  {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -3621,6 +3664,11 @@ function renderSidebar(){
 
   // Módulos principais
   MODULOS.filter(m=>m.telas.some(t=>podeVer(usuarioAtual,t))).forEach(m=>{
+    if(m.sepAntes){
+      const sep=document.createElement('div');
+      sep.className='sidebar-sep-mid';
+      sb.appendChild(sep);
+    }
     const b=document.createElement('button');
     b.className = m.id===moduloAtivo ? 'ativo' : '';
     b.title = m.nome;
