@@ -9494,11 +9494,20 @@ async function adicionarOSCusto(osId, cardId){
   const ccId  = document.getElementById('osc-cc')?.value||'';
   if(!desc){ alert('Informe a descrição do custo.'); return; }
   if(!valor || valor <= 0){ alert('Informe um valor maior que zero.'); return; }
-  const id = await proximoIdSeguro('os_custos', db.osCustos||[]);
-  const row = { id, osId:Number(osId), descricao:desc, valor, data:data||null, centroCustoId:ccId?Number(ccId):null, criadoEm:new Date().toISOString() };
+  const payload = {
+    os_id: Number(osId), descricao: desc, valor,
+    data: data||null,
+    centro_custo_id: ccId ? Number(ccId) : null
+  };
+  const {data:inserted, error} = await sb.from('os_custos').insert(payload).select().single();
+  if(error){ alert('Erro ao salvar custo: '+error.message); return; }
   db.osCustos = db.osCustos||[];
-  db.osCustos.push(row);
-  save();
+  db.osCustos.push({
+    id:inserted.id, osId:Number(inserted.os_id), descricao:inserted.descricao,
+    valor:Number(inserted.valor)||0, data:inserted.data?inserted.data.slice(0,10):'',
+    centroCustoId:inserted.centro_custo_id?Number(inserted.centro_custo_id):null,
+    criadoEm:inserted.created_at||''
+  });
   abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
