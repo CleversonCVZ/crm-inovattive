@@ -2434,7 +2434,7 @@ function renderFinanceiroPainel(){
       <td style="font-weight:700">${fmtMoney(r.valor)}</td>
       <td style="font-size:12px">${r.tipo==='fixo'?'Data fixa':'Condicional'}</td>
       <td style="font-size:12px">${vencLabel}</td>
-      <td>${statusBadge}</td>
+      <td>${statusBadge}${r.status==='recebido'&&r.dataRecebimento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(r.dataRecebimento)}</div>`:''}</td>
       <td>
         ${r.status==='pendente'&&c?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
         ${c?`<button class="icon-btn" onclick="abrirEditarCartao(${c.id},'financeiro')" title="Abrir cartão">↗</button>`:''}
