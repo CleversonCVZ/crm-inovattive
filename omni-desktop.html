@@ -756,6 +756,7 @@
         <option value="">Todos os status</option>
         <option value="pendente">Pendentes</option>
         <option value="vencido">Vencidas</option>
+        <option value="condicional">Condicionais</option>
         <option value="pago">Pagas</option>
       </select>
       <select id="cp-filtro-cc" class="vista-sel" style="margin-left:6px" onchange="renderContasPagar()">
@@ -768,10 +769,10 @@
       <thead><tr>
         <th>Fornecedor</th>
         <th>Descrição</th>
-        <th style="width:160px">Centro de Custo</th>
-        <th style="width:120px">Obra</th>
+        <th style="width:150px">Centro de Custo</th>
+        <th style="width:110px">Obra</th>
         <th style="width:130px;text-align:right">Valor</th>
-        <th style="width:120px">Vencimento</th>
+        <th style="width:180px">Vencimento / Condição</th>
         <th style="width:120px">Status</th>
         <th style="width:80px"></th>
       </tr></thead>
@@ -1848,6 +1849,7 @@ async function carregarDadosSupabase(){
         dataVencimento:p.data_vencimento ? p.data_vencimento.slice(0,10) : null,
         dataPagamento:p.data_pagamento ? p.data_pagamento.slice(0,10) : null,
         status:p.status||'pendente',
+        condicao:p.condicao||null,
         centroCustoId:p.centro_custo_id||null,
         obraId:p.obra_id||null,
         osId:p.os_id||null,
@@ -2059,8 +2061,9 @@ function syncDadosSupabase(){
     }));
     await sincronizarTabela('contas_pagar', db.contasPagar||[], p=>({
       id:p.id, descricao:p.descricao||'', fornecedor_id:p.fornecedorId||null,
-      valor:p.valor, data_vencimento:p.dataVencimento,
+      valor:p.valor, data_vencimento:p.dataVencimento||null,
       data_pagamento:p.dataPagamento||null, status:p.status||'pendente',
+      condicao:p.condicao||null,
       centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
       os_id:p.osId||null, conta_id:p.contaId||null,
       observacao:p.observacao||null
@@ -2297,16 +2300,18 @@ function _finPainelCC(statsEl, corpoEl, periodo){
 function _finPainelCP(statsEl, corpoEl, periodo){
   const lista = (db.contasPagar||[]).filter(p=>_finPainelDentroFiltro(p.dataVencimento, periodo));
 
-  const totTotal    = lista.reduce((s,p)=>s+p.valor,0);
-  const totPago     = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
-  const totPendente = lista.filter(p=>p.status==='pendente').reduce((s,p)=>s+p.valor,0);
-  const hoje        = new Date().toISOString().slice(0,10);
-  const totVencido  = lista.filter(p=>p.status==='pendente'&&p.dataVencimento&&p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
+  const totTotal       = lista.reduce((s,p)=>s+p.valor,0);
+  const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
+  const totPendente    = lista.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
+  const totCondicional = lista.filter(p=>p.status==='condicional').reduce((s,p)=>s+p.valor,0);
+  const hoje           = new Date().toISOString().slice(0,10);
+  const totVencido     = lista.filter(p=>(p.status==='pendente'||p.status==='vencido')&&p.dataVencimento&&p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
 
   statsEl.innerHTML=`
     <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ Pago</div></div>
     <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
+    ${totCondicional?`<div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totCondicional)}</div><div class="l">⏸ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
 
   if(!lista.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
@@ -6610,14 +6615,16 @@ function renderContasPagar(){
   }
 
   // Stats — sempre sobre tudo, sem filtro
-  const totGeral    = todas.reduce((s,p)=>s+p.valor, 0);
-  const totPago     = todas.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor, 0);
-  const totPendente = todas.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor, 0);
-  const totVencido  = todas.filter(p=>p.status!=='pago' && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
+  const totGeral       = todas.reduce((s,p)=>s+p.valor, 0);
+  const totPago        = todas.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor, 0);
+  const totPendente    = todas.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor, 0);
+  const totCondicional = todas.filter(p=>p.status==='condicional').reduce((s,p)=>s+p.valor, 0);
+  const totVencido     = todas.filter(p=>(p.status==='pendente'||p.status==='vencido') && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
   if(statsEl) statsEl.innerHTML=`
     <div class="stat"><div class="n">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">Pago</div></div>
     <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">Pendente</div></div>
+    ${totCondicional?`<div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totCondicional)}</div><div class="l">⏸ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencida</div></div>`:''}`;
 
   // Filtros
@@ -6626,14 +6633,16 @@ function renderContasPagar(){
   const fBusca  = termoBusca();
 
   let lista = todas.slice().sort((a,b)=>{
-    const aPago=a.status==='pago', bPago=b.status==='pago';
-    if(aPago!==bPago) return aPago?1:-1;
+    // Ordem: pendentes/vencidas primeiro, condicionais depois, pagas por último
+    const ord = s => s==='pago'?2 : s==='condicional'?1 : 0;
+    if(ord(a.status)!==ord(b.status)) return ord(a.status)-ord(b.status);
     return (a.dataVencimento||'').localeCompare(b.dataVencimento||'');
   });
 
-  if(fStatus==='vencido') lista=lista.filter(p=>p.status!=='pago' && p.dataVencimento && p.dataVencimento<hoje);
-  else if(fStatus==='pendente') lista=lista.filter(p=>p.status!=='pago');
-  else if(fStatus==='pago') lista=lista.filter(p=>p.status==='pago');
+  if(fStatus==='vencido')      lista=lista.filter(p=>(p.status==='pendente'||p.status==='vencido') && p.dataVencimento && p.dataVencimento<hoje);
+  else if(fStatus==='pendente') lista=lista.filter(p=>p.status==='pendente'||p.status==='vencido');
+  else if(fStatus==='condicional') lista=lista.filter(p=>p.status==='condicional');
+  else if(fStatus==='pago')    lista=lista.filter(p=>p.status==='pago');
   if(fCC)    lista=lista.filter(p=>String(p.centroCustoId)===fCC);
   if(fBusca) lista=lista.filter(p=>{
     const fNome=((db.fornecedores||[]).find(f=>f.id===p.fornecedorId)||{}).nome||'';
@@ -6649,17 +6658,24 @@ function renderContasPagar(){
   if(empty) empty.style.display='none';
 
   tbody.innerHTML = lista.map(p=>{
-    const forn = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
-    const cc   = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
-    const obra = (db.obras||[]).find(o=>o.id===p.obraId);
-    const pago    = p.status==='pago';
-    const vencida = !pago && p.dataVencimento && p.dataVencimento<hoje;
+    const forn  = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
+    const cc    = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
+    const obra  = (db.obras||[]).find(o=>o.id===p.obraId);
+    const pago  = p.status==='pago';
+    const cond  = p.status==='condicional';
+    const vencida = !pago && !cond && p.dataVencimento && p.dataVencimento<hoje;
 
     const statusBadge = pago
       ? `<span style="color:#2e7d32;font-weight:700">✔ Pago</span>`
-      : vencida
-        ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
-        : `<span style="color:#e65100">⏳ Pendente</span>`;
+      : cond
+        ? `<span style="color:#1565c0;font-weight:600">⏸ Aguardando</span>`
+        : vencida
+          ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
+          : `<span style="color:#e65100">⏳ Pendente</span>`;
+
+    const vencLabel = cond
+      ? `<span style="font-size:11px;color:var(--muted)">${escHtml(p.condicao||'—')}</span>`
+      : (p.dataVencimento ? fmtDia2(p.dataVencimento) : '—');
 
     return `<tr style="${pago?'opacity:.7':''}cursor:pointer" onclick="abrirEditarContaPagar(${p.id})">
       <td style="font-size:13px">${forn?escHtml(forn.nome):'—'}</td>
@@ -6670,7 +6686,7 @@ function renderContasPagar(){
       <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${obra?escHtml(obra.nome):'—'}</td>
       <td style="font-weight:700;text-align:right">${fmtMoney(p.valor)}</td>
-      <td style="font-size:13px;white-space:nowrap">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
+      <td style="font-size:12px">${vencLabel}</td>
       <td>${statusBadge}${pago&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}</td>
       <td style="white-space:nowrap;text-align:right">
         ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();marcarContaPagaRapido(${p.id})">✔</button>`:''}
@@ -6715,6 +6731,15 @@ async function confirmarPagamentoRapido(id){
   renderFinPainel();
 }
 
+/** Alterna exibição de data/condição no modal CP conforme tipo */
+function toggleCPTipo(prefix){
+  const tipo = (document.getElementById(prefix+'-tipo')||{}).value||'fixo';
+  const vencRow = document.getElementById(prefix+'-venc-row');
+  const condRow = document.getElementById(prefix+'-cond-row');
+  if(vencRow) vencRow.style.display = tipo==='condicional' ? 'none' : '';
+  if(condRow) condRow.style.display = tipo==='condicional' ? '' : 'none';
+}
+
 /** Abre modal para cadastrar nova conta a pagar */
 function abrirNovaContaPagar(){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
@@ -6744,9 +6769,23 @@ function abrirNovaContaPagar(){
           <input id="ncp-valor" type="text" inputmode="decimal" placeholder="0,00" class="input"
             oninput="mascaraMoeda(this)" style="margin-top:4px">
         </label>
+        <label>Tipo *
+          <select id="ncp-tipo" class="input" style="margin-top:4px" onchange="toggleCPTipo('ncp')">
+            <option value="fixo">Data fixa</option>
+            <option value="condicional">Condicional</option>
+          </select>
+        </label>
+      </div>
+      <div id="ncp-venc-row">
         <label>Data de Vencimento *
           <input id="ncp-venc" type="date" class="input" style="margin-top:4px"
             value="${new Date().toISOString().slice(0,10)}">
+        </label>
+      </div>
+      <div id="ncp-cond-row" style="display:none">
+        <label>Condição para Pagamento *
+          <input id="ncp-cond" type="text" class="input" style="margin-top:4px"
+            placeholder="Ex: após conclusão do serviço, entrega da obra…">
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -6780,7 +6819,9 @@ async function salvarNovaContaPagar(){
   const descricao   = (document.getElementById('ncp-desc').value||'').trim();
   const fornecedorId= parseInt(document.getElementById('ncp-forn').value) || null;
   const valor     = parseFloat((document.getElementById('ncp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
-  const dataVenc  = document.getElementById('ncp-venc').value;
+  const tipo      = (document.getElementById('ncp-tipo')||{}).value || 'fixo';
+  const dataVenc  = tipo==='condicional' ? null : document.getElementById('ncp-venc').value;
+  const condicao  = tipo==='condicional' ? (document.getElementById('ncp-cond').value||'').trim() : null;
   const ccId      = parseInt(document.getElementById('ncp-cc').value) || null;
   const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
   const obraId    = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ncp-obra').value)||null) : null;
@@ -6788,7 +6829,8 @@ async function salvarNovaContaPagar(){
 
   if(!descricao){ alert('Informe a descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
-  if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
   if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
@@ -6797,15 +6839,15 @@ async function salvarNovaContaPagar(){
   const _delay = new Promise(r=>setTimeout(r,800));
 
   const hoje = new Date().toISOString().slice(0,10);
-  const status = dataVenc < hoje ? 'vencido' : 'pendente';
+  const status = tipo==='condicional' ? 'condicional' : (dataVenc < hoje ? 'pendente' : 'pendente');
   const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
   const row = {id, descricao, fornecedorId, valor, dataVencimento:dataVenc,
-    dataPagamento:null, status, centroCustoId:ccId, obraId, osId:null,
+    dataPagamento:null, status, condicao, centroCustoId:ccId, obraId, osId:null,
     contaId:null, observacao, criadoEm:new Date().toISOString()};
 
   const {error} = await sb.from('contas_pagar').insert({
     id, descricao, fornecedor_id:fornecedorId||null, valor,
-    data_vencimento:dataVenc, status,
+    data_vencimento:dataVenc||null, status, condicao:condicao||null,
     centro_custo_id:ccId, obra_id:obraId||null,
     observacao:observacao||null
   });
@@ -6829,6 +6871,9 @@ function abrirEditarContaPagar(id){
     .map(o=>`<option value="${o.id}" ${p.obraId===o.id?'selected':''}>${escHtml(o.nome)}</option>`).join('');
   const valorFmt = p.valor.toFixed(2).replace('.',',');
 
+  const tipoAtual = p.status==='condicional' ? 'condicional' : 'fixo';
+  const ccAtualSlug = ((db.centrosCusto||[]).find(c=>c.id===p.centroCustoId)||{}).slug;
+
   abrirModal(`
     <h3>${escHtml(p.descricao)}</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
@@ -6850,8 +6895,22 @@ function abrirEditarContaPagar(id){
           <input id="ecp-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
             oninput="mascaraMoeda(this)" style="margin-top:4px">
         </label>
+        <label>Tipo *
+          <select id="ecp-tipo" class="input" style="margin-top:4px" onchange="toggleCPTipo('ecp')">
+            <option value="fixo" ${tipoAtual==='fixo'?'selected':''}>Data fixa</option>
+            <option value="condicional" ${tipoAtual==='condicional'?'selected':''}>Condicional</option>
+          </select>
+        </label>
+      </div>
+      <div id="ecp-venc-row" style="display:${tipoAtual==='condicional'?'none':''}">
         <label>Data de Vencimento *
           <input id="ecp-venc" type="date" value="${p.dataVencimento||''}" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <div id="ecp-cond-row" style="display:${tipoAtual==='condicional'?'':'none'}">
+        <label>Condição para Pagamento *
+          <input id="ecp-cond" type="text" value="${escHtml(p.condicao||'')}" class="input" style="margin-top:4px"
+            placeholder="Ex: após conclusão do serviço, entrega da obra…">
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -6861,7 +6920,7 @@ function abrirEditarContaPagar(id){
             ${ccOpts}
           </select>
         </label>
-        <div id="ecp-obra-row" style="display:${(()=>{const cc=(db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);return cc&&cc.slug==='material_obra'?'block':'none'})()}">
+        <div id="ecp-obra-row" style="display:${ccAtualSlug==='material_obra'?'block':'none'}">
           <label>Obra
             <select id="ecp-obra" class="input" style="margin-top:4px">
               <option value="">— selecione a obra —</option>
@@ -6890,20 +6949,26 @@ function abrirEditarContaPagar(id){
 async function salvarEdicaoContaPagar(id){
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
-  const descricao = (document.getElementById('ecp-desc').value||'').trim();
+  const descricao   = (document.getElementById('ecp-desc').value||'').trim();
   const fornecedorId= parseInt(document.getElementById('ecp-forn').value) || null;
-  const valor     = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
-  const dataVenc  = document.getElementById('ecp-venc').value;
-  const ccId      = parseInt(document.getElementById('ecp-cc').value) || null;
-  const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
-  const obraId    = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
-  const observacao= (document.getElementById('ecp-obs').value||'').trim();
+  const valor       = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
+  const tipo        = (document.getElementById('ecp-tipo')||{}).value || 'fixo';
+  const dataVenc    = tipo==='condicional' ? null : document.getElementById('ecp-venc').value;
+  const condicao    = tipo==='condicional' ? (document.getElementById('ecp-cond').value||'').trim() : null;
+  const ccId        = parseInt(document.getElementById('ecp-cc').value) || null;
+  const ccSel       = (db.centrosCusto||[]).find(c=>c.id===ccId);
+  const obraId      = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
+  const observacao  = (document.getElementById('ecp-obs').value||'').trim();
 
   if(!descricao){ alert('Informe a descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
-  if(!dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
   if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
+
+  // Preserva status=pago se já pago; senão define pelo tipo
+  const novoStatus = p.status==='pago' ? 'pago' : (tipo==='condicional' ? 'condicional' : 'pendente');
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -6911,14 +6976,15 @@ async function salvarEdicaoContaPagar(id){
 
   const {error} = await sb.from('contas_pagar').update({
     descricao, fornecedor_id:fornecedorId||null, valor,
-    data_vencimento:dataVenc,
+    data_vencimento:dataVenc||null, status:novoStatus, condicao:condicao||null,
     centro_custo_id:ccId, obra_id:obraId||null,
     observacao:observacao||null
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
   p.descricao=descricao; p.fornecedorId=fornecedorId; p.valor=valor;
-  p.dataVencimento=dataVenc; p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
+  p.dataVencimento=dataVenc; p.status=novoStatus; p.condicao=condicao;
+  p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
   save();
   await _delay;
   fecharModal();
