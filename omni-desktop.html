@@ -4870,7 +4870,7 @@ function abaObraCompras(c, ob){
 
 /* ================= CUSTO MÃO DE OBRA ================= */
 function abaObraCustoMobra(c, ob){
-  const osDoCard = db.ordensServico.filter(o=>o.cardId===c.id);
+  const osDoCard = db.ordensServico.filter(o=>o.cardId===c.id && o.tipo!=='avulsa');
   const fmtR = v => v>0 ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   const tipoLabel = {projeto:'PRJ',execucao:'OBR',avulsa:'AVL'};
   const tipoColor = {projeto:'#7b1fa2',execucao:'#e65100',avulsa:'#00796b'};
