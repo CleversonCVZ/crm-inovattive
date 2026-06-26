@@ -1869,6 +1869,7 @@ async function carregarDadosSupabase(){
         valor:Number(c.valor)||0,
         data:c.data ? c.data.slice(0,10) : '',
         centroCustoId:c.centro_custo_id ? Number(c.centro_custo_id) : null,
+        cpId:c.cp_id ? Number(c.cp_id) : null,
         criadoEm:c.created_at||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
@@ -2071,7 +2072,8 @@ function syncDadosSupabase(){
     await sincronizarTabela('os_custos', db.osCustos||[], c=>({
       id:c.id, os_id:Number(c.osId), descricao:c.descricao||'',
       valor:c.valor||0, data:c.data||null,
-      centro_custo_id:c.centroCustoId ? Number(c.centroCustoId) : null
+      centro_custo_id:c.centroCustoId ? Number(c.centroCustoId) : null,
+      cp_id:c.cpId ? Number(c.cpId) : null
     }));
   }, 800);
 }
@@ -9444,24 +9446,32 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Data</th>
             <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Centro de Custo</th>
             <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:100px">Valor</th>
+            <th style="width:90px;border-bottom:2px solid var(--border);text-align:center">C.P.</th>
             ${!os.fechada?`<th style="width:36px;border-bottom:2px solid var(--border)"></th>`:''}
           </tr>
         </thead>
         <tbody>
           ${custos.map(c=>{
             const cc = db.centrosCusto ? db.centrosCusto.find(x=>x.id===c.centroCustoId) : null;
+            const cpLancado = !!c.cpId;
+            const cpCell = cpLancado
+              ? `<td style="text-align:center;padding:4px"><span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado</span></td>`
+              : (!os.fechada
+                  ? `<td style="text-align:center;padding:4px"><button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarCustoComoCP(${c.id},${osId},${cardId})">📋 → C.P.</button></td>`
+                  : `<td style="text-align:center;padding:4px;color:var(--muted);font-size:12px">—</td>`);
             return `<tr style="border-bottom:1px solid var(--border)">
               <td style="padding:7px 8px">${c.descricao||'—'}</td>
               <td style="padding:7px 8px">${c.data?fmtDia2(c.data):'—'}</td>
               <td style="padding:7px 8px;font-size:12px;color:var(--muted)">${cc?cc.nome:'—'}</td>
               <td style="text-align:right;padding:7px 8px;color:#b71c1c">${fmtMoney(c.valor)}</td>
+              ${cpCell}
               ${!os.fechada?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="excluirOSCusto(${c.id},${osId},${cardId})">🗑</button></td>`:''}
             </tr>`;
           }).join('')}
         </tbody>
         <tfoot>
           <tr style="background:var(--surface)">
-            <td colspan="${os.fechada?3:4}" style="text-align:right;padding:8px;font-weight:700">Total custos:</td>
+            <td colspan="${os.fechada?4:5}" style="text-align:right;padding:8px;font-weight:700">Total custos:</td>
             <td style="text-align:right;padding:8px;font-weight:700;color:#b71c1c">${fmtMoney(totalCustos)}</td>
             ${!os.fechada?'<td></td>':''}
           </tr>
@@ -9585,7 +9595,7 @@ async function adicionarOSCusto(osId, cardId){
     id:inserted.id, osId:Number(inserted.os_id), descricao:inserted.descricao,
     valor:Number(inserted.valor)||0, data:inserted.data?inserted.data.slice(0,10):'',
     centroCustoId:inserted.centro_custo_id?Number(inserted.centro_custo_id):null,
-    criadoEm:inserted.created_at||''
+    cpId:null, criadoEm:inserted.created_at||''
   });
   abrirVerOSAvulsa(osId, cardId, 'custos');
 }
@@ -9595,6 +9605,91 @@ async function excluirOSCusto(custoId, osId, cardId){
   await excluirDoSupabase('os_custos', custoId);
   db.osCustos = (db.osCustos||[]).filter(c=>c.id!==custoId);
   save();
+  abrirVerOSAvulsa(osId, cardId, 'custos');
+}
+
+/** Abre mini-modal para lançar custo de OS Avulsa como Conta a Pagar */
+function abrirLancarCustoComoCP(custoId, osId, cardId){
+  const custo = (db.osCustos||[]).find(c=>c.id===custoId);
+  if(!custo) return;
+  const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo)
+    .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
+    .map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('');
+  const hoje = new Date().toISOString().slice(0,10);
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3>📋 Lançar como Conta a Pagar</h3>
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
+        <div style="font-size:12px;color:var(--muted)">Custo de origem</div>
+        <div style="font-weight:600">${escHtml(custo.descricao)}</div>
+        <div style="font-size:13px;color:#dc2626;font-weight:700">${fmtMoney(custo.valor)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Fornecedor *</div>
+        <select id="lcp-forn" class="input">
+          <option value="">— selecione —</option>
+          ${fornOpts||'<option disabled>Nenhum fornecedor cadastrado</option>'}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data de Vencimento *</div>
+        <input id="lcp-venc" type="date" class="input" value="${hoje}">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
+        <input id="lcp-obs" type="text" class="input" placeholder="Opcional…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarLancarCustoComoCP(${custoId},${osId},${cardId})">Lançar C.P.</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarLancarCustoComoCP(custoId, osId, cardId){
+  const custo = (db.osCustos||[]).find(c=>c.id===custoId);
+  if(!custo) return;
+  const fornId  = parseInt(document.getElementById('lcp-forn').value)||null;
+  const venc    = document.getElementById('lcp-venc').value;
+  const obs     = (document.getElementById('lcp-obs').value||'').trim();
+  if(!fornId){ alert('Selecione o fornecedor.'); return; }
+  if(!venc)  { alert('Informe a data de vencimento.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  // Insert direto em contas_pagar
+  const payload = {
+    descricao: custo.descricao,
+    valor: custo.valor,
+    data_vencimento: venc,
+    fornecedor_id: fornId,
+    centro_custo_id: custo.centroCustoId||null,
+    os_id: osId,
+    status: 'pendente',
+    observacao: obs||null
+  };
+  const {data:cp, error:errCP} = await sb.from('contas_pagar').insert(payload).select().single();
+  if(errCP){ btnRestaurar(btn); alert('Erro ao criar C.P.: '+errCP.message); return; }
+
+  // Atualiza cp_id no os_custo via Supabase
+  const {error:errCusto} = await sb.from('os_custos').update({cp_id: cp.id}).eq('id', custoId);
+  if(errCusto){ btnRestaurar(btn); alert('C.P. criado mas erro ao vincular: '+errCusto.message); return; }
+
+  // Atualiza memória local
+  custo.cpId = cp.id;
+  db.contasPagar = db.contasPagar||[];
+  const forn = (db.fornecedores||[]).find(f=>f.id===fornId);
+  db.contasPagar.push({
+    id:cp.id, descricao:cp.descricao, valor:cp.valor,
+    dataVencimento:cp.data_vencimento, fornecedorId:fornId,
+    centroCustoId:custo.centroCustoId||null, osId, status:'pendente',
+    observacao:obs||'', dataPagamento:null, criadoEm:cp.created_at||''
+  });
+  save();
+  fecharModal();
   abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
