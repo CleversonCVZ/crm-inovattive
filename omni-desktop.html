@@ -6424,8 +6424,8 @@ function abrirNovaContaPagar(){
     .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
 
   abrirModal(`
-    <div class="modal-header"><h3>Nova Conta a Pagar</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px">
+    <h3>Nova Conta a Pagar</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Descrição *
           <input id="ncp-desc" type="text" placeholder="Ex: Aluguel, Fornecedor XYZ…" class="input" style="margin-top:4px">
@@ -6469,7 +6469,7 @@ function abrirNovaContaPagar(){
         <input id="ncp-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
       </label>
     </div>
-    <div class="modal-footer rodape-cartao">
+    <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarNovaContaPagar()">Salvar</button>
     </div>`, 'cartao');
