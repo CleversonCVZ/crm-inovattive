@@ -650,11 +650,19 @@
 
   <!-- FINANCEIRO: PAINEL -->
   <div class="view" id="view-fin-painel">
-    <div class="bar"><h2>Financeiro — Painel</h2></div>
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      💳 <b>Módulo Financeiro</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. O painel financeiro exibirá indicadores de fluxo de caixa, receitas e despesas.</small>
+    <div class="bar">
+      <h2>Painel — Centros de Custo</h2>
+      <div class="spacer"></div>
+      <select id="ccpainel-periodo" onchange="renderCCPainel()"
+        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="mes">Este mês</option>
+        <option value="trim">Este trimestre</option>
+        <option value="ano">Este ano</option>
+        <option value="tudo">Todo o período</option>
+      </select>
     </div>
+    <div class="stats" id="ccpainel-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
+    <div id="ccpainel-corpo"></div>
   </div>
 
   <!-- FINANCEIRO: CENTROS DE CUSTO -->
@@ -2187,6 +2195,136 @@ function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || 
  * - Os totalizadores (cards de stat) são sempre calculados sobre o total geral,
  *   independentemente dos filtros ativos, para dar visão consolidada.
  */
+/**
+ * Painel analítico de Centros de Custo.
+ * Agrega: movimentacoes (saída) + contas_pagar (pagas) + os_custos — por centroCustoId.
+ * Filtra por período selecionado. Exibe stats totais + tabela com barra de progresso.
+ */
+function renderCCPainel(){
+  const statsEl = document.getElementById('ccpainel-stats');
+  const corpoEl = document.getElementById('ccpainel-corpo');
+  if(!statsEl || !corpoEl) return;
+
+  const periodo = (document.getElementById('ccpainel-periodo')||{}).value||'mes';
+  const hoje    = new Date();
+  const anoAtual = hoje.getFullYear();
+  const mesAtual = hoje.getMonth(); // 0-based
+
+  function dentroDoFiltro(dataStr){
+    if(!dataStr) return periodo === 'tudo';
+    const d = new Date(dataStr);
+    if(isNaN(d)) return false;
+    if(periodo === 'tudo') return true;
+    if(periodo === 'ano')  return d.getFullYear() === anoAtual;
+    if(periodo === 'trim'){
+      const tri = Math.floor(mesAtual/3);
+      return d.getFullYear()===anoAtual && Math.floor(d.getMonth()/3)===tri;
+    }
+    // mes
+    return d.getFullYear()===anoAtual && d.getMonth()===mesAtual;
+  }
+
+  // Agrega por centroCustoId
+  const mapa = {}; // id -> { nome, tipo, total, nLanc }
+
+  // 1. Movimentacoes de saída
+  (db.movimentacoes||[]).forEach(m=>{
+    if(m.tipo!=='saida') return;
+    if(!dentroDoFiltro(m.dataMovimento)) return;
+    const id = m.centroCustoId||0;
+    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
+    mapa[id].total  += m.valor||0;
+    mapa[id].nLanc  += 1;
+  });
+
+  // 2. Contas a pagar pagas
+  (db.contasPagar||[]).forEach(p=>{
+    if(p.status!=='pago') return;
+    if(!dentroDoFiltro(p.dataPagamento)) return;
+    const id = p.centroCustoId||0;
+    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
+    mapa[id].total  += p.valor||0;
+    mapa[id].nLanc  += 1;
+  });
+
+  // 3. OS Custos
+  (db.osCustos||[]).forEach(c=>{
+    if(!dentroDoFiltro(c.data)) return;
+    const id = c.centroCustoId||0;
+    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
+    mapa[id].total  += c.valor||0;
+    mapa[id].nLanc  += 1;
+  });
+
+  // Enriquece com dados do CC
+  const CCs = db.centrosCusto||[];
+  const linhas = Object.entries(mapa).map(([idStr, v])=>{
+    const id = Number(idStr);
+    const cc = CCs.find(x=>x.id===id);
+    return {
+      id, nome: cc?.nome||'(sem centro)', tipo: cc?.tipo||'variavel',
+      total: v.total, nLanc: v.nLanc
+    };
+  }).filter(l=>l.total>0);
+
+  // Ordena: fixo primeiro, depois por valor desc
+  linhas.sort((a,b)=>{
+    if(a.tipo!==b.tipo) return a.tipo==='fixo'?-1:1;
+    return b.total - a.total;
+  });
+
+  const totalGeral  = linhas.reduce((s,l)=>s+l.total, 0);
+  const totalFixo   = linhas.filter(l=>l.tipo==='fixo').reduce((s,l)=>s+l.total,0);
+  const totalVar    = linhas.filter(l=>l.tipo==='variavel').reduce((s,l)=>s+l.total,0);
+  const nLancTotal  = linhas.reduce((s,l)=>s+l.nLanc,0);
+  const maiorValor  = linhas.reduce((m,l)=>l.total>m?l.total:m, 0);
+
+  // Stats
+  statsEl.innerHTML = `
+    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totalGeral)||'R$ 0,00'}</div><div class="l">Total Gasto</div></div>
+    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totalFixo)||'R$ 0,00'}</div><div class="l">🏢 Fixo</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totalVar)||'R$ 0,00'}</div><div class="l">🏗️ Variável</div></div>
+    <div class="stat"><div class="n">${nLancTotal}</div><div class="l">Lançamento${nLancTotal!==1?'s':''}</div></div>`;
+
+  if(!linhas.length){
+    corpoEl.innerHTML = `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">📊</div>
+      <div style="font-weight:600">Nenhum lançamento no período</div>
+      <div style="font-size:13px;margin-top:6px">Tente selecionar um período maior.</div>
+    </div>`;
+    return;
+  }
+
+  // Agrupa por tipo para renderizar com cabeçalhos
+  let lastTipo = null;
+  const rows = linhas.map(l=>{
+    const isFixo  = l.tipo==='fixo';
+    const pct     = maiorValor > 0 ? (l.total/maiorValor)*100 : 0;
+    const barCor  = isFixo ? '#1565c0' : '#2e7d32';
+    const bgCor   = isFixo ? '#dbeafe' : '#dcfce7';
+    let hdr = '';
+    if(l.tipo !== lastTipo){
+      lastTipo = l.tipo;
+      hdr = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
+               letter-spacing:.5px;padding:14px 0 6px">${isFixo?'🏢 Custos Fixos (Overhead)':'🏗️ Custos Variáveis (Projetos)'}</div>`;
+    }
+    return `${hdr}
+    <div style="display:grid;grid-template-columns:220px 1fr 110px 70px;align-items:center;
+      gap:12px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${bgCor}">
+      <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+        title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
+      <div style="position:relative;height:8px;background:rgba(0,0,0,.08);border-radius:4px">
+        <div style="position:absolute;left:0;top:0;height:100%;border-radius:4px;
+          background:${barCor};width:${pct.toFixed(1)}%;transition:width .3s"></div>
+      </div>
+      <div style="text-align:right;font-weight:700;font-size:13px;color:#b71c1c">${fmtMoney(l.total)}</div>
+      <div style="text-align:center;font-size:12px;color:var(--muted)">${l.nLanc} lanç.</div>
+    </div>`;
+  }).join('');
+
+  corpoEl.innerHTML = `<div>${rows}</div>`;
+}
+
 function renderFinanceiroPainel(){
   if(!document.getElementById('fin-tbody')) return;
   const hoje = new Date().toISOString().slice(0,10);
@@ -3424,6 +3562,7 @@ function ativarView(viewId){
   if(viewId==='auditoria') carregarLogs();
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
+  if(viewId==='fin-painel')          renderCCPainel();
   if(viewId==='fin-contas-receber') renderFinanceiroPainel();
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
@@ -13107,7 +13246,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); }
 load();
 atualizarMarca();
 (async function(){
