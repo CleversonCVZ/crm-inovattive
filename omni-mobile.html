@@ -534,7 +534,7 @@ async function carregarDados(){
 
   if(grupo.acessoComercial || grupo.admin){
     promises.push(
-      sb.from('clientes').select('id,nome,cidade,telefone,email,ativo').order('nome').then(r=>{db.clientes=r.data||[];}),
+      sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
       sb.from('cards').select('id,num,cliente_id,fase_id,historico').order('id',{ascending:false}).then(r=>{db.cards=r.data||[];}),
       sb.from('fases').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
       sb.from('propostas').select('id,numero,card_id,cliente_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];})
@@ -542,7 +542,7 @@ async function carregarDados(){
   }
   if(grupo.acessoTecnico || grupo.admin){
     promises.push(
-      sb.from('obras').select('id,nome,cliente_id,status,data_inicio,endereco,cidade,estado').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
+      sb.from('obras').select('*').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
       sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado').order('data_agend',{ascending:false}).then(r=>{db.os=r.data||[];}),
       sb.from('os_diario').select('*').order('data',{ascending:false}).then(r=>{db.osDiario=r.data||[];}),
       sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];})
@@ -550,7 +550,7 @@ async function carregarDados(){
     // clientes e fases também para técnico (nome da OS)
     if(!grupo.acessoComercial){
       promises.push(
-        sb.from('clientes').select('id,nome,cidade,telefone').order('nome').then(r=>{db.clientes=r.data||[];}),
+        sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
         sb.from('fases').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];})
       );
     }
