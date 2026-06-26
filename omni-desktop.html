@@ -9263,23 +9263,32 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             <th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:55px">Un</th>
             <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Vl. Unit.</th>
             <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Total</th>
+            <th style="text-align:center;padding:6px 4px;border-bottom:2px solid var(--border);width:46px;font-size:11px;color:var(--muted)" title="Mostrar valor no PDF">PDF</th>
             ${!os.fechada?`<th style="width:36px;border-bottom:2px solid var(--border)"></th>`:''}
           </tr>
         </thead>
         <tbody>
-          ${itens.map((it,i)=>`
+          ${itens.map((it,i)=>{
+            const exibir = it.exibirValorPDF !== false;
+            return `
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:7px 8px">${it.descricao||'—'}</td>
               <td style="text-align:center;padding:7px 8px">${it.qtd||1}</td>
               <td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'}</td>
+              <td style="text-align:center;padding:7px 4px">
+                <input type="checkbox" ${exibir?'checked':''} title="${exibir?'Valor visível no PDF':'Valor oculto no PDF'}"
+                  onchange="toggleValorPDFAVL(${osId},${i},${cardId},this.checked)"
+                  style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)">
+              </td>
               ${!os.fechada?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button></td>`:''}
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
         <tfoot>
           <tr style="background:var(--surface)">
-            <td colspan="${os.fechada?4:5}" style="text-align:right;padding:8px;font-weight:700">Total:</td>
+            <td colspan="${os.fechada?5:6}" style="text-align:right;padding:8px;font-weight:700">Total:</td>
             <td style="text-align:right;padding:8px;font-weight:700;color:var(--primary)">${fmtMoney(total)}</td>
             ${!os.fechada?'<td></td>':''}
           </tr>
@@ -9658,18 +9667,22 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
     doc.text('ITENS / MATERIAIS', M, y);
     y += 3;
     const total = itens.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    const mostrarTotal = itens.some(it=>it.exibirValorPDF!==false && it.valorUnit!=null);
     doc.autoTable({
       startY: y,
       margin:{left:M,right:M},
       head:[['Descrição','Qtd','Un','Vl. Unit.','Total']],
-      body: itens.map(it=>[
-        it.descricao||'—',
-        String(it.qtd||1),
-        it.unit||'un',
-        it.valorUnit!=null?fmtMoney(it.valorUnit):'—',
-        it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'
-      ]),
-      foot:[['','','','Total:', fmtMoney(total)]],
+      body: itens.map(it=>{
+        const exibir = it.exibirValorPDF !== false;
+        return [
+          it.descricao||'—',
+          String(it.qtd||1),
+          it.unit||'un',
+          (exibir && it.valorUnit!=null) ? fmtMoney(it.valorUnit) : '—',
+          (exibir && it.valorUnit!=null) ? fmtMoney((it.valorUnit||0)*(it.qtd||1)) : '—'
+        ];
+      }),
+      foot:[['','','','Total:', mostrarTotal ? fmtMoney(total) : '—']],
       headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
       footStyles:{fillColor:[235,235,235],fontStyle:'bold',fontSize:9,textColor:[30,30,30]},
       bodyStyles:{fontSize:9},
@@ -9778,6 +9791,16 @@ function removerItemAVL(osId, idx, cardId){
   os.produtos.splice(idx,1);
   registrarLog('excluir','os',osId,`Item removido da O.S. ${os.numero}: ${item?.descricao||'?'}`);
   save(); abrirVerOSAvulsa(osId, cardId, 'itens');
+}
+
+function toggleValorPDFAVL(osId, idx, cardId, exibir){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os?.produtos?.[idx]) return;
+  os.produtos[idx].exibirValorPDF = exibir;
+  save();
+  // atualiza só o tooltip do checkbox sem re-renderizar a aba
+  const cb = document.querySelectorAll('input[type=checkbox][onchange*="toggleValorPDFAVL"]')[idx];
+  if(cb) cb.title = exibir ? 'Valor visível no PDF' : 'Valor oculto no PDF';
 }
 
 /* =============== FIM OS AVULSA =============== */
