@@ -5474,11 +5474,11 @@ function abrirEditarContaCorrente(id){
     <div class="aba-corpo">${_ccFormHTML(c)}</div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
-        <button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>
         <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${id})">📋 Extrato</button>
         <button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>
       </div>
       <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>
         <button class="btn neutral" onclick="fecharModal()">Fechar</button>
         <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaCorrente(${id})">Salvar</button>
       </div>
@@ -6656,10 +6656,10 @@ function abrirEditarContaPagar(id){
     </div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
-        <button class="btn danger" onclick="excluirContaPagar(${id})">Excluir</button>
         ${p.status!=='pago'?`<button class="btn primary" onclick="fecharModal();abrirPagarConta(${id})">✅ Pagar</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="excluirContaPagar(${id})">Excluir</button>
         <button class="btn neutral" onclick="fecharModal()">Fechar</button>
         <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaPagar(${id})">Salvar</button>
       </div>
@@ -11854,9 +11854,10 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
       <div><label>Status</label><select id="o-status" style="width:100%">${statusOpts}</select></div>
     </div>
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
-    <div class="actions">
-      ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
-      <div style="display:flex;gap:8px;margin-left:auto">
+    <div class="actions" style="justify-content:space-between">
+      <div></div>
+      <div style="display:flex;gap:8px">
+        ${o?`<button class="btn danger" onclick="excluirObra(${o.id},${clienteId},${returnCardId??'null'})">Excluir</button>`:''}
         <button class="btn neutral" onclick="${returnCardId?`abrirEditarCartao(${returnCardId},'obras')`:`abrirEditarCliente(${clienteId})`}">← Voltar ${returnCardId?'ao cartão':'ao cliente'}</button>
         <button class="btn primary" onclick="salvarObra(${o?o.id:'null'},${clienteId},${returnCardId??'null'})">Salvar</button>
       </div>
