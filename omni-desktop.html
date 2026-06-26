@@ -9278,7 +9278,8 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'}</td>
               <td style="text-align:center;padding:7px 4px">
-                <input type="checkbox" ${exibir?'checked':''} title="${exibir?'Valor visível no PDF':'Valor oculto no PDF'}"
+                <input type="checkbox" ${exibir?'checked':''} ${os.fechada?'disabled':''}
+                  title="${exibir?'Valor visível no PDF':'Valor oculto no PDF'}"
                   onchange="toggleValorPDFAVL(${osId},${i},${cardId},this.checked)"
                   style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)">
               </td>
