@@ -9665,8 +9665,11 @@ async function confirmarLancarCustoComoCP(custoId, osId, cardId){
   const btn = btnModalPrimario();
   btnSalvando(btn);
 
+  const novoId = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+
   // Insert direto em contas_pagar
   const payload = {
+    id: novoId,
     descricao: descricaoCP,
     valor: custo.valor,
     data_vencimento: venc,
