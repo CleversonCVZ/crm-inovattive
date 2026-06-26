@@ -651,18 +651,23 @@
   <!-- FINANCEIRO: PAINEL -->
   <div class="view" id="view-fin-painel">
     <div class="bar">
-      <h2>Painel — Centros de Custo</h2>
+      <h2>Financeiro — Painel</h2>
       <div class="spacer"></div>
-      <select id="ccpainel-periodo" onchange="renderCCPainel()"
-        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+      <select id="finpainel-vista" onchange="renderFinPainel()"
+        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-weight:600">
+        <option value="cc">Visualização: Centros de Custo</option>
+        <option value="cp">Visualização: Contas a Pagar</option>
+      </select>
+      <select id="finpainel-periodo" onchange="renderFinPainel()"
+        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-left:8px">
         <option value="mes">Este mês</option>
         <option value="trim">Este trimestre</option>
         <option value="ano">Este ano</option>
         <option value="tudo">Todo o período</option>
       </select>
     </div>
-    <div class="stats" id="ccpainel-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
-    <div id="ccpainel-corpo"></div>
+    <div class="stats" id="finpainel-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
+    <div id="finpainel-corpo"></div>
   </div>
 
   <!-- FINANCEIRO: CENTROS DE CUSTO -->
@@ -2195,134 +2200,173 @@ function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || 
  * - Os totalizadores (cards de stat) são sempre calculados sobre o total geral,
  *   independentemente dos filtros ativos, para dar visão consolidada.
  */
-/**
- * Painel analítico de Centros de Custo.
- * Agrega: movimentacoes (saída) + contas_pagar (pagas) + os_custos — por centroCustoId.
- * Filtra por período selecionado. Exibe stats totais + tabela com barra de progresso.
- */
-function renderCCPainel(){
-  const statsEl = document.getElementById('ccpainel-stats');
-  const corpoEl = document.getElementById('ccpainel-corpo');
-  if(!statsEl || !corpoEl) return;
-
-  const periodo = (document.getElementById('ccpainel-periodo')||{}).value||'mes';
-  const hoje    = new Date();
-  const anoAtual = hoje.getFullYear();
-  const mesAtual = hoje.getMonth(); // 0-based
-
-  function dentroDoFiltro(dataStr){
-    if(!dataStr) return periodo === 'tudo';
-    const d = new Date(dataStr);
-    if(isNaN(d)) return false;
-    if(periodo === 'tudo') return true;
-    if(periodo === 'ano')  return d.getFullYear() === anoAtual;
-    if(periodo === 'trim'){
-      const tri = Math.floor(mesAtual/3);
-      return d.getFullYear()===anoAtual && Math.floor(d.getMonth()/3)===tri;
-    }
-    // mes
-    return d.getFullYear()===anoAtual && d.getMonth()===mesAtual;
+/** Helper de filtro de período — usado pelos sub-renderers do painel financeiro */
+function _finPainelDentroFiltro(dataStr, periodo){
+  if(!dataStr) return periodo === 'tudo';
+  const d = new Date(dataStr);
+  if(isNaN(d)) return false;
+  if(periodo === 'tudo') return true;
+  const hoje = new Date();
+  const ano  = hoje.getFullYear();
+  const mes  = hoje.getMonth();
+  if(periodo === 'ano')  return d.getFullYear() === ano;
+  if(periodo === 'trim'){
+    const tri = Math.floor(mes/3);
+    return d.getFullYear()===ano && Math.floor(d.getMonth()/3)===tri;
   }
+  return d.getFullYear()===ano && d.getMonth()===mes;
+}
 
-  // Agrega por centroCustoId
-  const mapa = {}; // id -> { nome, tipo, total, nLanc }
+/** Dispatcher principal do Painel Financeiro */
+function renderFinPainel(){
+  const statsEl = document.getElementById('finpainel-stats');
+  const corpoEl = document.getElementById('finpainel-corpo');
+  if(!statsEl || !corpoEl) return;
+  const vista   = (document.getElementById('finpainel-vista')||{}).value||'cc';
+  const periodo = (document.getElementById('finpainel-periodo')||{}).value||'mes';
+  statsEl.innerHTML = '';
+  corpoEl.innerHTML = '';
+  if(vista === 'cc') _finPainelCC(statsEl, corpoEl, periodo);
+  if(vista === 'cp') _finPainelCP(statsEl, corpoEl, periodo);
+}
+// Alias para compatibilidade com router e renderAll
+function renderCCPainel(){ renderFinPainel(); }
 
-  // 1. Movimentacoes de saída
+/** Sub-renderer: Centros de Custo */
+function _finPainelCC(statsEl, corpoEl, periodo){
+  const mapa = {};
+  // Movimentações de saída
   (db.movimentacoes||[]).forEach(m=>{
     if(m.tipo!=='saida') return;
-    if(!dentroDoFiltro(m.dataMovimento)) return;
+    if(!_finPainelDentroFiltro(m.dataMovimento, periodo)) return;
     const id = m.centroCustoId||0;
-    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
-    mapa[id].total  += m.valor||0;
-    mapa[id].nLanc  += 1;
+    if(!mapa[id]) mapa[id]={total:0,nLanc:0};
+    mapa[id].total+=m.valor||0; mapa[id].nLanc++;
   });
-
-  // 2. Contas a pagar pagas
+  // Contas a pagar pagas
   (db.contasPagar||[]).forEach(p=>{
     if(p.status!=='pago') return;
-    if(!dentroDoFiltro(p.dataPagamento)) return;
+    if(!_finPainelDentroFiltro(p.dataPagamento, periodo)) return;
     const id = p.centroCustoId||0;
-    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
-    mapa[id].total  += p.valor||0;
-    mapa[id].nLanc  += 1;
+    if(!mapa[id]) mapa[id]={total:0,nLanc:0};
+    mapa[id].total+=p.valor||0; mapa[id].nLanc++;
   });
-
-  // 3. OS Custos
+  // OS Custos
   (db.osCustos||[]).forEach(c=>{
-    if(!dentroDoFiltro(c.data)) return;
+    if(!_finPainelDentroFiltro(c.data, periodo)) return;
     const id = c.centroCustoId||0;
-    if(!mapa[id]) mapa[id] = {total:0, nLanc:0};
-    mapa[id].total  += c.valor||0;
-    mapa[id].nLanc  += 1;
+    if(!mapa[id]) mapa[id]={total:0,nLanc:0};
+    mapa[id].total+=c.valor||0; mapa[id].nLanc++;
   });
 
-  // Enriquece com dados do CC
   const CCs = db.centrosCusto||[];
-  const linhas = Object.entries(mapa).map(([idStr, v])=>{
-    const id = Number(idStr);
-    const cc = CCs.find(x=>x.id===id);
-    return {
-      id, nome: cc?.nome||'(sem centro)', tipo: cc?.tipo||'variavel',
-      total: v.total, nLanc: v.nLanc
-    };
-  }).filter(l=>l.total>0);
+  const linhas = Object.entries(mapa).map(([idStr,v])=>{
+    const id=Number(idStr); const cc=CCs.find(x=>x.id===id);
+    return {nome:cc?.nome||'(sem centro)',tipo:cc?.tipo||'variavel',total:v.total,nLanc:v.nLanc};
+  }).filter(l=>l.total>0).sort((a,b)=>a.tipo!==b.tipo?a.tipo==='fixo'?-1:1:b.total-a.total);
 
-  // Ordena: fixo primeiro, depois por valor desc
-  linhas.sort((a,b)=>{
-    if(a.tipo!==b.tipo) return a.tipo==='fixo'?-1:1;
-    return b.total - a.total;
-  });
+  const totGeral=linhas.reduce((s,l)=>s+l.total,0);
+  const totFixo =linhas.filter(l=>l.tipo==='fixo').reduce((s,l)=>s+l.total,0);
+  const totVar  =linhas.filter(l=>l.tipo==='variavel').reduce((s,l)=>s+l.total,0);
+  const nTotal  =linhas.reduce((s,l)=>s+l.nLanc,0);
+  const maior   =linhas.reduce((m,l)=>l.total>m?l.total:m,0);
 
-  const totalGeral  = linhas.reduce((s,l)=>s+l.total, 0);
-  const totalFixo   = linhas.filter(l=>l.tipo==='fixo').reduce((s,l)=>s+l.total,0);
-  const totalVar    = linhas.filter(l=>l.tipo==='variavel').reduce((s,l)=>s+l.total,0);
-  const nLancTotal  = linhas.reduce((s,l)=>s+l.nLanc,0);
-  const maiorValor  = linhas.reduce((m,l)=>l.total>m?l.total:m, 0);
+  statsEl.innerHTML=`
+    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">Total Gasto</div></div>
+    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totFixo)||'R$ 0,00'}</div><div class="l">🏢 Fixo</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totVar)||'R$ 0,00'}</div><div class="l">🏗️ Variável</div></div>
+    <div class="stat"><div class="n">${nTotal}</div><div class="l">Lançamento${nTotal!==1?'s':''}</div></div>`;
 
-  // Stats
-  statsEl.innerHTML = `
-    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totalGeral)||'R$ 0,00'}</div><div class="l">Total Gasto</div></div>
-    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totalFixo)||'R$ 0,00'}</div><div class="l">🏢 Fixo</div></div>
-    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totalVar)||'R$ 0,00'}</div><div class="l">🏗️ Variável</div></div>
-    <div class="stat"><div class="n">${nLancTotal}</div><div class="l">Lançamento${nLancTotal!==1?'s':''}</div></div>`;
+  if(!linhas.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
 
-  if(!linhas.length){
-    corpoEl.innerHTML = `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
-      <div style="font-size:32px;margin-bottom:12px">📊</div>
-      <div style="font-weight:600">Nenhum lançamento no período</div>
-      <div style="font-size:13px;margin-top:6px">Tente selecionar um período maior.</div>
-    </div>`;
-    return;
-  }
-
-  // Agrupa por tipo para renderizar com cabeçalhos
-  let lastTipo = null;
-  const rows = linhas.map(l=>{
-    const isFixo  = l.tipo==='fixo';
-    const pct     = maiorValor > 0 ? (l.total/maiorValor)*100 : 0;
-    const barCor  = isFixo ? '#1565c0' : '#2e7d32';
-    const bgCor   = isFixo ? '#dbeafe' : '#dcfce7';
-    let hdr = '';
-    if(l.tipo !== lastTipo){
-      lastTipo = l.tipo;
-      hdr = `<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;
-               letter-spacing:.5px;padding:14px 0 6px">${isFixo?'🏢 Custos Fixos (Overhead)':'🏗️ Custos Variáveis (Projetos)'}</div>`;
-    }
-    return `${hdr}
-    <div style="display:grid;grid-template-columns:220px 1fr 110px 70px;align-items:center;
-      gap:12px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${bgCor}">
-      <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-        title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
+  let lastTipo=null;
+  corpoEl.innerHTML='<div>'+linhas.map(l=>{
+    const isFixo=l.tipo==='fixo';
+    const pct=maior>0?(l.total/maior)*100:0;
+    const barCor=isFixo?'#1565c0':'#2e7d32';
+    const bgCor =isFixo?'#dbeafe':'#dcfce7';
+    let hdr='';
+    if(l.tipo!==lastTipo){ lastTipo=l.tipo;
+      hdr=`<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 6px">${isFixo?'🏢 Custos Fixos (Overhead)':'🏗️ Custos Variáveis (Projetos)'}</div>`; }
+    return `${hdr}<div style="display:grid;grid-template-columns:220px 1fr 110px 70px;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${bgCor}">
+      <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
       <div style="position:relative;height:8px;background:rgba(0,0,0,.08);border-radius:4px">
-        <div style="position:absolute;left:0;top:0;height:100%;border-radius:4px;
-          background:${barCor};width:${pct.toFixed(1)}%;transition:width .3s"></div>
-      </div>
+        <div style="position:absolute;left:0;top:0;height:100%;border-radius:4px;background:${barCor};width:${pct.toFixed(1)}%"></div></div>
       <div style="text-align:right;font-weight:700;font-size:13px;color:#b71c1c">${fmtMoney(l.total)}</div>
       <div style="text-align:center;font-size:12px;color:var(--muted)">${l.nLanc} lanç.</div>
     </div>`;
-  }).join('');
+  }).join('')+'</div>';
+}
 
-  corpoEl.innerHTML = `<div>${rows}</div>`;
+/** Sub-renderer: Contas a Pagar */
+function _finPainelCP(statsEl, corpoEl, periodo){
+  const lista = (db.contasPagar||[]).filter(p=>_finPainelDentroFiltro(p.dataVencimento, periodo));
+
+  const totTotal    = lista.reduce((s,p)=>s+p.valor,0);
+  const totPago     = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
+  const totPendente = lista.filter(p=>p.status==='pendente').reduce((s,p)=>s+p.valor,0);
+  const hoje        = new Date().toISOString().slice(0,10);
+  const totVencido  = lista.filter(p=>p.status==='pendente'&&p.dataVencimento&&p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
+
+  statsEl.innerHTML=`
+    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ Pago</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
+    ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
+
+  if(!lista.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
+
+  // Agrupa por fornecedor
+  const mapaForn={};
+  lista.forEach(p=>{
+    const fId=p.fornecedorId||0;
+    if(!mapaForn[fId]) mapaForn[fId]={total:0,pago:0,pendente:0,vencido:0,n:0};
+    mapaForn[fId].total+=p.valor;
+    mapaForn[fId].n++;
+    if(p.status==='pago') mapaForn[fId].pago+=p.valor;
+    else{
+      mapaForn[fId].pendente+=p.valor;
+      if(p.dataVencimento&&p.dataVencimento<hoje) mapaForn[fId].vencido+=p.valor;
+    }
+  });
+
+  const fornLinhas=Object.entries(mapaForn).map(([idStr,v])=>{
+    const id=Number(idStr);
+    const forn=(db.fornecedores||[]).find(f=>f.id===id);
+    return {nome:forn?.nome||'(sem fornecedor)',...v};
+  }).sort((a,b)=>b.total-a.total);
+
+  const maiorF=fornLinhas.reduce((m,l)=>l.total>m?l.total:m,0);
+
+  corpoEl.innerHTML=`
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:0 0 8px">Por Fornecedor</div>
+    <div>${fornLinhas.map(l=>{
+      const pct=maiorF>0?(l.total/maiorF)*100:0;
+      const temVenc=l.vencido>0;
+      return `<div style="display:grid;grid-template-columns:200px 1fr 110px 90px 90px 70px;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${temVenc?'#fff1f2':'var(--surface)'}">
+        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
+        <div style="position:relative;height:8px;background:rgba(0,0,0,.08);border-radius:4px">
+          <div style="position:absolute;left:0;top:0;height:100%;border-radius:4px;background:#b71c1c;width:${pct.toFixed(1)}%"></div></div>
+        <div style="text-align:right;font-weight:700;font-size:13px;color:#b71c1c">${fmtMoney(l.total)}</div>
+        <div style="text-align:right;font-size:12px;color:#2e7d32">${l.pago?fmtMoney(l.pago):''}</div>
+        <div style="text-align:right;font-size:12px;color:${temVenc?'#c62828':'#e65100'}">${l.pendente?fmtMoney(l.pendente):''}</div>
+        <div style="text-align:center;font-size:12px;color:var(--muted)">${l.n} lanç.</div>
+      </div>`;
+    }).join('')}</div>
+    <div style="display:grid;grid-template-columns:200px 1fr 110px 90px 90px 70px;gap:10px;padding:4px 14px;font-size:11px;color:var(--muted);margin-top:4px">
+      <div></div><div></div><div style="text-align:right">Total</div>
+      <div style="text-align:right;color:#2e7d32">Pago</div>
+      <div style="text-align:right;color:#e65100">Pendente</div>
+      <div style="text-align:center">Qtd</div>
+    </div>`;
+}
+
+function _finPainelVazio(){
+  return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
+    <div style="font-size:32px;margin-bottom:12px">📊</div>
+    <div style="font-weight:600">Nenhum lançamento no período</div>
+    <div style="font-size:13px;margin-top:6px">Tente selecionar um período maior.</div>
+  </div>`;
 }
 
 function renderFinanceiroPainel(){
