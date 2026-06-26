@@ -6206,18 +6206,18 @@ function abrirNovoFornecedor(opts={}){
         ${_fornFormHTML({})}
       </div>
       <div class="actions rodape-cartao">
-        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+        <button class="btn neutral" onclick="fecharModal()">← Cancelar</button>
         <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(null)">Salvar</button>
       </div>`, 'cartao');
   } else {
-    // Modo callback (vindo de Contas a Pagar): modal simples sem abas
+    // Modo callback (vindo de Contas a Pagar): mesmo padrão cartão, sem abas
     abrirModal(`
-      <div class="modal-header"><h3>🏭 Novo Fornecedor</h3></div>
-      <div class="modal-body" style="display:grid;gap:12px">
+      <h3>Novo Fornecedor</h3>
+      <div class="aba-corpo" style="display:grid;gap:14px">
         ${_fornFormHTML({})}
       </div>
-      <div class="modal-footer">
-        <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <div class="actions rodape-cartao">
+        <button class="btn neutral" onclick="fecharModal()">← Cancelar</button>
         <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor('${cbId}')">Salvar</button>
       </div>`, 'cartao');
   }
