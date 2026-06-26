@@ -669,7 +669,7 @@
     </p>
     <div id="cc-seed-banner"></div>
     <table class="fases-table" id="cc-table" style="display:none">
-      <thead><tr><th style="width:44px">ID</th><th>Nome</th><th>Descrição</th><th style="width:140px">Tipo</th><th style="width:60px;text-align:center">Ativo</th><th style="width:44px"></th></tr></thead>
+      <thead><tr><th style="width:44px">ID</th><th>Nome</th><th style="width:140px">Tipo</th><th style="width:110px;text-align:center">Lançamentos</th><th style="width:52px;text-align:center">Ativo</th><th style="width:44px"></th></tr></thead>
       <tbody id="cc-tbody"></tbody>
     </table>
   </div>
@@ -5137,6 +5137,10 @@ function renderCentrosCusto(){
     const cor  = c.tipo === 'fixo' ? COR_FIXO : COR_VAR;
     const corT = c.tipo === 'fixo' ? COR_FIXO_T : COR_VAR_T;
     const lock = c.protegido;
+    const nLanc = ((db.movimentacoes||[]).filter(m=>m.centroCustoId===c.id).length)
+                + ((db.contasPagar||[]).filter(p=>p.centroCustoId===c.id).length)
+                + ((db.osCustos||[]).filter(o=>o.centroCustoId===c.id).length);
+    const tooltipDesc = c.descricao ? ` title="${escHtml(c.descricao)}"` : '';
     const tr = document.createElement('tr');
     tr.className = 'fase-row';
     tr.style.background = cor;
@@ -5147,15 +5151,9 @@ function renderCentrosCusto(){
       <td>
         ${lock
           ? `<span onclick="alert('⚠️ Centro de custo de sistema — o nome não pode ser alterado.')"
-               style="cursor:pointer">${escHtml(c.nome)}</span>
+               style="cursor:pointer"${tooltipDesc}>${escHtml(c.nome)}</span>
              <small title="Protegido pelo sistema" style="margin-left:4px">🔒</small>`
-          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome">`
-        }
-      </td>
-      <td>
-        ${lock
-          ? `<span style="font-weight:400">${escHtml(c.descricao||'')}</span>`
-          : `<input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="font-weight:400;max-width:380px">`
+          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome"${tooltipDesc}>`
         }
       </td>
       <td>
@@ -5167,6 +5165,7 @@ function renderCentrosCusto(){
              </select>`
         }
       </td>
+      <td style="text-align:center;font-weight:700">${nLanc||'—'}</td>
       <td style="text-align:center">
         <input type="checkbox" ${c.ativo?'checked':''} data-id="${c.id}" data-campo="ativo"
           title="Ativo" style="width:16px;height:16px;cursor:pointer" ${lock?'disabled':''}>
