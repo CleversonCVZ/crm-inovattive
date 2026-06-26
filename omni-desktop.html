@@ -2311,7 +2311,7 @@ function _finPainelCP(statsEl, corpoEl, periodo){
     <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ Pago</div></div>
     <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
-    ${totCondicional?`<div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totCondicional)}</div><div class="l">⏸ Condicional</div></div>`:''}
+    ${totCondicional?`<div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totCondicional)}</div><div class="l">⏳ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
 
   if(!lista.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
@@ -6668,7 +6668,7 @@ function renderContasPagar(){
     const statusBadge = pago
       ? `<span style="color:#2e7d32;font-weight:700">✔ Pago</span>`
       : cond
-        ? `<span style="color:#1565c0;font-weight:600">⏸ Aguardando</span>`
+        ? `<span style="color:#e65100">⏳ Pendente</span>`
         : vencida
           ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
           : `<span style="color:#e65100">⏳ Pendente</span>`;
