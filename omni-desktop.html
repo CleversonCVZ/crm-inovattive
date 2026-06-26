@@ -1442,6 +1442,7 @@ function load(){
   if(!Array.isArray(db.contasPagar))     db.contasPagar=[];
   if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
   if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
+  if(!Array.isArray(db.osCustos))          db.osCustos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
@@ -1625,7 +1626,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1650,7 +1651,8 @@ async function carregarDadosSupabase(){
       sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
       sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true}),
       sb.from('fornecedores').select('*').order('nome'),
-      sb.from('fornecedor_contatos').select('*').order('id')
+      sb.from('fornecedor_contatos').select('*').order('id'),
+      sb.from('os_custos').select('*').order('created_at', {ascending:false})
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1861,6 +1863,14 @@ async function carregarDadosSupabase(){
         cargo:c.cargo||'', telefone:c.telefone||'', email:c.email||'',
         criadoEm:c.created_at||''
       }));
+    if(osCustos.data)
+      db.osCustos = osCustos.data.map(c=>({
+        id:c.id, osId:Number(c.os_id), descricao:c.descricao||'',
+        valor:Number(c.valor)||0,
+        data:c.data ? c.data.slice(0,10) : '',
+        centroCustoId:c.centro_custo_id ? Number(c.centro_custo_id) : null,
+        criadoEm:c.created_at||''
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -2057,6 +2067,11 @@ function syncDadosSupabase(){
     await sincronizarTabela('fornecedor_contatos', db.fornecedorContatos||[], c=>({
       id:c.id, fornecedor_id:c.fornecedorId, nome:c.nome||'',
       cargo:c.cargo||null, telefone:c.telefone||null, email:c.email||null
+    }));
+    await sincronizarTabela('os_custos', db.osCustos||[], c=>({
+      id:c.id, os_id:Number(c.osId), descricao:c.descricao||'',
+      valor:c.valor||0, data:c.data||null,
+      centro_custo_id:c.centroCustoId ? Number(c.centroCustoId) : null
     }));
   }, 800);
 }
@@ -9334,6 +9349,84 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         </div>
       </div>`:''}`;
   }
+  else if(aba === 'custos'){
+    const custos = (db.osCustos||[]).filter(c=>Number(c.osId)===osId);
+    const totalReceita = (os.produtos||[]).reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    const totalCustos  = custos.reduce((s,c)=>s+(c.valor||0),0);
+    const resultado    = totalReceita - totalCustos;
+    const resCor       = resultado >= 0 ? '#1b5e20' : '#b71c1c';
+
+    tabContent = `
+      ${custos.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <thead>
+          <tr style="background:var(--surface)">
+            <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Descrição</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Data</th>
+            <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Centro de Custo</th>
+            <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:100px">Valor</th>
+            ${!os.fechada?`<th style="width:36px;border-bottom:2px solid var(--border)"></th>`:''}
+          </tr>
+        </thead>
+        <tbody>
+          ${custos.map(c=>{
+            const cc = db.centrosCusto ? db.centrosCusto.find(x=>x.id===c.centroCustoId) : null;
+            return `<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:7px 8px">${c.descricao||'—'}</td>
+              <td style="padding:7px 8px">${c.data?fmtDia2(c.data):'—'}</td>
+              <td style="padding:7px 8px;font-size:12px;color:var(--muted)">${cc?cc.nome:'—'}</td>
+              <td style="text-align:right;padding:7px 8px;color:#b71c1c">${fmtMoney(c.valor)}</td>
+              ${!os.fechada?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="excluirOSCusto(${c.id},${osId},${cardId})">🗑</button></td>`:''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background:var(--surface)">
+            <td colspan="${os.fechada?3:4}" style="text-align:right;padding:8px;font-weight:700">Total custos:</td>
+            <td style="text-align:right;padding:8px;font-weight:700;color:#b71c1c">${fmtMoney(totalCustos)}</td>
+            ${!os.fechada?'<td></td>':''}
+          </tr>
+        </tfoot>
+      </table>` : '<div style="font-size:13px;color:var(--muted);margin-bottom:16px">Nenhum custo lançado.</div>'}
+
+      ${!os.fechada?`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Lançar custo</div>
+        <div class="form-row">
+          <div style="flex:2"><label>Descrição</label><input id="osc-desc" placeholder="Ex: Material, deslocamento..."></div>
+          <div style="width:120px"><label>Valor (R$)</label><input id="osc-valor" type="number" min="0" step="0.01" placeholder="0,00"></div>
+        </div>
+        <div class="form-row">
+          <div><label>Data</label><input id="osc-data" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div style="flex:2">
+            <label>Centro de Custo</label>
+            <select id="osc-cc">
+              <option value="">— Nenhum —</option>
+              ${(db.centrosCusto||[]).map(cc=>`<option value="${cc.id}">${cc.nome}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <button class="btn sm primary" style="margin-top:8px" onclick="adicionarOSCusto(${osId},${cardId})">＋ Lançar custo</button>
+      </div>`:''}
+
+      <div style="background:var(--surface);border:2px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:12px">Resultado Aparente</div>
+        <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span>📦 Receita (itens cobrados)</span>
+            <span style="font-weight:600;color:#1b5e20">${fmtMoney(totalReceita)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span>💸 Custos lançados</span>
+            <span style="font-weight:600;color:#b71c1c">${fmtMoney(totalCustos)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:2px">
+            <span style="font-weight:700;font-size:14px">Resultado</span>
+            <span style="font-weight:800;font-size:15px;color:${resCor}">${resultado>=0?'+':''}${fmtMoney(resultado)}</span>
+          </div>
+        </div>
+      </div>`;
+  }
   else if(aba === 'historico'){
     const hist = (os.historico||[]).slice().sort((a,b)=>{
       if(!a.data&&!b.data) return 0; if(!a.data) return 1; if(!b.data) return -1;
@@ -9374,6 +9467,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-shrink:0;flex-wrap:wrap">
       ${tabBtn('geral','⚙️ Geral')}
       ${tabBtn('itens','📦 Itens'+(os.produtos?.length?` (${os.produtos.length})`:' '))}
+      ${tabBtn('custos','💸 Custos'+(((db.osCustos||[]).filter(c=>Number(c.osId)===osId).length)?` (${(db.osCustos||[]).filter(c=>Number(c.osId)===osId).length})`:' '))}
       ${tabBtn('fotos','📷 Fotos'+(os.imagens?.length?` (${os.imagens.length})`:' '))}
       ${tabBtn('equipe','👷 Equipe'+(os.tecnicos?.length?` (${os.tecnicos.length})`:' '))}
       ${tabBtn('historico','📋 Histórico'+(os.historico?.length?` (${os.historico.length})`:' '))}
@@ -9391,6 +9485,29 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
       </div>
     </div>`, 'cartao');
+}
+
+async function adicionarOSCusto(osId, cardId){
+  const desc  = document.getElementById('osc-desc')?.value?.trim();
+  const valor = parseFloat(document.getElementById('osc-valor')?.value||'0');
+  const data  = document.getElementById('osc-data')?.value||'';
+  const ccId  = document.getElementById('osc-cc')?.value||'';
+  if(!desc){ alert('Informe a descrição do custo.'); return; }
+  if(!valor || valor <= 0){ alert('Informe um valor maior que zero.'); return; }
+  const id = await proximoIdSeguro('os_custos', db.osCustos||[]);
+  const row = { id, osId:Number(osId), descricao:desc, valor, data:data||null, centroCustoId:ccId?Number(ccId):null, criadoEm:new Date().toISOString() };
+  db.osCustos = db.osCustos||[];
+  db.osCustos.push(row);
+  save();
+  abrirVerOSAvulsa(osId, cardId, 'custos');
+}
+
+async function excluirOSCusto(custoId, osId, cardId){
+  if(!confirm('Remover este custo?')) return;
+  await excluirDoSupabase('os_custos', custoId);
+  db.osCustos = (db.osCustos||[]).filter(c=>c.id!==custoId);
+  save();
+  abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
 async function exportarPDFOSAvulsa(osId, modo='download'){
