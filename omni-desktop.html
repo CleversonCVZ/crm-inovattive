@@ -652,14 +652,11 @@
   <div class="view" id="view-fin-painel">
     <div class="bar">
       <h2>Financeiro — Painel</h2>
-      <div class="spacer"></div>
-      <select id="finpainel-vista" onchange="renderFinPainel()"
-        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-weight:600">
+      <select id="finpainel-vista" class="vista-sel" onchange="renderFinPainel()">
         <option value="cc">Visualização: Centros de Custo</option>
         <option value="cp">Visualização: Contas a Pagar</option>
       </select>
-      <select id="finpainel-periodo" onchange="renderFinPainel()"
-        style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;margin-left:8px">
+      <select id="finpainel-periodo" class="vista-sel" onchange="renderFinPainel()" style="margin-left:6px">
         <option value="mes">Este mês</option>
         <option value="trim">Este trimestre</option>
         <option value="ano">Este ano</option>
