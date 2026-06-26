@@ -9651,18 +9651,23 @@ function abrirLancarCustoComoCP(custoId, osId, cardId){
 async function confirmarLancarCustoComoCP(custoId, osId, cardId){
   const custo = (db.osCustos||[]).find(c=>c.id===custoId);
   if(!custo) return;
+  const os    = (db.ordensServico||[]).find(x=>x.id===osId);
   const fornId  = parseInt(document.getElementById('lcp-forn').value)||null;
   const venc    = document.getElementById('lcp-venc').value;
   const obs     = (document.getElementById('lcp-obs').value||'').trim();
   if(!fornId){ alert('Selecione o fornecedor.'); return; }
   if(!venc)  { alert('Informe a data de vencimento.'); return; }
 
+  const descricaoCP = os?.numero
+    ? `${custo.descricao} [${os.numero}]`
+    : custo.descricao;
+
   const btn = btnModalPrimario();
   btnSalvando(btn);
 
   // Insert direto em contas_pagar
   const payload = {
-    descricao: custo.descricao,
+    descricao: descricaoCP,
     valor: custo.valor,
     data_vencimento: venc,
     fornecedor_id: fornId,
