@@ -963,30 +963,33 @@ function abrirOS(id){
 }
 
 async function fazerCheckin(osId){
+  const id=Number(osId);
   const now=new Date().toISOString();
-  const {error}=await sb.from('ordens_servico').update({data_inicio:now}).eq('id',osId);
-  if(error){toast('Erro ao registrar check-in.');return;}
-  const o=db.os.find(x=>x.id===osId);
+  const {error}=await sb.from('ordens_servico').update({data_inicio:now}).eq('id',id);
+  if(error){alert('Erro check-in: '+error.message);return;}
+  const o=db.os.find(x=>Number(x.id)===id);
   if(o) o.data_inicio=now;
   toast('Check-in registrado ✓');
-  abrirOS(osId);
+  abrirOS(id);
 }
 
 async function fazerCheckout(osId){
+  const id=Number(osId);
   const now=new Date().toISOString();
-  const {error}=await sb.from('ordens_servico').update({data_termino:now}).eq('id',osId);
-  if(error){toast('Erro ao registrar saída.');return;}
-  const o=db.os.find(x=>x.id===osId);
+  const {error}=await sb.from('ordens_servico').update({data_termino:now}).eq('id',id);
+  if(error){alert('Erro checkout: '+error.message);return;}
+  const o=db.os.find(x=>Number(x.id)===id);
   if(o) o.data_termino=now;
   toast('Saída registrada ✓');
-  abrirOS(osId);
+  abrirOS(id);
 }
 
 async function fecharOS(osId){
   if(!confirm('Encerrar esta OS?')) return;
-  const {error}=await sb.from('ordens_servico').update({fechada:true}).eq('id',osId);
-  if(error){toast('Erro ao encerrar OS.');return;}
-  const o=db.os.find(x=>x.id===osId);
+  const id=Number(osId);
+  const {error}=await sb.from('ordens_servico').update({fechada:true}).eq('id',id);
+  if(error){alert('Erro ao encerrar: '+error.message);return;}
+  const o=db.os.find(x=>Number(x.id)===id);
   if(o) o.fechada=true;
   toast('OS encerrada ✓');
   fecharSheet();
