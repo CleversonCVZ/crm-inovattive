@@ -6210,10 +6210,15 @@ function abrirNovoFornecedor(opts={}){
         <button class="btn primary" data-btn-salvar onclick="salvarNovoFornecedor(null)">Salvar</button>
       </div>`, 'cartao');
   } else {
-    // Modo callback (vindo de Contas a Pagar): mesmo padrão cartão, sem abas
+    // Modo callback (vindo de Contas a Pagar): mesmo padrão cartão com abas
     abrirModal(`
       <h3>Novo Fornecedor</h3>
-      <div class="aba-corpo" style="display:grid;gap:14px">
+      <div class="abas">
+        <button class="aba ativa">Dados</button>
+        <button class="aba" style="opacity:.4;pointer-events:none;cursor:default" title="Salve os dados primeiro">Contatos</button>
+        <button class="aba" style="opacity:.4;pointer-events:none;cursor:default" title="Salve os dados primeiro">Pgtos</button>
+      </div>
+      <div class="aba-corpo">
         ${_fornFormHTML({})}
       </div>
       <div class="actions rodape-cartao">
