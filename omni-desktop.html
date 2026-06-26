@@ -2429,7 +2429,7 @@ function renderFinanceiroPainel(){
     return `<tr style="${r.status==='recebido'?'opacity:.7':''}">
       <td>${cl?escHtml(cl.nome):'—'}</td>
       <td>${c?`<a href="#" onclick="abrirEditarCartao(${c.id},'financeiro');return false" style="color:var(--green)">#${c.num}</a>`:'—'}</td>
-      <td style="font-size:12px">${origemLabel}</td>
+      <td><div style="font-weight:600;font-size:14px">${origemLabel}</div></td>
       <td>${escHtml(r.descricao)}</td>
       <td style="font-weight:700">${fmtMoney(r.valor)}</td>
       <td style="font-size:12px">${r.tipo==='fixo'?'Data fixa':'Condicional'}</td>
