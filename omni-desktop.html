@@ -2700,6 +2700,20 @@ function caminhoArquivo(propId, fid, nome){
   const limpo = (nome||'arquivo').replace(/[^a-zA-Z0-9.\-_]/g,'_');
   return `${propId}/${fid}_${limpo}`;
 }
+/* Faz upload de um arquivo para uma proposta, removendo automaticamente
+   qualquer versão anterior com o mesmo nome (evita duplicatas). */
+async function uploadArquivoPropostaDedup(propArqs, propId, file, onProgress=null){
+  const existente = propArqs.find(a=>a.nome===file.name);
+  if(existente){
+    // remove do storage e do banco antes de subir o novo
+    await excluirArquivoStorage(existente.path);
+    await sb.from('proposta_arquivos').delete().eq('id', existente.id);
+    const idx = propArqs.indexOf(existente);
+    if(idx!==-1) propArqs.splice(idx,1);
+  }
+  return uploadArquivoProposta(propId, file, onProgress);
+}
+
 async function uploadArquivoProposta(propId, file, onProgress=null){
   const fid='f'+Date.now()+Math.random().toString(36).slice(2,7);
   const path=caminhoArquivo(propId, fid, file.name);
@@ -10756,7 +10770,7 @@ async function salvarEdicaoProposta(id){
         const barSP  = document.getElementById('bar-salvar-proposta');
         const sizeSP = document.getElementById('size-salvar-proposta');
         if(progSP){ progSP.style.display=''; barSP.style.width='0%'; sizeSP.textContent=''; }
-        p.arquivos.push(await uploadArquivoProposta(p.id, f, (loaded, total)=>{
+        p.arquivos.push(await uploadArquivoPropostaDedup(p.arquivos, p.id, f, (loaded, total)=>{
           const pct=Math.round(loaded/total*100);
           if(barSP) barSP.style.width=pct+'%';
           if(sizeSP) sizeSP.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
@@ -10985,7 +10999,7 @@ async function aprovarComExcel(cardId){
     const barAE  = document.getElementById('bar-aprovar-excel');
     const sizeAE = document.getElementById('size-aprovar-excel');
     if(progAE){ progAE.style.display=''; barAE.style.width='0%'; sizeAE.textContent=''; }
-    p.arquivos.push(await uploadArquivoProposta(p.id, f, (loaded, total)=>{
+    p.arquivos.push(await uploadArquivoPropostaDedup(p.arquivos, p.id, f, (loaded, total)=>{
       const pct=Math.round(loaded/total*100);
       if(barAE) barAE.style.width=pct+'%';
       if(sizeAE) sizeAE.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
