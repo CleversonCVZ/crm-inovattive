@@ -1720,8 +1720,8 @@ async function carregarDadosSupabase(){
         tipo:o.tipo||'avaliacao', faseId:o.fase_id, faseObraId:o.fase_obra_id||null, titulo:o.titulo||'',
         responsavelId:o.responsavel_id||null,
         dataAgend:  o.data_agend   ? o.data_agend.slice(0,10)  : '',
-        dataInicio: o.data_inicio  ? o.data_inicio.slice(0,16) : '',
-        dataTermino:o.data_termino ? o.data_termino.slice(0,16): '',
+        dataInicio: o.data_inicio  ? utcParaLocalInput(o.data_inicio) : '',
+        dataTermino:o.data_termino ? utcParaLocalInput(o.data_termino): '',
         fechada:!!o.fechada,
         imagens:   Array.isArray(o.imagens)             ? o.imagens             : [],
         produtos:  Array.isArray(o.produtos)            ? o.produtos            : [],
@@ -1987,8 +1987,8 @@ function syncDadosSupabase(){
       tipo:o.tipo||'avaliacao', fase_id:Number(o.faseId)||null, fase_obra_id:Number(o.faseObraId)||null, titulo:o.titulo||'',
       responsavel_id:Number(o.responsavelId)||null,
       data_agend:  o.dataAgend||null,
-      data_inicio: o.dataInicio||null,
-      data_termino:o.dataTermino||null,
+      data_inicio: o.dataInicio ? new Date(o.dataInicio).toISOString() : null,
+      data_termino:o.dataTermino ? new Date(o.dataTermino).toISOString() : null,
       fechada:!!o.fechada,
       imagens:   o.imagens||[], produtos:o.produtos||[], pendencias:o.pendencias||[],
       historico: o.historico||[],
@@ -2675,7 +2675,8 @@ function lerMoeda(id){
   const v = (document.getElementById(id)?.value||'0').replace(/\./g,'').replace(',','.');
   return parseFloat(v)||0;
 }
-function fmtData(iso){ if(!iso) return ''; const [data,hora]=iso.split('T'); const [a,m,dd]=data.split('-'); return `${dd}/${m}/${a} ${hora||''}`.trim(); }
+function utcParaLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
+function fmtData(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return iso; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; }
 function fmtDia2(s){ if(!s) return ''; const [a,m,dd]=s.slice(0,10).split('-'); return `${dd}/${m}/${a}`; }
 function fmtBytes(b){ if(b<1024) return b+' B'; if(b<1024*1024) return (b/1024).toFixed(1)+' KB'; return (b/(1024*1024)).toFixed(1)+' MB'; }
 
