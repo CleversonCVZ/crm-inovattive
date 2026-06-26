@@ -5575,46 +5575,52 @@ function abrirLancamentoManual(contaId){
     .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
 
   const html = `
-    <div class="modal-header"><h3>Lançamento — ${escHtml(c.nome)}</h3></div>
-    <div class="modal-body" style="display:grid;gap:12px">
-      <label>Tipo de lançamento *
-        <select id="lm-tipo" class="input" style="margin-top:4px" onchange="toggleTransfDestino()">
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3>Lançamento — ${escHtml(c.nome)}</h3>
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Tipo de Lançamento *</div>
+        <select id="lm-tipo" class="input" onchange="toggleTransfDestino()">
           <option value="entrada">➕ Entrada</option>
           <option value="saida">➖ Saída</option>
           <option value="transferencia">🔁 Transferência para outra conta</option>
         </select>
-      </label>
+      </div>
       <div id="lm-destino-wrap" style="display:none">
-        <label>Conta de destino *
-          <select id="lm-destino" class="input" style="margin-top:4px">
-            ${contasOpts||'<option value="">— nenhuma conta ativa disponível —</option>'}
-          </select>
-        </label>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Conta de Destino *</div>
+        <select id="lm-destino" class="input">
+          ${contasOpts||'<option value="">— nenhuma conta ativa disponível —</option>'}
+        </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Valor (R$) *
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Valor (R$) *</div>
           <input id="lm-valor" type="text" inputmode="decimal" placeholder="0,00" class="input"
-            oninput="mascaraMoeda(this)" style="margin-top:4px">
-        </label>
-        <label>Data *
-          <input id="lm-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}" style="margin-top:4px">
-        </label>
+            oninput="mascaraMoeda(this)">
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data *</div>
+          <input id="lm-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}">
+        </div>
       </div>
-      <label>Descrição *
-        <input id="lm-descricao" type="text" placeholder="Ex: Depósito recebido, Pagamento fornecedor..." class="input" style="margin-top:4px">
-      </label>
-      <label>Centro de Custo
-        <select id="lm-cc" class="input" style="margin-top:4px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Descrição *</div>
+        <input id="lm-descricao" type="text" placeholder="Ex: Depósito recebido, Pagamento fornecedor..." class="input">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
+        <select id="lm-cc" class="input">
           <option value="">— nenhum —</option>
           ${ccOpts}
         </select>
-      </label>
+      </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">← Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarLancamentoManual(${contaId})">Lançar</button>
     </div>`;
-  abrirModal(html);
+  abrirModal(html, 'cartao');
 }
 
 /** Mostra/oculta o campo de conta destino quando tipo = transferência */
