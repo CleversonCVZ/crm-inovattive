@@ -752,31 +752,29 @@
     <div class="bar">
       <h2>Contas a Pagar</h2>
       <div class="spacer"></div>
-      <select id="cp-filtro-status" class="input" style="font-size:13px" onchange="renderContasPagar()">
+      <select id="cp-filtro-status" class="vista-sel" onchange="renderContasPagar()">
         <option value="">Todos os status</option>
         <option value="pendente">Pendentes</option>
         <option value="vencido">Vencidas</option>
         <option value="pago">Pagas</option>
       </select>
-      <select id="cp-filtro-cc" class="input" style="font-size:13px" onchange="renderContasPagar()">
+      <select id="cp-filtro-cc" class="vista-sel" style="margin-left:6px" onchange="renderContasPagar()">
         <option value="">Todos os centros</option>
       </select>
       <button class="btn primary" onclick="abrirNovaContaPagar()">＋ Nova Conta</button>
     </div>
-    <!-- Stats bar -->
     <div class="stats" id="cp-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
-    <!-- Tabela -->
-    <table class="lista" id="cp-table" style="display:none">
-      <thead>
-        <tr>
-          <th style="width:110px">Vencimento</th>
-          <th>Descrição / Fornecedor</th>
-          <th style="width:150px">Centro de Custo</th>
-          <th style="width:110px">Obra</th>
-          <th style="width:130px;text-align:right">Valor</th>
-          <th style="width:110px;text-align:center">Status</th>
-        </tr>
-      </thead>
+    <table class="lista" id="cp-table">
+      <thead><tr>
+        <th>Fornecedor</th>
+        <th>Descrição</th>
+        <th style="width:160px">Centro de Custo</th>
+        <th style="width:120px">Obra</th>
+        <th style="width:130px;text-align:right">Valor</th>
+        <th style="width:120px">Vencimento</th>
+        <th style="width:120px">Status</th>
+        <th style="width:80px"></th>
+      </tr></thead>
       <tbody id="cp-tbody"></tbody>
     </table>
     <div id="cp-empty" class="empty" style="display:none">
@@ -6592,49 +6590,54 @@ function atualizarStatusVencidas(){
   });
 }
 
-/** Renderiza a tela Contas a Pagar */
+/** Renderiza a tela Contas a Pagar — padrão visual de Contas a Receber */
 function renderContasPagar(){
-  const table  = document.getElementById('cp-table');
   const tbody  = document.getElementById('cp-tbody');
+  const table  = document.getElementById('cp-table');
   const empty  = document.getElementById('cp-empty');
-  const stats  = document.getElementById('cp-stats-bar');
+  const statsEl= document.getElementById('cp-stats-bar');
   const selCC  = document.getElementById('cp-filtro-cc');
   if(!tbody) return;
 
-  atualizarStatusVencidas();
-
-  const todas = db.contasPagar || [];
   const hoje  = new Date().toISOString().slice(0,10);
-  const mesAtual = hoje.slice(0,7);
+  const todas = db.contasPagar || [];
 
-  // Stats
-  const totalPendente = todas.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
-  const totalVencido  = todas.filter(p=>p.status==='vencido').reduce((s,p)=>s+p.valor,0);
-  const totalPagoMes  = todas.filter(p=>p.status==='pago' && (p.dataPagamento||'').slice(0,7)===mesAtual).reduce((s,p)=>s+p.valor,0);
-  if(stats) stats.innerHTML = `
-    <div class="stat"><div class="n" style="color:#dc2626">${fmtMoney(totalPendente)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
-    ${totalVencido>0?`<div class="stat"><div class="n" style="color:#dc2626">${fmtMoney(totalVencido)}</div><div class="l">⚠ Vencidas</div></div>`:''}
-    <div class="stat"><div class="n" style="color:#16a34a">${fmtMoney(totalPagoMes)||'R$ 0,00'}</div><div class="l">Pago este mês</div></div>`;
-
-  // Popular select de centros de custo no filtro (só na primeira vez ou se mudou)
+  // Popular select de CC (só uma vez)
   if(selCC && selCC.options.length<=1){
     (db.centrosCusto||[]).filter(c=>c.ativo).forEach(c=>{
       const o=document.createElement('option'); o.value=c.id; o.textContent=c.nome; selCC.appendChild(o);
     });
   }
 
+  // Stats — sempre sobre tudo, sem filtro
+  const totGeral    = todas.reduce((s,p)=>s+p.valor, 0);
+  const totPago     = todas.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor, 0);
+  const totPendente = todas.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor, 0);
+  const totVencido  = todas.filter(p=>p.status!=='pago' && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
+  if(statsEl) statsEl.innerHTML=`
+    <div class="stat"><div class="n">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">Pago</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">Pendente</div></div>
+    ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencida</div></div>`:''}`;
+
   // Filtros
   const fStatus = (document.getElementById('cp-filtro-status')||{}).value||'';
   const fCC     = (document.getElementById('cp-filtro-cc')||{}).value||'';
   const fBusca  = termoBusca();
 
-  let lista = todas.slice().sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
-  if(fStatus) lista = lista.filter(p=>p.status===fStatus);
-  if(fCC)     lista = lista.filter(p=>String(p.centroCustoId)===fCC);
-  if(fBusca)  lista = lista.filter(p=>{
-    const fNome = ((db.fornecedores||[]).find(f=>f.id===p.fornecedorId)||{}).nome||'';
-    return (p.descricao||'').toLowerCase().includes(fBusca) ||
-           fNome.toLowerCase().includes(fBusca);
+  let lista = todas.slice().sort((a,b)=>{
+    const aPago=a.status==='pago', bPago=b.status==='pago';
+    if(aPago!==bPago) return aPago?1:-1;
+    return (a.dataVencimento||'').localeCompare(b.dataVencimento||'');
+  });
+
+  if(fStatus==='vencido') lista=lista.filter(p=>p.status!=='pago' && p.dataVencimento && p.dataVencimento<hoje);
+  else if(fStatus==='pendente') lista=lista.filter(p=>p.status!=='pago');
+  else if(fStatus==='pago') lista=lista.filter(p=>p.status==='pago');
+  if(fCC)    lista=lista.filter(p=>String(p.centroCustoId)===fCC);
+  if(fBusca) lista=lista.filter(p=>{
+    const fNome=((db.fornecedores||[]).find(f=>f.id===p.fornecedorId)||{}).nome||'';
+    return (p.descricao||'').toLowerCase().includes(fBusca)||fNome.toLowerCase().includes(fBusca);
   });
 
   if(!lista.length){
@@ -6645,41 +6648,71 @@ function renderContasPagar(){
   if(table) table.style.display='';
   if(empty) empty.style.display='none';
 
-  const STATUS_STYLE = {
-    pendente: 'background:#fef9c3;color:#92400e;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600',
-    vencido:  'background:#fee2e2;color:#dc2626;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600',
-    pago:     'background:#dcfce7;color:#16a34a;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:600'
-  };
-  const STATUS_LABEL = {pendente:'Pendente', vencido:'⚠ Vencida', pago:'✅ Paga'};
-  const ROW_BG = {pendente:'#fffbeb', vencido:'#fff1f2', pago:'#f0fdf4'};
-
-  tbody.innerHTML = '';
-  lista.forEach(p=>{
+  tbody.innerHTML = lista.map(p=>{
+    const forn = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
     const cc   = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra = (db.obras||[]).find(o=>o.id===p.obraId);
-    const forn = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
-    const tr   = document.createElement('tr');
-    tr.style.background = ROW_BG[p.status]||'#fff';
-    tr.style.cursor = 'pointer';
-    tr.onclick = ()=>abrirEditarContaPagar(p.id);
-    tr.onmouseenter = ()=>{ tr.style.background='var(--hover)'; };
-    tr.onmouseleave = ()=>{ tr.style.background=ROW_BG[p.status]||''; };
-    tr.innerHTML = `
-      <td style="font-size:13px;white-space:nowrap">${p.dataVencimento ? fmtDia2(p.dataVencimento) : '—'}</td>
+    const pago    = p.status==='pago';
+    const vencida = !pago && p.dataVencimento && p.dataVencimento<hoje;
+
+    const statusBadge = pago
+      ? `<span style="color:#2e7d32;font-weight:700">✔ Pago</span>`
+      : vencida
+        ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
+        : `<span style="color:#e65100">⏳ Pendente</span>`;
+
+    return `<tr style="${pago?'opacity:.7':''}cursor:pointer" onclick="abrirEditarContaPagar(${p.id})">
+      <td style="font-size:13px">${forn?escHtml(forn.nome):'—'}</td>
       <td>
         <div style="font-weight:600;font-size:14px">${escHtml(p.descricao)}</div>
-        ${forn?`<div style="font-size:12px;color:var(--muted)">${escHtml(forn.nome)}</div>`:''}
         ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
       </td>
-      <td style="font-size:13px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${obra?escHtml(obra.nome):'—'}</td>
-      <td style="text-align:right;font-weight:700;font-size:14px">${fmtMoney(p.valor)}</td>
-      <td style="text-align:center">
-        <span style="${STATUS_STYLE[p.status]||''}">${STATUS_LABEL[p.status]||p.status}</span>
-        ${p.status==='pago'&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}
-      </td>`;
-    tbody.appendChild(tr);
-  });
+      <td style="font-weight:700;text-align:right">${fmtMoney(p.valor)}</td>
+      <td style="font-size:13px;white-space:nowrap">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
+      <td>${statusBadge}${pago&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();marcarContaPagaRapido(${p.id})">✔</button>`:''}
+        <button class="icon-btn" onclick="event.stopPropagation();abrirEditarContaPagar(${p.id})" title="Editar">↗</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+/** Pagamento rápido via botão ✔ na lista */
+function marcarContaPagaRapido(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  abrirModal(`
+    <h3>Confirmar Pagamento</h3>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:var(--surface);border-radius:8px;padding:12px">
+        <div style="font-weight:600">${escHtml(p.descricao)}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">${fmtMoney(p.valor)}</div>
+      </div>
+      <label>Data do Pagamento *
+        <input id="cprap-data" type="date" class="input" value="${hoje}" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="confirmarPagamentoRapido(${id})">✔ Confirmar Pagamento</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarPagamentoRapido(id){
+  const p = (db.contasPagar||[]).find(x=>x.id===id);
+  if(!p) return;
+  const data = (document.getElementById('cprap-data')||{}).value;
+  if(!data){ alert('Informe a data do pagamento.'); return; }
+  p.status = 'pago';
+  p.dataPagamento = data;
+  fecharModal();
+  await save();
+  renderContasPagar();
+  renderFinPainel();
 }
 
 /** Abre modal para cadastrar nova conta a pagar */
