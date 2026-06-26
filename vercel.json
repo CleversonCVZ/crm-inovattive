@@ -1,5 +1,6 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/crm.html" }
+    { "source": "/", "destination": "/crm.html" },
+    { "source": "/mobile", "destination": "/omni-mobile.html" }
   ]
 }
