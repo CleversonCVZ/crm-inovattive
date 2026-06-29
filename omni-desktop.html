@@ -34,6 +34,8 @@
   .sidebar:hover button .lbl{opacity:1}
   .sidebar button:hover{background:rgba(255,255,255,.10)}
   .sidebar button.ativo{color:#fff;background:var(--green);border-left-color:#fff}
+  /* .sidebar-sep     — separador que empurra o item seguinte para o fundo da sidebar (Downloads) */
+  /* .sidebar-sep-mid — separador visual entre grupos de módulos no meio da lista */
   .sidebar-sep{margin-top:auto;border-top:1px solid rgba(255,255,255,.12);margin-bottom:4px}
   .sidebar-sep-mid{border-top:1px solid rgba(255,255,255,.12);margin:6px 0}
   .stat-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:13px;font-weight:500}
@@ -1326,6 +1328,7 @@ const TELAS = [
   {id:'os-painel',   nome:'O.S. — Painel',               menu:'Painel'},
   {id:'os-fases',    nome:'O.S. — Fases da O.S.',        menu:'Fases'},
   {id:'os-lista',    nome:'O.S. — Ordens de Serviço',    menu:'O.Serviço'},
+  // ── Financeiro
   {id:'fin-painel',             nome:'Financeiro — Painel',             menu:'Painel'},
   {id:'fin-centros-custo',      nome:'Financeiro — Centros de Custo',   menu:'Centros de Custo'},
   {id:'fin-contas-correntes',   nome:'Financeiro — Contas Correntes',   menu:'Contas Correntes'},
@@ -1379,7 +1382,15 @@ const RECURSOS = [
 
 /* MODULOS: agrupamentos de telas que formam o menu lateral esquerdo.
    Cada módulo tem seu sub-menu horizontal próprio com as telas do grupo.
-   A ordem aqui define a ordem de exibição no menu lateral. */
+   A ordem aqui define a ordem de exibição no menu lateral.
+
+   Propriedades de cada módulo:
+     id        — chave única, usada em mudarModulo() e localStorage
+     nome      — rótulo exibido na sidebar (quando expandida) e no header "Módulo X"
+     icone     — emoji exibido quando a sidebar está recolhida (58px)
+     telas     — lista de IDs de TELAS que compõem o sub-menu deste módulo
+     sepAntes  — (opcional) se true, insere uma linha divisória acima do botão deste módulo
+                 use para separar grupos temáticos na sidebar (ex.: operacional × financeiro × futuro) */
 const MODULOS = [
   {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
@@ -3662,7 +3673,8 @@ function ativarView(viewId){
 function renderSidebar(){
   const sb=document.getElementById('sidebar'); sb.innerHTML='';
 
-  // Módulos principais
+  // Renderiza os botões dos módulos respeitando permissões.
+  // sepAntes:true no módulo insere uma linha divisória antes do botão — separa grupos temáticos.
   MODULOS.filter(m=>m.telas.some(t=>podeVer(usuarioAtual,t))).forEach(m=>{
     if(m.sepAntes){
       const sep=document.createElement('div');
