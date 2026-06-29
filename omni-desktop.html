@@ -683,13 +683,12 @@
     <table style="width:100%;border-collapse:collapse">
       <thead>
         <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Nome</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Fornecedor</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Nome / Fornecedor</th>
           <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Centro de Custo</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Valor</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Pagar via</th>
+          <th style="text-align:right;padding:7px 6px;font-size:11px;color:var(--muted)">Valor</th>
           <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Vencimento</th>
           <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Status</th>
-          <th style="padding:7px 6px"></th>
         </tr>
       </thead>
       <tbody id="recorrentes-tbody"></tbody>
@@ -5368,24 +5367,22 @@ function renderRecorrentes(){
     return;
   }
   tbody.innerHTML = lista.map(r=>{
-    const forn = r.fornecedorId ? (db.fornecedores||[]).find(f=>f.id===r.fornecedorId) : null;
-    const cc   = r.centroCustoId ? (db.centrosCusto||[]).find(c=>c.id===r.centroCustoId) : null;
-    const obra = r.obraId ? (db.obras||[]).find(o=>o.id===r.obraId) : null;
+    const forn  = r.fornecedorId  ? (db.fornecedores||[]).find(f=>f.id===r.fornecedorId)  : null;
+    const cc    = r.centroCustoId ? (db.centrosCusto||[]).find(c=>c.id===r.centroCustoId) : null;
+    const conta = r.contaId       ? (db.contasCorrente||[]).find(c=>c.id===r.contaId)     : null;
     const badge = r.ativa
-      ? `<span style="color:#2e7d32;font-weight:600">✔ Ativa</span>`
-      : `<span style="color:var(--muted)">Pausada</span>`;
-    return `<tr style="${r.ativa?'':'opacity:.6'}">
-      <td style="padding:8px 6px">${r.nome}</td>
-      <td style="padding:8px 6px;color:var(--muted)">${forn ? forn.nome : '—'}</td>
-      <td style="padding:8px 6px;color:var(--muted)">${cc ? cc.nome : '—'}</td>
-      <td style="padding:8px 6px">${fmtMoney(r.valor)}</td>
-      <td style="padding:8px 6px;color:var(--muted)">Dia ${r.diaVencimento}</td>
-      <td style="padding:8px 6px">${badge}</td>
-      <td style="padding:8px 6px;white-space:nowrap">
-        <button class="icon-btn" title="Editar" onclick="abrirEditarRecorrente(${r.id})">✏️</button>
-        <button class="icon-btn" title="${r.ativa?'Pausar':'Ativar'}" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸':'▶️'}</button>
-        <button class="icon-btn" title="Excluir" onclick="excluirRecorrente(${r.id})">🗑️</button>
+      ? `<span style="color:#2e7d32;font-weight:700">✔ Ativa</span>`
+      : `<span style="color:var(--muted)">⏸ Pausada</span>`;
+    return `<tr style="${r.ativa?'':'opacity:.6'}cursor:pointer" onclick="abrirEditarRecorrente(${r.id})">
+      <td>
+        <div style="font-weight:600;font-size:14px">${escHtml(r.nome)}</div>
+        ${forn?`<div style="font-size:11px;color:var(--muted)">${escHtml(forn.nome)}</div>`:''}
       </td>
+      <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${conta?`${conta.tipo==='cartao'?'💳 ':''}${escHtml(conta.nome)}`:'—'}</td>
+      <td style="font-weight:700;text-align:right">${fmtMoney(r.valor)}</td>
+      <td style="font-size:12px;color:var(--muted)">Dia ${r.diaVencimento}</td>
+      <td>${badge}</td>
     </tr>`;
   }).join('');
 }
@@ -5527,9 +5524,14 @@ function abrirEditarRecorrente(id){
       </label>
     </div>
     <div class="actions rodape-cartao">
-      <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
+        <button class="btn neutral" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸ Pausar':'▶ Ativar'}</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+        <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+      </div>
     </div>
   `,'cartao');
 }
@@ -5569,6 +5571,7 @@ async function toggleRecorrente(id){
   r.ativa = !r.ativa;
   await sb.from('contas_recorrentes').update({ativa:r.ativa}).eq('id',id);
   save();
+  fecharModal();
   renderRecorrentes();
   registrarLog('editar','recorrente',id,`Recorrente ${r.ativa?'ativada':'pausada'}: "${r.nome}"`);
 }
