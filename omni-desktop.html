@@ -5744,9 +5744,7 @@ function renderCentrosCusto(){
       <td>${c.id}</td>
       <td>
         ${lock
-          ? `<span onclick="alert('⚠️ Centro de custo de sistema — o nome não pode ser alterado.')"
-               style="cursor:pointer"${tooltipDesc}>${escHtml(c.nome)}</span>
-             <small title="Protegido pelo sistema" style="margin-left:4px">🔒</small>`
+          ? `<span${tooltipDesc}>${escHtml(c.nome)}</span>`
           : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome"${tooltipDesc}>`
         }
       </td>
@@ -5772,7 +5770,7 @@ function renderCentrosCusto(){
       </td>
       <td style="text-align:right">
         ${lock
-          ? `<span title="Protegido" style="opacity:.3;cursor:not-allowed">🗑</span>`
+          ? `<small title="Protegido pelo sistema — não pode ser excluído">🔒</small>`
           : `<button class="icon-btn del" data-del="${c.id}" title="Excluir">🗑</button>`
         }
       </td>`;
