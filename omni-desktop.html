@@ -5388,13 +5388,13 @@ function abrirNovaRecorrente(){
   const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
   abrirModal(`
-    <div class="modal-header"><h3>Nova Conta Recorrente</h3></div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+    <h3>Nova Conta Recorrente</h3>
+    <div class="aba-corpo" style="display:flex;flex-direction:column;gap:14px">
       <div class="field-group">
         <label>Nome / Descrição *</label>
         <input id="rec-nome" class="inp" placeholder="Ex: Assinatura Claude, Contabilidade…">
       </div>
-      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="field-group">
           <label>Fornecedor</label>
           <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
@@ -5404,7 +5404,7 @@ function abrirNovaRecorrente(){
           <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
         </div>
       </div>
-      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <div class="field-group">
           <label>Valor (R$) *</label>
           <input id="rec-valor" class="inp" type="number" min="0" step="0.01" placeholder="0,00">
@@ -5419,8 +5419,8 @@ function abrirNovaRecorrente(){
         </div>
       </div>
     </div>
-    <div class="modal-footer actions rodape-cartao">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" onclick="salvarNovaRecorrente(this)">Salvar</button>
     </div>
   `,'cartao');
@@ -5465,13 +5465,13 @@ function abrirEditarRecorrente(id){
   const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}</option>`).join('');
   abrirModal(`
-    <div class="modal-header"><h3>Editar Recorrente</h3></div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+    <h3>${escHtml(r.nome)}</h3>
+    <div class="aba-corpo" style="display:flex;flex-direction:column;gap:14px">
       <div class="field-group">
         <label>Nome / Descrição *</label>
-        <input id="rec-nome" class="inp" value="${r.nome||''}">
+        <input id="rec-nome" class="inp" value="${escHtml(r.nome||'')}">
       </div>
-      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="field-group">
           <label>Fornecedor</label>
           <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
@@ -5481,7 +5481,7 @@ function abrirEditarRecorrente(id){
           <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
         </div>
       </div>
-      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <div class="field-group">
           <label>Valor (R$) *</label>
           <input id="rec-valor" class="inp" type="number" min="0" step="0.01" value="${r.valor}">
@@ -5496,11 +5496,12 @@ function abrirEditarRecorrente(id){
         </div>
       </div>
     </div>
-    <div class="modal-footer actions rodape-cartao">
+    <div class="actions rodape-cartao" style="justify-content:space-between">
       <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
-      <span style="flex:1"></span>
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+        <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+      </div>
     </div>
   `,'cartao');
 }
