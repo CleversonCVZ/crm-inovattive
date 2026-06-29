@@ -1358,11 +1358,11 @@ const TELAS = [
   {id:'fin-recorrentes',        nome:'Financeiro — Contas Recorrentes', menu:'Recorrentes'},
   {id:'fin-centros-custo',      nome:'Financeiro — Centros de Custo',   menu:'Centros de Custo'},
   {id:'fin-contas-correntes',   nome:'Financeiro — Contas Correntes',   menu:'Contas Correntes'},
-  {id:'fin-fornecedores',       nome:'Financeiro — Fornecedores',       menu:'Fornecedores'},
   {id:'fin-contas-pagar',       nome:'Financeiro — Contas a Pagar',     menu:'Contas a Pagar'},
   {id:'fin-contas-receber',     nome:'Financeiro — Contas a Receber',   menu:'Contas a Receber'},
   // ── SRM
-  {id:'srm-painel',      nome:'SRM — Painel',       menu:'Painel'},
+  {id:'srm-painel',        nome:'SRM — Painel',         menu:'Painel'},
+  {id:'fin-fornecedores',  nome:'SRM — Fornecedores',   menu:'Fornecedores'},
   // ── Compras
   {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
   // ── Estoque
@@ -1397,8 +1397,9 @@ const RECURSOS = [
   {id:'obra-resultado-aparente', grupo:'obras', nome:'Aba Obras — Resultado Aparente'},
   // ── Downloads
   {id:'downloads-admin', grupo:'downloads', nome:'Downloads — Gerenciar arquivos e categorias'},
+  // ── SRM
+  {id:'fin-fornecedores-gerenciar', grupo:'srm', nome:'Fornecedores — Adicionar, Editar e Excluir'},
   // ── Financeiro
-  {id:'fin-fornecedores-gerenciar',     grupo:'financeiro', nome:'Fornecedores — Adicionar, Editar e Excluir'},
   {id:'fin-contas-pagar-gerenciar',     grupo:'financeiro', nome:'Contas a Pagar — Adicionar e Editar'},
   {id:'fin-contas-pagar-pagar',         grupo:'financeiro', nome:'Contas a Pagar — Registrar Pagamento'},
   {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Gerenciar contas e lançamentos'},
@@ -1421,8 +1422,8 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','cat-outros-custos','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
-  {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel'],     sepAntes:true},
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
+  {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','fin-fornecedores'],     sepAntes:true},
   {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
 ];
