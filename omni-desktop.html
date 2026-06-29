@@ -6535,10 +6535,19 @@ function toggleObraCampoCp(rowId, ccSelId){
   const cc   = (db.centrosCusto||[]).find(c=>c.id===ccId);
   const show = _ccVinculaObra(cc);
   row.style.display = show ? 'block' : 'none';
-  // limpa seleção de obra se escondeu
   if(!show){
     const obrasel = row.querySelector('select');
     if(obrasel) obrasel.value = '';
+  }
+  // Dica contextual para Mão de Obra (opcional) vs Material de Obra (obrigatório)
+  const hint = row.querySelector('.cp-obra-hint');
+  if(hint){
+    if(cc && cc.slug==='mao_de_obra'){
+      hint.textContent = 'Preencha apenas se este pagamento for referente a uma obra específica.';
+      hint.style.display = '';
+    } else {
+      hint.style.display = 'none';
+    }
   }
 }
 
@@ -7253,6 +7262,7 @@ function abrirNovaContaPagar(){
               ${obraOpts}
             </select>
           </label>
+          <p class="cp-obra-hint" style="display:none;margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic"></p>
         </div>
       </div>
       <label>Observação
@@ -7283,7 +7293,7 @@ async function salvarNovaContaPagar(){
   if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
-  if(_ccVinculaObra(ccSel)&&!obraId){ alert('Selecione a obra para este lançamento.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -7378,6 +7388,7 @@ function abrirEditarContaPagar(id){
               ${obraOpts}
             </select>
           </label>
+          <p class="cp-obra-hint" style="display:${ccAtualSlug==='mao_de_obra'?'':'none'};margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">${ccAtualSlug==='mao_de_obra'?'Preencha apenas se este pagamento for referente a uma obra específica.':''}</p>
         </div>
       </div>
       <label>Observação
@@ -7416,7 +7427,7 @@ async function salvarEdicaoContaPagar(id){
   if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
-  if(_ccVinculaObra(ccSel)&&!obraId){ alert('Selecione a obra para este lançamento.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
   // Preserva status=pago se já pago; caso contrário sempre pendente (condicional é tipo, não status)
   const novoStatus = p.status==='pago' ? 'pago' : 'pendente';
