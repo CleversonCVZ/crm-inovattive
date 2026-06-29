@@ -759,7 +759,6 @@
         <option value="">Todos os status</option>
         <option value="pendente">Pendentes</option>
         <option value="vencido">Vencidas</option>
-        <option value="condicional">Condicionais</option>
         <option value="pago">Pagas</option>
       </select>
       <select id="cp-filtro-cc" class="vista-sel" style="margin-left:6px" onchange="renderContasPagar()">
@@ -2357,9 +2356,9 @@ function _finPainelCP(statsEl, corpoEl, periodo){
   const totTotal       = lista.reduce((s,p)=>s+p.valor,0);
   const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
   const totPendente    = lista.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
-  const totCondicional = lista.filter(p=>p.status==='condicional').reduce((s,p)=>s+p.valor,0);
+  const totCondicional = lista.filter(p=>p.status!=='pago' && !!p.condicao).reduce((s,p)=>s+p.valor,0);
   const hoje           = new Date().toISOString().slice(0,10);
-  const totVencido     = lista.filter(p=>(p.status==='pendente'||p.status==='vencido')&&p.dataVencimento&&p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
+  const totVencido     = lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
 
   statsEl.innerHTML=`
     <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
@@ -6678,8 +6677,8 @@ function renderContasPagar(){
   const totGeral       = todas.reduce((s,p)=>s+p.valor, 0);
   const totPago        = todas.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor, 0);
   const totPendente    = todas.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor, 0);
-  const totCondicional = todas.filter(p=>p.status==='condicional').reduce((s,p)=>s+p.valor, 0);
-  const totVencido     = todas.filter(p=>(p.status==='pendente'||p.status==='vencido') && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
+  const totCondicional = todas.filter(p=>p.status!=='pago' && !!p.condicao).reduce((s,p)=>s+p.valor, 0);
+  const totVencido     = todas.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
   if(statsEl) statsEl.innerHTML=`
     <div class="stat"><div class="n">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">Pago</div></div>
@@ -6693,15 +6692,15 @@ function renderContasPagar(){
   const fBusca  = termoBusca();
 
   let lista = todas.slice().sort((a,b)=>{
-    // Ordem: pendentes/vencidas primeiro, condicionais depois, pagas por último
-    const ord = s => s==='pago'?2 : s==='condicional'?1 : 0;
-    if(ord(a.status)!==ord(b.status)) return ord(a.status)-ord(b.status);
+    // Status é apenas pendente/pago. "Condicional" é tipo (p.condicao preenchido), não status.
+    // Ordem: pendentes com data primeiro, condicionais (sem data) depois, pagos por último.
+    const ord = p => p.status==='pago' ? 2 : (p.condicao ? 1 : 0);
+    if(ord(a)!==ord(b)) return ord(a)-ord(b);
     return (a.dataVencimento||'').localeCompare(b.dataVencimento||'');
   });
 
-  if(fStatus==='vencido')      lista=lista.filter(p=>(p.status==='pendente'||p.status==='vencido') && p.dataVencimento && p.dataVencimento<hoje);
-  else if(fStatus==='pendente') lista=lista.filter(p=>p.status==='pendente'||p.status==='vencido');
-  else if(fStatus==='condicional') lista=lista.filter(p=>p.status==='condicional');
+  if(fStatus==='vencido')      lista=lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
+  else if(fStatus==='pendente') lista=lista.filter(p=>p.status==='pendente'); // inclui condicionais (são pendentes sem data)
   else if(fStatus==='pago')    lista=lista.filter(p=>p.status==='pago');
   if(fCC)    lista=lista.filter(p=>String(p.centroCustoId)===fCC);
   if(fBusca) lista=lista.filter(p=>{
@@ -6722,7 +6721,7 @@ function renderContasPagar(){
     const cc    = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra  = (db.obras||[]).find(o=>o.id===p.obraId);
     const pago  = p.status==='pago';
-    const cond  = p.status==='condicional';
+    const cond  = !pago && !!p.condicao; // condicional = pendente sem data de vencimento
     const vencida = !pago && !cond && p.dataVencimento && p.dataVencimento<hoje;
 
     const statusBadge = pago
@@ -6899,7 +6898,7 @@ async function salvarNovaContaPagar(){
   const _delay = new Promise(r=>setTimeout(r,800));
 
   const hoje = new Date().toISOString().slice(0,10);
-  const status = tipo==='condicional' ? 'condicional' : (dataVenc < hoje ? 'pendente' : 'pendente');
+  const status = 'pendente'; // status é sempre pendente ao criar; condicional é tipo, não status
   const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
   const row = {id, descricao, fornecedorId, valor, dataVencimento:dataVenc,
     dataPagamento:null, status, condicao, centroCustoId:ccId, obraId, osId:null,
@@ -6931,7 +6930,7 @@ function abrirEditarContaPagar(id){
     .map(o=>`<option value="${o.id}" ${p.obraId===o.id?'selected':''}>${escHtml(o.nome)}</option>`).join('');
   const valorFmt = p.valor.toFixed(2).replace('.',',');
 
-  const tipoAtual = p.status==='condicional' ? 'condicional' : 'fixo';
+  const tipoAtual = p.condicao ? 'condicional' : 'fixo'; // tipo deriva do campo condicao, não do status
   const ccAtualSlug = ((db.centrosCusto||[]).find(c=>c.id===p.centroCustoId)||{}).slug;
 
   abrirModal(`
@@ -7027,8 +7026,8 @@ async function salvarEdicaoContaPagar(id){
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
   if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
-  // Preserva status=pago se já pago; senão define pelo tipo
-  const novoStatus = p.status==='pago' ? 'pago' : (tipo==='condicional' ? 'condicional' : 'pendente');
+  // Preserva status=pago se já pago; caso contrário sempre pendente (condicional é tipo, não status)
+  const novoStatus = p.status==='pago' ? 'pago' : 'pendente';
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
