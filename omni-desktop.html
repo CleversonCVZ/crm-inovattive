@@ -6543,7 +6543,7 @@ function toggleObraCampoCp(rowId, ccSelId){
   const hint = row.querySelector('.cp-obra-hint');
   if(hint){
     if(cc && cc.slug==='mao_de_obra'){
-      hint.textContent = 'Preencha apenas se este pagamento for referente a uma obra específica.';
+      hint.textContent = 'Preencher este campo somente se for para lançamento de pagamento de uma OS de obra ou de projeto. Não usar para OS avulsas ou em obras já concluídas.';
       hint.style.display = '';
     } else {
       hint.style.display = 'none';
@@ -7388,7 +7388,7 @@ function abrirEditarContaPagar(id){
               ${obraOpts}
             </select>
           </label>
-          <p class="cp-obra-hint" style="display:${ccAtualSlug==='mao_de_obra'?'':'none'};margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">${ccAtualSlug==='mao_de_obra'?'Preencha apenas se este pagamento for referente a uma obra específica.':''}</p>
+          <p class="cp-obra-hint" style="display:${ccAtualSlug==='mao_de_obra'?'':'none'};margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">${ccAtualSlug==='mao_de_obra'?'Preencher este campo somente se for para lançamento de pagamento de uma OS de obra ou de projeto. Não usar para OS avulsas ou em obras já concluídas.':''}</p>
         </div>
       </div>
       <label>Observação
