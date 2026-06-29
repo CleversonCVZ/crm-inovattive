@@ -670,6 +670,31 @@
     <div id="finpainel-corpo"></div>
   </div>
 
+  <!-- FINANCEIRO: CONTAS RECORRENTES -->
+  <div class="view" id="view-fin-recorrentes">
+    <div class="bar">
+      <h2>Contas Recorrentes</h2>
+      <button class="btn primary" onclick="abrirNovaRecorrente()">+ Nova</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 16px">
+      Contas que se repetem todo mês. O sistema gera automaticamente uma entrada em Contas a Pagar ao abrir o sistema, se ainda não existir para o mês corrente.
+    </p>
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Nome</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Fornecedor</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Centro de Custo</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Valor</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Vencimento</th>
+          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Status</th>
+          <th style="padding:7px 6px"></th>
+        </tr>
+      </thead>
+      <tbody id="recorrentes-tbody"></tbody>
+    </table>
+  </div>
+
   <!-- FINANCEIRO: CENTROS DE CUSTO -->
   <div class="view" id="view-fin-centros-custo">
     <div class="bar">
@@ -1330,6 +1355,7 @@ const TELAS = [
   {id:'os-lista',    nome:'O.S. — Ordens de Serviço',    menu:'O.Serviço'},
   // ── Financeiro
   {id:'fin-painel',             nome:'Financeiro — Painel',             menu:'Painel'},
+  {id:'fin-recorrentes',        nome:'Financeiro — Contas Recorrentes', menu:'Recorrentes'},
   {id:'fin-centros-custo',      nome:'Financeiro — Centros de Custo',   menu:'Centros de Custo'},
   {id:'fin-contas-correntes',   nome:'Financeiro — Contas Correntes',   menu:'Contas Correntes'},
   {id:'fin-fornecedores',       nome:'Financeiro — Fornecedores',       menu:'Fornecedores'},
@@ -1395,7 +1421,7 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','cat-outros-custos','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel'],     sepAntes:true},
   {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
@@ -1501,7 +1527,8 @@ function load(){
   if(!Array.isArray(db.centrosCusto))    db.centrosCusto=[];
   if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
-  if(!Array.isArray(db.contasPagar))     db.contasPagar=[];
+  if(!Array.isArray(db.contasPagar))       db.contasPagar=[];
+  if(!Array.isArray(db.contasRecorrentes)) db.contasRecorrentes=[];
   if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
   if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
   if(!Array.isArray(db.osCustos))          db.osCustos=[];
@@ -1688,7 +1715,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1714,7 +1741,8 @@ async function carregarDadosSupabase(){
       sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true}),
       sb.from('fornecedores').select('*').order('nome'),
       sb.from('fornecedor_contatos').select('*').order('id'),
-      sb.from('os_custos').select('*').order('created_at', {ascending:false})
+      sb.from('os_custos').select('*').order('created_at', {ascending:false}),
+      sb.from('contas_recorrentes').select('*').order('nome')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -1908,6 +1936,7 @@ async function carregarDadosSupabase(){
         osId:p.os_id||null,
         contaId:p.conta_id||null,
         observacao:p.observacao||'',
+        recorrenteId:p.recorrente_id||null,
         criadoEm:p.created_at||''
       }));
     if(fornecedores.data)
@@ -1934,6 +1963,17 @@ async function carregarDadosSupabase(){
         centroCustoId:c.centro_custo_id ? Number(c.centro_custo_id) : null,
         cpId:c.cp_id ? Number(c.cp_id) : null,
         criadoEm:c.created_at||''
+      }));
+    if(contasRecorrentes.data)
+      db.contasRecorrentes = contasRecorrentes.data.map(r=>({
+        id:r.id, nome:r.nome||'',
+        fornecedorId:r.fornecedor_id||null,
+        centroCustoId:r.centro_custo_id||null,
+        obraId:r.obra_id||null,
+        valor:Number(r.valor)||0,
+        diaVencimento:Number(r.dia_vencimento)||10,
+        ativa:r.ativa!==false,
+        criadoEm:r.criado_em||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -2119,7 +2159,17 @@ function syncDadosSupabase(){
       condicao:p.condicao||null,
       centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
       os_id:p.osId||null, conta_id:p.contaId||null,
-      observacao:p.observacao||null
+      observacao:p.observacao||null,
+      recorrente_id:p.recorrenteId||null
+    }));
+    await sincronizarTabela('contas_recorrentes', db.contasRecorrentes||[], r=>({
+      id:r.id, nome:r.nome||'',
+      fornecedor_id:r.fornecedorId||null,
+      centro_custo_id:r.centroCustoId||null,
+      obra_id:r.obraId||null,
+      valor:r.valor||0,
+      dia_vencimento:r.diaVencimento||10,
+      ativa:r.ativa!==false
     }));
     await sincronizarTabela('fornecedores', db.fornecedores||[], f=>({
       id:f.id, nome:f.nome||'', cnpj_cpf:f.cnpjCpf||null,
@@ -3265,6 +3315,8 @@ async function entrarComSessao(erro){
     return false;
   }
   iniciarApp(u);
+  // Gera automaticamente as CPs recorrentes do mês corrente (se ainda não geradas)
+  gerarRecorrentesDoMes();
   // loga somente logins explícitos pelo botão (não restaurações de sessão)
   if(erro) registrarLog('login', 'sistema', null, `Login efetuado: ${u.nome}`);
   return true;
@@ -3660,6 +3712,7 @@ function ativarView(viewId){
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
   if(viewId==='fin-painel')          renderCCPainel();
+  if(viewId==='fin-recorrentes')     renderRecorrentes();
   if(viewId==='fin-contas-receber') renderFinanceiroPainel();
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
@@ -5239,6 +5292,269 @@ async function removerMOOS(osId, idx, cardId){
   save(); abrirSeletorMOOS(osId, cardId);
 }
 
+/* ===== Contas Recorrentes ===== */
+
+/** Geração automática: ao abrir o sistema, verifica para cada recorrente ativa
+    se já existe uma CP com recorrente_id no mês/ano atual. Se não, cria. */
+async function gerarRecorrentesDoMes(){
+  const recorrentes = (db.contasRecorrentes||[]).filter(r=>r.ativa);
+  if(!recorrentes.length) return;
+  const hoje = new Date();
+  const mesAtual  = hoje.getMonth()+1;
+  const anoAtual  = hoje.getFullYear();
+  const mesStr    = String(mesAtual).padStart(2,'0');
+  const prefixo   = `${anoAtual}-${mesStr}`;
+  let gerou = false;
+  for(const r of recorrentes){
+    // Verifica se já existe CP para este recorrente neste mês
+    const jaExiste = (db.contasPagar||[]).some(p=>
+      p.recorrenteId===r.id &&
+      p.dataVencimento && p.dataVencimento.startsWith(prefixo)
+    );
+    if(jaExiste) continue;
+    // Calcula data de vencimento: dia configurado no mês atual
+    const diasNoMes = new Date(anoAtual, mesAtual, 0).getDate();
+    const dia       = Math.min(r.diaVencimento, diasNoMes);
+    const dataVenc  = `${prefixo}-${String(dia).padStart(2,'0')}`;
+    // Insere direto no Supabase (sem depender do debounce)
+    const novoId = proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+    const {data, error} = await sb.from('contas_pagar').insert({
+      id:            novoId,
+      descricao:     r.nome,
+      fornecedor_id: r.fornecedorId||null,
+      valor:         r.valor,
+      data_vencimento: dataVenc,
+      status:        'pendente',
+      centro_custo_id: r.centroCustoId||null,
+      obra_id:       r.obraId||null,
+      recorrente_id: r.id
+    }).select().single();
+    if(error){ console.error('Erro ao gerar recorrente:', r.nome, error); continue; }
+    db.contasPagar = db.contasPagar||[];
+    db.contasPagar.push({
+      id:data.id, descricao:data.descricao, fornecedorId:data.fornecedor_id||null,
+      valor:Number(data.valor)||0, dataVencimento:dataVenc,
+      dataPagamento:null, status:'pendente', condicao:null,
+      centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
+      osId:null, contaId:null, observacao:'', recorrenteId:r.id,
+      criadoEm:data.created_at||''
+    });
+    gerou = true;
+    registrarLog('criar','contas-pagar',data.id,`CP recorrente gerada: "${r.nome}" — ${dataVenc}`);
+  }
+  if(gerou) save();
+}
+
+function renderRecorrentes(){
+  const tbody = document.getElementById('recorrentes-tbody');
+  if(!tbody) return;
+  if(!usuarioAtual || !podeVer(usuarioAtual,'fin-recorrentes')) return;
+  const fBusca = (termoBusca()||'').toLowerCase();
+  let lista = (db.contasRecorrentes||[]).slice();
+  if(fBusca) lista = lista.filter(r=>(r.nome||'').toLowerCase().includes(fBusca));
+  lista.sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+  if(!lista.length){
+    tbody.innerHTML=`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted)">Nenhuma recorrente cadastrada. Clique em + Nova para começar.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = lista.map(r=>{
+    const forn = r.fornecedorId ? (db.fornecedores||[]).find(f=>f.id===r.fornecedorId) : null;
+    const cc   = r.centroCustoId ? (db.centrosCusto||[]).find(c=>c.id===r.centroCustoId) : null;
+    const obra = r.obraId ? (db.obras||[]).find(o=>o.id===r.obraId) : null;
+    const badge = r.ativa
+      ? `<span style="color:#2e7d32;font-weight:600">✔ Ativa</span>`
+      : `<span style="color:var(--muted)">Pausada</span>`;
+    return `<tr style="${r.ativa?'':'opacity:.6'}">
+      <td style="padding:8px 6px">${r.nome}</td>
+      <td style="padding:8px 6px;color:var(--muted)">${forn ? forn.nome : '—'}</td>
+      <td style="padding:8px 6px;color:var(--muted)">${cc ? cc.nome : '—'}</td>
+      <td style="padding:8px 6px">${fmtMoney(r.valor)}</td>
+      <td style="padding:8px 6px;color:var(--muted)">Dia ${r.diaVencimento}</td>
+      <td style="padding:8px 6px">${badge}</td>
+      <td style="padding:8px 6px;white-space:nowrap">
+        <button class="icon-btn" title="Editar" onclick="abrirEditarRecorrente(${r.id})">✏️</button>
+        <button class="icon-btn" title="${r.ativa?'Pausar':'Ativar'}" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸':'▶️'}</button>
+        <button class="icon-btn" title="Excluir" onclick="excluirRecorrente(${r.id})">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function abrirNovaRecorrente(){
+  const fornOpts = (db.fornecedores||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(f=>`<option value="${f.id}">${f.nome}</option>`).join('');
+  const ccOpts = (db.centrosCusto||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+  abrirModal(`
+    <div class="modal-header"><h3>Nova Conta Recorrente</h3></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field-group">
+        <label>Nome / Descrição *</label>
+        <input id="rec-nome" class="inp" placeholder="Ex: Assinatura Claude, Contabilidade…">
+      </div>
+      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field-group">
+          <label>Fornecedor</label>
+          <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
+        </div>
+        <div class="field-group">
+          <label>Centro de Custo</label>
+          <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
+        </div>
+      </div>
+      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="field-group">
+          <label>Valor (R$) *</label>
+          <input id="rec-valor" class="inp" type="number" min="0" step="0.01" placeholder="0,00">
+        </div>
+        <div class="field-group">
+          <label>Dia de Vencimento *</label>
+          <input id="rec-dia" class="inp" type="number" min="1" max="31" value="10">
+        </div>
+        <div class="field-group">
+          <label>Obra (opcional)</label>
+          <select id="rec-obra" class="inp"><option value="">— Nenhuma —</option>${obraOpts}</select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer actions rodape-cartao">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarNovaRecorrente(this)">Salvar</button>
+    </div>
+  `,'cartao');
+}
+
+async function salvarNovaRecorrente(btn){
+  const nome  = document.getElementById('rec-nome').value.trim();
+  const valor = parseFloat(document.getElementById('rec-valor').value)||0;
+  const dia   = parseInt(document.getElementById('rec-dia').value)||10;
+  if(!nome){ alert('Informe o nome da recorrente.'); return; }
+  if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  const fornId = parseInt(document.getElementById('rec-fornecedor').value)||null;
+  const ccId   = parseInt(document.getElementById('rec-cc').value)||null;
+  const obraId = parseInt(document.getElementById('rec-obra').value)||null;
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+  const {data, error} = await sb.from('contas_recorrentes').insert({
+    nome, fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId,
+    valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true
+  }).select().single();
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+  db.contasRecorrentes = db.contasRecorrentes||[];
+  db.contasRecorrentes.push({
+    id:data.id, nome:data.nome, fornecedorId:data.fornecedor_id||null,
+    centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
+    valor:Number(data.valor)||0, diaVencimento:data.dia_vencimento||10,
+    ativa:true, criadoEm:data.criado_em||''
+  });
+  await _delay;
+  fecharModal();
+  renderRecorrentes();
+  registrarLog('criar','recorrente',data.id,`Recorrente criada: "${data.nome}"`);
+}
+
+function abrirEditarRecorrente(id){
+  const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
+  if(!r) return;
+  const fornOpts = (db.fornecedores||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(f=>`<option value="${f.id}" ${f.id===r.fornecedorId?'selected':''}>${f.nome}</option>`).join('');
+  const ccOpts = (db.centrosCusto||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(c=>`<option value="${c.id}" ${c.id===r.centroCustoId?'selected':''}>${c.nome}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}</option>`).join('');
+  abrirModal(`
+    <div class="modal-header"><h3>Editar Recorrente</h3></div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field-group">
+        <label>Nome / Descrição *</label>
+        <input id="rec-nome" class="inp" value="${r.nome||''}">
+      </div>
+      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field-group">
+          <label>Fornecedor</label>
+          <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
+        </div>
+        <div class="field-group">
+          <label>Centro de Custo</label>
+          <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
+        </div>
+      </div>
+      <div class="field-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="field-group">
+          <label>Valor (R$) *</label>
+          <input id="rec-valor" class="inp" type="number" min="0" step="0.01" value="${r.valor}">
+        </div>
+        <div class="field-group">
+          <label>Dia de Vencimento *</label>
+          <input id="rec-dia" class="inp" type="number" min="1" max="31" value="${r.diaVencimento||10}">
+        </div>
+        <div class="field-group">
+          <label>Obra (opcional)</label>
+          <select id="rec-obra" class="inp"><option value="">— Nenhuma —</option>${obraOpts}</select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer actions rodape-cartao">
+      <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
+      <span style="flex:1"></span>
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+    </div>
+  `,'cartao');
+}
+
+async function salvarEdicaoRecorrente(id, btn){
+  const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
+  if(!r) return;
+  const nome  = document.getElementById('rec-nome').value.trim();
+  const valor = parseFloat(document.getElementById('rec-valor').value)||0;
+  const dia   = parseInt(document.getElementById('rec-dia').value)||10;
+  if(!nome){ alert('Informe o nome.'); return; }
+  if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  const fornId = parseInt(document.getElementById('rec-fornecedor').value)||null;
+  const ccId   = parseInt(document.getElementById('rec-cc').value)||null;
+  const obraId = parseInt(document.getElementById('rec-obra').value)||null;
+  btnSalvando(btn);
+  const _delay = new Promise(r=>setTimeout(r,800));
+  r.nome=nome; r.valor=valor; r.diaVencimento=Math.min(Math.max(dia,1),31);
+  r.fornecedorId=fornId; r.centroCustoId=ccId; r.obraId=obraId;
+  try{
+    const {error} = await sb.from('contas_recorrentes').update({
+      nome, valor, dia_vencimento:r.diaVencimento,
+      fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId
+    }).eq('id',id);
+    if(error) throw error;
+    await Promise.all([save(), _delay]);
+    fecharModal();
+    renderRecorrentes();
+    registrarLog('editar','recorrente',id,`Recorrente editada: "${nome}"`);
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); }
+}
+
+async function toggleRecorrente(id){
+  const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
+  if(!r) return;
+  r.ativa = !r.ativa;
+  await sb.from('contas_recorrentes').update({ativa:r.ativa}).eq('id',id);
+  save();
+  renderRecorrentes();
+  registrarLog('editar','recorrente',id,`Recorrente ${r.ativa?'ativada':'pausada'}: "${r.nome}"`);
+}
+
+async function excluirRecorrente(id){
+  const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
+  if(!r) return;
+  if(!confirm(`Excluir recorrente "${r.nome}"?\n\nAs CPs já geradas não serão afetadas.`)) return;
+  await sb.from('contas_recorrentes').delete().eq('id',id);
+  db.contasRecorrentes = db.contasRecorrentes.filter(x=>x.id!==id);
+  save();
+  fecharModal();
+  renderRecorrentes();
+  registrarLog('excluir','recorrente',id,`Recorrente excluída: "${r.nome}"`);
+}
+
 /* ===== Categorias de Outros Custos (CRUD global) ===== */
 const EMOJIS_CUSTO = [
   // Transporte & Logística
@@ -6739,7 +7055,9 @@ function renderContasPagar(){
     return `<tr style="${pago?'opacity:.7':''}cursor:pointer" onclick="abrirEditarContaPagar(${p.id})">
       <td style="font-size:13px">${forn?escHtml(forn.nome):'—'}</td>
       <td>
-        <div style="font-weight:600;font-size:14px">${escHtml(p.descricao)}</div>
+        <div style="font-weight:600;font-size:14px">
+          ${p.recorrenteId?`<span title="Gerada automaticamente — recorrente" style="color:var(--muted);font-size:11px;margin-right:4px">🔄</span>`:''}${escHtml(p.descricao)}
+        </div>
         ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
       </td>
       <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
@@ -13445,7 +13763,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); }
 load();
 atualizarMarca();
 (async function(){
