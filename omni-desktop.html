@@ -1321,9 +1321,10 @@ const TELAS = [
   {id:'prop-painel', nome:'Propostas — Painel',          menu:'Painel'},
   {id:'propostas',   nome:'Propostas — Lista',           menu:'Proposta'},
   {id:'prop-fases',  nome:'Propostas — Fases da Proposta', menu:'Fases'},
-  {id:'obras-painel',nome:'Obras — Painel',               menu:'Painel'},
-  {id:'obras-fases', nome:'Obras — Fases da Obra',        menu:'Fases'},
-  {id:'obras-lista', nome:'Obras — Obras',                menu:'Obras'},
+  {id:'obras-painel',      nome:'Obras — Painel',               menu:'Painel'},
+  {id:'obras-fases',       nome:'Obras — Fases da Obra',        menu:'Fases'},
+  {id:'cat-outros-custos', nome:'Obras — Categorias de Custo',  menu:'Categ. de Custo'},
+  {id:'obras-lista',       nome:'Obras — Obras',                menu:'Obras'},
   {id:'os-painel',   nome:'O.S. — Painel',               menu:'Painel'},
   {id:'os-fases',    nome:'O.S. — Fases da O.S.',        menu:'Fases'},
   {id:'os-lista',    nome:'O.S. — Ordens de Serviço',    menu:'O.Serviço'},
@@ -1346,7 +1347,6 @@ const TELAS = [
   {id:'gerais',      nome:'Configurações do Sistema'},
   {id:'auditoria',        nome:'Auditoria & Logs'},
   {id:'downloads',        nome:'Downloads'},
-  {id:'cat-outros-custos', nome:'Financeiro — Categoria Custos Obra', menu:'Categoria Custos Obra'}
 ];
 
 /* RECURSOS: permissões mais finas que TELAS.
@@ -1393,9 +1393,9 @@ const RECURSOS = [
 const MODULOS = [
   {id:'crm',       nome:'CRM',       icone:'📋', telas:['painel','fases','origens','clientes']},
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
-  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','obras-lista']},
+  {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','cat-outros-custos','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','cat-outros-custos','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-centros-custo','fin-contas-correntes','fin-fornecedores','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel'],     sepAntes:true},
   {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
