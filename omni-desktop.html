@@ -674,7 +674,8 @@
   <div class="view" id="view-fin-recorrentes">
     <div class="bar">
       <h2>Contas Recorrentes</h2>
-      <button class="btn primary" onclick="abrirNovaRecorrente()">+ Nova</button>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaRecorrente()">＋ Nova</button>
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 16px">
       Contas que se repetem todo mês. O sistema gera automaticamente uma entrada em Contas a Pagar ao abrir o sistema, se ainda não existir para o mês corrente.
@@ -5389,34 +5390,36 @@ function abrirNovaRecorrente(){
     .map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
   abrirModal(`
     <h3>Nova Conta Recorrente</h3>
-    <div class="aba-corpo" style="display:flex;flex-direction:column;gap:14px">
-      <div class="field-group">
-        <label>Nome / Descrição *</label>
-        <input id="rec-nome" class="inp" placeholder="Ex: Assinatura Claude, Contabilidade…">
-      </div>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <label>Nome / Descrição *
+        <input id="rec-nome" class="input" style="margin-top:4px" placeholder="Ex: Assinatura Claude, Contabilidade…">
+      </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="field-group">
-          <label>Fornecedor</label>
-          <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
-        </div>
-        <div class="field-group">
-          <label>Centro de Custo</label>
-          <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
-        </div>
+        <label>Fornecedor
+          <select id="rec-fornecedor" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>${fornOpts}
+          </select>
+          <button type="button" class="link-btn" style="margin-top:2px"
+            onclick="abrirNovoFornecedor({callbackId:'rec-fornecedor'})">＋ Cadastrar novo fornecedor</button>
+        </label>
+        <label>Centro de Custo
+          <select id="rec-cc" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>${ccOpts}
+          </select>
+        </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="field-group">
-          <label>Valor (R$) *</label>
-          <input id="rec-valor" class="inp" type="number" min="0" step="0.01" placeholder="0,00">
-        </div>
-        <div class="field-group">
-          <label>Dia de Vencimento *</label>
-          <input id="rec-dia" class="inp" type="number" min="1" max="31" value="10">
-        </div>
-        <div class="field-group">
-          <label>Obra (opcional)</label>
-          <select id="rec-obra" class="inp"><option value="">— Nenhuma —</option>${obraOpts}</select>
-        </div>
+        <label>Valor (R$) *
+          <input id="rec-valor" class="input" type="number" min="0" step="0.01" placeholder="0,00" style="margin-top:4px">
+        </label>
+        <label>Dia de Vencimento *
+          <input id="rec-dia" class="input" type="number" min="1" max="31" value="10" style="margin-top:4px">
+        </label>
+        <label>Obra (opcional)
+          <select id="rec-obra" class="input" style="margin-top:4px">
+            <option value="">— nenhuma —</option>${obraOpts}
+          </select>
+        </label>
       </div>
     </div>
     <div class="actions rodape-cartao">
@@ -5466,42 +5469,42 @@ function abrirEditarRecorrente(id){
     .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}</option>`).join('');
   abrirModal(`
     <h3>${escHtml(r.nome)}</h3>
-    <div class="aba-corpo" style="display:flex;flex-direction:column;gap:14px">
-      <div class="field-group">
-        <label>Nome / Descrição *</label>
-        <input id="rec-nome" class="inp" value="${escHtml(r.nome||'')}">
-      </div>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <label>Nome / Descrição *
+        <input id="rec-nome" class="input" style="margin-top:4px" value="${escHtml(r.nome||'')}">
+      </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="field-group">
-          <label>Fornecedor</label>
-          <select id="rec-fornecedor" class="inp"><option value="">— Nenhum —</option>${fornOpts}</select>
-        </div>
-        <div class="field-group">
-          <label>Centro de Custo</label>
-          <select id="rec-cc" class="inp"><option value="">— Nenhum —</option>${ccOpts}</select>
-        </div>
+        <label>Fornecedor
+          <select id="rec-fornecedor" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>${fornOpts}
+          </select>
+          <button type="button" class="link-btn" style="margin-top:2px"
+            onclick="abrirNovoFornecedor({callbackId:'rec-fornecedor'})">＋ Cadastrar novo fornecedor</button>
+        </label>
+        <label>Centro de Custo
+          <select id="rec-cc" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>${ccOpts}
+          </select>
+        </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="field-group">
-          <label>Valor (R$) *</label>
-          <input id="rec-valor" class="inp" type="number" min="0" step="0.01" value="${r.valor}">
-        </div>
-        <div class="field-group">
-          <label>Dia de Vencimento *</label>
-          <input id="rec-dia" class="inp" type="number" min="1" max="31" value="${r.diaVencimento||10}">
-        </div>
-        <div class="field-group">
-          <label>Obra (opcional)</label>
-          <select id="rec-obra" class="inp"><option value="">— Nenhuma —</option>${obraOpts}</select>
-        </div>
+        <label>Valor (R$) *
+          <input id="rec-valor" class="input" type="number" min="0" step="0.01" value="${r.valor}" style="margin-top:4px">
+        </label>
+        <label>Dia de Vencimento *
+          <input id="rec-dia" class="input" type="number" min="1" max="31" value="${r.diaVencimento||10}" style="margin-top:4px">
+        </label>
+        <label>Obra (opcional)
+          <select id="rec-obra" class="input" style="margin-top:4px">
+            <option value="">— nenhuma —</option>${obraOpts}
+          </select>
+        </label>
       </div>
     </div>
-    <div class="actions rodape-cartao" style="justify-content:space-between">
+    <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
-      <div style="display:flex;gap:8px">
-        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-        <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
-      </div>
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
     </div>
   `,'cartao');
 }
