@@ -1909,7 +1909,10 @@ async function carregarDadosSupabase(){
       db.contasCorrente = contasCorrente.data.map(c=>({
         id:c.id, nome:c.nome, banco:c.banco||'', agencia:c.agencia||'',
         conta:c.conta||'', tipo:c.tipo||'corrente',
-        saldoInicial:Number(c.saldo_inicial)||0, ativo:!!c.ativo
+        saldoInicial:Number(c.saldo_inicial)||0, ativo:!!c.ativo,
+        limite:c.limite ? Number(c.limite) : null,
+        diaFechamento:c.dia_fechamento||null,
+        diaVencimentoFatura:c.dia_vencimento_fatura||null
       }));
     if(movimentacoes.data)
       db.movimentacoes = movimentacoes.data.map(m=>({
@@ -1971,6 +1974,7 @@ async function carregarDadosSupabase(){
         fornecedorId:r.fornecedor_id||null,
         centroCustoId:r.centro_custo_id||null,
         obraId:r.obra_id||null,
+        contaId:r.conta_id||null,
         valor:Number(r.valor)||0,
         diaVencimento:Number(r.dia_vencimento)||10,
         ativa:r.ativa!==false,
@@ -2142,7 +2146,10 @@ function syncDadosSupabase(){
     await sincronizarTabela('contas_correntes', db.contasCorrente||[], c=>({
       id:c.id, nome:c.nome, banco:c.banco||null, agencia:c.agencia||null,
       conta:c.conta||null, tipo:c.tipo||'corrente',
-      saldo_inicial:c.saldoInicial, ativo:!!c.ativo
+      saldo_inicial:c.saldoInicial, ativo:!!c.ativo,
+      limite:c.limite||null,
+      dia_fechamento:c.diaFechamento||null,
+      dia_vencimento_fatura:c.diaVencimentoFatura||null
     }));
     await sincronizarTabela('movimentacoes_financeiras', db.movimentacoes||[], m=>({
       id:m.id, conta_id:m.contaId, tipo:m.tipo||'entrada',
@@ -2168,6 +2175,7 @@ function syncDadosSupabase(){
       fornecedor_id:r.fornecedorId||null,
       centro_custo_id:r.centroCustoId||null,
       obra_id:r.obraId||null,
+      conta_id:r.contaId||null,
       valor:r.valor||0,
       dia_vencimento:r.diaVencimento||10,
       ativa:r.ativa!==false
@@ -5328,6 +5336,7 @@ async function gerarRecorrentesDoMes(){
       status:        'pendente',
       centro_custo_id: r.centroCustoId||null,
       obra_id:       r.obraId||null,
+      conta_id:      r.contaId||null,
       recorrente_id: r.id
     }).select().single();
     if(error){ console.error('Erro ao gerar recorrente:', r.nome, error); continue; }
@@ -5337,7 +5346,7 @@ async function gerarRecorrentesDoMes(){
       valor:Number(data.valor)||0, dataVencimento:dataVenc,
       dataPagamento:null, status:'pendente', condicao:null,
       centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
-      osId:null, contaId:null, observacao:'', recorrenteId:r.id,
+      osId:null, contaId:data.conta_id||null, observacao:'', recorrenteId:r.id,
       criadoEm:data.created_at||''
     });
     gerou = true;
@@ -5388,6 +5397,8 @@ function abrirNovaRecorrente(){
     .map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
   const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(o=>`<option value="${o.id}">${o.nome}</option>`).join('');
+  const contaOpts = (db.contasCorrente||[]).filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(c=>`<option value="${c.id}">${c.tipo==='cartao'?'💳 ':''}${c.nome}</option>`).join('');
   abrirModal(`
     <h3>Nova Conta Recorrente</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
@@ -5421,6 +5432,11 @@ function abrirNovaRecorrente(){
           </select>
         </label>
       </div>
+      <label>Pagar via (conta / cartão)
+        <select id="rec-conta" class="input" style="margin-top:4px">
+          <option value="">— não definido —</option>${contaOpts}
+        </select>
+      </label>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
@@ -5435,20 +5451,22 @@ async function salvarNovaRecorrente(btn){
   const dia   = parseInt(document.getElementById('rec-dia').value)||10;
   if(!nome){ alert('Informe o nome da recorrente.'); return; }
   if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
-  const fornId = parseInt(document.getElementById('rec-fornecedor').value)||null;
-  const ccId   = parseInt(document.getElementById('rec-cc').value)||null;
-  const obraId = parseInt(document.getElementById('rec-obra').value)||null;
+  const fornId  = parseInt(document.getElementById('rec-fornecedor').value)||null;
+  const ccId    = parseInt(document.getElementById('rec-cc').value)||null;
+  const obraId  = parseInt(document.getElementById('rec-obra').value)||null;
+  const contaId = parseInt(document.getElementById('rec-conta').value)||null;
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
   const {data, error} = await sb.from('contas_recorrentes').insert({
     nome, fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId,
-    valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true
+    conta_id:contaId, valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true
   }).select().single();
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
   db.contasRecorrentes = db.contasRecorrentes||[];
   db.contasRecorrentes.push({
     id:data.id, nome:data.nome, fornecedorId:data.fornecedor_id||null,
     centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
+    contaId:data.conta_id||null,
     valor:Number(data.valor)||0, diaVencimento:data.dia_vencimento||10,
     ativa:true, criadoEm:data.criado_em||''
   });
@@ -5467,6 +5485,8 @@ function abrirEditarRecorrente(id){
     .map(c=>`<option value="${c.id}" ${c.id===r.centroCustoId?'selected':''}>${c.nome}</option>`).join('');
   const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}</option>`).join('');
+  const contaOpts = (db.contasCorrente||[]).filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(c=>`<option value="${c.id}" ${c.id===r.contaId?'selected':''}>${c.tipo==='cartao'?'💳 ':''}${c.nome}</option>`).join('');
   abrirModal(`
     <h3>${escHtml(r.nome)}</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
@@ -5500,6 +5520,11 @@ function abrirEditarRecorrente(id){
           </select>
         </label>
       </div>
+      <label>Pagar via (conta / cartão)
+        <select id="rec-conta" class="input" style="margin-top:4px">
+          <option value="">— não definido —</option>${contaOpts}
+        </select>
+      </label>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
@@ -5517,17 +5542,18 @@ async function salvarEdicaoRecorrente(id, btn){
   const dia   = parseInt(document.getElementById('rec-dia').value)||10;
   if(!nome){ alert('Informe o nome.'); return; }
   if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
-  const fornId = parseInt(document.getElementById('rec-fornecedor').value)||null;
-  const ccId   = parseInt(document.getElementById('rec-cc').value)||null;
-  const obraId = parseInt(document.getElementById('rec-obra').value)||null;
+  const fornId  = parseInt(document.getElementById('rec-fornecedor').value)||null;
+  const ccId    = parseInt(document.getElementById('rec-cc').value)||null;
+  const obraId  = parseInt(document.getElementById('rec-obra').value)||null;
+  const contaId = parseInt(document.getElementById('rec-conta').value)||null;
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
   r.nome=nome; r.valor=valor; r.diaVencimento=Math.min(Math.max(dia,1),31);
-  r.fornecedorId=fornId; r.centroCustoId=ccId; r.obraId=obraId;
+  r.fornecedorId=fornId; r.centroCustoId=ccId; r.obraId=obraId; r.contaId=contaId;
   try{
     const {error} = await sb.from('contas_recorrentes').update({
       nome, valor, dia_vencimento:r.diaVencimento,
-      fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId
+      fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId, conta_id:contaId
     }).eq('id',id);
     if(error) throw error;
     await Promise.all([save(), _delay]);
@@ -5914,9 +5940,8 @@ function renderContasCorrente(){
   if(table)  table.style.display = '';
   if(empty)  empty.style.display = 'none';
 
-  const TIPO_LABEL = {corrente:'Corrente', poupanca:'Aplicação', caixa:'Caixa interno'};
-  // Cores por tipo
-  const CORES = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7'};
+  const TIPO_LABEL = {corrente:'Corrente', poupanca:'Aplicação', caixa:'Caixa interno', cartao:'💳 Cartão'};
+  const CORES = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7', cartao:'#fce7f3'};
 
   tbody.innerHTML = '';
   contas.forEach(c=>{
@@ -5974,39 +5999,53 @@ async function salvarCampoContaCorrente(id, campo, valor){
   renderContasCorrente();
 }
 
-/** HTML compartilhado do formulário de conta corrente */
+/** HTML compartilhado do formulário de conta corrente.
+    Ao mudar o tipo para "cartao", mostra campos extras de limite/fechamento. */
 function _ccFormHTML(c={}){
+  const isCartao = (c.tipo||'corrente')==='cartao';
   return `
     <div style="display:grid;gap:14px">
-      <label>Nome da conta *
-        <input id="ncc-nome" type="text" placeholder="Ex: Bradesco Principal" class="input" style="margin-top:4px"
-          value="${escHtml(c.nome||'')}">
-      </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Nome *
+          <input id="ncc-nome" type="text" placeholder="Ex: Bradesco Principal, Nubank Crédito" class="input" style="margin-top:4px"
+            value="${escHtml(c.nome||'')}">
+        </label>
+        <label>Tipo *
+          <select id="ncc-tipo" class="input" style="margin-top:4px" onchange="_toggleCCCartao()">
+            <option value="corrente" ${(c.tipo||'corrente')==='corrente'?'selected':''}>Conta Corrente</option>
+            <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Aplicação</option>
+            <option value="caixa"    ${c.tipo==='caixa'?'selected':''}>Caixa Interno</option>
+            <option value="cartao"   ${c.tipo==='cartao'?'selected':''}>💳 Cartão de Crédito</option>
+          </select>
+        </label>
+      </div>
+      <div id="ncc-banco-row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px${isCartao?';display:none':''}">
         <label>Banco
           <input id="ncc-banco" type="text" placeholder="Ex: Bradesco" class="input" style="margin-top:4px"
             value="${escHtml(c.banco||'')}">
         </label>
-        <label>Tipo
-          <select id="ncc-tipo" class="input" style="margin-top:4px">
-            <option value="corrente" ${(c.tipo||'corrente')==='corrente'?'selected':''}>Conta Corrente</option>
-            <option value="poupanca" ${c.tipo==='poupanca'?'selected':''}>Aplicação</option>
-            <option value="caixa"    ${c.tipo==='caixa'?'selected':''}>Caixa Interno</option>
-          </select>
-        </label>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Agência
-          <input id="ncc-agencia" type="text" placeholder="0000" class="input" style="margin-top:4px"
+        <label>N° Conta / Agência
+          <input id="ncc-agencia" type="text" placeholder="Ag: 0000 / CC: 00000-0" class="input" style="margin-top:4px"
             value="${escHtml(c.agencia||'')}">
         </label>
-        <label>N° Conta
-          <input id="ncc-conta" type="text" placeholder="00000-0" class="input" style="margin-top:4px"
-            value="${escHtml(c.conta||'')}">
+      </div>
+      <div id="ncc-cartao-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px${isCartao?'':';display:none'}">
+        <label>Limite (R$)
+          <input id="ncc-limite" type="text" inputmode="decimal" placeholder="0,00" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px"
+            value="${c.limite!=null?fmtMoney(c.limite).replace('R$','').trim():''}">
+        </label>
+        <label>Dia Fechamento
+          <input id="ncc-fechamento" type="number" min="1" max="31" placeholder="Ex: 15" class="input" style="margin-top:4px"
+            value="${c.diaFechamento||''}">
+        </label>
+        <label>Dia Venc. Fatura
+          <input id="ncc-venc-fatura" type="number" min="1" max="31" placeholder="Ex: 22" class="input" style="margin-top:4px"
+            value="${c.diaVencimentoFatura||''}">
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Saldo Inicial (R$)
+        <label id="ncc-saldo-label" ${isCartao?'style="display:none"':''}>Saldo Inicial (R$)
           <input id="ncc-saldo" type="text" inputmode="decimal" placeholder="0,00" class="input"
             oninput="mascaraMoeda(this)" style="margin-top:4px"
             value="${c.saldoInicial!=null?fmtMoney(c.saldoInicial).replace('R$','').trim():''}">
@@ -6054,6 +6093,30 @@ function abrirEditarContaCorrente(id){
     </div>`, 'cartao');
 }
 
+/** Mostra/esconde campos de cartão de crédito ao mudar o tipo */
+function _toggleCCCartao(){
+  const tipo = document.getElementById('ncc-tipo').value;
+  const isCartao = tipo==='cartao';
+  const bancoRow   = document.getElementById('ncc-banco-row');
+  const cartaoRow  = document.getElementById('ncc-cartao-row');
+  const saldoLabel = document.getElementById('ncc-saldo-label');
+  if(bancoRow)   bancoRow.style.display   = isCartao ? 'none' : 'grid';
+  if(cartaoRow)  cartaoRow.style.display  = isCartao ? 'grid' : 'none';
+  if(saldoLabel) saldoLabel.style.display = isCartao ? 'none' : '';
+}
+
+/** Lê os campos extras de cartão do formulário */
+function _ccCartaoCampos(){
+  const tipo = (document.getElementById('ncc-tipo')||{}).value||'corrente';
+  if(tipo!=='cartao') return {limite:null, diaFechamento:null, diaVencimentoFatura:null};
+  const limite = parseFloat(
+    ((document.getElementById('ncc-limite')||{}).value||'0').replace(/\./g,'').replace(',','.')
+  ) || null;
+  const diaFechamento      = parseInt((document.getElementById('ncc-fechamento')||{}).value)||null;
+  const diaVencimentoFatura= parseInt((document.getElementById('ncc-venc-fatura')||{}).value)||null;
+  return {limite, diaFechamento, diaVencimentoFatura};
+}
+
 /** Persiste edição de conta corrente */
 async function salvarEdicaoContaCorrente(id){
   const c = (db.contasCorrente||[]).find(x=>x.id===id);
@@ -6066,17 +6129,18 @@ async function salvarEdicaoContaCorrente(id){
   const banco    = (document.getElementById('ncc-banco').value||'').trim();
   const tipo     = document.getElementById('ncc-tipo').value;
   const agencia  = (document.getElementById('ncc-agencia').value||'').trim();
-  const conta    = (document.getElementById('ncc-conta').value||'').trim();
   const ativo    = document.getElementById('ncc-ativo').checked;
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
+  const {limite, diaFechamento, diaVencimentoFatura} = _ccCartaoCampos();
   const {error} = await sb.from('contas_correntes').update({
-    nome, banco:banco||null, agencia:agencia||null, conta:conta||null,
-    tipo, saldo_inicial:saldoInicial, ativo
+    nome, banco:banco||null, agencia:agencia||null, conta:null,
+    tipo, saldo_inicial:saldoInicial, ativo,
+    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
-  Object.assign(c, {nome, banco, agencia, conta, tipo, saldoInicial, ativo});
+  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, limite, diaFechamento, diaVencimentoFatura});
   save();
   await _delay;
   fecharModal();
@@ -6112,17 +6176,18 @@ async function salvarNovaContaCorrente(){
   const banco   = (document.getElementById('ncc-banco').value||'').trim();
   const tipo    = document.getElementById('ncc-tipo').value;
   const agencia = (document.getElementById('ncc-agencia').value||'').trim();
-  const conta   = (document.getElementById('ncc-conta').value||'').trim();
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
+  const {limite, diaFechamento, diaVencimentoFatura} = _ccCartaoCampos();
 
   const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
-  const row = {id, nome, banco, agencia, conta, tipo, saldoInicial, ativo:true};
+  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, limite, diaFechamento, diaVencimentoFatura};
 
   const {error} = await sb.from('contas_correntes').insert({
-    id, nome, banco:banco||null, agencia:agencia||null, conta:conta||null,
-    tipo, saldo_inicial:saldoInicial, ativo:true
+    id, nome, banco:banco||null, agencia:agencia||null, conta:null,
+    tipo, saldo_inicial:saldoInicial, ativo:true,
+    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura
   });
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
