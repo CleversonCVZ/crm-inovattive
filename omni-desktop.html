@@ -6525,6 +6525,9 @@ async function excluirMovimentacao(id, contaId){
 
 // ──────────────────────────────────────────────────────────────
 
+/** Retorna true se o CC vincula a uma obra (material ou mão de obra) */
+function _ccVinculaObra(cc){ return cc && (cc.slug==='material_obra' || cc.slug==='mao_de_obra'); }
+
 /** Mostra/oculta o campo Obra no modal de Contas a Pagar conforme o CC selecionado */
 function toggleObraCampoCp(rowId, ccSelId){
   const sel  = document.getElementById(ccSelId);
@@ -6532,7 +6535,7 @@ function toggleObraCampoCp(rowId, ccSelId){
   if(!sel || !row) return;
   const ccId = parseInt(sel.value) || null;
   const cc   = (db.centrosCusto||[]).find(c=>c.id===ccId);
-  const show = cc && cc.slug === 'material_obra';
+  const show = _ccVinculaObra(cc);
   row.style.display = show ? 'block' : 'none';
   // limpa seleção de obra se escondeu
   if(!show){
@@ -7274,7 +7277,7 @@ async function salvarNovaContaPagar(){
   const condicao  = tipo==='condicional' ? (document.getElementById('ncp-cond').value||'').trim() : null;
   const ccId      = parseInt(document.getElementById('ncp-cc').value) || null;
   const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
-  const obraId    = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ncp-obra').value)||null) : null;
+  const obraId    = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('ncp-obra').value)||null) : null;
   const observacao= (document.getElementById('ncp-obs').value||'').trim();
 
   if(!descricao){ alert('Informe a descrição.'); return; }
@@ -7282,7 +7285,7 @@ async function salvarNovaContaPagar(){
   if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
-  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
+  if(_ccVinculaObra(ccSel)&&!obraId){ alert('Selecione a obra para este lançamento.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -7370,7 +7373,7 @@ function abrirEditarContaPagar(id){
             ${ccOpts}
           </select>
         </label>
-        <div id="ecp-obra-row" style="display:${ccAtualSlug==='material_obra'?'block':'none'}">
+        <div id="ecp-obra-row" style="display:${(ccAtualSlug==='material_obra'||ccAtualSlug==='mao_de_obra')?'block':'none'}">
           <label>Obra
             <select id="ecp-obra" class="input" style="margin-top:4px">
               <option value="">— selecione a obra —</option>
@@ -7407,7 +7410,7 @@ async function salvarEdicaoContaPagar(id){
   const condicao    = tipo==='condicional' ? (document.getElementById('ecp-cond').value||'').trim() : null;
   const ccId        = parseInt(document.getElementById('ecp-cc').value) || null;
   const ccSel       = (db.centrosCusto||[]).find(c=>c.id===ccId);
-  const obraId      = (ccSel&&ccSel.slug==='material_obra') ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
+  const obraId      = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
   const observacao  = (document.getElementById('ecp-obs').value||'').trim();
 
   if(!descricao){ alert('Informe a descrição.'); return; }
@@ -7415,7 +7418,7 @@ async function salvarEdicaoContaPagar(id){
   if(tipo==='fixo' && !dataVenc){ alert('Informe a data de vencimento.'); return; }
   if(tipo==='condicional' && !condicao){ alert('Informe a condição para pagamento.'); return; }
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
-  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
+  if(_ccVinculaObra(ccSel)&&!obraId){ alert('Selecione a obra para este lançamento.'); return; }
 
   // Preserva status=pago se já pago; caso contrário sempre pendente (condicional é tipo, não status)
   const novoStatus = p.status==='pago' ? 'pago' : 'pendente';
