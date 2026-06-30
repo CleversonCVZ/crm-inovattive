@@ -675,24 +675,29 @@
     <div class="bar">
       <h2>Contas Recorrentes</h2>
       <div class="spacer"></div>
+      <select id="rec-filtro-status" class="vista-sel" onchange="renderRecorrentes()">
+        <option value="">Todos os status</option>
+        <option value="ativa">Ativas</option>
+        <option value="pausada">Pausadas</option>
+      </select>
       <button class="btn primary" onclick="abrirNovaRecorrente()">＋ Nova</button>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 16px">
-      Contas que se repetem todo mês. O sistema gera automaticamente uma entrada em Contas a Pagar ao abrir o sistema, se ainda não existir para o mês corrente.
-    </p>
-    <table style="width:100%;border-collapse:collapse">
-      <thead>
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Nome / Fornecedor</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Centro de Custo</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Pagar via</th>
-          <th style="text-align:right;padding:7px 6px;font-size:11px;color:var(--muted)">Valor</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Vencimento</th>
-          <th style="text-align:left;padding:7px 6px;font-size:11px;color:var(--muted)">Status</th>
-        </tr>
-      </thead>
+    <div class="stats" id="rec-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <table class="lista" id="rec-table" style="display:none">
+      <thead><tr>
+        <th>Nome / Fornecedor</th>
+        <th style="width:160px">Centro de Custo</th>
+        <th style="width:160px">Pagar via</th>
+        <th style="width:130px;text-align:right">Valor mensal</th>
+        <th style="width:120px">Vencimento</th>
+        <th style="width:110px">Status</th>
+        <th style="width:60px"></th>
+      </tr></thead>
       <tbody id="recorrentes-tbody"></tbody>
     </table>
+    <div id="rec-empty" class="empty" style="display:none">
+      Nenhuma conta recorrente cadastrada. Clique em <b>＋ Nova</b> para começar.
+    </div>
   </div>
 
   <!-- FINANCEIRO: CENTROS DE CUSTO -->
@@ -5361,17 +5366,50 @@ async function gerarRecorrentesDoMes(){
 }
 
 function renderRecorrentes(){
-  const tbody = document.getElementById('recorrentes-tbody');
+  const tbody   = document.getElementById('recorrentes-tbody');
+  const table   = document.getElementById('rec-table');
+  const empty   = document.getElementById('rec-empty');
+  const statsEl = document.getElementById('rec-stats-bar');
   if(!tbody) return;
   if(!usuarioAtual || !podeVer(usuarioAtual,'fin-recorrentes')) return;
-  const fBusca = (termoBusca()||'').toLowerCase();
-  let lista = (db.contasRecorrentes||[]).slice();
-  if(fBusca) lista = lista.filter(r=>(r.nome||'').toLowerCase().includes(fBusca));
-  lista.sort((a,b)=>(a.nome||'').localeCompare(b.nome||''));
+
+  const todas = (db.contasRecorrentes||[]).slice();
+
+  // Stats — sempre sobre tudo
+  const totAtivas   = todas.filter(r=>r.ativa);
+  const totPausadas = todas.filter(r=>!r.ativa);
+  const somaAtivas  = totAtivas.reduce((s,r)=>s+r.valor,0);
+  const somaTodas   = todas.reduce((s,r)=>s+r.valor,0);
+  if(statsEl) statsEl.innerHTML=`
+    <div class="stat"><div class="n">${fmtMoney(somaTodas)||'R$ 0,00'}</div><div class="l">Total / mês</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(somaAtivas)||'R$ 0,00'}</div><div class="l">Ativas (${totAtivas.length})</div></div>
+    ${totPausadas.length?`<div class="stat"><div class="n" style="color:var(--muted)">${fmtMoney(totPausadas.reduce((s,r)=>s+r.valor,0))}</div><div class="l">Pausadas (${totPausadas.length})</div></div>`:''}`;
+
+  // Filtros
+  const fStatus = (document.getElementById('rec-filtro-status')||{}).value||'';
+  const fBusca  = (termoBusca()||'').toLowerCase();
+
+  let lista = todas.slice().sort((a,b)=>{
+    // Ativas primeiro, depois por nome
+    if(a.ativa !== b.ativa) return a.ativa ? -1 : 1;
+    return (a.nome||'').localeCompare(b.nome||'');
+  });
+
+  if(fStatus==='ativa')   lista = lista.filter(r=>r.ativa);
+  if(fStatus==='pausada') lista = lista.filter(r=>!r.ativa);
+  if(fBusca) lista = lista.filter(r=>{
+    const forn = (db.fornecedores||[]).find(f=>f.id===r.fornecedorId);
+    return (r.nome||'').toLowerCase().includes(fBusca) || ((forn&&forn.nome)||'').toLowerCase().includes(fBusca);
+  });
+
   if(!lista.length){
-    tbody.innerHTML=`<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted)">Nenhuma recorrente cadastrada. Clique em + Nova para começar.</td></tr>`;
+    if(table) table.style.display='none';
+    if(empty) empty.style.display='';
     return;
   }
+  if(table) table.style.display='';
+  if(empty) empty.style.display='none';
+
   tbody.innerHTML = lista.map(r=>{
     const forn  = r.fornecedorId  ? (db.fornecedores||[]).find(f=>f.id===r.fornecedorId)  : null;
     const cc    = r.centroCustoId ? (db.centrosCusto||[]).find(c=>c.id===r.centroCustoId) : null;
@@ -5389,6 +5427,7 @@ function renderRecorrentes(){
       <td style="font-weight:700;text-align:right">${fmtMoney(r.valor)}</td>
       <td style="font-size:12px;color:var(--muted)">Dia ${r.diaVencimento}</td>
       <td>${badge}</td>
+      <td style="text-align:right"><button class="icon-btn" title="Editar" onclick="event.stopPropagation();abrirEditarRecorrente(${r.id})">↗</button></td>
     </tr>`;
   }).join('');
 }
