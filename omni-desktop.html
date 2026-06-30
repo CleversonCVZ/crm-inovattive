@@ -4896,10 +4896,14 @@ async function excluirCotacaoSRM(cotId, srmId){
 function itensPropostasParaObra(obraId){
   const itens=[];
   if(!obraId) return itens;
+  const oid=Number(obraId);
   (db.propostas||[]).filter(p=>{
-    if(p.obraId && p.obraId===obraId) return true;
-    const card=(db.cards||[]).find(cd=>cd.id===p.cardId);
-    return !!(card && card.obraId===obraId);
+    // 1) proposta tem obra_id direto
+    if(p.obraId && Number(p.obraId)===oid) return true;
+    // 2) proposta → card → obra
+    const card=(db.cards||[]).find(cd=>Number(cd.id)===Number(p.cardId));
+    if(card && card.obraId && Number(card.obraId)===oid) return true;
+    return false;
   }).forEach(p=>{
     (p.itens||[]).forEach(it=>{ if(it.descricao) itens.push({propostaId:p.id,desc:it.descricao,qtd:it.qtd||0}); });
   });
@@ -5057,7 +5061,7 @@ function abaPedidoAprovadoSRMHTML(c){
 
     const botoesHTML=`
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
-        ${showMatchCol?`<button class="btn primary" onclick="salvarCorrespondenciasNF(${cot.id},${c.id})">💾 Salvar Correspondências</button>`:''}
+        ${showMatchCol?`<button class="btn primary" onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
         <button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Em breve: módulo de estoque">🏭 Lançar no Estoque</button>
       </div>`;
 
