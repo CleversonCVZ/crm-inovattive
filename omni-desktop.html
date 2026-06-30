@@ -4626,8 +4626,8 @@ function abrirEditarSRM(id, aba='dados'){
           <option value="cliente" ${c.pagamentoResponsavel==='cliente'?'selected':''}>👤 Cliente paga diretamente</option>
         </select>
         <div class="flags">
-          <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''}> ✔ Encerrado</label>
           <label class="flag perdido"><input type="checkbox" id="srm-m-can" ${c.cancelado?'checked':''}> ✖ Cancelado</label>
+          <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''}> ✔ Concluído</label>
         </div>
       </div>
       <div class="col-hist">
