@@ -1402,7 +1402,8 @@ const RECURSOS = [
   // ── Financeiro
   {id:'fin-contas-pagar-gerenciar',     grupo:'financeiro', nome:'Contas a Pagar — Adicionar e Editar'},
   {id:'fin-contas-pagar-pagar',         grupo:'financeiro', nome:'Contas a Pagar — Registrar Pagamento'},
-  {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Gerenciar contas e lançamentos'},
+  {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Criar, Editar e Excluir contas'},
+  {id:'fin-contas-correntes-lancar',   grupo:'financeiro', nome:'Contas Correntes — Lançar movimentações e ver Extrato'},
   {id:'fin-centros-custo-gerenciar',    grupo:'financeiro', nome:'Centros de Custo — Adicionar e Editar'}
 ];
 
@@ -6109,21 +6110,23 @@ function abrirNovaContaCorrente(){
 
 /** Abre modal para editar conta corrente existente */
 function abrirEditarContaCorrente(id){
-  if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
+  const podeGer   = podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar');
+  const podeLancar= podeUsar(usuarioAtual,'fin-contas-correntes-lancar');
+  if(!podeGer && !podeLancar){ alert('Sem permissão para acessar esta conta.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===id);
   if(!c) return;
   abrirModal(`
     <h3>${escHtml(c.nome)}</h3>
-    <div class="aba-corpo">${_ccFormHTML(c)}</div>
+    <div class="aba-corpo">${podeGer ? _ccFormHTML(c) : `<p style="color:var(--muted);padding:20px 0">Você tem acesso apenas a lançamentos e extrato desta conta.</p>`}</div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
-        <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${id})">📋 Extrato</button>
-        <button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>
+        ${podeLancar?`<button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${id})">📋 Extrato</button>`:''}
+        ${podeLancar?`<button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>
+        ${podeGer?`<button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>`:''}
         <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-        <button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaCorrente(${id})">Salvar</button>
+        ${podeGer?`<button class="btn primary" data-btn-salvar onclick="salvarEdicaoContaCorrente(${id})">Salvar</button>`:''}
       </div>
     </div>`, 'cartao');
 }
@@ -6243,6 +6246,7 @@ async function salvarNovaContaCorrente(){
 
 /** Abre modal de lançamento manual (entrada ou saída) numa conta */
 function abrirLancamentoManual(contaId){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para lançar movimentações.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
   if(!c) return;
   const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
@@ -6373,6 +6377,7 @@ async function salvarLancamentoManual(contaId){
 
 /** Abre modal de extrato de movimentações de uma conta */
 function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para visualizar o extrato.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
   if(!c) return;
 
