@@ -658,12 +658,16 @@
       <select id="finpainel-vista" class="vista-sel" onchange="renderFinPainel()">
         <option value="cc">Visualização: Centros de Custo</option>
         <option value="cp">Visualização: Contas a Pagar</option>
+        <option value="extrato">Visualização: Extrato por Conta</option>
       </select>
       <select id="finpainel-periodo" class="vista-sel" onchange="renderFinPainel()" style="margin-left:6px">
         <option value="mes">Este mês</option>
         <option value="trim">Este trimestre</option>
         <option value="ano">Este ano</option>
         <option value="tudo">Todo o período</option>
+      </select>
+      <select id="finpainel-conta" class="vista-sel" onchange="renderFinPainel()" style="display:none;margin-left:6px">
+        <option value="">— Selecione a conta —</option>
       </select>
     </div>
     <div class="stats" id="finpainel-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
@@ -2344,10 +2348,30 @@ function renderFinPainel(){
   if(!statsEl || !corpoEl) return;
   const vista   = (document.getElementById('finpainel-vista')||{}).value||'cc';
   const periodo = (document.getElementById('finpainel-periodo')||{}).value||'mes';
+
+  // Terceiro select: Conta — só visível na vista extrato
+  const contaSel = document.getElementById('finpainel-conta');
+  if(contaSel){
+    contaSel.style.display = vista==='extrato' ? '' : 'none';
+    if(vista==='extrato'){
+      const valAtual = contaSel.value;
+      contaSel.innerHTML = '<option value="">— Selecione a conta —</option>' +
+        (db.contasCorrente||[]).filter(c=>c.ativo!==false)
+          .sort((a,b)=>(a.nome||'').localeCompare(b.nome||''))
+          .map(c=>`<option value="${c.id}">${c.tipo==='cartao'?'💳 ':''}${escHtml(c.nome)}</option>`)
+          .join('');
+      contaSel.value = valAtual; // preserva seleção ao trocar período
+    }
+  }
+
   statsEl.innerHTML = '';
   corpoEl.innerHTML = '';
   if(vista === 'cc') _finPainelCC(statsEl, corpoEl, periodo);
   if(vista === 'cp') _finPainelCP(statsEl, corpoEl, periodo);
+  if(vista === 'extrato'){
+    const contaId = parseInt((document.getElementById('finpainel-conta')||{}).value)||null;
+    _finPainelExtrato(statsEl, corpoEl, periodo, contaId);
+  }
 }
 // Alias para compatibilidade com router e renderAll
 function renderCCPainel(){ renderFinPainel(); }
@@ -2480,6 +2504,111 @@ function _finPainelCP(statsEl, corpoEl, periodo){
       <div style="text-align:right;color:#2e7d32">Pago</div>
       <div style="text-align:right;color:#e65100">Pendente</div>
       <div style="text-align:center">Qtd</div>
+    </div>`;
+}
+
+/** Sub-renderer: Extrato por Conta Corrente */
+function _finPainelExtrato(statsEl, corpoEl, periodo, contaId){
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(!c){
+    statsEl.innerHTML = '';
+    corpoEl.innerHTML = `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">🏦</div>
+      <div style="font-weight:600">Selecione uma conta corrente acima</div>
+      <div style="font-size:13px;margin-top:6px">Escolha a conta no terceiro seletor para visualizar o extrato.</div>
+    </div>`;
+    return;
+  }
+
+  // Todos os movimentos da conta, ordenados por data
+  const todasMovs = (db.movimentacoes||[])
+    .filter(m=>m.contaId===contaId)
+    .sort((a,b)=>(a.dataMovimento||'').localeCompare(b.dataMovimento||''));
+
+  // Saldo inicial: base + movimentos ANTES do período
+  const base = c.tipo==='cartao' ? -(c.faturaInicial||0) : (c.saldoInicial||0);
+  let dataInicio = null;
+  if(periodo==='mes'){
+    const h=new Date(); dataInicio=`${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-01`;
+  } else if(periodo==='trim'){
+    const h=new Date(); const tri=Math.floor(h.getMonth()/3);
+    dataInicio=`${h.getFullYear()}-${String(tri*3+1).padStart(2,'0')}-01`;
+  } else if(periodo==='ano'){
+    dataInicio=`${new Date().getFullYear()}-01-01`;
+  }
+  const movsAnteriores = dataInicio ? todasMovs.filter(m=>(m.dataMovimento||'')<dataInicio) : [];
+  const saldoInicial = movsAnteriores.reduce((acc,m)=>{
+    if(m.tipo==='entrada') return acc+m.valor;
+    if(m.tipo==='saida' || m.tipo==='transferencia') return acc-m.valor;
+    return acc;
+  }, base);
+
+  // Movimentos do período
+  const movsPeriodo = todasMovs.filter(m=>_finPainelDentroFiltro(m.dataMovimento, periodo));
+  const totEntradas = movsPeriodo.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+m.valor,0);
+  const totSaidas   = movsPeriodo.filter(m=>m.tipo==='saida'||m.tipo==='transferencia').reduce((s,m)=>s+m.valor,0);
+  const saldoFinal  = saldoInicial + totEntradas - totSaidas;
+  const isCartao    = c.tipo==='cartao';
+
+  // Stats
+  if(isCartao){
+    const faturaAtual = -saldoFinal;
+    const dispCartao  = (c.limite||0) - faturaAtual;
+    statsEl.innerHTML=`
+      <div class="stat"><div class="n">${fmtMoney(c.limite||0)||'R$ 0,00'}</div><div class="l">Limite</div></div>
+      <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(faturaAtual)||'R$ 0,00'}</div><div class="l">Fatura atual</div></div>
+      <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totSaidas)||'R$ 0,00'}</div><div class="l">Gastos no período</div></div>
+      <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totEntradas)||'R$ 0,00'}</div><div class="l">Pagamentos</div></div>
+      <div class="stat"><div class="n" style="color:${dispCartao>=0?'#2e7d32':'#b71c1c'}">${fmtMoney(dispCartao>=0?dispCartao:0)||'R$ 0,00'}</div><div class="l">Disponível</div></div>`;
+  } else {
+    statsEl.innerHTML=`
+      <div class="stat"><div class="n">${fmtMoney(saldoInicial)||'R$ 0,00'}</div><div class="l">Saldo inicial</div></div>
+      <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totEntradas)||'R$ 0,00'}</div><div class="l">Entradas</div></div>
+      <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totSaidas)||'R$ 0,00'}</div><div class="l">Saídas</div></div>
+      <div class="stat"><div class="n" style="color:${saldoFinal>=0?'#2e7d32':'#b71c1c'}">${fmtMoney(saldoFinal)||'R$ 0,00'}</div><div class="l">Saldo final</div></div>`;
+  }
+
+  if(!movsPeriodo.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
+
+  // Tabela com saldo acumulado
+  const COL = '100px 1fr 100px 120px 120px 130px';
+  let saldoAcc = saldoInicial;
+  const rows = movsPeriodo.map(m=>{
+    const isEnt  = m.tipo==='entrada';
+    const isSai  = m.tipo==='saida'||m.tipo==='transferencia';
+    if(isEnt)  saldoAcc += m.valor;
+    if(isSai)  saldoAcc -= m.valor;
+    const corSaldo = isCartao ? ((-saldoAcc)>=(c.limite||0)?'#c62828':'#b71c1c') : (saldoAcc>=0?'#2e7d32':'#c62828');
+    const labelTipo = m.tipo==='transferencia'?'Transferência':isEnt?'Entrada':'Saída';
+    const saldoLabel = isCartao ? `Fatura: ${fmtMoney(-saldoAcc)}` : fmtMoney(saldoAcc);
+    return `<div style="display:grid;grid-template-columns:${COL};gap:10px;padding:9px 14px;border-bottom:1px solid var(--border);align-items:center">
+      <div style="font-size:12px;color:var(--muted)">${fmtDia2(m.dataMovimento)||'—'}</div>
+      <div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(m.descricao||'')}">${escHtml(m.descricao||'—')}</div>
+      <div style="font-size:12px;color:var(--muted)">${labelTipo}</div>
+      <div style="text-align:right;font-weight:700;color:#2e7d32">${isEnt?fmtMoney(m.valor):''}</div>
+      <div style="text-align:right;font-weight:700;color:#b71c1c">${isSai?fmtMoney(m.valor):''}</div>
+      <div style="text-align:right;font-weight:700;color:${corSaldo};font-size:13px">${saldoLabel}</div>
+    </div>`;
+  }).join('');
+
+  const hdrSaldo = isCartao ? 'Fatura' : 'Saldo';
+  corpoEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:${COL};gap:10px;padding:6px 14px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border)">
+      <div>Data</div><div>Descrição</div><div>Tipo</div>
+      <div style="text-align:right;color:#2e7d32">Entrada</div>
+      <div style="text-align:right;color:#b71c1c">Saída</div>
+      <div style="text-align:right">${hdrSaldo}</div>
+    </div>
+    ${periodo!=='tudo'?`<div style="display:grid;grid-template-columns:${COL};gap:10px;padding:9px 14px;background:var(--bg2,#f8f9fa);font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">
+      <div></div><div>Saldo inicial do período</div><div></div><div></div><div></div>
+      <div style="text-align:right;font-weight:700;color:${isCartao?'#b71c1c':(saldoInicial>=0?'#2e7d32':'#c62828')}">${isCartao?`Fatura: ${fmtMoney(-saldoInicial)}`:fmtMoney(saldoInicial)}</div>
+    </div>`:''}
+    ${rows}
+    <div style="display:grid;grid-template-columns:${COL};gap:10px;padding:9px 14px;background:var(--bg2,#f8f9fa);font-size:13px;font-weight:700;border-top:2px solid var(--border)">
+      <div></div><div style="color:var(--muted)">${hdrSaldo} final do período</div><div></div>
+      <div style="text-align:right;color:#2e7d32">${fmtMoney(totEntradas)}</div>
+      <div style="text-align:right;color:#b71c1c">${fmtMoney(totSaidas)}</div>
+      <div style="text-align:right;color:${isCartao?'#b71c1c':(saldoFinal>=0?'#2e7d32':'#c62828')}">${isCartao?fmtMoney(-saldoFinal):fmtMoney(saldoFinal)}</div>
     </div>`;
 }
 
