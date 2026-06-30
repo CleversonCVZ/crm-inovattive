@@ -2073,7 +2073,13 @@ async function carregarDadosSupabase(){
         observacao:x.observacao||'',
         arquivos:Array.isArray(x.arquivos) ? x.arquivos : [],
         xmlNfPath:x.xml_nf_path||null,
-        xmlNfNome:x.xml_nf_nome||null
+        xmlNfNome:x.xml_nf_nome||null,
+        nfItens:Array.isArray(x.nf_itens)?x.nf_itens:null,
+        nfNumero:x.nf_numero||null,
+        nfData:x.nf_data?x.nf_data.slice(0,10):null,
+        nfValorTotal:x.nf_valor_total!=null?Number(x.nf_valor_total):null,
+        nfEmitCnpj:x.nf_emit_cnpj||null,
+        nfEmitNome:x.nf_emit_nome||null
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -2319,7 +2325,13 @@ function syncDadosSupabase(){
       observacao:x.observacao||null,
       arquivos:x.arquivos||[],
       xml_nf_path:x.xmlNfPath||null,
-      xml_nf_nome:x.xmlNfNome||null
+      xml_nf_nome:x.xmlNfNome||null,
+      nf_itens:x.nfItens||null,
+      nf_numero:x.nfNumero||null,
+      nf_data:x.nfData||null,
+      nf_valor_total:x.nfValorTotal||null,
+      nf_emit_cnpj:x.nfEmitCnpj||null,
+      nf_emit_nome:x.nfEmitNome||null
     }));
   }, 800);
 }
@@ -4879,87 +4891,233 @@ async function excluirCotacaoSRM(cotId, srmId){
   abrirEditarSRM(srmId,'propostas');
 }
 
+/* ---- SRM: Parser NF-e XML (client-side) ---- */
+function parseNFeXML(xmlText){
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(xmlText,'text/xml');
+  if(doc.querySelector('parsererror')) throw new Error('XML inválido ou corrompido.');
+  const get=(el,tag)=>{ const e=el?el.querySelector(tag):null; return e?e.textContent.trim():''; };
+  const infNFe=doc.querySelector('infNFe');
+  if(!infNFe) throw new Error('Arquivo não parece ser uma NF-e válida (elemento infNFe não encontrado).');
+  const nNF=get(infNFe,'nNF');
+  const dhEmi=get(infNFe,'dhEmi')||get(infNFe,'dEmi');
+  const emitCNPJ=get(infNFe,'emit CNPJ')||get(infNFe,'emit CPF');
+  const emitNome=get(infNFe,'emit xNome');
+  const vNF=parseFloat(get(infNFe,'ICMSTot vNF'))||0;
+  const dets=infNFe.querySelectorAll('det');
+  const itens=Array.from(dets).map(det=>{
+    const prod=det.querySelector('prod');
+    return {
+      nItem:det.getAttribute('nItem')||'',
+      cProd:get(prod,'cProd'), xProd:get(prod,'xProd'),
+      NCM:get(prod,'NCM'), CFOP:get(prod,'CFOP'), uCom:get(prod,'uCom'),
+      qCom:parseFloat(get(prod,'qCom'))||0,
+      vUnCom:parseFloat(get(prod,'vUnCom'))||0,
+      vProd:parseFloat(get(prod,'vProd'))||0,
+      propostaId:null, propostaItemDesc:null, semCorrespondencia:false
+    };
+  });
+  if(!itens.length) throw new Error('Nenhum item (det) encontrado na NF-e.');
+  return {nNF, nfData:dhEmi?dhEmi.slice(0,10):null, emitCNPJ, emitNome, vNF, itens};
+}
+
 /* ---- SRM: Aba Pedido Aprovado ---- */
 function abaPedidoAprovadoSRMHTML(c){
-  const cot = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
+  const cot=(db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id&&x.status==='selecionada');
   if(!cot) return `
     <div class="empty" style="padding:50px 20px;text-align:center;color:var(--muted)">
       ✅ <b>Nenhuma cotação selecionada ainda</b><br>
       <small style="display:block;margin-top:8px">Vá para a aba <b>Propostas / Cotações</b> e clique em <b>✔ Selecionar</b> na proposta aprovada.</small>
     </div>`;
-  const forn = (db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
-  const arqsLinks = (cot.arquivos||[]).map(a=>
+
+  const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  const arqsLinks=(cot.arquivos||[]).map(a=>
     `<button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>`
   ).join('');
-  return `
-    <div style="padding:4px 0">
-      <div style="background:#f1f8e9;border:1px solid #a5d6a7;border-radius:8px;padding:14px 16px;margin-bottom:18px">
-        <div style="margin-bottom:10px">
-          <span style="background:#2e7d32;color:#fff;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700">✔ Cotação Selecionada</span>
-        </div>
-        <div style="font-weight:700;font-size:15px;margin-bottom:8px">${escHtml(cot.descricao||'—')}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
-          ${cot.valor!=null ? `<div><b>Valor:</b> ${fmtMoney(cot.valor)}</div>` : ''}
-          ${cot.dataRecebimento ? `<div><b>Recebida em:</b> ${fmtDia2(cot.dataRecebimento)}</div>` : ''}
-          ${forn ? `<div style="grid-column:1/-1"><b>Fornecedor:</b> ${escHtml(forn.nome)}</div>` : ''}
-          ${cot.observacao ? `<div style="grid-column:1/-1"><b>Obs:</b> ${escHtml(cot.observacao)}</div>` : ''}
-        </div>
-        ${arqsLinks ? `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${arqsLinks}</div>` : ''}
-      </div>
 
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px 16px">
-        <div style="font-weight:700;margin-bottom:12px;font-size:14px">📋 Nota Fiscal (XML)</div>
-        ${cot.xmlNfNome ? `
-          <div style="display:flex;align-items:center;gap:10px;background:#f5f5f5;border-radius:6px;padding:8px 12px;margin-bottom:12px">
-            <span style="font-size:20px">📄</span>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(cot.xmlNfNome)}</div>
-              <div style="font-size:11px;color:var(--muted)">XML da Nota Fiscal</div>
+  const cotCardHTML=`
+    <div style="background:#f1f8e9;border:1px solid #a5d6a7;border-radius:8px;padding:11px 14px;margin-bottom:14px">
+      <span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✔ Cotação Selecionada</span>
+      <div style="font-weight:700;font-size:14px;margin:5px 0 3px">${escHtml(cot.descricao||'—')}</div>
+      <div style="font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap">
+        ${cot.valor!=null?`<span><b>Valor cotação:</b> ${fmtMoney(cot.valor)}</span>`:''}
+        ${forn?`<span><b>Fornecedor:</b> ${escHtml(forn.nome)}</span>`:''}
+        ${cot.dataRecebimento?`<span><b>Recebida:</b> ${fmtDia2(cot.dataRecebimento)}</span>`:''}
+      </div>
+      ${arqsLinks?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${arqsLinks}</div>`:''}
+    </div>`;
+
+  /* ── NF já importada → tela de confrontação ── */
+  if(cot.nfItens&&cot.nfItens.length>0){
+    const ccSlug=c.centroCustoId?((db.centrosCusto||[]).find(x=>x.id===c.centroCustoId)||{}).slug:null;
+    const isMaterialObra=ccSlug==='material_obra';
+    const showMatchCol=isMaterialObra&&!!c.obraId;
+
+    /* proposta items para matching */
+    const itensPropostas=[];
+    if(showMatchCol){
+      (db.propostas||[]).filter(p=>p.obraId===c.obraId).forEach(p=>{
+        (p.itens||[]).forEach(it=>{ if(it.descricao) itensPropostas.push({propostaId:p.id,desc:it.descricao,qtd:it.qtd}); });
+      });
+    }
+
+    /* conferência de valor */
+    const nfTotal=cot.nfValorTotal||0;
+    const cotTotal=cot.valor||0;
+    const semCotTotal=!cotTotal;
+    const valorOk=!semCotTotal&&Math.abs(nfTotal-cotTotal)<0.02;
+    const cnpjFmt=s=>s?s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,'$1.$2.$3/$4-$5'):s;
+
+    const nfHeaderHTML=`
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:700;font-size:14px">📋 NF-e nº ${escHtml(cot.nfNumero||'—')}
+              <button class="link-btn" style="font-size:11px;margin-left:6px" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ XML</button>
+              <button class="icon-btn del" style="font-size:11px;margin-left:2px" onclick="removerXmlNfSRM(${cot.id},${c.id})" title="Remover e reimportar">🗑</button>
             </div>
-            <button class="btn sm" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath)}','${escHtml(cot.xmlNfNome)}')">⬇ Baixar</button>
-            <button class="icon-btn del" onclick="removerXmlNfSRM(${cot.id},${c.id})" title="Remover">🗑</button>
-          </div>` : `
-          <div style="color:var(--muted);font-size:13px;margin-bottom:12px">⏳ Aguardando XML da nota fiscal.</div>`}
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <input id="nf-xml-input" type="file" accept=".xml,text/xml,application/xml" style="flex:1;font-size:12px;min-width:0">
-          <button class="btn sm primary" onclick="uploadXmlNfSRM(${cot.id},${c.id},document.getElementById('nf-xml-input'))">⬆ Enviar XML</button>
+            ${cot.nfData?`<div style="font-size:11px;color:var(--muted)">${fmtDia2(cot.nfData)}</div>`:''}
+            ${cot.nfEmitNome?`<div style="font-size:12px;margin-top:2px">${escHtml(cot.nfEmitNome)}${cot.nfEmitCnpj?` <span style="color:var(--muted);font-size:10px">(${cnpjFmt(cot.nfEmitCnpj)})</span>`:''}</div>`:''}
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:16px;font-weight:700">${fmtMoney(nfTotal)}</div>
+            ${semCotTotal?`<div style="font-size:10px;color:var(--muted)">cotação sem valor registrado</div>`:
+              valorOk?`<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Valor confere</span>`:
+              `<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">⚠️ Diverge da cotação (${fmtMoney(cotTotal)})</span>`}
+          </div>
         </div>
-        <div id="nf-xml-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
-        <div id="nf-xml-progress" style="display:none;margin-top:4px">
-          <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
-          <div id="nf-xml-size" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
-        </div>
+      </div>`;
+
+    const allMatched=!showMatchCol||cot.nfItens.every(it=>it.propostaItemDesc||it.semCorrespondencia);
+
+    const tbodyHTML=cot.nfItens.map((it,idx)=>{
+      const rowBg=showMatchCol?(it.semCorrespondencia?'background:#fffde7':it.propostaItemDesc?'background:#f1f8e9':''):'';
+      let matchCell='';
+      if(showMatchCol){
+        let curVal='';
+        if(it.semCorrespondencia) curVal='sem';
+        else if(it.propostaItemDesc!=null){
+          const i2=itensPropostas.findIndex(pi=>pi.propostaId===it.propostaId&&pi.desc===it.propostaItemDesc);
+          if(i2>=0) curVal=String(i2);
+        }
+        const opts=itensPropostas.map((pi,i)=>
+          `<option value="${i}" ${curVal===String(i)?'selected':''}>${escHtml(pi.desc)}</option>`
+        ).join('');
+        matchCell=`<td style="padding:3px 6px">
+          <select id="nf-match-${idx}" style="font-size:11px;width:100%;max-width:240px;padding:2px 4px">
+            <option value="" ${curVal===''?'selected':''}>— associar —</option>
+            ${opts}
+            <option value="sem" ${curVal==='sem'?'selected':''}>Sem correspondência</option>
+          </select></td>`;
+      }
+      return `<tr style="${rowBg}">
+        <td style="padding:3px 6px;text-align:center;font-size:11px;color:var(--muted)">${it.nItem}</td>
+        <td style="padding:3px 6px;font-size:12px">${escHtml(it.xProd)}${it.NCM?`<br><span style="font-size:10px;color:var(--muted)">NCM ${it.NCM}${it.CFOP?' · CFOP '+it.CFOP:''}</span>`:''}</td>
+        <td style="padding:3px 6px;text-align:right;font-size:12px">${it.qCom}</td>
+        <td style="padding:3px 6px;text-align:center;font-size:11px">${it.uCom}</td>
+        <td style="padding:3px 6px;text-align:right;font-size:12px">${fmtMoney(it.vUnCom)}</td>
+        <td style="padding:3px 6px;text-align:right;font-size:12px;font-weight:600">${fmtMoney(it.vProd)}</td>
+        ${matchCell}
+      </tr>`;
+    }).join('');
+
+    const tableHTML=`
+      <div style="font-weight:700;font-size:13px;margin-bottom:6px">📦 Itens da Nota Fiscal</div>
+      ${showMatchCol&&!allMatched?`<div style="color:#e65100;font-size:12px;margin-bottom:6px">⚠️ Associe todos os itens antes de lançar no estoque.</div>`:''}
+      ${showMatchCol&&itensPropostas.length===0?`<div style="background:#fff3e0;border-radius:6px;padding:8px 10px;font-size:12px;color:#e65100;margin-bottom:8px">ℹ️ Nenhum item de proposta encontrado para esta obra. Verifique se há proposta vinculada à obra no CRM.</div>`:''}
+      <div style="overflow-x:auto;margin-bottom:10px">
+        <table style="width:100%;border-collapse:collapse;min-width:${showMatchCol?'680':'460'}px">
+          <thead><tr style="background:var(--bg-2);border-bottom:2px solid var(--border)">
+            <th style="padding:5px 6px;font-size:11px;text-align:center">Nº</th>
+            <th style="padding:5px 6px;font-size:11px;text-align:left">Descrição Fiscal</th>
+            <th style="padding:5px 6px;font-size:11px;text-align:right;white-space:nowrap">Qtd</th>
+            <th style="padding:5px 6px;font-size:11px;text-align:center">Un</th>
+            <th style="padding:5px 6px;font-size:11px;text-align:right;white-space:nowrap">Vl Unit</th>
+            <th style="padding:5px 6px;font-size:11px;text-align:right;white-space:nowrap">Total</th>
+            ${showMatchCol?`<th style="padding:5px 6px;font-size:11px;text-align:left">Correspondência na Proposta</th>`:''}
+          </tr></thead>
+          <tbody>${tbodyHTML}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--border);background:var(--bg-2)">
+            <td colspan="5" style="padding:5px 6px;font-size:12px;font-weight:700;text-align:right">Total NF:</td>
+            <td style="padding:5px 6px;font-size:12px;font-weight:700;text-align:right">${fmtMoney(nfTotal)}</td>
+            ${showMatchCol?'<td></td>':''}
+          </tr></tfoot>
+        </table>
+      </div>`;
+
+    const botoesHTML=`
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
+        ${showMatchCol?`<button class="btn primary" onclick="salvarCorrespondenciasNF(${cot.id},${c.id})">💾 Salvar Correspondências</button>`:''}
+        <button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Em breve: módulo de estoque">🏭 Lançar no Estoque</button>
+      </div>`;
+
+    return `<div style="padding:4px 0">${cotCardHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
+  }
+
+  /* ── Sem NF ainda → área de upload ── */
+  const uploadHTML=`
+    <div style="border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+      <div style="font-weight:700;margin-bottom:12px;font-size:14px">📋 Nota Fiscal (XML NF-e)</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:12px">⏳ Aguardando importação do XML da nota fiscal.</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input id="nf-xml-input" type="file" accept=".xml,text/xml,application/xml" style="flex:1;font-size:12px;min-width:0">
+        <button class="btn sm primary" onclick="uploadXmlNfSRM(${cot.id},${c.id},document.getElementById('nf-xml-input'))">⬆ Importar XML</button>
+      </div>
+      <div id="nf-xml-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
+      <div id="nf-xml-progress" style="display:none;margin-top:4px">
+        <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+        <div id="nf-xml-size" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
       </div>
     </div>`;
+
+  return `<div style="padding:4px 0">${cotCardHTML}${uploadHTML}</div>`;
 }
 
 async function uploadXmlNfSRM(cotId, srmId, input){
-  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
-  const file = input && input.files && input.files[0]; if(!file){ alert('Selecione um arquivo XML.'); return; }
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const file=input&&input.files&&input.files[0]; if(!file){ alert('Selecione um arquivo XML.'); return; }
   if(!file.name.toLowerCase().endsWith('.xml')){ alert('Apenas arquivos XML são aceitos.'); return; }
-  const statusEl = document.getElementById('nf-xml-status');
-  const progEl   = document.getElementById('nf-xml-progress');
-  const barEl    = document.getElementById('nf-xml-bar');
-  const sizeEl   = document.getElementById('nf-xml-size');
-  if(statusEl) statusEl.textContent = 'Enviando XML…';
-  if(progEl){ progEl.style.display=''; barEl.style.width='0%'; sizeEl.textContent=''; }
-  const path = `srm_${srmId}/nf_${cotId}_${Date.now()}.xml`;
+  const statusEl=document.getElementById('nf-xml-status');
+  const progEl=document.getElementById('nf-xml-progress');
+  const barEl=document.getElementById('nf-xml-bar');
+  const sizeEl=document.getElementById('nf-xml-size');
+  /* 1. lê e valida o XML antes de subir */
+  if(statusEl) statusEl.textContent='🔍 Lendo e validando XML…';
+  let nfDados;
   try{
-    const {error} = await uploadOSArquivoXHR('srm-nfs', path, file, (loaded, total)=>{
-      const pct = Math.round(loaded/total*100);
+    const xmlText=await file.text();
+    nfDados=parseNFeXML(xmlText);
+  }catch(e){
+    if(statusEl) statusEl.textContent='❌ '+(e.message||e); return;
+  }
+  /* 2. upload para storage */
+  if(statusEl) statusEl.textContent='Enviando…';
+  if(progEl){ progEl.style.display=''; barEl.style.width='0%'; sizeEl.textContent=''; }
+  const path=`srm_${srmId}/nf_${cotId}_${Date.now()}.xml`;
+  try{
+    const {error}=await uploadOSArquivoXHR('srm-nfs', path, file, (loaded,total)=>{
+      const pct=Math.round(loaded/total*100);
       if(barEl) barEl.style.width=pct+'%';
       if(sizeEl) sizeEl.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
     });
     if(error) throw new Error(error.message||'Erro no upload');
     if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
-    cot.xmlNfPath = path;
-    cot.xmlNfNome = file.name;
-    await sb.from('srm_cotacoes').update({xml_nf_path:path, xml_nf_nome:file.name}).eq('id',cotId);
-    registrarLog('editar','srm',srmId,`XML NF enviado: ${file.name}`);
+    /* 3. persiste tudo */
+    cot.xmlNfPath=path; cot.xmlNfNome=file.name;
+    cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
+    cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
+    cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
+    await sb.from('srm_cotacoes').update({
+      xml_nf_path:path, xml_nf_nome:file.name,
+      nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
+      nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
+      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
+    }).eq('id',cotId);
+    registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
     save();
     abrirEditarSRM(srmId,'pedidos');
   }catch(e){
-    if(statusEl) statusEl.textContent = 'Erro: '+(e.message||e);
+    if(statusEl) statusEl.textContent='❌ Erro: '+(e.message||e);
     if(progEl) progEl.style.display='none';
   }
 }
@@ -4969,12 +5127,50 @@ async function baixarXmlNfSRM(path, nome){
 }
 
 async function removerXmlNfSRM(cotId, srmId){
-  if(!confirm('Remover o XML da nota fiscal?')) return;
-  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  if(!confirm('Remover o XML e os dados da NF importados?')) return;
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
-  cot.xmlNfPath = null;
-  cot.xmlNfNome = null;
-  await sb.from('srm_cotacoes').update({xml_nf_path:null, xml_nf_nome:null}).eq('id',cotId);
+  cot.xmlNfPath=null; cot.xmlNfNome=null;
+  cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
+  cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+  await sb.from('srm_cotacoes').update({
+    xml_nf_path:null, xml_nf_nome:null,
+    nf_itens:null, nf_numero:null, nf_data:null,
+    nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
+  }).eq('id',cotId);
+  save();
+  abrirEditarSRM(srmId,'pedidos');
+}
+
+async function salvarCorrespondenciasNF(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  const srm=(db.cardsSRM||[]).find(x=>x.id===srmId);
+  if(!cot||!srm||!cot.nfItens) return;
+  /* reconstrói itensPropostas na mesma ordem do render */
+  const itensPropostas=[];
+  if(srm.obraId){
+    (db.propostas||[]).filter(p=>p.obraId===srm.obraId).forEach(p=>{
+      (p.itens||[]).forEach(it=>{ if(it.descricao) itensPropostas.push({propostaId:p.id,desc:it.descricao}); });
+    });
+  }
+  cot.nfItens.forEach((item,idx)=>{
+    const sel=document.getElementById(`nf-match-${idx}`);
+    if(!sel) return;
+    const val=sel.value;
+    if(val===''){
+      item.propostaId=null; item.propostaItemDesc=null; item.semCorrespondencia=false;
+    } else if(val==='sem'){
+      item.propostaId=null; item.propostaItemDesc=null; item.semCorrespondencia=true;
+    } else {
+      const i=parseInt(val);
+      if(!isNaN(i)&&itensPropostas[i]){
+        item.propostaId=itensPropostas[i].propostaId;
+        item.propostaItemDesc=itensPropostas[i].desc;
+        item.semCorrespondencia=false;
+      }
+    }
+  });
+  await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
   save();
   abrirEditarSRM(srmId,'pedidos');
 }
