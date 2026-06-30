@@ -942,12 +942,16 @@
   <!-- SRM: PAINEL -->
   <div class="view" id="view-srm-painel">
     <div class="bar">
-      <h2>SRM — Painel</h2>
+      <h2>SRM — Acompanhamento</h2>
+      <select id="srm-vista" class="vista-sel" onchange="renderSRMPainel()">
+        <option value="fases">Visualização: por fase</option>
+        <option value="encerrados">Visualização: encerrados &amp; cancelados</option>
+      </select>
+      <span id="srm-arq-info" style="font-size:12.5px;color:var(--muted)"></span>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoSRM()">+ Abrir novo SRM</button>
     </div>
-    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
-      🤝 <b>SRM — Supplier Relationship Management</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Gestão de relacionamento com fornecedores.</small>
-    </div>
+    <div class="kanban" id="srm-kanban"></div>
   </div>
 
   <!-- COMPRAS: PAINEL -->
@@ -1573,6 +1577,7 @@ function load(){
   if(!Array.isArray(db.contasRecorrentes)) db.contasRecorrentes=[];
   if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
   if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
+  if(!Array.isArray(db.cardsSRM))           db.cardsSRM=[];
   if(!Array.isArray(db.osCustos))          db.osCustos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
@@ -1773,7 +1778,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1800,7 +1805,8 @@ async function carregarDadosSupabase(){
       sb.from('fornecedores').select('*').order('nome'),
       sb.from('fornecedor_contatos').select('*').order('id'),
       sb.from('os_custos').select('*').order('created_at', {ascending:false}),
-      sb.from('contas_recorrentes').select('*').order('nome')
+      sb.from('contas_recorrentes').select('*').order('nome'),
+      sb.from('cards_srm').select('*').order('id')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -2038,6 +2044,18 @@ async function carregarDadosSupabase(){
         ativa:r.ativa!==false,
         criadoEm:r.criado_em||''
       }));
+    if(cardsSRMRes.data)
+      db.cardsSRM = cardsSRMRes.data.map(c=>({
+        id:c.id, num:c.num,
+        fornecedorId:c.fornecedor_id||null,
+        faseId:c.fase_id||null,
+        responsavel:c.responsavel||'',
+        descricao:c.descricao||'',
+        dataAbertura:c.data_abertura ? c.data_abertura.slice(0,10) : '',
+        encerrado:!!c.encerrado,
+        cancelado:!!c.cancelado,
+        historico: Array.isArray(c.historico) ? c.historico : []
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -2257,6 +2275,17 @@ function syncDadosSupabase(){
       valor:c.valor||0, data:c.data||null,
       centro_custo_id:c.centroCustoId ? Number(c.centroCustoId) : null,
       cp_id:c.cpId ? Number(c.cpId) : null
+    }));
+    await sincronizarTabela('cards_srm', db.cardsSRM||[], c=>({
+      id:c.id, num:c.num,
+      fornecedor_id:c.fornecedorId||null,
+      fase_id:c.faseId||null,
+      responsavel:c.responsavel||'',
+      descricao:c.descricao||'',
+      data_abertura:c.dataAbertura||null,
+      encerrado:!!c.encerrado,
+      cancelado:!!c.cancelado,
+      historico:c.historico||[]
     }));
   }, 800);
 }
@@ -4307,6 +4336,289 @@ function excluirFase(id){
   db.fases = db.fases.filter(f=>f.id!==id);
   excluirDoSupabase('fases_crm', id);
   save(); renderAll();
+}
+
+/* ================= SRM: PAINEL & CARD ================= */
+
+function srmCardAtivo(c){ return !c.encerrado && !c.cancelado; }
+
+function srmCard(c, showFase){
+  const f = faseSRM(c.faseId) || {cor:'#dee2e6', nome:'—'};
+  const forn = (db.fornecedores||[]).find(x=>x.id===c.fornecedorId);
+  const el = document.createElement('div');
+  el.className='kcard';
+  el.style.borderLeftColor = f.cor;
+  el.draggable = true;
+  el.ondragstart = e=> e.dataTransfer.setData('text', c.id);
+  el.onclick = ()=> abrirEditarSRM(c.id);
+  const ult = c.historico && c.historico.length ? c.historico[c.historico.length-1] : null;
+  el.innerHTML = `
+    <div class="top"><span class="num">#${c.num}</span> ${forn ? escHtml(forn.nome) : '<em style="color:var(--muted)">Sem fornecedor</em>'}</div>
+    ${c.descricao ? `<div class="row">${escHtml(c.descricao)}</div>` : ''}
+    ${showFase ? `<div class="row"><b>Fase:</b> <span style="color:${f.cor}">●</span> ${f.nome}</div>` : ''}
+    <div class="row"><b>Resp.:</b> ${escHtml(c.responsavel||'—')}</div>
+    ${ult ? `<div class="row"><b>Último registro:</b> ${fmtData(ult.data)}</div>` : ''}
+    <div class="row" style="font-size:11px;color:var(--muted)">Aberto em ${fmtData(c.dataAbertura)}</div>`;
+  return el;
+}
+
+function renderSRMPainel(){
+  const k = document.getElementById('srm-kanban'); if(!k) return;
+  k.innerHTML='';
+  const vista = (document.getElementById('srm-vista')||{}).value||'fases';
+  const info = document.getElementById('srm-arq-info');
+  if(info){
+    const ne=(db.cardsSRM||[]).filter(c=>c.encerrado).length;
+    const nc=(db.cardsSRM||[]).filter(c=>c.cancelado).length;
+    info.textContent = (vista==='fases' && (ne||nc)) ? `✔ ${ne} encerrado(s) · ✖ ${nc} cancelado(s) — fora do painel` : '';
+  }
+  if(vista==='encerrados'){
+    k.style.display='block'; k.style.overflowX='unset';
+    _srmVistaEncerrados(k);
+  } else {
+    k.style.display=''; k.style.overflowX='';
+    _srmVistaFases(k);
+  }
+}
+
+function _srmVistaFases(k){
+  fasesSRMOrdenadas().forEach(f=>{
+    if(f.tipo) return;
+    if(!(db.cardsSRM||[]).some(c=>c.faseId===f.id && srmCardAtivo(c))) return;
+    const itens = (db.cardsSRM||[]).filter(c=>c.faseId===f.id && srmCardAtivo(c));
+    k.appendChild(colEl(f.nome, f.cor, itens, {
+      render: srmCard,
+      onDrop: id=>{
+        const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+        if(f.tipo==='recebido'){
+          if(!confirm(`Mover para "${f.nome}" marcará o SRM como ENCERRADO. Confirmar?`)) return;
+          c.encerrado=true; c.cancelado=false;
+        } else if(f.tipo==='cancelado'){
+          if(!confirm(`Mover para "${f.nome}" marcará o SRM como CANCELADO. Confirmar?`)) return;
+          c.cancelado=true; c.encerrado=false;
+        }
+        c.faseId=f.id; save(); renderAll();
+      }
+    }));
+  });
+  if(!(db.cardsSRM||[]).some(c=>srmCardAtivo(c))){
+    k.innerHTML='<div class="empty" style="padding:60px;text-align:center">Nenhum processo SRM em aberto. Clique em <b>+ Abrir novo SRM</b> para começar.</div>';
+  }
+}
+
+function _srmVistaEncerrados(k){
+  const fEnc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
+  const fCan = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
+  const grupos = [
+    { fase: fEnc||{cor:'#2e7d32',nome:'Encerrados'}, cards:(db.cardsSRM||[]).filter(c=>c.encerrado) },
+    { fase: fCan||{cor:'#c62828',nome:'Cancelados'}, cards:(db.cardsSRM||[]).filter(c=>c.cancelado) }
+  ];
+  let html='';
+  grupos.forEach(({fase:f,cards})=>{
+    if(!cards.length) return;
+    html+=`<div class="os-grupo-header" style="color:${f.cor}">${f.nome} <span class="col-count" style="background:${f.cor};color:#fff">${cards.length}</span></div>
+    <div class="os-painel-list" style="margin-bottom:24px" id="srm-arq-${f.tipo||f.nome}"></div>`;
+  });
+  k.innerHTML = html || '<div class="empty" style="padding:40px">Nenhum SRM encerrado ou cancelado.</div>';
+  grupos.forEach(({fase:f,cards})=>{
+    const lista=document.getElementById(`srm-arq-${f.tipo||f.nome}`);
+    if(!lista) return;
+    cards.forEach(c=> lista.appendChild(srmCard(c, true)));
+  });
+}
+
+/* ---- helpers ---- */
+function optsFornecedores(selId){
+  return `<option value="">(nenhum)</option>` +
+    (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''))
+      .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+}
+function optsFasesSRM(selId){
+  return fasesSRMOrdenadas().filter(f=>!f.tipo)
+    .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+}
+function srmHistHTML(c){
+  if(!c || !c.historico || !c.historico.length) return '';
+  return `<div class="hist">${[...c.historico].reverse().map(h=>`
+    <div class="hist-item">
+      <div class="hist-data">${fmtData(h.data)}</div>
+      <div class="hist-txt">${escHtml(h.texto||'')}</div>
+    </div>`).join('')}</div>`;
+}
+function registrarSRMHist(c, texto){
+  if(!texto || !texto.trim()) return;
+  if(!Array.isArray(c.historico)) c.historico=[];
+  c.historico.push({data: new Date().toISOString().slice(0,16), texto: texto.trim()});
+}
+
+/* ---- Novo SRM ---- */
+function abrirNovoSRM(){
+  const primeiraFase = fasesSRMOrdenadas().filter(f=>!f.tipo)[0];
+  abrirModal(`
+    <h3>Novo SRM</h3>
+    <label>Fornecedor</label>
+    <select id="srm-m-forn">${optsFornecedores(null)}</select>
+    <label>Fase</label>
+    <select id="srm-m-fase">${optsFasesSRM(primeiraFase?.id)}</select>
+    <label>Responsável</label>
+    <input id="srm-m-resp" value="${usuarioAtual?escHtml(usuarioAtual.nome):''}">
+    <label>Descrição do processo</label>
+    <input id="srm-m-desc" placeholder="Ex.: Cotação de cabos elétricos para obra Alphaville">
+    <label>Primeiro registro / observação</label>
+    <textarea id="srm-m-hist" placeholder="Ex.: Processo iniciado para aquisição de materiais"></textarea>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovoSRM()">Salvar</button>
+    </div>`);
+}
+
+async function salvarNovoSRM(){
+  const fornId = +document.getElementById('srm-m-forn').value||null;
+  const faseId = +document.getElementById('srm-m-fase').value||null;
+  const resp   = document.getElementById('srm-m-resp').value.trim();
+  const desc   = document.getElementById('srm-m-desc').value.trim();
+  const hist   = document.getElementById('srm-m-hist').value.trim();
+  if(!faseId){ alert('Selecione uma fase.'); return; }
+  if(!db.cardsSRM) db.cardsSRM=[];
+  const novo = {
+    id: await proximoIdSeguro('cards_srm', db.cardsSRM),
+    num: (db.cardsSRM.reduce((m,c)=>Math.max(m,c.num),0))+1,
+    fornecedorId: fornId,
+    faseId, responsavel: resp, descricao: desc,
+    dataAbertura: new Date().toISOString().slice(0,10),
+    encerrado: false, cancelado: false, historico: []
+  };
+  if(hist) registrarSRMHist(novo, hist);
+  db.cardsSRM.push(novo);
+  registrarLog('criar','srm',novo.id,`Novo SRM #${novo.num} aberto`);
+  const btn = btnModalPrimario(); btnSalvando(btn);
+  try{
+    const {error} = await sb.from('cards_srm').upsert({
+      id:novo.id, num:novo.num,
+      fornecedor_id:novo.fornecedorId||null,
+      fase_id:novo.faseId||null,
+      responsavel:novo.responsavel||'',
+      descricao:novo.descricao||'',
+      data_abertura:novo.dataAbertura,
+      encerrado:false, cancelado:false,
+      historico:novo.historico||[]
+    });
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
+}
+
+/* ---- Editar SRM ---- */
+function abrirEditarSRM(id, aba='dados'){
+  const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+  const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  let corpo='';
+  if(aba==='dados') corpo=`
+    <div class="dados-grid">
+      <div>
+        <label>Fornecedor</label>
+        <select id="srm-m-forn">${optsFornecedores(c.fornecedorId)}</select>
+        <label>Fase</label>
+        <select id="srm-m-fase">${optsFasesSRM(c.faseId)}</select>
+        <label>Responsável</label>
+        <input id="srm-m-resp" value="${escHtml(c.responsavel||'')}">
+        <label>Descrição do processo</label>
+        <input id="srm-m-desc" value="${escHtml(c.descricao||'')}">
+        <label>Data de abertura</label>
+        <input id="srm-m-data" type="date" value="${c.dataAbertura||''}">
+        <div class="flags">
+          <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''}> ✔ Encerrado</label>
+          <label class="flag perdido"><input type="checkbox" id="srm-m-can" ${c.cancelado?'checked':''}> ✖ Cancelado</label>
+        </div>
+      </div>
+      <div class="col-hist">
+        <label>Novo registro / observação</label>
+        <textarea id="srm-m-hist" placeholder="Escreva e clique em Registrar"
+          onkeydown="if(event.ctrlKey&&event.key==='Enter')registrarRapidoSRM(${c.id})"></textarea>
+        <button class="btn primary sm" style="margin-top:6px" onclick="registrarRapidoSRM(${c.id})">＋ Registrar</button>
+        <div id="srm-hist-wrap">${srmHistHTML(c)}</div>
+      </div>
+    </div>`;
+  else if(aba==='propostas') corpo=`
+    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
+      📋 <b>Propostas / Cotações</b><br>
+      <small style="display:block;margin-top:10px">Em breve: registro de cotações recebidas deste fornecedor para este processo.</small>
+    </div>`;
+  else if(aba==='pedidos') corpo=`
+    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
+      ✅ <b>Pedidos Aprovados</b><br>
+      <small style="display:block;margin-top:10px">Em breve: pedidos de compra gerados a partir das cotações aprovadas.</small>
+    </div>`;
+  abrirModal(`
+    <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
+    <div class="abas">
+      <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
+      <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações</button>
+      <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedidos Aprovados</button>
+    </div>
+    <div class="aba-corpo">${corpo}</div>
+    <div class="actions rodape-cartao">
+      <button class="btn danger" data-btn-perigo onclick="excluirSRMCard(${c.id})">Excluir</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+      <button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoSRM(${c.id})`:`abrirEditarSRM(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
+    </div>`, 'cartao');
+}
+
+async function salvarEdicaoSRM(id){
+  const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+  c.fornecedorId = +document.getElementById('srm-m-forn').value||null;
+  c.faseId       = +document.getElementById('srm-m-fase').value||null;
+  c.responsavel  = document.getElementById('srm-m-resp').value.trim();
+  c.descricao    = document.getElementById('srm-m-desc').value.trim();
+  c.dataAbertura = document.getElementById('srm-m-data').value||c.dataAbertura;
+  c.encerrado    = document.getElementById('srm-m-enc').checked;
+  c.cancelado    = document.getElementById('srm-m-can').checked;
+  // fases de sistema pelo checkbox
+  const enc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
+  const can = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
+  if(c.encerrado && enc) c.faseId=enc.id;
+  if(c.cancelado && can) c.faseId=can.id;
+  registrarLog('editar','srm',c.id,`SRM #${c.num} editado`);
+  const btn=btnModalPrimario(); btnSalvando(btn);
+  try{
+    const {error}=await sb.from('cards_srm').upsert({
+      id:c.id, num:c.num,
+      fornecedor_id:c.fornecedorId||null,
+      fase_id:c.faseId||null,
+      responsavel:c.responsavel||'',
+      descricao:c.descricao||'',
+      data_abertura:c.dataAbertura||null,
+      encerrado:!!c.encerrado,
+      cancelado:!!c.cancelado,
+      historico:c.historico||[]
+    });
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
+}
+
+async function registrarRapidoSRM(id){
+  const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+  const ta=document.getElementById('srm-m-hist');
+  if(!ta||!ta.value.trim()){ alert('Escreva o registro antes de confirmar.'); ta&&ta.focus(); return; }
+  registrarSRMHist(c, ta.value);
+  registrarLog('criar','srm_hist',c.id,`Registro adicionado ao SRM #${c.num}`);
+  save(); ta.value='';
+  document.getElementById('srm-hist-wrap').innerHTML=srmHistHTML(c);
+  renderSRMPainel();
+  ta.focus();
+}
+
+async function excluirSRMCard(id){
+  const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm(`Excluir SRM #${c.num}? Esta ação não pode ser desfeita.`)) return;
+  registrarLog('excluir','srm',c.id,`SRM #${c.num} excluído`);
+  db.cardsSRM=db.cardsSRM.filter(x=>x.id!==id);
+  excluirDoSupabase('cards_srm', id);
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
 }
 
 /* ================= SRM: FASES ================= */
@@ -14274,7 +14586,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); }
 load();
 atualizarMarca();
 (async function(){
