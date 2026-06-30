@@ -658,6 +658,7 @@
       <select id="finpainel-vista" class="vista-sel" onchange="renderFinPainel()">
         <option value="cc">Visualização: Centros de Custo</option>
         <option value="cp">Visualização: Contas a Pagar</option>
+        <option value="cr">Visualização: Contas a Receber</option>
         <option value="extrato">Visualização: Extrato por Conta</option>
       </select>
       <select id="finpainel-periodo" class="vista-sel" onchange="renderFinPainel()" style="margin-left:6px">
@@ -2366,8 +2367,9 @@ function renderFinPainel(){
 
   statsEl.innerHTML = '';
   corpoEl.innerHTML = '';
-  if(vista === 'cc') _finPainelCC(statsEl, corpoEl, periodo);
-  if(vista === 'cp') _finPainelCP(statsEl, corpoEl, periodo);
+  if(vista === 'cc')      _finPainelCC(statsEl, corpoEl, periodo);
+  if(vista === 'cp')      _finPainelCP(statsEl, corpoEl, periodo);
+  if(vista === 'cr')      _finPainelCR(statsEl, corpoEl, periodo);
   if(vista === 'extrato'){
     const contaId = parseInt((document.getElementById('finpainel-conta')||{}).value)||null;
     _finPainelExtrato(statsEl, corpoEl, periodo, contaId);
@@ -2504,6 +2506,77 @@ function _finPainelCP(statsEl, corpoEl, periodo){
       <div style="text-align:right;color:#2e7d32">Pago</div>
       <div style="text-align:right;color:#e65100">Pendente</div>
       <div style="text-align:center">Qtd</div>
+    </div>`;
+}
+
+/** Sub-renderer: Contas a Receber */
+function _finPainelCR(statsEl, corpoEl, periodo){
+  const hoje  = new Date().toISOString().slice(0,10);
+  const lista = (db.recebimentos||[]).filter(r=>_finPainelDentroFiltro(r.dataVencimento, periodo));
+
+  const totTotal    = lista.reduce((s,r)=>s+r.valor, 0);
+  const totRecebido = lista.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor, 0);
+  const totPendente = lista.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor, 0);
+  const totVencido  = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje).reduce((s,r)=>s+r.valor, 0);
+
+  statsEl.innerHTML=`
+    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totRecebido)||'R$ 0,00'}</div><div class="l">✅ Recebido</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
+    ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
+
+  if(!lista.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
+
+  // Agrupado por cliente
+  const mapaCliente={};
+  lista.forEach(r=>{
+    const card = (db.cards||[]).find(x=>x.id===r.cardId);
+    const clId = card?.clienteId||0;
+    if(!mapaCliente[clId]) mapaCliente[clId]={total:0,recebido:0,pendente:0,vencido:0,n:0};
+    mapaCliente[clId].total+=r.valor; mapaCliente[clId].n++;
+    if(r.status==='recebido') mapaCliente[clId].recebido+=r.valor;
+    else{
+      mapaCliente[clId].pendente+=r.valor;
+      if(r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje)
+        mapaCliente[clId].vencido+=r.valor;
+    }
+  });
+
+  const linhas = Object.entries(mapaCliente).map(([idStr,v])=>{
+    const cl = (db.clientes||[]).find(x=>x.id===Number(idStr));
+    return {...v, nome:cl?.nome||'(sem cliente)'};
+  }).sort((a,b)=>b.pendente-a.pendente||b.total-a.total);
+
+  const COL = '200px 1fr 120px 120px 120px 60px';
+
+  corpoEl.innerHTML=`
+    <div style="display:grid;grid-template-columns:${COL};gap:10px;padding:6px 14px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border)">
+      <div>Cliente</div><div></div>
+      <div style="text-align:right;color:#1565c0">Total</div>
+      <div style="text-align:right;color:#2e7d32">Recebido</div>
+      <div style="text-align:right;color:#e65100">Pendente</div>
+      <div style="text-align:center">Qtd</div>
+    </div>
+    <div>${linhas.map(l=>{
+      const pctRec = l.total>0 ? (l.recebido/l.total)*100 : 0;
+      const corPend = l.vencido>0?'#c62828':l.pendente>0?'#e65100':'#2e7d32';
+      return `<div style="display:grid;grid-template-columns:${COL};gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center">
+        <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
+        <div style="position:relative;height:6px;background:rgba(0,0,0,.08);border-radius:3px">
+          <div style="position:absolute;left:0;top:0;height:100%;border-radius:3px;background:#2e7d32;width:${pctRec.toFixed(1)}%"></div>
+        </div>
+        <div style="text-align:right;font-weight:700;font-size:13px;color:#1565c0">${fmtMoney(l.total)}</div>
+        <div style="text-align:right;font-weight:700;font-size:13px;color:#2e7d32">${fmtMoney(l.recebido)}</div>
+        <div style="text-align:right;font-weight:700;font-size:13px;color:${corPend}">${fmtMoney(l.pendente)}</div>
+        <div style="text-align:center;font-size:12px;color:var(--muted)">${l.n}</div>
+      </div>`;
+    }).join('')}</div>
+    <div style="display:grid;grid-template-columns:${COL};gap:10px;padding:6px 14px;font-size:11px;color:var(--muted);margin-top:4px;border-top:2px solid var(--border)">
+      <div></div><div></div>
+      <div style="text-align:right;font-weight:700;color:#1565c0">${fmtMoney(totTotal)}</div>
+      <div style="text-align:right;font-weight:700;color:#2e7d32">${fmtMoney(totRecebido)}</div>
+      <div style="text-align:right;font-weight:700;color:#e65100">${fmtMoney(totPendente)}</div>
+      <div style="text-align:center;font-weight:700">${lista.length}</div>
     </div>`;
 }
 
