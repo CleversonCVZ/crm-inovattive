@@ -1402,6 +1402,8 @@ const RECURSOS = [
   // ── Financeiro
   {id:'fin-contas-pagar-gerenciar',     grupo:'financeiro', nome:'Contas a Pagar — Adicionar e Editar'},
   {id:'fin-contas-pagar-pagar',         grupo:'financeiro', nome:'Contas a Pagar — Registrar Pagamento'},
+  {id:'fin-contas-receber-gerenciar',   grupo:'financeiro', nome:'Contas a Receber — Criar, Editar e Excluir parcelas'},
+  {id:'fin-contas-receber-receber',     grupo:'financeiro', nome:'Contas a Receber — Marcar como Recebido'},
   {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Criar, Editar e Excluir contas'},
   {id:'fin-contas-correntes-lancar',   grupo:'financeiro', nome:'Contas Correntes — Lançar movimentações e ver Extrato'},
   {id:'fin-centros-custo-gerenciar',    grupo:'financeiro', nome:'Centros de Custo — Adicionar e Editar'}
@@ -2551,7 +2553,7 @@ function renderFinanceiroPainel(){
       <td style="font-size:12px">${vencLabel}</td>
       <td>${statusBadge}${r.status==='recebido'&&r.dataRecebimento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(r.dataRecebimento)}</div>`:''}</td>
       <td>
-        ${r.status==='pendente'&&c?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
+        ${r.status==='pendente'&&c&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
         ${c?`<button class="icon-btn" onclick="abrirEditarCartao(${c.id},'financeiro')" title="Abrir cartão">↗</button>`:''}
       </td>
     </tr>`;
@@ -8748,7 +8750,7 @@ function abaFinanceiroCartaoHTML(c){
     ${blocoReferencia}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <b style="font-size:13.5px">Parcelas a Receber</b>
-      <button class="btn sm primary" onclick="abrirNovaParcelaReceber(${c.id})">＋ Nova Parcela</button>
+      ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="btn sm primary" onclick="abrirNovaParcelaReceber(${c.id})">＋ Nova Parcela</button>`:''}
     </div>
     ${recebimentos.length===0?'<div class="empty">Nenhuma parcela cadastrada. Clique em "＋ Nova Parcela" para começar.</div>':''}
     ${recebimentos.map(r=>parcelaReceberItemHTML(r,c.id)).join('')}`;
@@ -8777,9 +8779,9 @@ function parcelaReceberItemHTML(r, cardId){
           <div style="font-size:12px;margin-top:3px">${statusLabel}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          ${r.status==='pendente'?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Marcar como recebida">✔ Recebido</button>`:''}
-          <button class="icon-btn" onclick="editarParcelaReceber(${r.id},${cardId})" title="Editar">✏️</button>
-          <button class="icon-btn del" onclick="excluirParcelaReceber(${r.id},${cardId})" title="Excluir">🗑</button>
+          ${r.status==='pendente'&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Marcar como recebida">✔ Recebido</button>`:''}
+          ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn" onclick="editarParcelaReceber(${r.id},${cardId})" title="Editar">✏️</button>`:''}
+          ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn del" onclick="excluirParcelaReceber(${r.id},${cardId})" title="Excluir">🗑</button>`:''}
         </div>
       </div>
     </div>`;
@@ -8792,6 +8794,7 @@ function parcelaReceberItemHTML(r, cardId){
  * - Status inicial pode ser "já recebido" (lançamento retroativo), o que exige informar a data.
  */
 function abrirNovaParcelaReceber(cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')){ alert('Sem permissão para lançar parcelas a receber.'); return; }
   const c = db.cards.find(x=>x.id===cardId);
   const propostas = db.propostas.filter(p=>p.cardId===cardId && ['aprovada','concluida'].includes(p.status));
   const osAvulsas = db.ordensServico.filter(o=>o.cardId===cardId && o.tipo==='avulsa');
@@ -8942,6 +8945,7 @@ async function salvarNovaParcelaReceber(cardId){
 
 /** Abre modal para editar uma parcela existente — exibe propostas aprovadas e OS avulsas como opções de vínculo */
 function editarParcelaReceber(id, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')){ alert('Sem permissão para editar parcelas a receber.'); return; }
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
   const c = db.cards.find(x=>x.id===cardId);
@@ -9033,6 +9037,7 @@ async function salvarEdicaoParcelaReceber(id, cardId){
  * Se não há contas ativas, exibe aviso e link para a tela de Contas Correntes.
  */
 function marcarParcelaRecebida(id, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-receber-receber')){ alert('Sem permissão para registrar recebimentos.'); return; }
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
   const hoje = new Date().toISOString().slice(0,10);
@@ -9129,6 +9134,7 @@ async function confirmarParcelaRecebida(id, cardId){
 
 /** Exclui parcela a receber (sem reversão de movimentação — se já foi marcada como recebida, o extrato permanece) */
 async function excluirParcelaReceber(id, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')){ alert('Sem permissão para excluir parcelas a receber.'); return; }
   if(!confirm('Excluir esta parcela?')) return;
   await excluirDoSupabase('financeiro_recebimentos', id);
   db.recebimentos = db.recebimentos.filter(x=>x.id!==id);
