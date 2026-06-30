@@ -2003,6 +2003,7 @@ async function carregarDadosSupabase(){
         obraId:p.obra_id||null,
         osId:p.os_id||null,
         contaId:p.conta_id||null,
+        cardSrmId:p.card_srm_id||null,
         observacao:p.observacao||'',
         recorrenteId:p.recorrente_id||null,
         criadoEm:p.created_at||''
@@ -2247,6 +2248,7 @@ function syncDadosSupabase(){
       condicao:p.condicao||null,
       centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
       os_id:p.osId||null, conta_id:p.contaId||null,
+      card_srm_id:p.cardSrmId||null,
       observacao:p.observacao||null,
       recorrente_id:p.recorrenteId||null
     }));
@@ -4593,12 +4595,15 @@ function abrirEditarSRM(id, aba='dados'){
       ✅ <b>Pedidos Aprovados</b><br>
       <small style="display:block;margin-top:10px">Em breve: pedidos de compra gerados a partir das cotações aprovadas.</small>
     </div>`;
+  else if(aba==='financeiro') corpo=abaFinanceiroSRMHTML(c);
+  const nCP = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).length;
   abrirModal(`
     <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações</button>
       <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedidos Aprovados</button>
+      <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro${nCP?' ('+nCP+')':''}</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -4666,6 +4671,211 @@ async function excluirSRMCard(id){
   excluirDoSupabase('cards_srm', id);
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
+}
+
+/* ---- SRM: Aba Financeiro ---- */
+function abaFinanceiroSRMHTML(c){
+  const cps = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
+  const hoje = new Date().toISOString().slice(0,10);
+  const totPendente = cps.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor,0);
+  const totPago     = cps.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
+  const vencidas    = cps.filter(p=>p.status!=='pago' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
+
+  const stats = `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat-pill" style="background:#fff3e0;color:#e65100">A Pagar: <b>${fmtMoney(totPendente)||'R$ 0,00'}</b></div>
+      <div class="stat-pill" style="background:#e8f5e9;color:#2e7d32">Pago: <b>${fmtMoney(totPago)||'R$ 0,00'}</b></div>
+      ${vencidas.length?`<div class="stat-pill" style="background:#ffebee;color:#c62828">⚠ ${vencidas.length} vencida${vencidas.length>1?'s':''}</div>`:''}
+    </div>`;
+
+  const lista = cps.length===0
+    ? '<div class="empty">Nenhuma conta a pagar vinculada. Clique em "＋ Nova Conta a Pagar" para registrar.</div>'
+    : cps.map(p=>{
+        const forn = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
+        const cc   = (db.centrosCusto||[]).find(x=>x.id===p.centroCustoId);
+        const obra = (db.obras||[]).find(o=>o.id===p.obraId);
+        const pago = p.status==='pago';
+        const cond = !pago && !!p.condicao;
+        const venc = !pago && !cond && p.dataVencimento && p.dataVencimento<hoje;
+        const statusBadge = pago
+          ? `<span style="color:#2e7d32;font-weight:700">✔ Pago${p.dataPagamento?' em '+fmtDia2(p.dataPagamento):''}</span>`
+          : cond ? `<span style="color:#1565c0">⏳ ${escHtml(p.condicao)}</span>`
+          : venc  ? `<span style="color:#c62828;font-weight:700">⚠ Vencida (${fmtDia2(p.dataVencimento)})</span>`
+          : `<span style="color:#e65100">⏳ Venc: ${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</span>`;
+        return `
+          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${pago?'#f1f8e9':'#fff'}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="flex:1">
+                <div style="font-weight:700;font-size:14px">${fmtMoney(p.valor)} <span style="font-size:12px;font-weight:400;color:var(--muted)">— ${escHtml(p.descricao)}</span></div>
+                <div style="font-size:12px;color:var(--muted);margin-top:3px">${forn?escHtml(forn.nome):'—'}${cc?' · '+escHtml(cc.nome):''}${obra?' · '+escHtml(obra.nome):''}</div>
+                <div style="font-size:12px;margin-top:3px">${statusBadge}</div>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                ${!pago&&podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarContaPagaRapidoSRM(${p.id},${c.id})">✔ Pagar</button>`:''}
+                ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn del" onclick="excluirCPdoSRM(${p.id},${c.id})" title="Excluir">🗑</button>`:''}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+  return `
+    ${stats}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <b style="font-size:13.5px">Contas a Pagar vinculadas</b>
+      ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="btn sm primary" onclick="abrirNovaCPSRM(${c.id})">＋ Nova Conta a Pagar</button>`:''}
+    </div>
+    <div id="srm-fin-list">${lista}</div>`;
+}
+
+function abrirNovaCPSRM(srmId){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
+  const srm  = (db.cardsSRM||[]).find(x=>x.id===srmId); if(!srm) return;
+  const forn = (db.fornecedores||[]).find(f=>f.id===srm.fornecedorId);
+  const ccOpts  = (db.centrosCusto||[]).filter(c=>c.ativo).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(c=>`<option value="${c.id}" ${c.id===srm.centroCustoId?'selected':''}>${escHtml(c.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(o=>`<option value="${o.id}" ${o.id===srm.obraId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+  const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(f=>`<option value="${f.id}" ${f.id===srm.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+  const ccAtualSlug = srm.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===srm.centroCustoId)||{}).slug : null;
+
+  abrirModal(`
+    <h3>Nova Conta a Pagar — SRM #${srm.num}</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Descrição *
+          <input id="nsrm-desc" type="text" placeholder="Ex: Material elétrico, Serviço…" class="input" style="margin-top:4px"
+            value="${srm.descricao?escHtml(srm.descricao):''}">
+        </label>
+        <label>Fornecedor
+          <select id="nsrm-forn" class="input" style="margin-top:4px">
+            <option value="">— nenhum —</option>
+            ${fornOpts}
+          </select>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="nsrm-valor" type="text" inputmode="decimal" placeholder="0,00" class="input" oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+        <label>Tipo *
+          <select id="nsrm-tipo" class="input" style="margin-top:4px" onchange="toggleCPTipo('nsrm')">
+            <option value="fixo">Data fixa</option>
+            <option value="condicional">Condicional</option>
+          </select>
+        </label>
+      </div>
+      <div id="nsrm-venc-row">
+        <label>Data de Vencimento *
+          <input id="nsrm-venc" type="date" class="input" style="margin-top:4px" value="${new Date().toISOString().slice(0,10)}">
+        </label>
+      </div>
+      <div id="nsrm-cond-row" style="display:none">
+        <label>Condição para Pagamento *
+          <input id="nsrm-cond" type="text" class="input" style="margin-top:4px" placeholder="Ex: após entrega do material…">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Centro de Custo *
+          <select id="nsrm-cc" class="input" style="margin-top:4px" onchange="toggleObraCampoCp('nsrm-obra-row','nsrm-cc')">
+            <option value="">— selecione —</option>
+            ${ccOpts}
+          </select>
+        </label>
+        <div id="nsrm-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
+          <label>Obra
+            <select id="nsrm-obra" class="input" style="margin-top:4px">
+              <option value="">— selecione a obra —</option>
+              ${obraOpts}
+            </select>
+          </label>
+        </div>
+      </div>
+      <label>Observação
+        <input id="nsrm-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'financeiro')">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaCPSRM(${srmId})">Salvar</button>
+    </div>`, 'cartao');
+}
+
+async function salvarNovaCPSRM(srmId){
+  const descricao = (document.getElementById('nsrm-desc').value||'').trim();
+  const fornId    = parseInt(document.getElementById('nsrm-forn').value)||null;
+  const valor     = parseFloat((document.getElementById('nsrm-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
+  const tipo      = document.getElementById('nsrm-tipo').value||'fixo';
+  const dataVenc  = tipo==='condicional' ? null : document.getElementById('nsrm-venc').value;
+  const condicao  = tipo==='condicional' ? (document.getElementById('nsrm-cond').value||'').trim() : null;
+  const ccId      = parseInt(document.getElementById('nsrm-cc').value)||null;
+  const ccSel     = (db.centrosCusto||[]).find(c=>c.id===ccId);
+  const obraId    = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('nsrm-obra').value)||null) : null;
+  const observacao= (document.getElementById('nsrm-obs').value||'').trim();
+
+  if(!descricao){ alert('Informe a descrição.'); return; }
+  if(!valor||valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  if(tipo==='fixo'&&!dataVenc){ alert('Informe a data de vencimento.'); return; }
+  if(tipo==='condicional'&&!condicao){ alert('Informe a condição para pagamento.'); return; }
+  if(!ccId){ alert('Selecione o centro de custo.'); return; }
+
+  const btn = btnModalPrimario(); btnSalvando(btn);
+  const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+  const row = {id, descricao, fornecedorId:fornId, valor, dataVencimento:dataVenc,
+    dataPagamento:null, status:'pendente', condicao, centroCustoId:ccId, obraId,
+    osId:null, contaId:null, cardSrmId:srmId, observacao, criadoEm:new Date().toISOString()};
+
+  const {error} = await sb.from('contas_pagar').insert({
+    id, descricao, fornecedor_id:fornId||null, valor,
+    data_vencimento:dataVenc||null, status:'pendente', condicao:condicao||null,
+    centro_custo_id:ccId, obra_id:obraId||null,
+    card_srm_id:srmId, observacao:observacao||null
+  });
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+
+  db.contasPagar = db.contasPagar||[];
+  db.contasPagar.push(row);
+  registrarLog('criar','srm',srmId,`CP lançada no SRM #${(db.cardsSRM||[]).find(x=>x.id===srmId)?.num||srmId}: ${descricao}`);
+  save();
+  abrirEditarSRM(srmId,'financeiro');
+}
+
+async function marcarContaPagaRapidoSRM(cpId, srmId){
+  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
+  const hoje = new Date().toISOString().slice(0,10);
+  abrirModal(`
+    <h3>Confirmar Pagamento</h3>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:var(--surface);border-radius:8px;padding:12px">
+        <div style="font-weight:600">${escHtml(p.descricao)}</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">${fmtMoney(p.valor)}</div>
+      </div>
+      <label>Data do Pagamento *
+        <input id="cprap-data" type="date" class="input" value="${hoje}" style="margin-top:4px">
+      </label>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'financeiro')">Cancelar</button>
+      <button class="btn primary" onclick="confirmarPagamentoSRM(${cpId},${srmId})">✔ Confirmar Pagamento</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarPagamentoSRM(cpId, srmId){
+  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
+  const data = (document.getElementById('cprap-data')||{}).value;
+  if(!data){ alert('Informe a data do pagamento.'); return; }
+  p.status='pago'; p.dataPagamento=data;
+  await sb.from('contas_pagar').update({status:'pago',data_pagamento:data}).eq('id',cpId);
+  save(); renderContasPagar(); renderFinPainel();
+  abrirEditarSRM(srmId,'financeiro');
+}
+
+async function excluirCPdoSRM(cpId, srmId){
+  if(!confirm('Excluir esta conta a pagar?')) return;
+  db.contasPagar = (db.contasPagar||[]).filter(x=>x.id!==cpId);
+  await excluirDoSupabase('contas_pagar', cpId);
+  save(); renderContasPagar();
+  abrirEditarSRM(srmId,'financeiro');
 }
 
 /* ================= SRM: FASES ================= */
