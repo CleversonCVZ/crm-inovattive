@@ -732,8 +732,8 @@
         <tr>
           <th>Nome / Banco</th>
           <th style="width:130px">Tipo</th>
-          <th style="width:150px;text-align:right">Saldo Inicial</th>
-          <th style="width:150px;text-align:right">Saldo Atual</th>
+          <th style="width:150px;text-align:right">Saldo Inicial / Limite</th>
+          <th style="width:170px;text-align:right">Saldo Atual / Disponível</th>
           <th style="width:70px;text-align:center">Situação</th>
         </tr>
       </thead>
@@ -1912,7 +1912,8 @@ async function carregarDadosSupabase(){
         saldoInicial:Number(c.saldo_inicial)||0, ativo:!!c.ativo,
         limite:c.limite ? Number(c.limite) : null,
         diaFechamento:c.dia_fechamento||null,
-        diaVencimentoFatura:c.dia_vencimento_fatura||null
+        diaVencimentoFatura:c.dia_vencimento_fatura||null,
+        faturaInicial:Number(c.fatura_inicial)||0
       }));
     if(movimentacoes.data)
       db.movimentacoes = movimentacoes.data.map(m=>({
@@ -2149,7 +2150,8 @@ function syncDadosSupabase(){
       saldo_inicial:c.saldoInicial, ativo:!!c.ativo,
       limite:c.limite||null,
       dia_fechamento:c.diaFechamento||null,
-      dia_vencimento_fatura:c.diaVencimentoFatura||null
+      dia_vencimento_fatura:c.diaVencimentoFatura||null,
+      fatura_inicial:c.faturaInicial||0
     }));
     await sincronizarTabela('movimentacoes_financeiras', db.movimentacoes||[], m=>({
       id:m.id, conta_id:m.contaId, tipo:m.tipo||'entrada',
@@ -5947,11 +5949,33 @@ function renderContasCorrente(){
 
   tbody.innerHTML = '';
   contas.forEach(c=>{
-    const saldoAtual = saldoContaCorrente(c.id);
-    const corSaldo   = saldoAtual >= 0 ? '#16a34a' : '#dc2626';
     const nomeExtra  = [c.banco, c.agencia?`Ag. ${c.agencia}`:'', c.conta?`Cc. ${c.conta}`:''].filter(Boolean).join(' · ');
-    const TIPO_BADGE = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7'};
+    const TIPO_BADGE = {corrente:'#dbeafe', poupanca:'#fef9c3', caixa:'#dcfce7', cartao:'#fce7f3'};
     const bg = TIPO_BADGE[c.tipo] || '#f3f4f6';
+
+    // Células de saldo variam por tipo
+    let celSaldoIni, celSaldoAtual;
+    if(c.tipo === 'cartao'){
+      const movs = (db.movimentacoes||[]).filter(m=>m.contaId===c.id);
+      const gastoNovo = movs.reduce((a,m)=>{
+        if(m.tipo==='saida')   return a + m.valor;
+        if(m.tipo==='entrada') return a - m.valor;
+        return a;
+      }, 0);
+      const faturaAtual = (c.faturaInicial||0) + gastoNovo;
+      const disponivel  = (c.limite||0) - faturaAtual;
+      const corDisp = disponivel >= 0 ? '#16a34a' : '#dc2626';
+      celSaldoIni   = `<td style="text-align:right;font-size:12px;color:var(--muted)">Limite: ${fmtMoney(c.limite||0)}</td>`;
+      celSaldoAtual = `<td style="text-align:right">
+        <div style="font-weight:700;font-size:15px;color:${corDisp}">${fmtMoney(disponivel)}</div>
+        <div style="font-size:11px;color:var(--muted)">Fatura: ${fmtMoney(faturaAtual)}</div>
+      </td>`;
+    } else {
+      const saldoAtual = saldoContaCorrente(c.id);
+      const corSaldo   = saldoAtual >= 0 ? '#16a34a' : '#dc2626';
+      celSaldoIni   = `<td style="text-align:right;font-size:13px;color:var(--muted)">${fmtMoney(c.saldoInicial)||'—'}</td>`;
+      celSaldoAtual = `<td style="text-align:right;font-weight:700;font-size:15px;color:${corSaldo}">${fmtMoney(saldoAtual)||'R$ 0,00'}</td>`;
+    }
 
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
@@ -5969,8 +5993,8 @@ function renderContasCorrente(){
           ${TIPO_LABEL[c.tipo]||c.tipo}
         </span>
       </td>
-      <td style="text-align:right;font-size:13px;color:var(--muted)">${fmtMoney(c.saldoInicial)||'—'}</td>
-      <td style="text-align:right;font-weight:700;font-size:15px;color:${corSaldo}">${fmtMoney(saldoAtual)||'R$ 0,00'}</td>
+      ${celSaldoIni}
+      ${celSaldoAtual}
       <td style="text-align:center">
         <span style="font-size:12px;font-weight:600;color:${c.ativo?'#16a34a':'#dc2626'}">${c.ativo?'Ativa':'Inativa'}</span>
       </td>`;
@@ -5995,6 +6019,7 @@ async function salvarCampoContaCorrente(id, campo, valor){
     conta: c.conta||null,
     tipo: c.tipo||'corrente',
     saldo_inicial: c.saldoInicial,
+    fatura_inicial: c.faturaInicial||0,
     ativo: !!c.ativo
   });
   save();
@@ -6044,6 +6069,14 @@ function _ccFormHTML(c={}){
         <label>Dia Venc. Fatura
           <input id="ncc-venc-fatura" type="number" min="1" max="31" placeholder="Ex: 22" class="input" style="margin-top:4px"
             value="${c.diaVencimentoFatura||''}">
+        </label>
+      </div>
+      <div id="ncc-fatura-row" style="display:${isCartao?'grid':'none'};grid-template-columns:1fr 1fr;gap:12px">
+        <label>Fatura inicial em aberto (R$)
+          <input id="ncc-fatura-ini" type="text" inputmode="decimal" placeholder="0,00" class="input"
+            oninput="mascaraMoeda(this)" style="margin-top:4px"
+            value="${c.faturaInicial?fmtMoney(c.faturaInicial).replace('R$','').trim():''}">
+          <p style="margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">Valor já gasto no cartão antes de começar a usar o sistema (despesas anteriores ainda na fatura).</p>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -6101,22 +6134,27 @@ function _toggleCCCartao(){
   const isCartao = tipo==='cartao';
   const bancoRow   = document.getElementById('ncc-banco-row');
   const cartaoRow  = document.getElementById('ncc-cartao-row');
+  const faturaRow  = document.getElementById('ncc-fatura-row');
   const saldoLabel = document.getElementById('ncc-saldo-label');
   if(bancoRow)   bancoRow.style.display   = isCartao ? 'none' : 'grid';
   if(cartaoRow)  cartaoRow.style.display  = isCartao ? 'grid' : 'none';
+  if(faturaRow)  faturaRow.style.display  = isCartao ? 'grid' : 'none';
   if(saldoLabel) saldoLabel.style.display = isCartao ? 'none' : '';
 }
 
 /** Lê os campos extras de cartão do formulário */
 function _ccCartaoCampos(){
   const tipo = (document.getElementById('ncc-tipo')||{}).value||'corrente';
-  if(tipo!=='cartao') return {limite:null, diaFechamento:null, diaVencimentoFatura:null};
+  if(tipo!=='cartao') return {limite:null, diaFechamento:null, diaVencimentoFatura:null, faturaInicial:0};
   const limite = parseFloat(
     ((document.getElementById('ncc-limite')||{}).value||'0').replace(/\./g,'').replace(',','.')
   ) || null;
   const diaFechamento      = parseInt((document.getElementById('ncc-fechamento')||{}).value)||null;
   const diaVencimentoFatura= parseInt((document.getElementById('ncc-venc-fatura')||{}).value)||null;
-  return {limite, diaFechamento, diaVencimentoFatura};
+  const faturaInicial = parseFloat(
+    ((document.getElementById('ncc-fatura-ini')||{}).value||'0').replace(/\./g,'').replace(',','.')
+  ) || 0;
+  return {limite, diaFechamento, diaVencimentoFatura, faturaInicial};
 }
 
 /** Persiste edição de conta corrente */
@@ -6135,14 +6173,15 @@ async function salvarEdicaoContaCorrente(id){
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
-  const {limite, diaFechamento, diaVencimentoFatura} = _ccCartaoCampos();
+  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial} = _ccCartaoCampos();
   const {error} = await sb.from('contas_correntes').update({
     nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo,
-    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura
+    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
+    fatura_inicial:faturaInicial||0
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
-  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, limite, diaFechamento, diaVencimentoFatura});
+  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
   save();
   await _delay;
   fecharModal();
@@ -6181,15 +6220,16 @@ async function salvarNovaContaCorrente(){
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
-  const {limite, diaFechamento, diaVencimentoFatura} = _ccCartaoCampos();
+  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial} = _ccCartaoCampos();
 
   const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
-  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, limite, diaFechamento, diaVencimentoFatura};
+  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, limite, diaFechamento, diaVencimentoFatura, faturaInicial};
 
   const {error} = await sb.from('contas_correntes').insert({
     id, nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo:true,
-    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura
+    limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
+    fatura_inicial:faturaInicial||0
   });
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
