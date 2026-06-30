@@ -4891,6 +4891,21 @@ async function excluirCotacaoSRM(cotId, srmId){
   abrirEditarSRM(srmId,'propostas');
 }
 
+/* Retorna todos os itens de proposta vinculados a uma obra,
+   buscando tanto por proposta.obraId quanto por card.obraId (fallback). */
+function itensPropostasParaObra(obraId){
+  const itens=[];
+  if(!obraId) return itens;
+  (db.propostas||[]).filter(p=>{
+    if(p.obraId && p.obraId===obraId) return true;
+    const card=(db.cards||[]).find(cd=>cd.id===p.cardId);
+    return !!(card && card.obraId===obraId);
+  }).forEach(p=>{
+    (p.itens||[]).forEach(it=>{ if(it.descricao) itens.push({propostaId:p.id,desc:it.descricao,qtd:it.qtd||0}); });
+  });
+  return itens;
+}
+
 /* ---- SRM: Parser NF-e XML (client-side) ---- */
 function parseNFeXML(xmlText){
   const parser=new DOMParser();
@@ -4954,12 +4969,7 @@ function abaPedidoAprovadoSRMHTML(c){
     const showMatchCol=isMaterialObra&&!!c.obraId;
 
     /* proposta items para matching */
-    const itensPropostas=[];
-    if(showMatchCol){
-      (db.propostas||[]).filter(p=>p.obraId===c.obraId).forEach(p=>{
-        (p.itens||[]).forEach(it=>{ if(it.descricao) itensPropostas.push({propostaId:p.id,desc:it.descricao,qtd:it.qtd}); });
-      });
-    }
+    const itensPropostas=showMatchCol ? itensPropostasParaObra(c.obraId) : [];
 
     /* conferência de valor */
     const nfTotal=cot.nfValorTotal||0;
@@ -5147,12 +5157,7 @@ async function salvarCorrespondenciasNF(cotId, srmId){
   const srm=(db.cardsSRM||[]).find(x=>x.id===srmId);
   if(!cot||!srm||!cot.nfItens) return;
   /* reconstrói itensPropostas na mesma ordem do render */
-  const itensPropostas=[];
-  if(srm.obraId){
-    (db.propostas||[]).filter(p=>p.obraId===srm.obraId).forEach(p=>{
-      (p.itens||[]).forEach(it=>{ if(it.descricao) itensPropostas.push({propostaId:p.id,desc:it.descricao}); });
-    });
-  }
+  const itensPropostas=itensPropostasParaObra(srm.obraId);
   cot.nfItens.forEach((item,idx)=>{
     const sel=document.getElementById(`nf-match-${idx}`);
     if(!sel) return;
