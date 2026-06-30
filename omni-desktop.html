@@ -5896,17 +5896,17 @@ async function excluirCentroCusto(id){
 function saldoContaCorrente(contaId){
   const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
   if(!c) return 0;
+  // Para cartão: base negativa (dívida pré-existente); para demais: saldo inicial positivo
+  const base = c.tipo==='cartao' ? -(c.faturaInicial||0) : (c.saldoInicial||0);
   const movs = (db.movimentacoes||[]).filter(m=>m.contaId===contaId);
   return movs.reduce((acc,m)=>{
     if(m.tipo==='entrada')  return acc + m.valor;
     if(m.tipo==='saida')    return acc - m.valor;
     if(m.tipo==='transferencia'){
-      // saiu desta conta
-      if(m.contaId===contaId)        return acc - m.valor;
-      // chegou nesta conta (registrado via contaDestinoId)
+      if(m.contaId===contaId) return acc - m.valor;
     }
     return acc;
-  }, c.saldoInicial);
+  }, base);
 }
 
 /** Saldo total consolidado (soma de todas as contas ativas) */
@@ -6393,6 +6393,11 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   const totalEnt = todasMovs.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+m.valor,0);
   const totalSai = todasMovs.filter(m=>m.tipo!=='entrada').reduce((s,m)=>s+m.valor,0);
   const corSaldo = saldo>=0?'#16a34a':'#dc2626';
+  const isCartao = c.tipo==='cartao';
+  // Para cartão: saldo negativo = dívida; faturaAtual = valor devido; disponivel = limite - faturaAtual
+  const faturaAtual  = isCartao ? -saldo : 0;
+  const dispCartao   = isCartao ? (c.limite||0) - faturaAtual : 0;
+  const corDisp      = dispCartao >= 0 ? '#16a34a' : '#dc2626';
 
   const TIPO_ICON  = {entrada:'➕',saida:'➖',transferencia:'🔁'};
   const TIPO_LABEL = {entrada:'Entrada',saida:'Saída',transferencia:'Transf.'};
@@ -6431,6 +6436,28 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
     </div>
 
     <div style="flex-shrink:0;display:flex;gap:20px;padding:14px 0 10px;border-bottom:1px solid var(--border)">
+      ${isCartao ? `
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Fat. anterior</div>
+        <div style="font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(c.faturaInicial||0)}</div>
+      </div>
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Gastos</div>
+        <div style="font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(totalSai)}</div>
+      </div>
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Pagamentos</div>
+        <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtMoney(totalEnt)}</div>
+      </div>
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Fatura atual</div>
+        <div style="font-size:18px;font-weight:700;color:${faturaAtual>0?'#dc2626':'#16a34a'}">${fmtMoney(faturaAtual)}</div>
+      </div>
+      <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Disponível</div>
+        <div style="font-size:18px;font-weight:700;color:${corDisp}">${fmtMoney(dispCartao)}</div>
+      </div>
+      ` : `
       <div style="flex:1;background:var(--surface);border-radius:10px;padding:12px 16px">
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Entradas</div>
         <div style="font-size:18px;font-weight:700;color:#16a34a">${fmtMoney(totalEnt)}</div>
@@ -6443,6 +6470,7 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
         <div style="font-size:11px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Saldo atual</div>
         <div style="font-size:18px;font-weight:700;color:${corSaldo}">${fmtMoney(saldo)}</div>
       </div>
+      `}
     </div>
 
     <div style="flex-shrink:0;display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:0">
