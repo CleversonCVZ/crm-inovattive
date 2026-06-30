@@ -2071,7 +2071,9 @@ async function carregarDadosSupabase(){
         dataRecebimento:x.data_recebimento ? x.data_recebimento.slice(0,10) : null,
         status:x.status||'recebida',
         observacao:x.observacao||'',
-        arquivos:Array.isArray(x.arquivos) ? x.arquivos : []
+        arquivos:Array.isArray(x.arquivos) ? x.arquivos : [],
+        xmlNfPath:x.xml_nf_path||null,
+        xmlNfNome:x.xml_nf_nome||null
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -2315,7 +2317,9 @@ function syncDadosSupabase(){
       data_recebimento:x.dataRecebimento||null,
       status:x.status||'recebida',
       observacao:x.observacao||null,
-      arquivos:x.arquivos||[]
+      arquivos:x.arquivos||[],
+      xml_nf_path:x.xmlNfPath||null,
+      xml_nf_nome:x.xmlNfNome||null
     }));
   }, 800);
 }
@@ -4613,11 +4617,7 @@ function abrirEditarSRM(id, aba='dados'){
       </div>
     </div>`;
   else if(aba==='propostas') corpo=abaCotacoesSRMHTML(c);
-  else if(aba==='pedidos') corpo=`
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      ✅ <b>Pedidos Aprovados</b><br>
-      <small style="display:block;margin-top:10px">Em breve: pedidos de compra gerados a partir das cotações aprovadas.</small>
-    </div>`;
+  else if(aba==='pedidos') corpo=abaPedidoAprovadoSRMHTML(c);
   else if(aba==='financeiro') corpo=`
     <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
       💳 <b>Financeiro</b><br>
@@ -4628,7 +4628,7 @@ function abrirEditarSRM(id, aba='dados'){
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações${((db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length)?` (${(db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length})`:''}</button>
-      <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedidos Aprovados</button>
+      <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedido Aprovado${(()=>{const sel=(db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id&&x.status==='selecionada');return sel?(sel.xmlNfNome?' ✅':' ⏳'):'';})()}</button>
       <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
@@ -4872,10 +4872,111 @@ async function excluirCotacaoSRM(cotId, srmId){
   if(!confirm('Excluir esta cotação e seus arquivos?')) return;
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId);
   if(cot && cot.arquivos) for(const a of cot.arquivos) await sb.storage.from('srm-cotacoes').remove([a.path]);
+  if(cot && cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
   db.srmCotacoes = (db.srmCotacoes||[]).filter(x=>x.id!==cotId);
   await excluirDoSupabase('srm_cotacoes', cotId);
   save();
   abrirEditarSRM(srmId,'propostas');
+}
+
+/* ---- SRM: Aba Pedido Aprovado ---- */
+function abaPedidoAprovadoSRMHTML(c){
+  const cot = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
+  if(!cot) return `
+    <div class="empty" style="padding:50px 20px;text-align:center;color:var(--muted)">
+      ✅ <b>Nenhuma cotação selecionada ainda</b><br>
+      <small style="display:block;margin-top:8px">Vá para a aba <b>Propostas / Cotações</b> e clique em <b>✔ Selecionar</b> na proposta aprovada.</small>
+    </div>`;
+  const forn = (db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  const arqsLinks = (cot.arquivos||[]).map(a=>
+    `<button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>`
+  ).join('');
+  return `
+    <div style="padding:4px 0">
+      <div style="background:#f1f8e9;border:1px solid #a5d6a7;border-radius:8px;padding:14px 16px;margin-bottom:18px">
+        <div style="margin-bottom:10px">
+          <span style="background:#2e7d32;color:#fff;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700">✔ Cotação Selecionada</span>
+        </div>
+        <div style="font-weight:700;font-size:15px;margin-bottom:8px">${escHtml(cot.descricao||'—')}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
+          ${cot.valor!=null ? `<div><b>Valor:</b> ${fmtMoney(cot.valor)}</div>` : ''}
+          ${cot.dataRecebimento ? `<div><b>Recebida em:</b> ${fmtDia2(cot.dataRecebimento)}</div>` : ''}
+          ${forn ? `<div style="grid-column:1/-1"><b>Fornecedor:</b> ${escHtml(forn.nome)}</div>` : ''}
+          ${cot.observacao ? `<div style="grid-column:1/-1"><b>Obs:</b> ${escHtml(cot.observacao)}</div>` : ''}
+        </div>
+        ${arqsLinks ? `<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">${arqsLinks}</div>` : ''}
+      </div>
+
+      <div style="border:1px solid var(--border);border-radius:8px;padding:14px 16px">
+        <div style="font-weight:700;margin-bottom:12px;font-size:14px">📋 Nota Fiscal (XML)</div>
+        ${cot.xmlNfNome ? `
+          <div style="display:flex;align-items:center;gap:10px;background:#f5f5f5;border-radius:6px;padding:8px 12px;margin-bottom:12px">
+            <span style="font-size:20px">📄</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(cot.xmlNfNome)}</div>
+              <div style="font-size:11px;color:var(--muted)">XML da Nota Fiscal</div>
+            </div>
+            <button class="btn sm" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath)}','${escHtml(cot.xmlNfNome)}')">⬇ Baixar</button>
+            <button class="icon-btn del" onclick="removerXmlNfSRM(${cot.id},${c.id})" title="Remover">🗑</button>
+          </div>` : `
+          <div style="color:var(--muted);font-size:13px;margin-bottom:12px">⏳ Aguardando XML da nota fiscal.</div>`}
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input id="nf-xml-input" type="file" accept=".xml,text/xml,application/xml" style="flex:1;font-size:12px;min-width:0">
+          <button class="btn sm primary" onclick="uploadXmlNfSRM(${cot.id},${c.id},document.getElementById('nf-xml-input'))">⬆ Enviar XML</button>
+        </div>
+        <div id="nf-xml-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
+        <div id="nf-xml-progress" style="display:none;margin-top:4px">
+          <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+          <div id="nf-xml-size" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function uploadXmlNfSRM(cotId, srmId, input){
+  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const file = input && input.files && input.files[0]; if(!file){ alert('Selecione um arquivo XML.'); return; }
+  if(!file.name.toLowerCase().endsWith('.xml')){ alert('Apenas arquivos XML são aceitos.'); return; }
+  const statusEl = document.getElementById('nf-xml-status');
+  const progEl   = document.getElementById('nf-xml-progress');
+  const barEl    = document.getElementById('nf-xml-bar');
+  const sizeEl   = document.getElementById('nf-xml-size');
+  if(statusEl) statusEl.textContent = 'Enviando XML…';
+  if(progEl){ progEl.style.display=''; barEl.style.width='0%'; sizeEl.textContent=''; }
+  const path = `srm_${srmId}/nf_${cotId}_${Date.now()}.xml`;
+  try{
+    const {error} = await uploadOSArquivoXHR('srm-nfs', path, file, (loaded, total)=>{
+      const pct = Math.round(loaded/total*100);
+      if(barEl) barEl.style.width=pct+'%';
+      if(sizeEl) sizeEl.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+    });
+    if(error) throw new Error(error.message||'Erro no upload');
+    if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
+    cot.xmlNfPath = path;
+    cot.xmlNfNome = file.name;
+    await sb.from('srm_cotacoes').update({xml_nf_path:path, xml_nf_nome:file.name}).eq('id',cotId);
+    registrarLog('editar','srm',srmId,`XML NF enviado: ${file.name}`);
+    save();
+    abrirEditarSRM(srmId,'pedidos');
+  }catch(e){
+    if(statusEl) statusEl.textContent = 'Erro: '+(e.message||e);
+    if(progEl) progEl.style.display='none';
+  }
+}
+
+async function baixarXmlNfSRM(path, nome){
+  await _baixarArquivoBucket('srm-nfs', path, nome);
+}
+
+async function removerXmlNfSRM(cotId, srmId){
+  if(!confirm('Remover o XML da nota fiscal?')) return;
+  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
+  cot.xmlNfPath = null;
+  cot.xmlNfNome = null;
+  await sb.from('srm_cotacoes').update({xml_nf_path:null, xml_nf_nome:null}).eq('id',cotId);
+  save();
+  abrirEditarSRM(srmId,'pedidos');
 }
 
 async function baixarPDFCotacaoSRM(path, nome){
