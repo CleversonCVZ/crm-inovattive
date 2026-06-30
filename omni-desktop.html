@@ -1578,6 +1578,7 @@ function load(){
   if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
   if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
   if(!Array.isArray(db.cardsSRM))           db.cardsSRM=[];
+  if(!Array.isArray(db.srmCotacoes))        db.srmCotacoes=[];
   if(!Array.isArray(db.osCustos))          db.osCustos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
@@ -1778,7 +1779,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1806,7 +1807,8 @@ async function carregarDadosSupabase(){
       sb.from('fornecedor_contatos').select('*').order('id'),
       sb.from('os_custos').select('*').order('created_at', {ascending:false}),
       sb.from('contas_recorrentes').select('*').order('nome'),
-      sb.from('cards_srm').select('*').order('id')
+      sb.from('cards_srm').select('*').order('id'),
+      sb.from('srm_cotacoes').select('*').order('id')
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
     ]);
     if(clientes.data)
@@ -2059,6 +2061,18 @@ async function carregarDadosSupabase(){
         cancelado:!!c.cancelado,
         historico: Array.isArray(c.historico) ? c.historico : []
       }));
+    if(srmCotacoesRes.data)
+      db.srmCotacoes = srmCotacoesRes.data.map(x=>({
+        id:x.id,
+        cardSrmId:x.card_srm_id,
+        fornecedorId:x.fornecedor_id||null,
+        descricao:x.descricao||'',
+        valor:x.valor!=null ? Number(x.valor) : null,
+        dataRecebimento:x.data_recebimento ? x.data_recebimento.slice(0,10) : null,
+        status:x.status||'recebida',
+        observacao:x.observacao||'',
+        arquivos:Array.isArray(x.arquivos) ? x.arquivos : []
+      }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
 }
@@ -2292,6 +2306,16 @@ function syncDadosSupabase(){
       encerrado:!!c.encerrado,
       cancelado:!!c.cancelado,
       historico:c.historico||[]
+    }));
+    await sincronizarTabela('srm_cotacoes', db.srmCotacoes||[], x=>({
+      id:x.id, card_srm_id:x.cardSrmId,
+      fornecedor_id:x.fornecedorId||null,
+      descricao:x.descricao||'',
+      valor:x.valor!=null?x.valor:null,
+      data_recebimento:x.dataRecebimento||null,
+      status:x.status||'recebida',
+      observacao:x.observacao||null,
+      arquivos:x.arquivos||[]
     }));
   }, 800);
 }
@@ -4588,11 +4612,7 @@ function abrirEditarSRM(id, aba='dados'){
         <div id="srm-hist-wrap">${srmHistHTML(c)}</div>
       </div>
     </div>`;
-  else if(aba==='propostas') corpo=`
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      📋 <b>Propostas / Cotações</b><br>
-      <small style="display:block;margin-top:10px">Em breve: registro de cotações recebidas deste fornecedor para este processo.</small>
-    </div>`;
+  else if(aba==='propostas') corpo=abaCotacoesSRMHTML(c);
   else if(aba==='pedidos') corpo=`
     <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
       ✅ <b>Pedidos Aprovados</b><br>
@@ -4607,7 +4627,7 @@ function abrirEditarSRM(id, aba='dados'){
     <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
-      <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações</button>
+      <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações${((db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length)?` (${(db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length})`:''}</button>
       <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedidos Aprovados</button>
       <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro</button>
     </div>
@@ -4677,6 +4697,184 @@ async function excluirSRMCard(id){
   excluirDoSupabase('cards_srm', id);
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
+}
+
+/* ---- SRM: Aba Cotações ---- */
+function abaCotacoesSRMHTML(c){
+  const cots = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).sort((a,b)=>a.id-b.id);
+  const fornSRM = (db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(f=>`<option value="${f.id}" ${f.id===c.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+  const totalMenor = cots.filter(x=>x.valor!=null).reduce((m,x)=>m===null?x.valor:Math.min(m,x.valor), null);
+
+  const listaHTML = cots.length===0
+    ? '<div class="empty" style="padding:20px 0">Nenhuma cotação registrada ainda.</div>'
+    : cots.map(cot=>{
+        const forn = (db.fornecedores||[]).find(f=>f.id===cot.fornecedorId);
+        const sMenor = cot.valor!=null && cot.valor===totalMenor && cots.filter(x=>x.valor!=null).length>1;
+        const badge = cot.status==='selecionada'
+          ? `<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✔ Selecionada</span>`
+          : cot.status==='rejeitada'
+          ? `<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px">✖ Rejeitada</span>`
+          : `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px">📋 Recebida</span>`;
+        const arqsHTML = (cot.arquivos||[]).map(a=>`
+          <button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>
+        `).join('');
+        return `
+          <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:${cot.status==='selecionada'?'#f1f8e9':cot.status==='rejeitada'?'#fff8f8':'#fff'}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:14.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  ${forn ? escHtml(forn.nome) : escHtml(cot.descricao||'Cotação #'+cot.id)}
+                  ${badge}
+                  ${sMenor ? `<span style="background:#fff8e1;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">⭐ Menor valor</span>` : ''}
+                </div>
+                ${forn && cot.descricao ? `<div style="font-size:12.5px;color:var(--muted);margin-top:2px">${escHtml(cot.descricao)}</div>` : ''}
+                <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap;align-items:center">
+                  ${cot.valor!=null ? `<span style="font-size:15px;font-weight:700;color:${sMenor?'#2e7d32':'var(--text)'}">${fmtMoney(cot.valor)}</span>` : '<span style="color:var(--muted);font-size:12px">Valor não informado</span>'}
+                  ${cot.dataRecebimento ? `<span style="font-size:12px;color:var(--muted)">Recebida em ${fmtDia2(cot.dataRecebimento)}</span>` : ''}
+                  ${cot.observacao ? `<span style="font-size:12px;color:var(--muted);font-style:italic">${escHtml(cot.observacao)}</span>` : ''}
+                </div>
+                ${arqsHTML ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${arqsHTML}</div>` : ''}
+                <div style="margin-top:6px">
+                  <label style="font-size:12px;cursor:pointer;color:var(--primary)">
+                    ＋ Adicionar PDF
+                    <input type="file" accept=".pdf" style="display:none" onchange="uploadPDFCotacaoSRM(${cot.id},${c.id},this)">
+                  </label>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
+                ${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
+                ${cot.status==='recebida' ? `<button class="btn sm" style="background:#c62828;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'rejeitada')">✖ Rejeitar</button>` : ''}
+                ${cot.status!=='recebida' ? `<button class="btn sm neutral" onclick="statusCotacaoSRM(${cot.id},${c.id},'recebida')">↩ Desfazer</button>` : ''}
+                <button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+
+  return `
+    ${cots.length>1 ? `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat-pill" style="background:#e3f2fd;color:#1565c0">${cots.length} cotação${cots.length>1?'ões':''} recebida${cots.length>1?'s':''}</div>
+      ${totalMenor!=null ? `<div class="stat-pill" style="background:#e8f5e9;color:#2e7d32">Menor valor: <b>${fmtMoney(totalMenor)}</b></div>` : ''}
+      ${cots.filter(x=>x.status==='selecionada').length ? `<div class="stat-pill" style="background:#e8f5e9;color:#2e7d32">✔ Cotação selecionada</div>` : ''}
+    </div>` : ''}
+    ${listaHTML}
+    <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
+      <b style="font-size:13px;color:var(--muted)">— Registrar nova cotação —</b>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+        <label style="font-size:12px">Fornecedor
+          <select id="ncot-forn" class="input" style="margin-top:4px">
+            <option value="">— selecione —</option>
+            ${fornOpts}
+          </select>
+        </label>
+        <label style="font-size:12px">Valor (R$)
+          <input id="ncot-valor" type="text" inputmode="decimal" placeholder="0,00" class="input" oninput="mascaraMoeda(this)" style="margin-top:4px">
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+        <label style="font-size:12px">Data de Recebimento
+          <input id="ncot-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}" style="margin-top:4px">
+        </label>
+        <label style="font-size:12px">Descrição / Referência
+          <input id="ncot-desc" type="text" placeholder="Ex.: Cotação para cabo 10mm²" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <label style="font-size:12px;margin-top:8px;display:block">Observação
+        <input id="ncot-obs" type="text" placeholder="Condições, prazo de entrega…" class="input" style="margin-top:4px">
+      </label>
+      <label style="font-size:12px;margin-top:8px;display:block">PDF da cotação
+        <input id="ncot-pdf" type="file" accept=".pdf" style="margin-top:4px">
+      </label>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+        <button id="btn-add-cot" class="btn primary" onclick="adicionarCotacaoSRM(${c.id})">＋ Adicionar Cotação</button>
+        <span id="ncot-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+    </div>`;
+}
+
+async function adicionarCotacaoSRM(srmId){
+  const fornId  = parseInt(document.getElementById('ncot-forn').value)||null;
+  const valor   = parseFloat((document.getElementById('ncot-valor').value||'0').replace(/\./g,'').replace(',','.'))||null;
+  const data    = document.getElementById('ncot-data').value||null;
+  const desc    = (document.getElementById('ncot-desc').value||'').trim();
+  const obs     = (document.getElementById('ncot-obs').value||'').trim();
+  const pdfInput= document.getElementById('ncot-pdf');
+  const status  = document.getElementById('ncot-status');
+
+  if(!fornId && !desc){ alert('Informe o fornecedor ou uma descrição.'); return; }
+
+  const btn = document.getElementById('btn-add-cot');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Salvando…'; }
+  if(status) status.textContent='';
+
+  const id = await proximoIdSeguro('srm_cotacoes', db.srmCotacoes||[]);
+  const row = {id, cardSrmId:srmId, fornecedorId:fornId, descricao:desc,
+    valor: valor>0?valor:null, dataRecebimento:data, status:'recebida', observacao:obs, arquivos:[]};
+
+  // upload PDF se houver
+  if(pdfInput && pdfInput.files.length){
+    const file = pdfInput.files[0];
+    if(!file.name.toLowerCase().endsWith('.pdf')){ alert('Apenas arquivos PDF são aceitos.'); if(btn){ btn.disabled=false; btn.textContent='＋ Adicionar Cotação'; } return; }
+    if(status) status.textContent='⏳ Enviando PDF…';
+    try{
+      const path=`srm_${srmId}/cot_${id}_${Date.now()}.pdf`;
+      await uploadOSArquivoXHR('srm-cotacoes', path, file, ()=>{});
+      row.arquivos.push({id:'f'+Date.now(), nome:file.name, path});
+    }catch(e){ console.warn('Upload PDF cotação falhou:', e); }
+  }
+
+  const {error} = await sb.from('srm_cotacoes').insert({
+    id, card_srm_id:srmId, fornecedor_id:fornId||null,
+    descricao:desc, valor:row.valor, data_recebimento:data||null,
+    status:'recebida', observacao:obs||null, arquivos:row.arquivos
+  });
+  if(error){ if(btn){ btn.disabled=false; btn.textContent='＋ Adicionar Cotação'; } alert('Erro: '+error.message); return; }
+
+  db.srmCotacoes = db.srmCotacoes||[];
+  db.srmCotacoes.push(row);
+  registrarLog('criar','srm',srmId,`Cotação registrada no SRM`);
+  save();
+  abrirEditarSRM(srmId,'propostas');
+}
+
+async function uploadPDFCotacaoSRM(cotId, srmId, input){
+  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const file = input.files[0]; if(!file) return;
+  if(!file.name.toLowerCase().endsWith('.pdf')){ alert('Apenas PDF.'); return; }
+  try{
+    const path=`srm_${srmId}/cot_${cotId}_${Date.now()}.pdf`;
+    await uploadOSArquivoXHR('srm-cotacoes', path, file, ()=>{});
+    cot.arquivos = cot.arquivos||[];
+    cot.arquivos.push({id:'f'+Date.now(), nome:file.name, path});
+    await sb.from('srm_cotacoes').update({arquivos:cot.arquivos}).eq('id',cotId);
+    save();
+    abrirEditarSRM(srmId,'propostas');
+  }catch(e){ alert('Erro no upload: '+(e.message||e)); }
+}
+
+async function statusCotacaoSRM(cotId, srmId, novoStatus){
+  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  cot.status = novoStatus;
+  await sb.from('srm_cotacoes').update({status:novoStatus}).eq('id',cotId);
+  save();
+  abrirEditarSRM(srmId,'propostas');
+}
+
+async function excluirCotacaoSRM(cotId, srmId){
+  if(!confirm('Excluir esta cotação e seus arquivos?')) return;
+  const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId);
+  if(cot && cot.arquivos) for(const a of cot.arquivos) await sb.storage.from('srm-cotacoes').remove([a.path]);
+  db.srmCotacoes = (db.srmCotacoes||[]).filter(x=>x.id!==cotId);
+  await excluirDoSupabase('srm_cotacoes', cotId);
+  save();
+  abrirEditarSRM(srmId,'propostas');
+}
+
+async function baixarPDFCotacaoSRM(path, nome){
+  await _baixarArquivoBucket('srm-cotacoes', path, nome);
 }
 
 /* ---- SRM: Aba Financeiro ---- */
