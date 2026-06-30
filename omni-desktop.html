@@ -4595,15 +4595,18 @@ function abrirEditarSRM(id, aba='dados'){
       ✅ <b>Pedidos Aprovados</b><br>
       <small style="display:block;margin-top:10px">Em breve: pedidos de compra gerados a partir das cotações aprovadas.</small>
     </div>`;
-  else if(aba==='financeiro') corpo=abaFinanceiroSRMHTML(c);
-  const nCP = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).length;
+  else if(aba==='financeiro') corpo=`
+    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
+      💳 <b>Financeiro</b><br>
+      <small style="display:block;margin-top:10px">Em breve: contas a pagar vinculadas a este processo de compra.</small>
+    </div>`;
   abrirModal(`
     <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações</button>
       <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedidos Aprovados</button>
-      <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro${nCP?' ('+nCP+')':''}</button>
+      <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
