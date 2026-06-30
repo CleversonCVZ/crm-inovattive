@@ -4358,10 +4358,13 @@ function srmCard(c, showFase){
   el.ondragstart = e=> e.dataTransfer.setData('text', c.id);
   el.onclick = ()=> abrirEditarSRM(c.id);
   const ult = c.historico && c.historico.length ? c.historico[c.historico.length-1] : null;
+  const cc   = (db.centrosCusto||[]).find(x=>x.id===c.centroCustoId);
+  const obra = (db.obras||[]).find(o=>o.id===c.obraId);
   el.innerHTML = `
     <div class="top"><span class="num">#${c.num}</span> ${forn ? escHtml(forn.nome) : '<em style="color:var(--muted)">Sem fornecedor</em>'}</div>
     ${c.descricao ? `<div class="row">${escHtml(c.descricao)}</div>` : ''}
     ${showFase ? `<div class="row"><b>Fase:</b> <span style="color:${f.cor}">●</span> ${f.nome}</div>` : ''}
+    ${cc ? `<div class="row"><b>CC:</b> ${escHtml(cc.nome)}${obra ? ' · <b>Obra:</b> '+escHtml(obra.nome) : ''}</div>` : ''}
     <div class="row"><b>Resp.:</b> ${escHtml(c.responsavel||'—')}</div>
     ${ult ? `<div class="row"><b>Último registro:</b> ${fmtData(ult.data)}</div>` : ''}
     <div class="row" style="font-size:11px;color:var(--muted)">Aberto em ${fmtData(c.dataAbertura)}</div>`;
