@@ -541,6 +541,22 @@
     </table>
   </div>
 
+  <!-- SRM: FASES -->
+  <div class="view" id="view-srm-fases">
+    <div class="bar">
+      <h2>Fases do SRM</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="novaSRMFase()">+ Nova Fase</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases representam as etapas do relacionamento com fornecedores e do processo de aquisição (ex.: Prospecção, Cotação, Pedido Emitido). Edite nome, cor e ordem direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th></th></tr></thead>
+      <tbody id="srm-fases-tbody"></tbody>
+    </table>
+  </div>
+
   <!-- O.S.: LISTA -->
   <div class="view" id="view-os-lista">
     <div class="bar">
@@ -1319,6 +1335,16 @@ const SEED = {
     {id:4, nome:'Concluída',     cor:'#2e7d32', ordem:4, tipo:'concluida'},
     {id:5, nome:'Cancelada',     cor:'#c62828', ordem:5, tipo:'cancelada'}
   ],
+  fasesSRM: [
+    {id:1, nome:'Prospecção',         cor:'#78909c', ordem:1},
+    {id:2, nome:'Qualificação',       cor:'#5c6bc0', ordem:2},
+    {id:3, nome:'Cotação',            cor:'#0288d1', ordem:3},
+    {id:4, nome:'Negociação',         cor:'#f57c00', ordem:4},
+    {id:5, nome:'Pedido Emitido',     cor:'#7b1fa2', ordem:5},
+    {id:6, nome:'Aguardando Entrega', cor:'#1565c0', ordem:6},
+    {id:7, nome:'Recebido',           cor:'#2e7d32', ordem:7, tipo:'recebido'},
+    {id:8, nome:'Cancelado',          cor:'#c62828', ordem:8, tipo:'cancelado'}
+  ],
   ordensServico: [],
   downloadCategorias: [],
   downloadArquivos: [],
@@ -1372,6 +1398,7 @@ const TELAS = [
   {id:'fin-contas-receber',     nome:'Financeiro — Contas a Receber',   menu:'Contas a Receber'},
   // ── SRM
   {id:'srm-painel',        nome:'SRM — Painel',         menu:'Painel'},
+  {id:'srm-fases',         nome:'SRM — Fases',          menu:'Fases'},
   {id:'fin-fornecedores',  nome:'SRM — Fornecedores',   menu:'Fornecedores'},
   // ── Compras
   {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
@@ -1436,7 +1463,7 @@ const MODULOS = [
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','cat-outros-custos','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
   {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
-  {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','fin-fornecedores'],     sepAntes:true},
+  {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','srm-fases','fin-fornecedores'],     sepAntes:true},
   {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
 ];
@@ -1449,6 +1476,7 @@ const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Goo
      db.fasesProposta   — fases das propostas
      db.fasesObra       — fases das obras
      db.fasesOS         — fases das ordens de serviço
+     db.fasesSRM        — fases do processo de aquisição SRM
      db.origens         — origens de lead (Google, indicação, etc.)
      db.funcoes         — funções dos usuários (Técnico, Vendedor, etc.)
      db.grupos          — grupos de acesso com suas permissões
@@ -1587,9 +1615,22 @@ function load(){
                   {id:3,nome:'Em Revisão',cor:'#f9a825',ordem:3},{id:4,nome:'Concluída',cor:'#2e7d32',ordem:4,tipo:'concluida'},
                   {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}];
   }
+  if(!Array.isArray(db.fasesSRM) || !db.fasesSRM.length){
+    db.fasesSRM = [
+      {id:1,nome:'Prospecção',cor:'#78909c',ordem:1},
+      {id:2,nome:'Qualificação',cor:'#5c6bc0',ordem:2},
+      {id:3,nome:'Cotação',cor:'#0288d1',ordem:3},
+      {id:4,nome:'Negociação',cor:'#f57c00',ordem:4},
+      {id:5,nome:'Pedido Emitido',cor:'#7b1fa2',ordem:5},
+      {id:6,nome:'Aguardando Entrega',cor:'#1565c0',ordem:6},
+      {id:7,nome:'Recebido',cor:'#2e7d32',ordem:7,tipo:'recebido'},
+      {id:8,nome:'Cancelado',cor:'#c62828',ordem:8,tipo:'cancelado'}
+    ];
+  }
   // Marcar fases de sistema por nome (garante dados vindos do Supabase sem tipo)
   db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
+  db.fasesSRM.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('recebid')) f.tipo='recebido'; else if(n.includes('cancel')) f.tipo='cancelado'; } });
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
   if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
   if(!Array.isArray(db.downloadArquivos)) db.downloadArquivos = [];
@@ -1679,11 +1720,12 @@ function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',b
    db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
 async function carregarConfigSupabase(){
   try{
-    const [fasesCrm, fasesProp, fasesObra, fasesOS, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
+    const [fasesCrm, fasesProp, fasesObra, fasesOS, fasesSRM, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
       sb.from('fases_crm').select('*').order('ordem'),
       sb.from('fases_proposta').select('*').order('ordem'),
       sb.from('fases_obra').select('*').order('ordem'),
       sb.from('fases_os').select('*').order('ordem'),
+      sb.from('fases_srm').select('*').order('ordem'),
       sb.from('origens').select('*').order('id'),
       sb.from('funcoes').select('*').order('id'),
       sb.from('grupos').select('*').order('id'),
@@ -1698,6 +1740,8 @@ async function carregarConfigSupabase(){
       db.fasesObra = fasesObra.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(fasesOS.data && fasesOS.data.length)
       db.fasesOS = fasesOS.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(fasesSRM.data && fasesSRM.data.length)
+      db.fasesSRM = fasesSRM.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(origens.data && origens.data.length)
       db.origens = origens.data.map(o=>({id:o.id, nome:o.nome}));
     if(funcoes.data && funcoes.data.length)
@@ -2044,6 +2088,7 @@ function syncConfigSupabase(){
     sincronizarTabela('fases_proposta', db.fasesProposta, f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('fases_obra', db.fasesObra||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('fases_srm', db.fasesSRM||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
     sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico}));
@@ -3159,6 +3204,8 @@ function faseObra(id){ return (db.fasesObra||[]).find(f=>f.id===id); }
 function fasesObraOrdenadas(){ return (db.fasesObra||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function faseOS(id){ return (db.fasesOS||[]).find(f=>f.id===id); }
 function fasesOSOrdenadas(){ return (db.fasesOS||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function faseSRM(id){ return (db.fasesSRM||[]).find(f=>f.id===id); }
+function fasesSRMOrdenadas(){ return (db.fasesSRM||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function ostipoInfo(tipo){
   if(tipo==='projeto')  return {label:'PRJ', cor:'#7b1fa2'};
   if(tipo==='execucao') return {label:'OBR', cor:'#e65100'};
@@ -4259,6 +4306,66 @@ function excluirFase(id){
   registrarLog('excluir', 'fase_crm', id, `Fase CRM excluída: "${f?f.nome:id}"`);
   db.fases = db.fases.filter(f=>f.id!==id);
   excluirDoSupabase('fases_crm', id);
+  save(); renderAll();
+}
+
+/* ================= SRM: FASES ================= */
+function renderSRMFases(){
+  const tb=document.getElementById('srm-fases-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'srm-fases')) return;
+  fasesSRMOrdenadas().forEach(f=>{
+    const tc=textColor(f.cor);
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background=f.cor;
+    tr.style.color=tc;
+    tr.innerHTML=`
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesSRM.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
+      </td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      const f=faseSRM(+inp.dataset.id);
+      if(!f) return;
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
+      if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
+      else f[inp.dataset.campo]=inp.value;
+      registrarLog('editar','fase_srm',f.id,`Fase SRM editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>excluirSRMFase(+btn.dataset.del);
+  });
+}
+async function novaSRMFase(){
+  if(!db.fasesSRM) db.fasesSRM=[];
+  const ordemMax=db.fasesSRM.reduce((m,f)=>Math.max(m,f.ordem),0);
+  const nf={id: await proximoIdSeguro('fases_srm', db.fasesSRM), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fasesSRM.push(nf);
+  registrarLog('criar','fase_srm',nf.id,`Nova fase SRM criada: "${nf.nome}"`);
+  save(); renderAll();
+}
+function excluirSRMFase(id){
+  const f=faseSRM(id);
+  if(f?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
+  if(db.fasesSRM.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+  if(!confirm('Excluir esta fase?')) return;
+  registrarLog('excluir','fase_srm',id,`Fase SRM excluída: "${f?f.nome:id}"`);
+  db.fasesSRM=db.fasesSRM.filter(f=>f.id!==id);
+  excluirDoSupabase('fases_srm', id);
   save(); renderAll();
 }
 
@@ -14167,7 +14274,7 @@ function _renderOSPainelFases(corpo, lista){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); }
 load();
 atualizarMarca();
 (async function(){
