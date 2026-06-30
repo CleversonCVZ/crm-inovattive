@@ -4764,24 +4764,16 @@ function abaCotacoesSRMHTML(c){
     <div style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px">
       <b style="font-size:13px;color:var(--muted)">— Registrar nova cotação —</b>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-        <label style="font-size:12px">Fornecedor
-          <select id="ncot-forn" class="input" style="margin-top:4px">
-            <option value="">— selecione —</option>
-            ${fornOpts}
-          </select>
-        </label>
         <label style="font-size:12px">Valor (R$)
           <input id="ncot-valor" type="text" inputmode="decimal" placeholder="0,00" class="input" oninput="mascaraMoeda(this)" style="margin-top:4px">
         </label>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
         <label style="font-size:12px">Data de Recebimento
           <input id="ncot-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}" style="margin-top:4px">
         </label>
-        <label style="font-size:12px">Descrição / Referência
-          <input id="ncot-desc" type="text" placeholder="Ex.: Cotação para cabo 10mm²" class="input" style="margin-top:4px">
-        </label>
       </div>
+      <label style="font-size:12px;margin-top:8px;display:block">Descrição / Referência
+        <input id="ncot-desc" type="text" placeholder="Ex.: Cotação para cabo 10mm²" class="input" style="margin-top:4px">
+      </label>
       <label style="font-size:12px;margin-top:8px;display:block">Observação
         <input id="ncot-obs" type="text" placeholder="Condições, prazo de entrega…" class="input" style="margin-top:4px">
       </label>
@@ -4796,7 +4788,6 @@ function abaCotacoesSRMHTML(c){
 }
 
 async function adicionarCotacaoSRM(srmId){
-  const fornId  = parseInt(document.getElementById('ncot-forn').value)||null;
   const valor   = parseFloat((document.getElementById('ncot-valor').value||'0').replace(/\./g,'').replace(',','.'))||null;
   const data    = document.getElementById('ncot-data').value||null;
   const desc    = (document.getElementById('ncot-desc').value||'').trim();
@@ -4804,14 +4795,14 @@ async function adicionarCotacaoSRM(srmId){
   const pdfInput= document.getElementById('ncot-pdf');
   const status  = document.getElementById('ncot-status');
 
-  if(!fornId && !desc){ alert('Informe o fornecedor ou uma descrição.'); return; }
+  if(!desc && !valor){ alert('Informe ao menos a descrição ou o valor.'); return; }
 
   const btn = document.getElementById('btn-add-cot');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Salvando…'; }
   if(status) status.textContent='';
 
   const id = await proximoIdSeguro('srm_cotacoes', db.srmCotacoes||[]);
-  const row = {id, cardSrmId:srmId, fornecedorId:fornId, descricao:desc,
+  const row = {id, cardSrmId:srmId, fornecedorId:null, descricao:desc,
     valor: valor>0?valor:null, dataRecebimento:data, status:'recebida', observacao:obs, arquivos:[]};
 
   // upload PDF se houver
@@ -4827,7 +4818,7 @@ async function adicionarCotacaoSRM(srmId){
   }
 
   const {error} = await sb.from('srm_cotacoes').insert({
-    id, card_srm_id:srmId, fornecedor_id:fornId||null,
+    id, card_srm_id:srmId, fornecedor_id:null,
     descricao:desc, valor:row.valor, data_recebimento:data||null,
     status:'recebida', observacao:obs||null, arquivos:row.arquivos
   });
