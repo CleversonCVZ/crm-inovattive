@@ -2049,6 +2049,8 @@ async function carregarDadosSupabase(){
         id:c.id, num:c.num,
         fornecedorId:c.fornecedor_id||null,
         faseId:c.fase_id||null,
+        centroCustoId:c.centro_custo_id||null,
+        obraId:c.obra_id||null,
         responsavel:c.responsavel||'',
         descricao:c.descricao||'',
         dataAbertura:c.data_abertura ? c.data_abertura.slice(0,10) : '',
@@ -2280,6 +2282,8 @@ function syncDadosSupabase(){
       id:c.id, num:c.num,
       fornecedor_id:c.fornecedorId||null,
       fase_id:c.faseId||null,
+      centro_custo_id:c.centroCustoId||null,
+      obra_id:c.obraId||null,
       responsavel:c.responsavel||'',
       descricao:c.descricao||'',
       data_abertura:c.dataAbertura||null,
@@ -4428,6 +4432,27 @@ function _srmVistaEncerrados(k){
 }
 
 /* ---- helpers ---- */
+function optsCCSRM(selId){
+  return `<option value="">(nenhum)</option>` +
+    (db.centrosCusto||[]).filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(c=>`<option value="${c.id}" ${c.id===selId?'selected':''}>${escHtml(c.nome)}</option>`).join('');
+}
+function optsObrasSRM(selId){
+  return `<option value="">— selecione a obra —</option>` +
+    (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(o=>`<option value="${o.id}" ${o.id===selId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+}
+/** Mostra/oculta o campo Obra no card SRM — só aparece quando CC tem slug material_obra */
+function toggleObraSRM(rowId, ccSelId){
+  const sel = document.getElementById(ccSelId);
+  const row = document.getElementById(rowId);
+  if(!sel || !row) return;
+  const cc = (db.centrosCusto||[]).find(c=>c.id===(parseInt(sel.value)||null));
+  row.style.display = (cc && cc.slug==='material_obra') ? '' : 'none';
+  if(!(cc && cc.slug==='material_obra')){
+    const s = row.querySelector('select'); if(s) s.value='';
+  }
+}
 function optsFornecedores(selId){
   return `<option value="">(nenhum)</option>` +
     (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>(a.nome||'').localeCompare(b.nome||''))
@@ -4464,6 +4489,12 @@ function abrirNovoSRM(){
     <input id="srm-m-resp" value="${usuarioAtual?escHtml(usuarioAtual.nome):''}">
     <label>Descrição do processo</label>
     <input id="srm-m-desc" placeholder="Ex.: Cotação de cabos elétricos para obra Alphaville">
+    <label>Centro de Custo</label>
+    <select id="srm-m-cc" onchange="toggleObraSRM('srm-n-obra-row','srm-m-cc')">${optsCCSRM(null)}</select>
+    <div id="srm-n-obra-row" style="display:none">
+      <label>Obra <small style="color:var(--muted)">(Material de Obra)</small></label>
+      <select id="srm-m-obra">${optsObrasSRM(null)}</select>
+    </div>
     <label>Primeiro registro / observação</label>
     <textarea id="srm-m-hist" placeholder="Ex.: Processo iniciado para aquisição de materiais"></textarea>
     <div class="actions">
@@ -4478,13 +4509,16 @@ async function salvarNovoSRM(){
   const resp   = document.getElementById('srm-m-resp').value.trim();
   const desc   = document.getElementById('srm-m-desc').value.trim();
   const hist   = document.getElementById('srm-m-hist').value.trim();
+  const ccId   = +document.getElementById('srm-m-cc').value||null;
+  const obraId = +document.getElementById('srm-m-obra')?.value||null;
   if(!faseId){ alert('Selecione uma fase.'); return; }
   if(!db.cardsSRM) db.cardsSRM=[];
   const novo = {
     id: await proximoIdSeguro('cards_srm', db.cardsSRM),
     num: (db.cardsSRM.reduce((m,c)=>Math.max(m,c.num),0))+1,
     fornecedorId: fornId,
-    faseId, responsavel: resp, descricao: desc,
+    faseId, centroCustoId: ccId, obraId,
+    responsavel: resp, descricao: desc,
     dataAbertura: new Date().toISOString().slice(0,10),
     encerrado: false, cancelado: false, historico: []
   };
@@ -4497,6 +4531,8 @@ async function salvarNovoSRM(){
       id:novo.id, num:novo.num,
       fornecedor_id:novo.fornecedorId||null,
       fase_id:novo.faseId||null,
+      centro_custo_id:novo.centroCustoId||null,
+      obra_id:novo.obraId||null,
       responsavel:novo.responsavel||'',
       descricao:novo.descricao||'',
       data_abertura:novo.dataAbertura,
@@ -4514,6 +4550,7 @@ function abrirEditarSRM(id, aba='dados'){
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
   const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
   let corpo='';
+  const ccAtualSlug = c.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===c.centroCustoId)||{}).slug : null;
   if(aba==='dados') corpo=`
     <div class="dados-grid">
       <div>
@@ -4525,6 +4562,12 @@ function abrirEditarSRM(id, aba='dados'){
         <input id="srm-m-resp" value="${escHtml(c.responsavel||'')}">
         <label>Descrição do processo</label>
         <input id="srm-m-desc" value="${escHtml(c.descricao||'')}">
+        <label>Centro de Custo</label>
+        <select id="srm-m-cc" onchange="toggleObraSRM('srm-e-obra-row','srm-m-cc')">${optsCCSRM(c.centroCustoId)}</select>
+        <div id="srm-e-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
+          <label>Obra <small style="color:var(--muted)">(Material de Obra)</small></label>
+          <select id="srm-m-obra">${optsObrasSRM(c.obraId)}</select>
+        </div>
         <label>Data de abertura</label>
         <input id="srm-m-data" type="date" value="${c.dataAbertura||''}">
         <div class="flags">
@@ -4567,13 +4610,15 @@ function abrirEditarSRM(id, aba='dados'){
 
 async function salvarEdicaoSRM(id){
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
-  c.fornecedorId = +document.getElementById('srm-m-forn').value||null;
-  c.faseId       = +document.getElementById('srm-m-fase').value||null;
-  c.responsavel  = document.getElementById('srm-m-resp').value.trim();
-  c.descricao    = document.getElementById('srm-m-desc').value.trim();
-  c.dataAbertura = document.getElementById('srm-m-data').value||c.dataAbertura;
-  c.encerrado    = document.getElementById('srm-m-enc').checked;
-  c.cancelado    = document.getElementById('srm-m-can').checked;
+  c.fornecedorId  = +document.getElementById('srm-m-forn').value||null;
+  c.faseId        = +document.getElementById('srm-m-fase').value||null;
+  c.responsavel   = document.getElementById('srm-m-resp').value.trim();
+  c.descricao     = document.getElementById('srm-m-desc').value.trim();
+  c.centroCustoId = +document.getElementById('srm-m-cc').value||null;
+  c.obraId        = +document.getElementById('srm-m-obra')?.value||null;
+  c.dataAbertura  = document.getElementById('srm-m-data').value||c.dataAbertura;
+  c.encerrado     = document.getElementById('srm-m-enc').checked;
+  c.cancelado     = document.getElementById('srm-m-can').checked;
   // fases de sistema pelo checkbox
   const enc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
   const can = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
@@ -4586,6 +4631,8 @@ async function salvarEdicaoSRM(id){
       id:c.id, num:c.num,
       fornecedor_id:c.fornecedorId||null,
       fase_id:c.faseId||null,
+      centro_custo_id:c.centroCustoId||null,
+      obra_id:c.obraId||null,
       responsavel:c.responsavel||'',
       descricao:c.descricao||'',
       data_abertura:c.dataAbertura||null,
