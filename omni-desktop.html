@@ -2059,6 +2059,7 @@ async function carregarDadosSupabase(){
         dataAbertura:c.data_abertura ? c.data_abertura.slice(0,10) : '',
         encerrado:!!c.encerrado,
         cancelado:!!c.cancelado,
+        pagamentoResponsavel: c.pagamento_responsavel || 'empresa',
         historico: Array.isArray(c.historico) ? c.historico : []
       }));
     if(srmCotacoesRes.data)
@@ -2313,6 +2314,7 @@ function syncDadosSupabase(){
       data_abertura:c.dataAbertura||null,
       encerrado:!!c.encerrado,
       cancelado:!!c.cancelado,
+      pagamento_responsavel: c.pagamentoResponsavel || 'empresa',
       historico:c.historico||[]
     }));
     await sincronizarTabela('srm_cotacoes', db.srmCotacoes||[], x=>({
@@ -4565,7 +4567,9 @@ async function salvarNovoSRM(){
     faseId, centroCustoId: ccId, obraId,
     responsavel: resp, descricao: desc,
     dataAbertura: new Date().toISOString().slice(0,10),
-    encerrado: false, cancelado: false, historico: []
+    encerrado: false, cancelado: false,
+    pagamentoResponsavel: 'empresa',
+    historico: []
   };
   if(hist) registrarSRMHist(novo, hist);
   db.cardsSRM.push(novo);
@@ -4582,6 +4586,7 @@ async function salvarNovoSRM(){
       descricao:novo.descricao||'',
       data_abertura:novo.dataAbertura,
       encerrado:false, cancelado:false,
+      pagamento_responsavel:'empresa',
       historico:novo.historico||[]
     });
     if(error) throw error;
@@ -4615,6 +4620,11 @@ function abrirEditarSRM(id, aba='dados'){
         </div>
         <label>Data de abertura</label>
         <input id="srm-m-data" type="date" value="${c.dataAbertura||''}">
+        <label>Responsável pelo pagamento</label>
+        <select id="srm-m-pagamento">
+          <option value="empresa" ${(c.pagamentoResponsavel||'empresa')==='empresa'?'selected':''}>🏢 Nós pagamos (gera Conta a Pagar)</option>
+          <option value="cliente" ${c.pagamentoResponsavel==='cliente'?'selected':''}>👤 Cliente paga diretamente</option>
+        </select>
         <div class="flags">
           <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''}> ✔ Encerrado</label>
           <label class="flag perdido"><input type="checkbox" id="srm-m-can" ${c.cancelado?'checked':''}> ✖ Cancelado</label>
@@ -4630,18 +4640,14 @@ function abrirEditarSRM(id, aba='dados'){
     </div>`;
   else if(aba==='propostas') corpo=abaCotacoesSRMHTML(c);
   else if(aba==='pedidos') corpo=abaPedidoAprovadoSRMHTML(c);
-  else if(aba==='financeiro') corpo=`
-    <div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      💳 <b>Financeiro</b><br>
-      <small style="display:block;margin-top:10px">Em breve: contas a pagar vinculadas a este processo de compra.</small>
-    </div>`;
+  else if(aba==='financeiro') corpo=abaFinanceiroSRMHTML(c);
   abrirModal(`
     <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações${((db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length)?` (${(db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length})`:''}</button>
       <button class="aba ${aba==='pedidos'?'ativa':''}" onclick="abrirEditarSRM(${id},'pedidos')">Pedido Aprovado${(()=>{const sel=(db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id&&x.status==='selecionada');return sel?(sel.xmlNfNome?' ✅':' ⏳'):'';})()}</button>
-      <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro</button>
+      <button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarSRM(${id},'financeiro')">💳 Financeiro${(c.pagamentoResponsavel||'empresa')==='cliente'?' 👤':''}</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -4658,10 +4664,11 @@ async function salvarEdicaoSRM(id){
   c.responsavel   = document.getElementById('srm-m-resp').value.trim();
   c.descricao     = document.getElementById('srm-m-desc').value.trim();
   c.centroCustoId = +document.getElementById('srm-m-cc').value||null;
-  c.obraId        = +document.getElementById('srm-m-obra')?.value||null;
-  c.dataAbertura  = document.getElementById('srm-m-data').value||c.dataAbertura;
-  c.encerrado     = document.getElementById('srm-m-enc').checked;
-  c.cancelado     = document.getElementById('srm-m-can').checked;
+  c.obraId              = +document.getElementById('srm-m-obra')?.value||null;
+  c.dataAbertura        = document.getElementById('srm-m-data').value||c.dataAbertura;
+  c.encerrado           = document.getElementById('srm-m-enc').checked;
+  c.cancelado           = document.getElementById('srm-m-can').checked;
+  c.pagamentoResponsavel= document.getElementById('srm-m-pagamento').value||'empresa';
   // fases de sistema pelo checkbox
   const enc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
   const can = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
@@ -4681,6 +4688,7 @@ async function salvarEdicaoSRM(id){
       data_abertura:c.dataAbertura||null,
       encerrado:!!c.encerrado,
       cancelado:!!c.cancelado,
+      pagamento_responsavel:c.pagamentoResponsavel||'empresa',
       historico:c.historico||[]
     });
     if(error) throw error;
@@ -5190,6 +5198,19 @@ async function baixarPDFCotacaoSRM(path, nome){
 
 /* ---- SRM: Aba Financeiro ---- */
 function abaFinanceiroSRMHTML(c){
+  // Cenário A: cliente paga diretamente — apenas informativo
+  if((c.pagamentoResponsavel||'empresa')==='cliente'){
+    const cps=(db.contasPagar||[]).filter(p=>p.cardSrmId===c.id);
+    return `
+      <div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:10px;padding:16px 20px;margin-bottom:16px;display:flex;gap:12px;align-items:flex-start">
+        <span style="font-size:22px">👤</span>
+        <div>
+          <b style="color:#1565c0">Pagamento pelo Cliente</b>
+          <p style="margin:4px 0 0;font-size:13px;color:#1976d2">Este SRM está configurado como pagamento direto pelo cliente. Nenhuma Conta a Pagar é gerada para a empresa.<br>O material é rastreado apenas para controle de recebimento e continuidade da obra.</p>
+        </div>
+      </div>
+      ${cps.length?`<div style="font-size:13px;color:var(--muted);margin-top:8px">⚠ Há ${cps.length} conta(s) a pagar vinculada(s) manualmente a este SRM. Verifique se estão corretas.</div>`:''}`;
+  }
   const cps = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
   const hoje = new Date().toISOString().slice(0,10);
   const totPendente = cps.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor,0);
