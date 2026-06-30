@@ -5748,20 +5748,19 @@ function renderCentrosCusto(){
     tr.innerHTML = `
       <td>${c.id}</td>
       <td>
-        ${lock
-          ? `<span${tooltipDesc}>${escHtml(c.nome)}</span>`
-          : `<input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome"${tooltipDesc}>`
-        }
+        <input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome"${tooltipDesc}
+          ${lock?`readonly onclick="alert('Protegido pelo sistema — o nome não pode ser alterado.')"`:''}>
+      </td>
+      <td>
+        <input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao"
+          placeholder="Descrição…" style="font-weight:400;max-width:380px"
+          ${lock?`readonly onclick="alert('Protegido pelo sistema — a descrição não pode ser alterada.')"`:''}>
       </td>
       <td>
         ${lock
-          ? `<span style="font-weight:400">${escHtml(c.descricao||'')}</span>`
-          : `<input type="text" value="${escHtml(c.descricao||'')}" data-id="${c.id}" data-campo="descricao" placeholder="Descrição…" style="font-weight:400;max-width:380px">`
-        }
-      </td>
-      <td>
-        ${lock
-          ? `<span>${c.tipo==='fixo'?'Fixo':'Variável'}</span>`
+          ? `<select data-id="${c.id}" data-campo="tipo" disabled>
+               <option value="${c.tipo}" selected>${c.tipo==='fixo'?'Fixo':'Variável'}</option>
+             </select>`
           : `<select data-id="${c.id}" data-campo="tipo">
                <option value="fixo" ${c.tipo==='fixo'?'selected':''}>Fixo</option>
                <option value="variavel" ${c.tipo==='variavel'?'selected':''}>Variável</option>
