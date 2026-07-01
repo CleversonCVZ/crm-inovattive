@@ -10707,13 +10707,25 @@ async function confirmarParcelaRecebida(id, cardId){
   abrirEditarCartao(cardId,'financeiro');
 }
 
-/** Exclui parcela a receber (sem reversão de movimentação — se já foi marcada como recebida, o extrato permanece) */
+/** Exclui parcela a receber e remove a movimentação vinculada na conta corrente */
 async function excluirParcelaReceber(id, cardId){
   if(!podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')){ alert('Sem permissão para excluir parcelas a receber.'); return; }
-  if(!confirm('Excluir esta parcela?')) return;
+  const r = (db.recebimentos||[]).find(x=>x.id===id);
+  if(!r) return;
+  if(r.status==='recebido'){
+    if(!confirm('Esta parcela já foi recebida. Excluir mesmo assim?\n\nA movimentação de entrada na conta corrente também será removida.')) return;
+  } else {
+    if(!confirm('Excluir esta parcela?')) return;
+  }
+  // remove movimentações vinculadas
+  const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='recebimento' && Number(m.origemId)===Number(id));
+  for(const m of movsVinculadas){
+    await excluirDoSupabase('movimentacoes_financeiras', m.id);
+  }
+  db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='recebimento' && Number(m.origemId)===Number(id)));
   await excluirDoSupabase('financeiro_recebimentos', id);
   db.recebimentos = db.recebimentos.filter(x=>x.id!==id);
-  save();
+  save(); renderFinPainel();
   abrirEditarCartao(cardId,'financeiro');
 }
 
