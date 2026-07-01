@@ -4763,7 +4763,7 @@ function abaCotacoesSRMHTML(c){
   const nfExtraida = !!(cotSel && cotSel.nfItens && cotSel.nfItens.length);
   const lockAviso = nfExtraida ? `
     <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#e65100;display:flex;align-items:center;gap:8px">
-      🔒 <span>A seleção está bloqueada — a NF já foi extraída na aba <b>Pedido Aprovado</b>. Remova o XML/dados da NF para alterar a cotação selecionada.</span>
+      🔒 <span>A seleção está bloqueada — a NF já foi importada na aba <b>Pedido Aprovado</b>. Remova o XML/dados da NF para alterar a cotação selecionada.</span>
     </div>` : '';
 
   const listaHTML = cots.length===0
