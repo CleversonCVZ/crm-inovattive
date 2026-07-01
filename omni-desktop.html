@@ -4758,12 +4758,12 @@ function abaCotacoesSRMHTML(c){
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===c.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
   const totalMenor = cots.filter(x=>x.valor!=null).reduce((m,x)=>m===null?x.valor:Math.min(m,x.valor), null);
-  /* lock: NF já extraída na aba Pedido Aprovado */
+  /* lock: NF já importada na aba Pedido Aprovado */
   const cotSel = cots.find(x=>x.status==='selecionada');
   const nfExtraida = !!(cotSel && cotSel.nfItens && cotSel.nfItens.length);
   const lockAviso = nfExtraida ? `
     <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#e65100;display:flex;align-items:center;gap:8px">
-      🔒 <span>A seleção está bloqueada — a NF já foi importada na aba <b>Pedido Aprovado</b>. Remova o XML/dados da NF para alterar a cotação selecionada.</span>
+      🔒 <span>Ações bloqueadas — a NF já foi importada na aba <b>Pedido Aprovado</b>. Para reverter: vá em <b>Pedido Aprovado → Remover XML</b>. Isso também apaga o lançamento de estoque vinculado e libera as ações abaixo.</span>
     </div>` : '';
 
   const listaHTML = cots.length===0
@@ -4776,10 +4776,13 @@ function abaCotacoesSRMHTML(c){
           : cot.status==='rejeitada'
           ? `<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px">✖ Rejeitada</span>`
           : `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px">📋 Recebida</span>`;
+        const bloqueada = nfExtraida && cot.status==='selecionada';
         const arqsHTML = (cot.arquivos||[]).map(a=>`
           <span style="display:inline-flex;align-items:center;gap:2px">
             <button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>
-            <button class="icon-btn del" style="font-size:11px;padding:1px 4px" title="Remover arquivo" onclick="excluirArquivoCotacaoSRM(${cot.id},${c.id},'${a.id}','${escHtml(a.path)}')">🗑</button>
+            ${bloqueada
+              ? `<span style="font-size:11px;color:#e65100" title="Remova o XML primeiro">🔒</span>`
+              : `<button class="icon-btn del" style="font-size:11px;padding:1px 4px" title="Remover arquivo" onclick="excluirArquivoCotacaoSRM(${cot.id},${c.id},'${a.id}','${escHtml(a.path)}')">🗑</button>`}
           </span>
         `).join('');
         return `
@@ -4812,7 +4815,9 @@ function abaCotacoesSRMHTML(c){
                   : `${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
                      ${cot.status==='recebida' ? `<button class="btn sm" style="background:#c62828;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'rejeitada')">✖ Rejeitar</button>` : ''}
                      ${cot.status!=='recebida' ? `<button class="btn sm neutral" onclick="statusCotacaoSRM(${cot.id},${c.id},'recebida')">↩ Desfazer</button>` : ''}`}
-                <button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>
+                ${bloqueada
+                  ? `<span style="font-size:11px;color:#e65100" title="Remova o XML primeiro para poder excluir">🔒</span>`
+                  : `<button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>`}
               </div>
             </div>
           </div>`;
@@ -5413,6 +5418,9 @@ async function removerXmlNfSRM(cotId, srmId){
   if(!confirm('Remover o XML da NF-e? Os dados importados e o lançamento de estoque vinculado serão apagados.')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
+  // Remover movimentações de estoque vinculadas
+  db.estoqueMov = (db.estoqueMov||[]).filter(m => m.srmCotacaoId !== cotId);
+  await sb.from('estoque_movimentacoes').delete().eq('srm_cotacao_id', cotId);
   cot.xmlNfPath=null; cot.xmlNfNome=null;
   cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
   cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
