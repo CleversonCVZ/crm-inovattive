@@ -15972,10 +15972,10 @@ function renderEstoquePainel(){
   },0);
 
   statsEl.innerHTML=`
-    <div class="stat-card"><div class="stat-val">${totalProd}</div><div class="stat-lab">Produtos cadastrados</div></div>
-    <div class="stat-card"><div class="stat-val">${fmtNum(totalEntradas)}</div><div class="stat-lab">Total unidades entrada</div></div>
-    <div class="stat-card"><div class="stat-val">${fmtNum(totalSaidas)}</div><div class="stat-lab">Total unidades saída</div></div>
-    ${valorEstoque>0?`<div class="stat-card"><div class="stat-val">${fmtMoney(valorEstoque)}</div><div class="stat-lab">Valor em estoque (custo médio)</div></div>`:''}
+    <div class="stat"><div class="n">${totalProd}</div><div class="l">Produtos ativos</div></div>
+    <div class="stat"><div class="n">${fmtNum(totalEntradas)}</div><div class="l">Unidades entrada</div></div>
+    <div class="stat"><div class="n">${fmtNum(totalSaidas)}</div><div class="l">Unidades saída</div></div>
+    ${valorEstoque>0?`<div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(valorEstoque)}</div><div class="l">Valor em estoque</div></div>`:''}
   `;
 
   if(vista==='saldo')      _renderEstoqueSaldo(corpoEl);
