@@ -2542,17 +2542,22 @@ function renderCCPainel(){ renderFinPainel(); }
 
 /** Sub-renderer: Centros de Custo */
 function _finPainelCC(statsEl, corpoEl, periodo){
+  const t=termoBusca();
+  const CCs = db.centrosCusto||[];
   const mapa = {};
   // Apenas movimentações de saída (fonte única — evita dupla contagem com CP e OS Custos)
   (db.movimentacoes||[]).forEach(m=>{
     if(m.tipo!=='saida') return;
     if(!_finPainelDentroFiltro(m.dataMovimento, periodo)) return;
+    if(t){
+      const cc=CCs.find(x=>x.id===(m.centroCustoId||0));
+      if(!(cc?.nome||'(sem centro)').toLowerCase().includes(t)) return;
+    }
     const id = m.centroCustoId||0;
     if(!mapa[id]) mapa[id]={total:0,nLanc:0};
     mapa[id].total+=m.valor||0; mapa[id].nLanc++;
   });
 
-  const CCs = db.centrosCusto||[];
   const linhas = Object.entries(mapa).map(([idStr,v])=>{
     const id=Number(idStr); const cc=CCs.find(x=>x.id===id);
     return {nome:cc?.nome||'(sem centro)',tipo:cc?.tipo||'variavel',total:v.total,nLanc:v.nLanc};
@@ -2593,7 +2598,15 @@ function _finPainelCC(statsEl, corpoEl, periodo){
 
 /** Sub-renderer: Contas a Pagar */
 function _finPainelCP(statsEl, corpoEl, periodo){
-  const lista = (db.contasPagar||[]).filter(p=>_finPainelDentroFiltro(p.dataVencimento, periodo));
+  const t=termoBusca();
+  const lista = (db.contasPagar||[]).filter(p=>{
+    if(!_finPainelDentroFiltro(p.dataVencimento, periodo)) return false;
+    if(!t) return true;
+    const forn=(db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
+    return (p.descricao||'').toLowerCase().includes(t)
+      || (forn?.nome||'').toLowerCase().includes(t)
+      || (forn?.nomeFantasia||'').toLowerCase().includes(t);
+  });
 
   const totTotal       = lista.reduce((s,p)=>s+p.valor,0);
   const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
@@ -2661,8 +2674,16 @@ function _finPainelCR(statsEl, corpoEl, periodo){
   const hoje  = localDia(0);
   // Pendentes: sempre visíveis (ainda não recebidos — sem data de evento para filtrar)
   // Recebidos: filtra pela data em que o dinheiro entrou (dataRecebimento)
-  const pendentes = (db.recebimentos||[]).filter(r=>r.status!=='recebido');
-  const recebidos = (db.recebimentos||[]).filter(r=>r.status==='recebido' && _finPainelDentroFiltro(r.dataRecebimento, periodo));
+  const t=termoBusca();
+  const _srmMatch=r=>{
+    if(!t) return true;
+    const card=(db.cards||[]).find(x=>x.id===r.cardId);
+    const cl=card?(db.clientes||[]).find(x=>x.id===card.clienteId):null;
+    return (r.descricao||'').toLowerCase().includes(t)
+      || (cl?.nome||'').toLowerCase().includes(t);
+  };
+  const pendentes = (db.recebimentos||[]).filter(r=>r.status!=='recebido' && _srmMatch(r));
+  const recebidos = (db.recebimentos||[]).filter(r=>r.status==='recebido' && _finPainelDentroFiltro(r.dataRecebimento, periodo) && _srmMatch(r));
   const lista = [...pendentes, ...recebidos];
 
   const totTotal    = lista.reduce((s,r)=>s+r.valor, 0);
@@ -4467,11 +4488,21 @@ function renderSRMPainel(){
   }
 }
 
+function _srmMatchBusca(c){
+  const t=termoBusca(); if(!t) return true;
+  const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  return String(c.num||'').includes(t)
+    || (c.descricao||'').toLowerCase().includes(t)
+    || (c.responsavel||'').toLowerCase().includes(t)
+    || (forn?.nome||'').toLowerCase().includes(t)
+    || (forn?.nomeFantasia||'').toLowerCase().includes(t);
+}
+
 function _srmVistaFases(k){
   fasesSRMOrdenadas().forEach(f=>{
     if(f.tipo) return;
     if(!(db.cardsSRM||[]).some(c=>c.faseId===f.id && srmCardAtivo(c))) return;
-    const itens = (db.cardsSRM||[]).filter(c=>c.faseId===f.id && srmCardAtivo(c));
+    const itens = (db.cardsSRM||[]).filter(c=>c.faseId===f.id && srmCardAtivo(c) && _srmMatchBusca(c));
     k.appendChild(colEl(f.nome, f.cor, itens, {
       render: srmCard,
       onDrop: id=>{
@@ -4496,8 +4527,8 @@ function _srmVistaEncerrados(k){
   const fEnc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
   const fCan = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
   const grupos = [
-    { fase: fEnc||{cor:'#2e7d32',nome:'Encerrados'}, cards:(db.cardsSRM||[]).filter(c=>c.encerrado) },
-    { fase: fCan||{cor:'#c62828',nome:'Cancelados'}, cards:(db.cardsSRM||[]).filter(c=>c.cancelado) }
+    { fase: fEnc||{cor:'#2e7d32',nome:'Encerrados'}, cards:(db.cardsSRM||[]).filter(c=>c.encerrado && _srmMatchBusca(c)) },
+    { fase: fCan||{cor:'#c62828',nome:'Cancelados'}, cards:(db.cardsSRM||[]).filter(c=>c.cancelado && _srmMatchBusca(c)) }
   ];
   let html='';
   grupos.forEach(({fase:f,cards})=>{
@@ -15994,7 +16025,11 @@ function renderEstoquePainel(){
 function fmtNum(v){ return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:3}); }
 
 function _renderEstoqueSaldo(el){
-  const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
+  const t=termoBusca();
+  const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo && (!t||
+    (p.nome||'').toLowerCase().includes(t)||
+    (p.ncm||'').toLowerCase().includes(t)||
+    (p.nomeFiscal||'').toLowerCase().includes(t)));
   if(!produtos.length){
     el.innerHTML='<div class="empty">Nenhum produto cadastrado. Clique em <b>＋ Novo Produto</b> para começar ou lance itens da NF via SRM.</div>';
     return;
@@ -16030,7 +16065,15 @@ function _renderEstoqueSaldo(el){
 }
 
 function _renderEstoqueMovimentos(el){
-  const movs=(db.estoqueMov||[]).slice().sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
+  const t=termoBusca();
+  const movs=(db.estoqueMov||[]).filter(m=>{
+    if(!t) return true;
+    const prod=(db.estoqueProdutos||[]).find(p=>p.id===m.produtoId);
+    return (prod?.nome||'').toLowerCase().includes(t)
+      || (m.tipo||'').toLowerCase().includes(t)
+      || (m.observacao||'').toLowerCase().includes(t)
+      || (m.origemTipo||'').toLowerCase().includes(t);
+  }).slice().sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
   if(!movs.length){
     el.innerHTML='<div class="empty">Nenhuma movimentação registrada ainda.</div>';
     return;
@@ -16076,7 +16119,12 @@ function _renderEstoqueMovimentos(el){
 }
 
 function _renderEstoqueCatalogo(el){
-  const todos=db.estoqueProdutos||[];
+  const t=termoBusca();
+  const todos=(db.estoqueProdutos||[]).filter(p=>!t
+    || (p.nome||'').toLowerCase().includes(t)
+    || (p.nomeFiscal||'').toLowerCase().includes(t)
+    || (p.ncm||'').toLowerCase().includes(t)
+    || (p.descricao||'').toLowerCase().includes(t));
   if(!todos.length){
     el.innerHTML='<div class="empty">Nenhum produto no catálogo. Clique em <b>＋ Novo Produto</b> para começar.</div>';
     return;
