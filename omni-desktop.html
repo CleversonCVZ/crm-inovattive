@@ -5324,7 +5324,7 @@ async function uploadXmlNfSRM(input, cotId, srmId){
   }
 }
 
-/* Upload PDF DANFE: faz upload; extrai itens APENAS se não houver XML */
+/* Upload PDF DANFE: só armazena o arquivo — extração é feita manualmente pelo usuário */
 async function uploadPdfNfSRM(input, cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const file=input&&input.files&&input.files[0]; if(!file) return;
@@ -5332,14 +5332,6 @@ async function uploadPdfNfSRM(input, cotId, srmId){
   const progEl=document.getElementById('nf-pdf-progress');
   const barEl=document.getElementById('nf-pdf-bar');
   const sizeEl=document.getElementById('nf-pdf-size');
-  const temXml=!!cot.xmlNfNome;
-  let nfDados=null;
-  if(!temXml){
-    if(statusEl) statusEl.textContent='🔍 Extraindo dados do PDF…';
-    try{
-      nfDados=await parseDanfePDF(file);
-    }catch(e){ if(statusEl) statusEl.textContent='❌ '+(e.message||e); return; }
-  }
   if(statusEl) statusEl.textContent='Enviando PDF…';
   if(progEl){ progEl.style.display=''; if(barEl) barEl.style.width='0%'; if(sizeEl) sizeEl.textContent=''; }
   const path=`srm_${srmId}/nf_pdf_${cotId}_${Date.now()}.pdf`;
@@ -5352,22 +5344,8 @@ async function uploadPdfNfSRM(input, cotId, srmId){
     if(error) throw new Error(error.message||'Erro no upload');
     if(cot.pdfNfPath) await sb.storage.from('srm-nfs').remove([cot.pdfNfPath]);
     cot.pdfNfPath=path; cot.pdfNfNome=file.name;
-    const dbUpdate={pdf_nf_path:path, pdf_nf_nome:file.name};
-    if(!temXml&&nfDados){
-      /* sem XML → usa dados do PDF como fonte */
-      cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
-      cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
-      cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
-      Object.assign(dbUpdate,{
-        nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
-        nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
-        nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
-      });
-      registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada via PDF (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
-    } else {
-      registrarLog('editar','srm',srmId,`PDF DANFE anexado à NF-e ${cot.nfNumero||''} (referência)`);
-    }
-    await sb.from('srm_cotacoes').update(dbUpdate).eq('id',cotId);
+    await sb.from('srm_cotacoes').update({pdf_nf_path:path, pdf_nf_nome:file.name}).eq('id',cotId);
+    registrarLog('editar','srm',srmId,`PDF DANFE anexado (${escHtml(file.name)})`);
     save(); abrirEditarSRM(srmId,'pedidos');
   }catch(e){
     if(statusEl) statusEl.textContent='❌ Erro: '+(e.message||e);
@@ -5383,50 +5361,19 @@ async function baixarPdfNfSRM(path, nome){
   await _baixarArquivoBucket('srm-nfs', path, nome);
 }
 
-/* Remove XML: se PDF presente → re-extrai itens do PDF; senão limpa tudo */
+/* Remove XML: limpa xml fields + dados da NF (usuário pode re-extrair do PDF manualmente) */
 async function removerXmlNfSRM(cotId, srmId){
-  if(!confirm('Remover o XML da NF-e? Os dados importados serão removidos.')) return;
+  if(!confirm('Remover o XML da NF-e? Os dados importados serão apagados.')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
   cot.xmlNfPath=null; cot.xmlNfNome=null;
-  /* se há PDF → re-extrai itens */
-  if(cot.pdfNfPath){
-    const statusEl=document.getElementById('nf-xml-status');
-    if(statusEl) statusEl.textContent='🔍 Reextraindo dados do PDF…';
-    try{
-      const {data,error}=await sb.storage.from('srm-nfs').download(cot.pdfNfPath);
-      if(error) throw error;
-      const pdfFile=new File([data], cot.pdfNfNome||'danfe.pdf',{type:'application/pdf'});
-      const nfDados=await parseDanfePDF(pdfFile);
-      cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
-      cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
-      cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
-      await sb.from('srm_cotacoes').update({
-        xml_nf_path:null, xml_nf_nome:null,
-        nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
-        nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
-        nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
-      }).eq('id',cotId);
-    }catch(e){
-      /* falhou → limpa itens mas mantém PDF */
-      cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
-      cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
-      await sb.from('srm_cotacoes').update({
-        xml_nf_path:null, xml_nf_nome:null,
-        nf_itens:null, nf_numero:null, nf_data:null,
-        nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
-      }).eq('id',cotId);
-    }
-  } else {
-    /* sem PDF → limpa tudo */
-    cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
-    cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
-    await sb.from('srm_cotacoes').update({
-      xml_nf_path:null, xml_nf_nome:null,
-      nf_itens:null, nf_numero:null, nf_data:null,
-      nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
-    }).eq('id',cotId);
-  }
+  cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
+  cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+  await sb.from('srm_cotacoes').update({
+    xml_nf_path:null, xml_nf_nome:null,
+    nf_itens:null, nf_numero:null, nf_data:null,
+    nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
+  }).eq('id',cotId);
   save(); abrirEditarSRM(srmId,'pedidos');
 }
 
