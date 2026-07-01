@@ -4777,7 +4777,10 @@ function abaCotacoesSRMHTML(c){
           ? `<span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px">✖ Rejeitada</span>`
           : `<span style="background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:10px;font-size:11px">📋 Recebida</span>`;
         const arqsHTML = (cot.arquivos||[]).map(a=>`
-          <button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>
+          <span style="display:inline-flex;align-items:center;gap:2px">
+            <button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>
+            <button class="icon-btn del" style="font-size:11px;padding:1px 4px" title="Remover arquivo" onclick="excluirArquivoCotacaoSRM(${cot.id},${c.id},'${a.id}','${escHtml(a.path)}')">🗑</button>
+          </span>
         `).join('');
         return `
           <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:${cot.status==='selecionada'?'#f1f8e9':cot.status==='rejeitada'?'#fff8f8':'#fff'}">
@@ -4958,6 +4961,16 @@ async function excluirCotacaoSRM(cotId, srmId){
   abrirEditarSRM(srmId,'propostas');
 }
 
+async function excluirArquivoCotacaoSRM(cotId, srmId, arqId, arqPath){
+  if(!confirm('Remover este arquivo?')) return;
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  if(arqPath) await sb.storage.from('srm-cotacoes').remove([arqPath]);
+  cot.arquivos=(cot.arquivos||[]).filter(a=>a.id!==arqId);
+  await sb.from('srm_cotacoes').update({arquivos:cot.arquivos}).eq('id',cotId);
+  save();
+  abrirEditarSRM(srmId,'propostas');
+}
+
 /* Retorna todos os itens de proposta vinculados a uma obra,
    buscando tanto por proposta.obraId quanto por card.obraId (fallback). */
 function itensPropostasParaObra(obraId){
@@ -5115,7 +5128,10 @@ function abaPedidoAprovadoSRMHTML(c){
 
   const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
   const arqsLinks=(cot.arquivos||[]).map(a=>
-    `<button class="arq-btn" title="${escHtml(a.nome)}" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>`
+    `<span style="display:inline-flex;align-items:center;gap:2px">
+      <button class="arq-btn" title="${escHtml(a.nome)}" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>
+      <button class="icon-btn del" style="font-size:11px;padding:1px 4px" title="Remover arquivo" onclick="excluirArquivoCotacaoSRM(${cot.id},${c.id},'${a.id}','${escHtml(a.path)}')">🗑</button>
+    </span>`
   ).join('');
 
   /* PDF da NF — aparece inline no card, igual às propostas */
@@ -5394,16 +5410,18 @@ async function baixarPdfNfSRM(path, nome){
 
 /* Remove XML: limpa xml fields + dados da NF (usuário pode re-extrair do PDF manualmente) */
 async function removerXmlNfSRM(cotId, srmId){
-  if(!confirm('Remover o XML da NF-e? Os dados importados serão apagados.')) return;
+  if(!confirm('Remover o XML da NF-e? Os dados importados e o lançamento de estoque vinculado serão apagados.')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
   cot.xmlNfPath=null; cot.xmlNfNome=null;
   cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
   cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+  cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
   await sb.from('srm_cotacoes').update({
     xml_nf_path:null, xml_nf_nome:null,
     nf_itens:null, nf_numero:null, nf_data:null,
-    nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
+    nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
+    estoque_lancado:false, estoque_lancado_em:null
   }).eq('id',cotId);
   save(); abrirEditarSRM(srmId,'pedidos');
 }
@@ -5420,9 +5438,11 @@ async function removerPdfNfSRM(cotId, srmId){
   if(!temXml){
     cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
     cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+    cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
     Object.assign(dbUpdate,{
       nf_itens:null, nf_numero:null, nf_data:null,
-      nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null
+      nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
+      estoque_lancado:false, estoque_lancado_em:null
     });
   }
   await sb.from('srm_cotacoes').update(dbUpdate).eq('id',cotId);
