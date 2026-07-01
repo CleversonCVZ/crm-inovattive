@@ -1207,7 +1207,16 @@ async function enviarParaAgendaGoogle(tipo, id){
   if(btn){ btn.disabled=true; btn.textContent='Enviando...'; }
   const res = await chamarEdgeFn('google-calendar', {userId: usuarioAtual.id, action:'upsert', eventId, title, description, date});
   if(btn){ btn.disabled=false; btn.innerHTML='📅 Agenda'; }
-  if(res.error){ alert('Erro ao criar evento:\n' + res.error); return; }
+  if(res.error){
+    // token expirado/revogado → limpa e orienta reconexão
+    if(res.error.includes('invalid_grant') || res.error.includes('expired') || res.error.includes('revoked')){
+      await desconectarGoogleCalendar(usuarioAtual.id);
+      alert('Sua conexão com o Google Calendar expirou e foi desvinculada.\n\nReconecte em: Configurações → Usuários → seu perfil → Conectar Google Calendar.');
+    } else {
+      alert('Erro ao criar evento:\n' + res.error);
+    }
+    return;
+  }
   if(tipo === 'card'){
     const c = db.cards.find(x=>x.id===id);
     c.googleEventId = res.eventId;
