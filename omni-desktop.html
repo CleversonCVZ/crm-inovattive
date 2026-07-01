@@ -16148,32 +16148,22 @@ function abrirLancarEstoque(cotId, srmId){
     }
     const opts=produtos.filter(p=>p.ativo).map(p=>`<option value="${p.id}" ${autoMatch&&autoMatch.id===p.id?'selected':''}>${escHtml(p.nome)}${p.ncm?` (NCM ${p.ncm})`:''}</option>`).join('');
     return `
-      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-          <div>
-            <div style="font-weight:700;font-size:13px">${escHtml(it.xProd)}</div>
-            <div style="font-size:11px;color:var(--muted)">${it.NCM?`NCM ${it.NCM} · `:''} ${fmtNum(it.qCom)} ${it.uCom} · ${fmtMoney(it.vUnCom)}/un</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px">
-            <input type="checkbox" id="est-inc-${idx}" checked onchange="_estoqueToggleItem(${idx})" style="width:15px;height:15px">
-            <label for="est-inc-${idx}" style="font-size:12px;text-transform:none;font-weight:700;margin:0">Incluir</label>
-          </div>
-        </div>
-        <div id="est-row-${idx}" style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;align-items:end">
-          <div>
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Produto no catálogo *</label>
-            <select id="est-prod-${idx}" style="font-size:12px">
-              <option value="">— Criar novo produto —</option>
-              ${opts}
-            </select>
-          </div>
-          <div id="est-novo-${idx}" style="${autoMatch?'display:none':''}">
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Nome comercial (novo produto) *</label>
-            <input id="est-nome-${idx}" style="font-size:12px" placeholder="Ex.: Cabo Flexível 2,5mm" value="${escHtml(it.xProd||'')}">
-          </div>
-          <div>
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Quantidade *</label>
-            <input id="est-qtd-${idx}" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}">
+      <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <input type="checkbox" id="est-inc-${idx}" checked onchange="_estoqueToggleItem(${idx})" style="width:14px;height:14px;margin-top:3px;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(it.xProd)}">${escHtml(it.xProd)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${it.NCM?`NCM ${it.NCM} · `:''}${fmtNum(it.qCom)} ${it.uCom} · ${fmtMoney(it.vUnCom)}/un</div>
+            <div id="est-row-${idx}" style="display:grid;grid-template-columns:1fr 90px;gap:6px;align-items:end">
+              <select id="est-prod-${idx}" style="font-size:12px">
+                <option value="">— Criar novo produto —</option>
+                ${opts}
+              </select>
+              <input id="est-qtd-${idx}" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}" placeholder="Qtd">
+            </div>
+            <div id="est-novo-${idx}" style="${autoMatch?'display:none':'margin-top:5px'}">
+              <input id="est-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(it.xProd||'')}">
+            </div>
           </div>
         </div>
       </div>`;
@@ -16181,12 +16171,14 @@ function abrirLancarEstoque(cotId, srmId){
 
   abrirModal(`
     <h3>🏭 Lançar Itens da NF no Estoque</h3>
-    <div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
-      📦 Os itens abaixo serão lançados como <b>Entrada</b> no almoxarifado. A data de entrada será hoje (<b>${fmtDia2(localDia(0))}</b>).
+    <div style="background:#e8f5e9;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px">
+      📦 Itens lançados como <b>Entrada</b> no almoxarifado · data de hoje (<b>${fmtDia2(localDia(0))}</b>)
     </div>
-    ${linhas}
-    <label>Observação geral (opcional)</label>
-    <input id="est-obs-geral" placeholder="Ex.: NF 1234 - Fornecedor XYZ">
+    <div style="max-height:52vh;overflow-y:auto;padding-right:2px;margin-bottom:10px">
+      ${linhas}
+    </div>
+    <label style="font-size:12px">Observação geral (opcional)</label>
+    <input id="est-obs-geral" style="font-size:12px" placeholder="Ex.: NF 1234 - Fornecedor XYZ">
     <div class="actions">
       <button class="btn neutral" onclick="fecharLancarEstoque()">Cancelar</button>
       <button class="btn primary" id="btn-confirmar-estoque" onclick="confirmarLancarEstoque()">✅ Confirmar Lançamento</button>
