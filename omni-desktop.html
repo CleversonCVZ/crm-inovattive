@@ -969,11 +969,83 @@
   <!-- ESTOQUE: PAINEL -->
   <div class="view" id="view-estoque-painel">
     <div class="bar">
-      <h2>Estoque — Painel</h2>
+      <h2>Estoque — Almoxarifado</h2>
+      <select id="estoque-vista" class="vista-sel" onchange="renderEstoquePainel()">
+        <option value="saldo">Visualização: Saldo por Produto</option>
+        <option value="movimentos">Visualização: Histórico de Movimentações</option>
+        <option value="catalogo">Visualização: Catálogo de Produtos</option>
+      </select>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
     </div>
-    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
-      📦 <b>Estoque</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Controle de inventário e movimentação de materiais.</small>
+    <div class="stats" id="estoque-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
+    <div id="estoque-corpo"></div>
+  </div>
+
+  <!-- ESTOQUE: Modal lançar no estoque -->
+  <div id="modal-lancar-estoque" class="modal-bg" style="display:none" onclick="if(event.target===this)fecharLancarEstoque()">
+    <div class="modal" style="max-width:860px;width:96vw;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <h3 style="margin:0;font-size:16px">🏭 Lançar Itens da NF no Estoque</h3>
+        <button class="icon-btn" onclick="fecharLancarEstoque()">✕</button>
+      </div>
+      <div id="lancar-estoque-corpo"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+        <button class="btn" onclick="fecharLancarEstoque()">Cancelar</button>
+        <button class="btn primary" id="btn-confirmar-estoque" onclick="confirmarLancarEstoque()">✅ Confirmar Lançamento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESTOQUE: Modal produto (novo/editar) -->
+  <div id="modal-produto-estoque" class="modal-bg" style="display:none" onclick="if(event.target===this)fecharModalProdutoEstoque()">
+    <div class="modal" style="max-width:500px;width:94vw">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <h3 style="margin:0;font-size:15px" id="modal-produto-titulo">Novo Produto</h3>
+        <button class="icon-btn" onclick="fecharModalProdutoEstoque()">✕</button>
+      </div>
+      <div style="display:grid;gap:10px">
+        <input type="hidden" id="prod-est-id">
+        <div class="form-row">
+          <label class="form-label">Nome Comercial *</label>
+          <input class="form-inp" id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm">
+        </div>
+        <div class="form-row">
+          <label class="form-label">Descrição Fiscal (xProd)</label>
+          <input class="form-inp" id="prod-est-fiscal" placeholder="Descrição como aparece na NF">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-row">
+            <label class="form-label">NCM</label>
+            <input class="form-inp" id="prod-est-ncm" placeholder="Ex.: 85447000">
+          </div>
+          <div class="form-row">
+            <label class="form-label">Unidade</label>
+            <select class="form-inp" id="prod-est-unidade">
+              <option value="un">un — Unidade</option>
+              <option value="m">m — Metro</option>
+              <option value="m2">m² — Metro quadrado</option>
+              <option value="kg">kg — Quilograma</option>
+              <option value="l">l — Litro</option>
+              <option value="cx">cx — Caixa</option>
+              <option value="pc">pc — Peça</option>
+              <option value="rolo">rolo — Rolo</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="form-label">Descrição / Observação</label>
+          <textarea class="form-inp" id="prod-est-descricao" rows="2" placeholder="Detalhes adicionais sobre o produto"></textarea>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="prod-est-ativo" checked style="width:16px;height:16px">
+          <label for="prod-est-ativo" style="font-size:13px">Produto ativo (aparece nas listas)</label>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+        <button class="btn" onclick="fecharModalProdutoEstoque()">Cancelar</button>
+        <button class="btn primary" onclick="salvarProdutoEstoque()">💾 Salvar</button>
+      </div>
     </div>
   </div>
 
@@ -1595,6 +1667,8 @@ function load(){
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
   if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
   if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
+  if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
+  if(!Array.isArray(db.estoqueMov))      db.estoqueMov=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -1789,7 +1863,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -1818,8 +1892,10 @@ async function carregarDadosSupabase(){
       sb.from('os_custos').select('*').order('created_at', {ascending:false}),
       sb.from('contas_recorrentes').select('*').order('nome'),
       sb.from('cards_srm').select('*').order('id'),
-      sb.from('srm_cotacoes').select('*').order('id')
+      sb.from('srm_cotacoes').select('*').order('id'),
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
+      sb.from('estoque_produtos').select('*').order('nome'),
+      sb.from('estoque_movimentacoes').select('*').order('criado_em', {ascending:false})
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -2093,7 +2169,26 @@ async function carregarDadosSupabase(){
         nfData:x.nf_data?x.nf_data.slice(0,10):null,
         nfValorTotal:x.nf_valor_total!=null?Number(x.nf_valor_total):null,
         nfEmitCnpj:x.nf_emit_cnpj||null,
-        nfEmitNome:x.nf_emit_nome||null
+        nfEmitNome:x.nf_emit_nome||null,
+        estoqueLancado:!!x.estoque_lancado,
+        estoqueLancadoEm:x.estoque_lancado_em||null
+      }));
+    if(estoqueProdutosRes.data)
+      db.estoqueProdutos = estoqueProdutosRes.data.map(p=>({
+        id:p.id, nome:p.nome, nomeFiscal:p.nome_fiscal||null,
+        ncm:p.ncm||null, unidade:p.unidade||'un',
+        descricao:p.descricao||'', ativo:p.ativo!==false,
+        criadoEm:p.criado_em||''
+      }));
+    if(estoqueMovRes.data)
+      db.estoqueMov = estoqueMovRes.data.map(m=>({
+        id:m.id, produtoId:m.produto_id, tipo:m.tipo,
+        quantidade:Number(m.quantidade)||0,
+        valorUnitario:m.valor_unitario!=null?Number(m.valor_unitario):null,
+        data:m.data?m.data.slice(0,10):'',
+        srmCotacaoId:m.srm_cotacao_id||null, nfItemIdx:m.nf_item_idx!=null?Number(m.nf_item_idx):null,
+        obraId:m.obra_id||null, observacao:m.observacao||'',
+        criadoEm:m.criado_em||'', criadoPor:m.criado_por||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
   }catch(e){ console.error('Falha ao carregar dados (clientes/obras/cards) do Supabase:', e); }
@@ -2306,7 +2401,9 @@ function syncDadosSupabase(){
       nf_data:x.nfData||null,
       nf_valor_total:x.nfValorTotal||null,
       nf_emit_cnpj:x.nfEmitCnpj||null,
-      nf_emit_nome:x.nfEmitNome||null
+      nf_emit_nome:x.nfEmitNome||null,
+      estoque_lancado:!!x.estoqueLancado,
+      estoque_lancado_em:x.estoqueLancadoEm||null
     }));
   }, 800);
 }
@@ -4034,6 +4131,7 @@ function ativarView(viewId){
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-fornecedores')    renderFornecedores();
+  if(viewId==='estoque-painel')      renderEstoquePainel();
   if(viewId==='fin-contas-pagar')    renderContasPagar();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
@@ -5254,10 +5352,23 @@ function abaPedidoAprovadoSRMHTML(c){
         </table>
       </div>`;
 
+    /* Botão "Lançar no Estoque": só para almoxarifado (sem obraId) pago pela empresa */
+    let btnEstoque;
+    if(cot.estoqueLancado){
+      btnEstoque=`<span style="background:#2e7d32;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:5px">✅ Lançado no Estoque${cot.estoqueLancadoEm?` <span style="font-weight:400;font-size:11px;opacity:.85">em ${fmtDia2(cot.estoqueLancadoEm.slice(0,10))}</span>`:''}</span>`;
+    } else if(c.obraId){
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Material vinculado a obra específica — não entra no almoxarifado">🏭 Lançar no Estoque</button>`;
+    } else if(c.pagamentoResponsavel!=='empresa'){
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Pagamento de responsabilidade do cliente — não entra no estoque da empresa">🏭 Lançar no Estoque</button>`;
+    } else if(!cot.nfItens||!cot.nfItens.length){
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Importe o XML da NF antes de lançar no estoque">🏭 Lançar no Estoque</button>`;
+    } else {
+      btnEstoque=`<button class="btn primary" onclick="abrirLancarEstoque(${cot.id},${c.id})">🏭 Lançar no Estoque</button>`;
+    }
     const botoesHTML=`
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
         ${showMatchCol?`<button class="btn primary" data-btn-salvar-corresp onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
-        <button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Em breve: módulo de estoque">🏭 Lançar no Estoque</button>
+        ${btnEstoque}
       </div>`;
 
     return `<div style="padding:4px 0">${cotCardHTML}${xmlSectionHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
@@ -15828,8 +15939,403 @@ function _renderOSPainelFases(corpo, lista){
   corpo.appendChild(kanban);
 }
 
+/* ================= ESTOQUE ================= */
+
+/* Calcula saldo atual de um produto (entradas - saídas) */
+function saldoProduto(produtoId){
+  return (db.estoqueMov||[]).filter(m=>m.produtoId===produtoId)
+    .reduce((s,m)=> m.tipo==='entrada' ? s+m.quantidade : s-m.quantidade, 0);
+}
+
+/* Valor médio unitário das entradas de um produto */
+function valorMedioProduto(produtoId){
+  const entradas=(db.estoqueMov||[]).filter(m=>m.produtoId===produtoId&&m.tipo==='entrada'&&m.valorUnitario!=null);
+  if(!entradas.length) return null;
+  const tot=entradas.reduce((s,m)=>s+m.quantidade,0);
+  const valTot=entradas.reduce((s,m)=>s+(m.quantidade*m.valorUnitario),0);
+  return tot>0 ? valTot/tot : null;
+}
+
+/* Renderiza o painel de estoque (roteador de visualizações) */
+function renderEstoquePainel(){
+  const vista=(document.getElementById('estoque-vista')||{}).value||'saldo';
+  const statsEl=document.getElementById('estoque-stats');
+  const corpoEl=document.getElementById('estoque-corpo');
+  if(!statsEl||!corpoEl) return;
+
+  const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
+  const movs=db.estoqueMov||[];
+  const totalProd=produtos.length;
+  const totalEntradas=movs.filter(m=>m.tipo==='entrada').reduce((s,m)=>s+m.quantidade,0);
+  const totalSaidas=movs.filter(m=>m.tipo==='saida').reduce((s,m)=>s+m.quantidade,0);
+  const valorEstoque=produtos.reduce((s,p)=>{
+    const saldo=saldoProduto(p.id); if(saldo<=0) return s;
+    const vMed=valorMedioProduto(p.id)||0;
+    return s+saldo*vMed;
+  },0);
+
+  statsEl.innerHTML=`
+    <div class="stat-card"><div class="stat-val">${totalProd}</div><div class="stat-lab">Produtos cadastrados</div></div>
+    <div class="stat-card"><div class="stat-val">${fmtNum(totalEntradas)}</div><div class="stat-lab">Total unidades entrada</div></div>
+    <div class="stat-card"><div class="stat-val">${fmtNum(totalSaidas)}</div><div class="stat-lab">Total unidades saída</div></div>
+    ${valorEstoque>0?`<div class="stat-card"><div class="stat-val">${fmtMoney(valorEstoque)}</div><div class="stat-lab">Valor em estoque (custo médio)</div></div>`:''}
+  `;
+
+  if(vista==='saldo')      _renderEstoqueSaldo(corpoEl);
+  else if(vista==='movimentos') _renderEstoqueMovimentos(corpoEl);
+  else                     _renderEstoqueCatalogo(corpoEl);
+}
+
+function fmtNum(v){ return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:3}); }
+
+function _renderEstoqueSaldo(el){
+  const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
+  if(!produtos.length){
+    el.innerHTML='<div class="empty">Nenhum produto cadastrado. Clique em <b>＋ Novo Produto</b> para começar ou lance itens da NF via SRM.</div>';
+    return;
+  }
+  const linhas=produtos.map(p=>{
+    const saldo=saldoProduto(p.id);
+    const vMed=valorMedioProduto(p.id);
+    const saldoCor=saldo<=0?'color:#c62828':saldo<5?'color:#f57c00':'';
+    const ult=(db.estoqueMov||[]).filter(m=>m.produtoId===p.id).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm))[0];
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
+      <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${p.ncm?`NCM ${p.ncm}`:''}</td>
+      <td style="padding:6px 10px;text-align:center;font-size:12px">${p.unidade}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:700;font-size:14px;${saldoCor}">${fmtNum(saldo)}</td>
+      <td style="padding:6px 10px;text-align:right;font-size:12px">${vMed!=null?fmtMoney(vMed):'—'}</td>
+      <td style="padding:6px 10px;text-align:right;font-size:12px">${saldo>0&&vMed!=null?fmtMoney(saldo*vMed):'—'}</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--muted)">${ult?fmtDia2(ult.data):'—'}</td>
+      <td style="padding:6px 10px;text-align:center">
+        <button class="icon-btn" title="Editar produto" onclick="editarProdutoEstoque(${p.id})">✏️</button>
+      </td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`
+    <table class="lista">
+      <thead><tr>
+        <th>Produto</th>
+        <th style="width:130px">NCM</th>
+        <th style="width:60px;text-align:center">Un.</th>
+        <th style="width:90px;text-align:right">Saldo</th>
+        <th style="width:110px;text-align:right">Custo médio</th>
+        <th style="width:110px;text-align:right">Valor total</th>
+        <th style="width:110px">Últ. mov.</th>
+        <th style="width:46px"></th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+function _renderEstoqueMovimentos(el){
+  const movs=(db.estoqueMov||[]).slice().sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
+  if(!movs.length){
+    el.innerHTML='<div class="empty">Nenhuma movimentação registrada ainda.</div>';
+    return;
+  }
+  const linhas=movs.map(m=>{
+    const prod=(db.estoqueProdutos||[]).find(p=>p.id===m.produtoId);
+    const badge=m.tipo==='entrada'
+      ?`<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">↓ Entrada</span>`
+      :`<span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">↑ Saída</span>`;
+    let origem='Manual';
+    if(m.srmCotacaoId){
+      const cot=(db.srmCotacoes||[]).find(x=>x.id===m.srmCotacaoId);
+      const card=cot?(db.cardsSRM||[]).find(c=>c.id===cot.cardSrmId):null;
+      origem=card?`SRM #${card.num}`:'SRM';
+    }
+    if(m.obraId){
+      const ob=(db.obras||[]).find(o=>o.id===m.obraId);
+      origem=ob?`Obra: ${escHtml(ob.nome)}`:'Obra';
+    }
+    return `<tr>
+      <td style="padding:6px 10px;font-size:12px">${fmtDia2(m.data)}</td>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(prod?prod.nome:'—')}</td>
+      <td style="padding:6px 10px">${badge}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:700">${fmtNum(m.quantidade)} ${prod?prod.unidade:''}</td>
+      <td style="padding:6px 10px;text-align:right;font-size:12px">${m.valorUnitario!=null?fmtMoney(m.valorUnitario):'—'}</td>
+      <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${escHtml(origem)}</td>
+      <td style="padding:6px 10px;font-size:11px;color:var(--muted)">${escHtml(m.observacao||'')}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML=`
+    <table class="lista">
+      <thead><tr>
+        <th style="width:110px">Data</th>
+        <th>Produto</th>
+        <th style="width:90px">Tipo</th>
+        <th style="width:110px;text-align:right">Quantidade</th>
+        <th style="width:110px;text-align:right">Vl. Unitário</th>
+        <th style="width:130px">Origem</th>
+        <th>Observação</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+function _renderEstoqueCatalogo(el){
+  const todos=db.estoqueProdutos||[];
+  if(!todos.length){
+    el.innerHTML='<div class="empty">Nenhum produto no catálogo. Clique em <b>＋ Novo Produto</b> para começar.</div>';
+    return;
+  }
+  const linhas=todos.map(p=>`
+    <tr style="${p.ativo?'':'opacity:0.5'}">
+      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
+      <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${escHtml(p.nomeFiscal||'—')}</td>
+      <td style="padding:6px 10px;font-size:12px;text-align:center">${p.ncm||'—'}</td>
+      <td style="padding:6px 10px;text-align:center;font-size:12px">${p.unidade}</td>
+      <td style="padding:6px 10px;text-align:center">${p.ativo?'<span style="color:#2e7d32">✔</span>':'<span style="color:#c62828">✕</span>'}</td>
+      <td style="padding:6px 10px;text-align:center">
+        <button class="icon-btn" title="Editar" onclick="editarProdutoEstoque(${p.id})">✏️</button>
+      </td>
+    </tr>`).join('');
+  el.innerHTML=`
+    <table class="lista">
+      <thead><tr>
+        <th>Nome Comercial</th>
+        <th>Descrição Fiscal</th>
+        <th style="width:120px;text-align:center">NCM</th>
+        <th style="width:70px;text-align:center">Un.</th>
+        <th style="width:60px;text-align:center">Ativo</th>
+        <th style="width:46px"></th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
+}
+
+/* ---- Modal Produto ---- */
+function abrirNovoProdutoEstoque(){
+  document.getElementById('modal-produto-titulo').textContent='Novo Produto';
+  document.getElementById('prod-est-id').value='';
+  document.getElementById('prod-est-nome').value='';
+  document.getElementById('prod-est-fiscal').value='';
+  document.getElementById('prod-est-ncm').value='';
+  document.getElementById('prod-est-unidade').value='un';
+  document.getElementById('prod-est-descricao').value='';
+  document.getElementById('prod-est-ativo').checked=true;
+  document.getElementById('modal-produto-estoque').style.display='flex';
+}
+
+function editarProdutoEstoque(id){
+  const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
+  document.getElementById('modal-produto-titulo').textContent='Editar Produto';
+  document.getElementById('prod-est-id').value=p.id;
+  document.getElementById('prod-est-nome').value=p.nome||'';
+  document.getElementById('prod-est-fiscal').value=p.nomeFiscal||'';
+  document.getElementById('prod-est-ncm').value=p.ncm||'';
+  document.getElementById('prod-est-unidade').value=p.unidade||'un';
+  document.getElementById('prod-est-descricao').value=p.descricao||'';
+  document.getElementById('prod-est-ativo').checked=p.ativo!==false;
+  document.getElementById('modal-produto-estoque').style.display='flex';
+}
+
+function fecharModalProdutoEstoque(){
+  document.getElementById('modal-produto-estoque').style.display='none';
+}
+
+async function salvarProdutoEstoque(){
+  const nome=(document.getElementById('prod-est-nome').value||'').trim();
+  if(!nome){ alert('Nome comercial é obrigatório.'); return; }
+  const idVal=document.getElementById('prod-est-id').value;
+  const isEdit=!!idVal;
+  const payload={
+    nome,
+    nome_fiscal:(document.getElementById('prod-est-fiscal').value||'').trim()||null,
+    ncm:(document.getElementById('prod-est-ncm').value||'').trim()||null,
+    unidade:document.getElementById('prod-est-unidade').value||'un',
+    descricao:(document.getElementById('prod-est-descricao').value||'').trim()||'',
+    ativo:document.getElementById('prod-est-ativo').checked
+  };
+  if(isEdit){
+    const id=parseInt(idVal);
+    const {error}=await sb.from('estoque_produtos').update(payload).eq('id',id);
+    if(error){ alert('Erro ao salvar: '+error.message); return; }
+    const p=(db.estoqueProdutos||[]).find(x=>x.id===id);
+    if(p){ Object.assign(p,{nome:payload.nome,nomeFiscal:payload.nome_fiscal,ncm:payload.ncm,unidade:payload.unidade,descricao:payload.descricao||'',ativo:payload.ativo}); }
+  } else {
+    const {data,error}=await sb.from('estoque_produtos').insert(payload).select().single();
+    if(error){ alert('Erro ao salvar: '+error.message); return; }
+    if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
+    db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,criadoEm:data.criado_em||''});
+  }
+  fecharModalProdutoEstoque();
+  renderEstoquePainel();
+}
+
+/* ---- Modal "Lançar no Estoque" ---- */
+let _estoqueCtx=null; // {cotId, srmId}
+
+function abrirLancarEstoque(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  if(!cot||!cot.nfItens||!cot.nfItens.length){ alert('Sem itens da NF para lançar.'); return; }
+  _estoqueCtx={cotId,srmId};
+  const corpo=document.getElementById('lancar-estoque-corpo');
+
+  /* Para cada item da NF, tenta auto-match por NCM */
+  const linhas=cot.nfItens.map((it,idx)=>{
+    const produtos=db.estoqueProdutos||[];
+    /* auto-match: 1) mesmo NCM ativo, 2) nome fiscal parecido */
+    let autoMatch=null;
+    if(it.NCM) autoMatch=produtos.find(p=>p.ativo&&p.ncm===it.NCM);
+    if(!autoMatch&&it.xProd){
+      const xUp=it.xProd.toUpperCase();
+      autoMatch=produtos.find(p=>p.ativo&&p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
+    }
+    const opts=produtos.filter(p=>p.ativo).map(p=>`<option value="${p.id}" ${autoMatch&&autoMatch.id===p.id?'selected':''}>${escHtml(p.nome)}${p.ncm?` (NCM ${p.ncm})`:''}</option>`).join('');
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+          <div>
+            <div style="font-weight:700;font-size:13px">${escHtml(it.xProd)}</div>
+            <div style="font-size:11px;color:var(--muted)">${it.NCM?`NCM ${it.NCM} · `:''} ${fmtNum(it.qCom)} ${it.uCom} · ${fmtMoney(it.vUnCom)}/un</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="checkbox" id="est-inc-${idx}" checked onchange="_estoqueToggleItem(${idx})" style="width:15px;height:15px">
+            <label for="est-inc-${idx}" style="font-size:12px">Incluir</label>
+          </div>
+        </div>
+        <div id="est-row-${idx}" style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;align-items:end">
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Produto no catálogo *</label>
+            <select id="est-prod-${idx}" class="form-inp" style="font-size:12px">
+              <option value="">— Criar novo produto —</option>
+              ${opts}
+            </select>
+          </div>
+          <div id="est-novo-${idx}" style="${autoMatch?'display:none':''}">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Nome comercial (novo produto) *</label>
+            <input id="est-nome-${idx}" class="form-inp" style="font-size:12px" placeholder="Ex.: Cabo Flexível 2,5mm" value="${escHtml(it.xProd||'')}">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Quantidade *</label>
+            <input id="est-qtd-${idx}" class="form-inp" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}">
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  corpo.innerHTML=`
+    <div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
+      📦 Os itens abaixo serão lançados como <b>Entrada</b> no almoxarifado. A data de entrada será hoje (<b>${fmtDia2(localDia(0))}</b>).
+    </div>
+    ${linhas}
+    <div class="form-row" style="margin-top:4px">
+      <label class="form-label">Observação geral (opcional)</label>
+      <input class="form-inp" id="est-obs-geral" placeholder="Ex.: NF 1234 - Fornecedor XYZ">
+    </div>`;
+
+  /* mostrar/ocultar campo "novo produto" quando select muda */
+  (cot.nfItens||[]).forEach((_,idx)=>{
+    const sel=document.getElementById(`est-prod-${idx}`);
+    if(sel) sel.addEventListener('change',()=>_estoqueToggleProduto(idx));
+  });
+
+  document.getElementById('modal-lancar-estoque').style.display='flex';
+}
+
+function _estoqueToggleProduto(idx){
+  const sel=document.getElementById(`est-prod-${idx}`);
+  const novoDiv=document.getElementById(`est-novo-${idx}`);
+  if(sel&&novoDiv) novoDiv.style.display=sel.value?'none':'';
+}
+
+function _estoqueToggleItem(idx){
+  const chk=document.getElementById(`est-inc-${idx}`);
+  const row=document.getElementById(`est-row-${idx}`);
+  if(row) row.style.opacity=chk&&chk.checked?'1':'0.4';
+  if(row) row.style.pointerEvents=chk&&chk.checked?'':'none';
+}
+
+function fecharLancarEstoque(){
+  document.getElementById('modal-lancar-estoque').style.display='none';
+  _estoqueCtx=null;
+}
+
+async function confirmarLancarEstoque(){
+  if(!_estoqueCtx) return;
+  const {cotId,srmId}=_estoqueCtx;
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  if(!cot) return;
+  const obsGeral=(document.getElementById('est-obs-geral').value||'').trim();
+  const dataHoje=localDia(0);
+  const card=(db.cardsSRM||[]).find(c=>c.id===cot.cardSrmId);
+  const criadoPor=usuarioAtual?usuarioAtual.nome:'';
+  const movRows=[];
+  const novosProdutos=[];
+
+  for(let idx=0;idx<(cot.nfItens||[]).length;idx++){
+    const chk=document.getElementById(`est-inc-${idx}`);
+    if(!chk||!chk.checked) continue;
+    const it=cot.nfItens[idx];
+    const selProdId=document.getElementById(`est-prod-${idx}`)?.value;
+    const qtd=parseFloat(document.getElementById(`est-qtd-${idx}`)?.value)||0;
+    if(qtd<=0){ alert(`Item "${it.xProd}": quantidade inválida.`); return; }
+
+    let produtoId=selProdId?parseInt(selProdId):null;
+
+    if(!produtoId){
+      /* criar novo produto */
+      const nomeNovo=(document.getElementById(`est-nome-${idx}`)?.value||'').trim();
+      if(!nomeNovo){ alert(`Item "${it.xProd}": informe o nome comercial do produto.`); return; }
+      const {data:pData,error:pErr}=await sb.from('estoque_produtos').insert({
+        nome:nomeNovo, nome_fiscal:it.xProd||null,
+        ncm:it.NCM||null, unidade:it.uCom||'un', descricao:'', ativo:true
+      }).select().single();
+      if(pErr){ alert('Erro ao criar produto: '+pErr.message); return; }
+      produtoId=pData.id;
+      const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:it.xProd||null,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
+      if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
+      db.estoqueProdutos.push(novoProd);
+      novosProdutos.push(novoProd);
+    }
+
+    movRows.push({
+      produto_id:produtoId, tipo:'entrada',
+      quantidade:qtd, valor_unitario:it.vUnCom||null,
+      data:dataHoje,
+      srm_cotacao_id:cotId, nf_item_idx:idx,
+      observacao:obsGeral||null, criado_por:criadoPor
+    });
+  }
+
+  if(!movRows.length){ alert('Selecione ao menos um item para lançar.'); return; }
+
+  const btn=document.getElementById('btn-confirmar-estoque');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+
+  /* Inserir movimentações */
+  const {data:movData,error:movErr}=await sb.from('estoque_movimentacoes').insert(movRows).select();
+  if(movErr){
+    alert('Erro ao registrar movimentações: '+movErr.message);
+    if(btn){ btn.disabled=false; btn.textContent='✅ Confirmar Lançamento'; }
+    return;
+  }
+
+  /* Marcar cotação como lançada */
+  const agora=new Date().toISOString();
+  const {error:cotErr}=await sb.from('srm_cotacoes').update({estoque_lancado:true,estoque_lancado_em:agora}).eq('id',cotId);
+  if(cotErr){ console.error('Erro ao marcar cotação:',cotErr.message); }
+
+  /* Atualizar db local */
+  if(!Array.isArray(db.estoqueMov)) db.estoqueMov=[];
+  (movData||[]).forEach(m=>db.estoqueMov.unshift({
+    id:m.id,produtoId:m.produto_id,tipo:m.tipo,
+    quantidade:Number(m.quantidade),valorUnitario:m.valor_unitario!=null?Number(m.valor_unitario):null,
+    data:m.data?m.data.slice(0,10):'',srmCotacaoId:m.srm_cotacao_id||null,nfItemIdx:m.nf_item_idx!=null?Number(m.nf_item_idx):null,
+    obraId:m.obra_id||null,observacao:m.observacao||'',criadoEm:m.criado_em||'',criadoPor:m.criado_por||''
+  }));
+  cot.estoqueLancado=true; cot.estoqueLancadoEm=agora;
+
+  fecharLancarEstoque();
+  renderEstoquePainel();
+  /* Re-renderizar a aba atual do SRM para mostrar badge "✅ Lançado" */
+  abrirEditarSRM(srmId,'cotacoes');
+}
+
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoquePainel(); }
 load();
 atualizarMarca();
 (async function(){
