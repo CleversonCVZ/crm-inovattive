@@ -982,20 +982,6 @@
     <div id="estoque-corpo"></div>
   </div>
 
-  <!-- ESTOQUE: Modal lançar no estoque -->
-  <div id="modal-lancar-estoque" class="modal-bg" style="display:none" onclick="if(event.target===this)fecharLancarEstoque()">
-    <div class="modal" style="max-width:860px;width:96vw;max-height:90vh;overflow-y:auto">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <h3 style="margin:0;font-size:16px">🏭 Lançar Itens da NF no Estoque</h3>
-        <button class="icon-btn" onclick="fecharLancarEstoque()">✕</button>
-      </div>
-      <div id="lancar-estoque-corpo"></div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
-        <button class="btn" onclick="fecharLancarEstoque()">Cancelar</button>
-        <button class="btn primary" id="btn-confirmar-estoque" onclick="confirmarLancarEstoque()">✅ Confirmar Lançamento</button>
-      </div>
-    </div>
-  </div>
 
 
   <!-- DOWNLOADS -->
@@ -16124,12 +16110,10 @@ function abrirLancarEstoque(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
   if(!cot||!cot.nfItens||!cot.nfItens.length){ alert('Sem itens da NF para lançar.'); return; }
   _estoqueCtx={cotId,srmId};
-  const corpo=document.getElementById('lancar-estoque-corpo');
 
   /* Para cada item da NF, tenta auto-match por NCM */
   const linhas=cot.nfItens.map((it,idx)=>{
     const produtos=db.estoqueProdutos||[];
-    /* auto-match: 1) mesmo NCM ativo, 2) nome fiscal parecido */
     let autoMatch=null;
     if(it.NCM) autoMatch=produtos.find(p=>p.ativo&&p.ncm===it.NCM);
     if(!autoMatch&&it.xProd){
@@ -16146,46 +16130,47 @@ function abrirLancarEstoque(cotId, srmId){
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <input type="checkbox" id="est-inc-${idx}" checked onchange="_estoqueToggleItem(${idx})" style="width:15px;height:15px">
-            <label for="est-inc-${idx}" style="font-size:12px">Incluir</label>
+            <label for="est-inc-${idx}" style="font-size:12px;text-transform:none;font-weight:700;margin:0">Incluir</label>
           </div>
         </div>
         <div id="est-row-${idx}" style="display:grid;grid-template-columns:1fr 1fr 120px;gap:8px;align-items:end">
           <div>
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Produto no catálogo *</label>
-            <select id="est-prod-${idx}" class="form-inp" style="font-size:12px">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Produto no catálogo *</label>
+            <select id="est-prod-${idx}" style="font-size:12px">
               <option value="">— Criar novo produto —</option>
               ${opts}
             </select>
           </div>
           <div id="est-novo-${idx}" style="${autoMatch?'display:none':''}">
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Nome comercial (novo produto) *</label>
-            <input id="est-nome-${idx}" class="form-inp" style="font-size:12px" placeholder="Ex.: Cabo Flexível 2,5mm" value="${escHtml(it.xProd||'')}">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Nome comercial (novo produto) *</label>
+            <input id="est-nome-${idx}" style="font-size:12px" placeholder="Ex.: Cabo Flexível 2,5mm" value="${escHtml(it.xProd||'')}">
           </div>
           <div>
-            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Quantidade *</label>
-            <input id="est-qtd-${idx}" class="form-inp" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}">
+            <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px;text-transform:uppercase;font-weight:700">Quantidade *</label>
+            <input id="est-qtd-${idx}" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}">
           </div>
         </div>
       </div>`;
   }).join('');
 
-  corpo.innerHTML=`
+  abrirModal(`
+    <h3>🏭 Lançar Itens da NF no Estoque</h3>
     <div style="background:#e8f5e9;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
       📦 Os itens abaixo serão lançados como <b>Entrada</b> no almoxarifado. A data de entrada será hoje (<b>${fmtDia2(localDia(0))}</b>).
     </div>
     ${linhas}
-    <div class="form-row" style="margin-top:4px">
-      <label class="form-label">Observação geral (opcional)</label>
-      <input class="form-inp" id="est-obs-geral" placeholder="Ex.: NF 1234 - Fornecedor XYZ">
-    </div>`;
+    <label>Observação geral (opcional)</label>
+    <input id="est-obs-geral" placeholder="Ex.: NF 1234 - Fornecedor XYZ">
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharLancarEstoque()">Cancelar</button>
+      <button class="btn primary" id="btn-confirmar-estoque" onclick="confirmarLancarEstoque()">✅ Confirmar Lançamento</button>
+    </div>`, 'wide');
 
   /* mostrar/ocultar campo "novo produto" quando select muda */
   (cot.nfItens||[]).forEach((_,idx)=>{
     const sel=document.getElementById(`est-prod-${idx}`);
     if(sel) sel.addEventListener('change',()=>_estoqueToggleProduto(idx));
   });
-
-  document.getElementById('modal-lancar-estoque').style.display='flex';
 }
 
 function _estoqueToggleProduto(idx){
@@ -16202,7 +16187,7 @@ function _estoqueToggleItem(idx){
 }
 
 function fecharLancarEstoque(){
-  document.getElementById('modal-lancar-estoque').style.display='none';
+  fecharModal();
   _estoqueCtx=null;
 }
 
