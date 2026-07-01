@@ -4666,9 +4666,34 @@ async function salvarEdicaoSRM(id){
   c.centroCustoId = +document.getElementById('srm-m-cc').value||null;
   c.obraId              = +document.getElementById('srm-m-obra')?.value||null;
   c.dataAbertura        = document.getElementById('srm-m-data').value||c.dataAbertura;
-  c.encerrado           = document.getElementById('srm-m-enc').checked;
+  const encerradoNovo   = document.getElementById('srm-m-enc').checked;
   c.cancelado           = document.getElementById('srm-m-can').checked;
   c.pagamentoResponsavel= document.getElementById('srm-m-pagamento').value||'empresa';
+
+  // validações ao tentar concluir
+  if(encerradoNovo && !c.encerrado){
+    const erros = [];
+    // 1. NF XML enviada?
+    const cotSel = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
+    if(!cotSel){
+      erros.push('• Nenhuma cotação selecionada (aba Propostas/Cotações).');
+    } else if(!cotSel.xmlNfNome){
+      erros.push('• XML da Nota Fiscal não foi enviado (aba Pedido Aprovado).');
+    }
+    // 2. CPs pendentes?
+    if((c.pagamentoResponsavel||'empresa')==='empresa'){
+      const cpsPendentes = (db.contasPagar||[]).filter(x=>Number(x.cardSrmId)===Number(c.id) && x.status!=='pago');
+      if(cpsPendentes.length){
+        erros.push(`• ${cpsPendentes.length} conta(s) a pagar ainda em aberto (aba Financeiro).`);
+      }
+    }
+    if(erros.length){
+      alert('Não é possível concluir este SRM:\n\n'+erros.join('\n'));
+      return;
+    }
+  }
+
+  c.encerrado = encerradoNovo;
   // fases de sistema pelo checkbox
   const enc = fasesSRMOrdenadas().find(f=>f.tipo==='recebido');
   const can = fasesSRMOrdenadas().find(f=>f.tipo==='cancelado');
@@ -5278,6 +5303,7 @@ function abaFinanceiroSRMHTML(c){
               </div>
               <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
                 ${!pago&&podeUsar(usuarioAtual,'fin-contas-pagar-pagar')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="pagarCPdoSRM(${p.id},${c.id})">✔ Pagar</button>`:''}
+                ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn" onclick="editarCPdoSRM(${p.id},${c.id})" title="Editar">✏️</button>`:''}
                 ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn del" onclick="excluirCPdoSRM(${p.id},${c.id})" title="Excluir">🗑</button>`:''}
               </div>
             </div>
@@ -5502,6 +5528,105 @@ async function excluirCPdoSRM(cpId, srmId){
   await excluirDoSupabase('contas_pagar', cpId);
   save(); renderContasPagar(); renderFinPainel();
   abrirEditarSRM(srmId,'financeiro');
+}
+
+function editarCPdoSRM(cpId, srmId){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para editar.'); return; }
+  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
+  const srm = (db.cardsSRM||[]).find(x=>x.id===srmId);
+  const fornOpts = (db.fornecedores||[]).map(f=>`<option value="${f.id}" ${p.fornecedorId===f.id?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+  const ccOpts   = (db.centrosCusto||[]).map(x=>`<option value="${x.id}" ${p.centroCustoId===x.id?'selected':''}>${escHtml(x.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).map(o=>`<option value="${o.id}" ${p.obraId===o.id?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+  const ccSel    = (db.centrosCusto||[]).find(x=>x.id===p.centroCustoId);
+  const mostrarObra = ccSel && ccSel.slug==='material_obra';
+  abrirModal(`
+    <h3>Editar Conta a Pagar — SRM #${srm?srm.num:'?'}</h3>
+    <div class="form-row">
+      <div><label>Descrição</label><input id="ecp-desc" value="${escHtml(p.descricao||'')}"></div>
+      <div><label>Valor (R$)</label><input id="ecp-valor" type="text" inputmode="decimal" value="${fmtMoney(p.valor)}" oninput="mascaraMoeda(this)"></div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label>Fornecedor</label>
+        <select id="ecp-forn"><option value="">— sem fornecedor —</option>${fornOpts}</select>
+      </div>
+      <div>
+        <label>Tipo de vencimento</label>
+        <select id="ecp-tipo" onchange="toggleEcpVenc()">
+          <option value="fixo" ${(p.tipo||'fixo')==='fixo'?'selected':''}>Data fixa</option>
+          <option value="condicional" ${p.tipo==='condicional'?'selected':''}>Condicional / Evento</option>
+        </select>
+      </div>
+    </div>
+    <div id="ecp-venc-fixo" style="${p.tipo==='condicional'?'display:none':''}">
+      <label>Data de vencimento</label>
+      <input id="ecp-data" type="date" value="${p.dataVencimento||''}">
+    </div>
+    <div id="ecp-venc-cond" style="${p.tipo!=='condicional'?'display:none':''}">
+      <label>Condição de pagamento</label>
+      <input id="ecp-cond" value="${escHtml(p.condicao||'')}">
+    </div>
+    <div class="form-row" style="margin-top:8px">
+      <div>
+        <label>Centro de Custo</label>
+        <select id="ecp-cc" onchange="toggleEcpObra()"><option value="">— selecione —</option>${ccOpts}</select>
+      </div>
+      <div id="ecp-obra-wrap" style="${mostrarObra?'':'display:none'}">
+        <label>Obra</label>
+        <select id="ecp-obra"><option value="">— selecione —</option>${obraOpts}</select>
+      </div>
+    </div>
+    <div style="margin-top:8px">
+      <label>Observação</label>
+      <input id="ecp-obs" value="${escHtml(p.observacao||'')}">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarEdicaoCPdoSRM(${cpId},${srmId})">Salvar</button>
+    </div>`);
+}
+
+function toggleEcpVenc(){
+  const fixo = document.getElementById('ecp-tipo').value==='fixo';
+  document.getElementById('ecp-venc-fixo').style.display = fixo?'':'none';
+  document.getElementById('ecp-venc-cond').style.display = fixo?'none':'';
+}
+
+function toggleEcpObra(){
+  const ccId = parseInt(document.getElementById('ecp-cc').value)||null;
+  const cc = (db.centrosCusto||[]).find(x=>x.id===ccId);
+  document.getElementById('ecp-obra-wrap').style.display = (cc&&cc.slug==='material_obra')?'':'none';
+}
+
+async function salvarEdicaoCPdoSRM(cpId, srmId){
+  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
+  const btn = btnModalPrimario(); btnSalvando(btn);
+  const tipo    = document.getElementById('ecp-tipo').value;
+  const ccId    = parseInt(document.getElementById('ecp-cc').value)||null;
+  const cc      = (db.centrosCusto||[]).find(x=>x.id===ccId);
+  const mostrarObra = cc && cc.slug==='material_obra';
+  p.descricao     = document.getElementById('ecp-desc').value.trim() || p.descricao;
+  p.valor         = parseFloat((document.getElementById('ecp-valor').value||'0').replace(/\./g,'').replace(',','.')) || p.valor;
+  p.fornecedorId  = parseInt(document.getElementById('ecp-forn').value)||null;
+  p.tipo          = tipo;
+  p.dataVencimento= tipo==='fixo' ? (document.getElementById('ecp-data').value||null) : null;
+  p.condicao      = tipo==='condicional' ? document.getElementById('ecp-cond').value.trim() : null;
+  p.centroCustoId = ccId;
+  p.obraId        = mostrarObra ? (parseInt(document.getElementById('ecp-obra').value)||null) : null;
+  p.observacao    = document.getElementById('ecp-obs').value.trim()||null;
+  try{
+    await sb.from('contas_pagar').update({
+      descricao:p.descricao, valor:p.valor,
+      fornecedor_id:p.fornecedorId||null,
+      tipo:p.tipo, data_vencimento:p.dataVencimento||null,
+      condicao:p.condicao||null,
+      centro_custo_id:p.centroCustoId||null,
+      obra_id:p.obraId||null,
+      observacao:p.observacao||null
+    }).eq('id',cpId);
+    save(); renderContasPagar(); renderFinPainel();
+    abrirEditarSRM(srmId,'financeiro');
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); }
 }
 
 /* ================= SRM: FASES ================= */
