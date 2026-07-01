@@ -5035,7 +5035,7 @@ async function parseDanfePDF(file){
   const itensSingle=itensTxt.replace(/\n/g,' ');
 
   // Padrão: 5 dígitos (código) + descrição + NCM 8 dígitos + CSOSN + CFOP + UN + qtd + v.unit + v.total
-  const itemRe=/(\d{5})\s+(.+?)\s{1,4}(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
+  const itemRe=/(\d{5})\s*(.+?)\s{1,4}(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
   const itens=[]; let im; let n=1;
   while((im=itemRe.exec(itensSingle))!==null){
     const[,cProd,xProdRaw,NCM,CFOP,uCom,qStr,vUStr,vTStr]=im;
