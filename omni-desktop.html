@@ -997,57 +997,6 @@
     </div>
   </div>
 
-  <!-- ESTOQUE: Modal produto (novo/editar) -->
-  <div id="modal-produto-estoque" class="modal-bg" style="display:none" onclick="if(event.target===this)fecharModalProdutoEstoque()">
-    <div class="modal" style="max-width:500px;width:94vw">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <h3 style="margin:0;font-size:15px" id="modal-produto-titulo">Novo Produto</h3>
-        <button class="icon-btn" onclick="fecharModalProdutoEstoque()">✕</button>
-      </div>
-      <div style="display:grid;gap:10px">
-        <input type="hidden" id="prod-est-id">
-        <div class="form-row">
-          <label class="form-label">Nome Comercial *</label>
-          <input class="form-inp" id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm">
-        </div>
-        <div class="form-row">
-          <label class="form-label">Descrição Fiscal (xProd)</label>
-          <input class="form-inp" id="prod-est-fiscal" placeholder="Descrição como aparece na NF">
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="form-row">
-            <label class="form-label">NCM</label>
-            <input class="form-inp" id="prod-est-ncm" placeholder="Ex.: 85447000">
-          </div>
-          <div class="form-row">
-            <label class="form-label">Unidade</label>
-            <select class="form-inp" id="prod-est-unidade">
-              <option value="un">un — Unidade</option>
-              <option value="m">m — Metro</option>
-              <option value="m2">m² — Metro quadrado</option>
-              <option value="kg">kg — Quilograma</option>
-              <option value="l">l — Litro</option>
-              <option value="cx">cx — Caixa</option>
-              <option value="pc">pc — Peça</option>
-              <option value="rolo">rolo — Rolo</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <label class="form-label">Descrição / Observação</label>
-          <textarea class="form-inp" id="prod-est-descricao" rows="2" placeholder="Detalhes adicionais sobre o produto"></textarea>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="prod-est-ativo" checked style="width:16px;height:16px">
-          <label for="prod-est-ativo" style="font-size:13px">Produto ativo (aparece nas listas)</label>
-        </div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
-        <button class="btn" onclick="fecharModalProdutoEstoque()">Cancelar</button>
-        <button class="btn primary" onclick="salvarProdutoEstoque()">💾 Salvar</button>
-      </div>
-    </div>
-  </div>
 
   <!-- DOWNLOADS -->
   <div class="view" id="view-downloads">
@@ -16103,33 +16052,40 @@ function _renderEstoqueCatalogo(el){
 }
 
 /* ---- Modal Produto ---- */
+function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao, ativo){
+  const esc=v=>(v||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  const opts=['un','m','m2','kg','l','cx','pc','rolo'];
+  const labOpts={'un':'un — Unidade','m':'m — Metro','m2':'m² — Metro quadrado','kg':'kg — Quilograma','l':'l — Litro','cx':'cx — Caixa','pc':'pc — Peça','rolo':'rolo — Rolo'};
+  return `
+    <h3>${titulo}</h3>
+    <input type="hidden" id="prod-est-id" value="${id||''}">
+    <label>Nome Comercial *</label>
+    <input id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm" value="${esc(nome)}">
+    <label>Descrição Fiscal (xProd)</label>
+    <input id="prod-est-fiscal" placeholder="Descrição como aparece na NF" value="${esc(nomeFiscal)}">
+    <label>NCM</label>
+    <input id="prod-est-ncm" placeholder="Ex.: 85447000" value="${esc(ncm)}">
+    <label>Unidade</label>
+    <select id="prod-est-unidade">${opts.map(o=>`<option value="${o}"${o===(unidade||'un')?' selected':''}>${labOpts[o]}</option>`).join('')}</select>
+    <label>Descrição / Observação</label>
+    <textarea id="prod-est-descricao" rows="2" style="resize:vertical" placeholder="Detalhes adicionais sobre o produto">${esc(descricao)}</textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+      <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px">
+      <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
+    </div>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="salvarProdutoEstoque()">Salvar</button>
+    </div>`;
+}
+
 function abrirNovoProdutoEstoque(){
-  document.getElementById('modal-produto-titulo').textContent='Novo Produto';
-  document.getElementById('prod-est-id').value='';
-  document.getElementById('prod-est-nome').value='';
-  document.getElementById('prod-est-fiscal').value='';
-  document.getElementById('prod-est-ncm').value='';
-  document.getElementById('prod-est-unidade').value='un';
-  document.getElementById('prod-est-descricao').value='';
-  document.getElementById('prod-est-ativo').checked=true;
-  document.getElementById('modal-produto-estoque').style.display='flex';
+  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true));
 }
 
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
-  document.getElementById('modal-produto-titulo').textContent='Editar Produto';
-  document.getElementById('prod-est-id').value=p.id;
-  document.getElementById('prod-est-nome').value=p.nome||'';
-  document.getElementById('prod-est-fiscal').value=p.nomeFiscal||'';
-  document.getElementById('prod-est-ncm').value=p.ncm||'';
-  document.getElementById('prod-est-unidade').value=p.unidade||'un';
-  document.getElementById('prod-est-descricao').value=p.descricao||'';
-  document.getElementById('prod-est-ativo').checked=p.ativo!==false;
-  document.getElementById('modal-produto-estoque').style.display='flex';
-}
-
-function fecharModalProdutoEstoque(){
-  document.getElementById('modal-produto-estoque').style.display='none';
+  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo));
 }
 
 async function salvarProdutoEstoque(){
@@ -16157,7 +16113,7 @@ async function salvarProdutoEstoque(){
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,criadoEm:data.criado_em||''});
   }
-  fecharModalProdutoEstoque();
+  fecharModal();
   renderEstoquePainel();
 }
 
