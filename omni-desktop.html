@@ -2243,52 +2243,9 @@ function syncDadosSupabase(){
       storage_path:a.storagePath, tamanho:Number(a.tamanho)||0,
       criado_em:a.criadoEm||new Date().toISOString(), criado_por:a.criadoPor||''
     }));
-    await sincronizarTabela('financeiro_recebimentos', db.recebimentos||[], r=>({
-      id:r.id, card_id:Number(r.cardId)||null,
-      proposta_id:Number(r.propostaId)||null,
-      os_id:Number(r.osId)||null,
-      descricao:r.descricao||'', valor:r.valor||0,
-      tipo:r.tipo||'fixo',
-      data_vencimento:r.dataVencimento||null,
-      condicao:r.condicao||null,
-      status:r.status||'pendente',
-      data_recebimento:r.dataRecebimento||null
-    }));
-    await sincronizarTabela('centros_custo', db.centrosCusto||[], c=>({
-      id:c.id, nome:c.nome, descricao:c.descricao||null,
-      tipo:c.tipo||'fixo', ativo:!!c.ativo,
-      slug:c.slug||null, protegido:!!c.protegido
-    }));
-    await sincronizarTabela('contas_correntes', db.contasCorrente||[], c=>({
-      id:c.id, nome:c.nome, banco:c.banco||null, agencia:c.agencia||null,
-      conta:c.conta||null, tipo:c.tipo||'corrente',
-      saldo_inicial:c.saldoInicial, ativo:!!c.ativo,
-      limite:c.limite||null,
-      dia_fechamento:c.diaFechamento||null,
-      dia_vencimento_fatura:c.diaVencimentoFatura||null,
-      fatura_inicial:c.faturaInicial||0,
-      ocultar_painel:!!c.ocultarPainel
-    }));
-    await sincronizarTabela('movimentacoes_financeiras', db.movimentacoes||[], m=>({
-      id:m.id, conta_id:m.contaId, tipo:m.tipo||'entrada',
-      valor:m.valor, descricao:m.descricao||'',
-      data_movimento:m.dataMovimento,
-      centro_custo_id:m.centroCustoId||null,
-      origem_tipo:m.origemTipo||'manual',
-      origem_id:m.origemId||null,
-      conta_destino_id:m.contaDestinoId||null
-    }));
-    await sincronizarTabela('contas_pagar', db.contasPagar||[], p=>({
-      id:p.id, descricao:p.descricao||'', fornecedor_id:p.fornecedorId||null,
-      valor:p.valor, data_vencimento:p.dataVencimento||null,
-      data_pagamento:p.dataPagamento||null, status:p.status||'pendente',
-      condicao:p.condicao||null,
-      centro_custo_id:p.centroCustoId||null, obra_id:p.obraId||null,
-      os_id:p.osId||null, conta_id:p.contaId||null,
-      card_srm_id:p.cardSrmId||null,
-      observacao:p.observacao||null,
-      recorrente_id:p.recorrenteId||null
-    }));
+    // NOTA: financeiro_recebimentos, movimentacoes_financeiras e contas_pagar são
+    // gerenciadas exclusivamente via CRUD direto (insert/update/delete) em cada operação.
+    // Removidas do sync em bulk para evitar recriar registros que outro usuário excluiu.
     await sincronizarTabela('contas_recorrentes', db.contasRecorrentes||[], r=>({
       id:r.id, nome:r.nome||'',
       fornecedor_id:r.fornecedorId||null,
@@ -5765,8 +5722,10 @@ async function confirmarPagamentoSRM(cpId, srmId){
   const data   = (document.getElementById('cprap-data')||{}).value;
   const contaId= parseInt(document.getElementById('cprap-conta')?.value)||null;
   if(!data){ alert('Informe a data do pagamento.'); return; }
+  // Escreve no Supabase ANTES de atualizar o cache local
+  const {error:ePagar} = await sb.from('contas_pagar').update({status:'pago', data_pagamento:data, conta_id:contaId||null}).eq('id',cpId);
+  if(ePagar){ alert('Erro ao confirmar pagamento: '+ePagar.message); return; }
   p.status='pago'; p.dataPagamento=data; p.contaId=contaId;
-  await sb.from('contas_pagar').update({status:'pago', data_pagamento:data, conta_id:contaId||null}).eq('id',cpId);
   // registra movimentação de saída na conta corrente escolhida
   if(contaId){
     const movId = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
@@ -5774,13 +5733,15 @@ async function confirmarPagamentoSRM(cpId, srmId){
       descricao:p.descricao||'Pagamento SRM', dataMovimento:data,
       centroCustoId:p.centroCustoId||null, origemTipo:'contas_pagar', origemId:cpId,
       contaDestinoId:null, criadoEm:new Date().toISOString()};
-    db.movimentacoes = db.movimentacoes||[];
-    db.movimentacoes.push(mov);
-    await sb.from('movimentacoes_financeiras').insert({
+    const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
       id:movId, conta_id:contaId, tipo:'saida', valor:p.valor,
       descricao:mov.descricao, data_movimento:data,
       centro_custo_id:p.centroCustoId||null, origem_tipo:'contas_pagar', origem_id:cpId
     });
+    if(!eMov){
+      db.movimentacoes = db.movimentacoes||[];
+      db.movimentacoes.push(mov);
+    }
   }
   save(); renderContasPagar(); renderFinPainel();
   abrirEditarSRM(srmId,'financeiro');
@@ -9536,7 +9497,7 @@ async function confirmarPagamentoConta(id){
     id:idMov, conta_id:contaId, tipo:'saida', valor:p.valor,
     descricao:descMov, data_movimento:dataPagamento,
     centro_custo_id:p.centroCustoId||null,
-    origem_tipo:'pagamento', origem_id:id,
+    origem_tipo:'contas_pagar', origem_id:id,
     conta_destino_id:null
   });
   if(!eMov){
@@ -9545,7 +9506,7 @@ async function confirmarPagamentoConta(id){
       id:idMov, contaId, tipo:'saida', valor:p.valor,
       descricao:descMov, dataMovimento:dataPagamento,
       centroCustoId:p.centroCustoId||null,
-      origemTipo:'pagamento', origemId:id,
+      origemTipo:'contas_pagar', origemId:id,
       contaDestinoId:null, criadoEm:new Date().toISOString()
     });
   }
