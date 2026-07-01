@@ -4690,7 +4690,7 @@ async function salvarEdicaoSRM(id){
     if(!cotSel){
       erros.push('• Nenhuma cotação selecionada (aba Propostas/Cotações).');
     } else if(!cotSel.xmlNfNome){
-      erros.push('• XML da Nota Fiscal não foi enviado (aba Pedido Aprovado).');
+      erros.push('• Nota Fiscal (XML ou PDF) não foi importada (aba Pedido Aprovado).');
     }
     // 2. CPs pendentes?
     if((c.pagamentoResponsavel||'empresa')==='empresa'){
@@ -4955,6 +4955,90 @@ function itensPropostasParaObra(obraId){
   return itens;
 }
 
+/* ---- SRM: Carregador lazy do PDF.js ---- */
+async function _carregarPdfJs(){
+  if(window.pdfjsLib) return;
+  await new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=res; s.onerror=()=>rej(new Error('Falha ao carregar PDF.js. Verifique sua conexão.'));
+    document.head.appendChild(s);
+  });
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc=
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+/* ---- SRM: Parser DANFE PDF (client-side via PDF.js) ---- */
+async function parseDanfePDF(file){
+  await _carregarPdfJs();
+  const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  let txt='';
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const content=await page.getTextContent();
+    // Agrupa itens de texto pela coordenada Y (±4 unidades = mesma linha)
+    const rows=[];
+    for(const item of content.items){
+      if(!item.str.trim()) continue;
+      const y=Math.round(item.transform[5]);
+      const x=item.transform[4];
+      const row=rows.find(r=>Math.abs(r.y-y)<4);
+      if(row){ row.items.push({x,s:item.str}); }
+      else { rows.push({y,items:[{x,s:item.str}]}); }
+    }
+    rows.sort((a,b)=>b.y-a.y);
+    for(const row of rows){
+      row.items.sort((a,b)=>a.x-b.x);
+      txt+=row.items.map(i=>i.s).join(' ')+'\n';
+    }
+  }
+
+  // ── Número da NF
+  const nNFm=txt.match(/N[ºo°\.]\s*([\d.]+)/i);
+  if(!nNFm) throw new Error('Número da NF não encontrado no PDF. Verifique se é um DANFE válido.');
+  const nNF=nNFm[1].replace(/\./g,'');
+
+  // ── Data de emissão
+  const datem=txt.match(/DATA\s*DA\s*EMISS[ÃA]O[^\d]*([\d]{2}\/[\d]{2}\/[\d]{4})/i)
+              ||txt.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/);
+  let nfData=null;
+  if(datem){ const[d,m,y]=datem[1].split('/'); nfData=`${y}-${m}-${d}`; }
+
+  // ── CNPJ emitente (primeiro CNPJ do documento = emitente)
+  const cnpjm=txt.match(/(\d{2})[\.\s]?(\d{3})[\.\s]?(\d{3})[\/\s]?(\d{4})[\-\s]?(\d{2})/);
+  const emitCNPJ=cnpjm?cnpjm.slice(1).join(''):'';
+
+  // ── Nome do emitente (primeira linha com razão social)
+  const emitm=txt.match(/^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-Z0-9ÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s&,.()-]{8,}(?:LTDA|ME|EIRELI|S\.?A\.?|EPP|MICROEMPRESA))/im);
+  const emitNome=emitm?emitm[1].trim():'';
+
+  // ── Valor total da NF
+  const totalm=txt.match(/VALOR\s*TOTAL\s*DA\s*NOTA[^\d]*([\d.]+,\d{2})/i);
+  const vNF=totalm?parseFloat(totalm[1].replace(/\./g,'').replace(',','.')):0;
+
+  // ── Itens: isola seção de produtos
+  const si=txt.search(/DADOS DOS PRODUTOS/i);
+  const secao=si>=0?txt.slice(si):txt;
+  const fi=secao.search(/CÁLCULO DO ISSQN|DADOS ADICIONAIS|RESERVADO AO FISCO/i);
+  const itensTxt=fi>0?secao.slice(0,fi):secao;
+
+  // Padrão: código 5 dígitos + descrição + NCM 8 dígitos + CSOSN + CFOP + UN + qtd + v.unit + v.total
+  const itemRe=/(\d{5})\s*(.+?)\s+(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
+  const itens=[]; let im; let n=1;
+  while((im=itemRe.exec(itensTxt))!==null){
+    const[,cProd,xProdRaw,NCM,CFOP,uCom,qStr,vUStr,vTStr]=im;
+    const xProd=xProdRaw.replace(/\s*Valor\s*Aproximado.*/i,'').trim();
+    const qCom=parseFloat(qStr.replace(',','.'));
+    const vUnCom=parseFloat(vUStr.replace(/\./g,'').replace(',','.'));
+    const vProd=parseFloat(vTStr.replace(/\./g,'').replace(',','.'));
+    itens.push({nItem:String(n++),cProd,xProd,NCM,CFOP,uCom,qCom,vUnCom,vProd,
+      propostaId:null,propostaItemDesc:null,semCorrespondencia:false});
+  }
+  if(!itens.length) throw new Error('Nenhum item encontrado no PDF. Verifique se é um DANFE NF-e ou tente importar o XML.');
+  return{nNF,nfData,emitCNPJ,emitNome,vNF,itens};
+}
+
 /* ---- SRM: Parser NF-e XML (client-side) ---- */
 function parseNFeXML(xmlText){
   const parser=new DOMParser();
@@ -5032,7 +5116,7 @@ function abaPedidoAprovadoSRMHTML(c){
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
           <div>
             <div style="font-weight:700;font-size:14px">📋 NF-e nº ${escHtml(cot.nfNumero||'—')}
-              <button class="link-btn" style="font-size:11px;margin-left:6px" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ XML</button>
+              <button class="link-btn" style="font-size:11px;margin-left:6px" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ ${(cot.xmlNfNome||'').toLowerCase().endsWith('.pdf')?'PDF':'XML'}</button>
               <button class="icon-btn del" style="font-size:11px;margin-left:2px" onclick="removerXmlNfSRM(${cot.id},${c.id})" title="Remover e reimportar">🗑</button>
             </div>
             ${cot.nfData?`<div style="font-size:11px;color:var(--muted)">${fmtDia2(cot.nfData)}</div>`:''}
@@ -5116,13 +5200,27 @@ function abaPedidoAprovadoSRMHTML(c){
   /* ── Sem NF ainda → área de upload ── */
   const uploadHTML=`
     <div style="border:1px solid var(--border);border-radius:8px;padding:14px 16px">
-      <div style="font-weight:700;margin-bottom:12px;font-size:14px">📋 Nota Fiscal (XML NF-e)</div>
-      <div style="color:var(--muted);font-size:13px;margin-bottom:12px">⏳ Aguardando importação do XML da nota fiscal.</div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <input id="nf-xml-input" type="file" accept=".xml,text/xml,application/xml" style="flex:1;font-size:12px;min-width:0">
-        <button class="btn sm primary" onclick="uploadXmlNfSRM(${cot.id},${c.id},document.getElementById('nf-xml-input'))">⬆ Importar XML</button>
+      <div style="font-weight:700;margin-bottom:4px;font-size:14px">📋 Nota Fiscal</div>
+      <div style="color:var(--muted);font-size:13px;margin-bottom:12px">⏳ Aguardando importação da NF. Escolha o formato disponível:</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <label style="border:1px solid var(--border);border-radius:7px;padding:11px 13px;cursor:pointer;display:flex;flex-direction:column;gap:3px"
+               onmouseenter="this.style.background='var(--hover)'" onmouseleave="this.style.background=''">
+          <span style="font-weight:700;font-size:13px">📥 XML NF-e</span>
+          <span style="font-size:11px;color:var(--muted)">Formato completo e preciso</span>
+          <span style="font-size:11px;color:#1976d2;margin-top:2px">Clique para selecionar →</span>
+          <input type="file" accept=".xml,text/xml,application/xml" style="display:none"
+                 onchange="uploadNfSRM(this,'xml',${cot.id},${c.id})">
+        </label>
+        <label style="border:1px solid var(--border);border-radius:7px;padding:11px 13px;cursor:pointer;display:flex;flex-direction:column;gap:3px"
+               onmouseenter="this.style.background='var(--hover)'" onmouseleave="this.style.background=''">
+          <span style="font-weight:700;font-size:13px">📄 PDF DANFE</span>
+          <span style="font-size:11px;color:var(--muted)">Quando não tiver o XML</span>
+          <span style="font-size:11px;color:#1976d2;margin-top:2px">Clique para selecionar →</span>
+          <input type="file" accept=".pdf,application/pdf" style="display:none"
+                 onchange="uploadNfSRM(this,'pdf',${cot.id},${c.id})">
+        </label>
       </div>
-      <div id="nf-xml-status" style="font-size:12px;color:var(--muted);margin-top:6px;min-height:16px"></div>
+      <div id="nf-xml-status" style="font-size:12px;color:var(--muted);min-height:16px"></div>
       <div id="nf-xml-progress" style="display:none;margin-top:4px">
         <div style="background:#e0e0e0;border-radius:4px;height:6px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
         <div id="nf-xml-size" style="font-size:11px;color:var(--muted);margin-top:2px;text-align:right"></div>
@@ -5173,6 +5271,56 @@ async function uploadXmlNfSRM(cotId, srmId, input){
       nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
     }).eq('id',cotId);
     registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
+    save();
+    abrirEditarSRM(srmId,'pedidos');
+  }catch(e){
+    if(statusEl) statusEl.textContent='❌ Erro: '+(e.message||e);
+    if(progEl) progEl.style.display='none';
+  }
+}
+
+/* Função unificada: aceita XML ou PDF DANFE */
+async function uploadNfSRM(input, tipo, cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const file=input&&input.files&&input.files[0]; if(!file) return;
+  const statusEl=document.getElementById('nf-xml-status');
+  const progEl=document.getElementById('nf-xml-progress');
+  const barEl=document.getElementById('nf-xml-bar');
+  const sizeEl=document.getElementById('nf-xml-size');
+  /* 1. parse */
+  if(statusEl) statusEl.textContent=tipo==='pdf'?'🔍 Lendo e extraindo dados do PDF…':'🔍 Lendo e validando XML…';
+  let nfDados;
+  try{
+    if(tipo==='pdf'){
+      nfDados=await parseDanfePDF(file);
+    } else {
+      nfDados=parseNFeXML(await file.text());
+    }
+  }catch(e){ if(statusEl) statusEl.textContent='❌ '+(e.message||e); return; }
+  /* 2. upload */
+  if(statusEl) statusEl.textContent='Enviando arquivo…';
+  if(progEl){ progEl.style.display=''; if(barEl) barEl.style.width='0%'; if(sizeEl) sizeEl.textContent=''; }
+  const ext=tipo==='pdf'?'pdf':'xml';
+  const path=`srm_${srmId}/nf_${cotId}_${Date.now()}.${ext}`;
+  try{
+    const {error}=await uploadOSArquivoXHR('srm-nfs', path, file, (loaded,total)=>{
+      const pct=Math.round(loaded/total*100);
+      if(barEl) barEl.style.width=pct+'%';
+      if(sizeEl) sizeEl.textContent=`${fmtBytes(loaded)} / ${fmtBytes(total)} (${pct}%)`;
+    });
+    if(error) throw new Error(error.message||'Erro no upload');
+    if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
+    cot.xmlNfPath=path; cot.xmlNfNome=file.name;
+    cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
+    cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
+    cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
+    await sb.from('srm_cotacoes').update({
+      xml_nf_path:path, xml_nf_nome:file.name,
+      nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
+      nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
+      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
+    }).eq('id',cotId);
+    registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada via ${tipo.toUpperCase()} (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
     save();
     abrirEditarSRM(srmId,'pedidos');
   }catch(e){
