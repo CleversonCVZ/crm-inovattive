@@ -966,20 +966,33 @@
     </div>
   </div>
 
-  <!-- ESTOQUE: PAINEL -->
-  <div class="view" id="view-estoque-painel">
+  <!-- ESTOQUE: ALMOXARIFADO -->
+  <div class="view" id="view-estoque-almoxarifado">
     <div class="bar">
       <h2>Estoque — Almoxarifado</h2>
-      <select id="estoque-vista" class="vista-sel" onchange="renderEstoquePainel()">
-        <option value="saldo">Visualização: Saldo por Produto</option>
-        <option value="movimentos">Visualização: Histórico de Movimentações</option>
-        <option value="catalogo">Visualização: Catálogo de Produtos</option>
-      </select>
       <div class="spacer"></div>
       <button class="btn primary" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
     </div>
-    <div class="stats" id="estoque-stats" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
-    <div id="estoque-corpo"></div>
+    <div class="stats" id="estoque-stats-saldo" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
+    <div id="estoque-corpo-saldo"></div>
+  </div>
+
+  <!-- ESTOQUE: MOVIMENTAÇÕES -->
+  <div class="view" id="view-estoque-movimentacoes">
+    <div class="bar">
+      <h2>Estoque — Movimentações</h2>
+    </div>
+    <div id="estoque-corpo-movimentos"></div>
+  </div>
+
+  <!-- ESTOQUE: CATÁLOGO -->
+  <div class="view" id="view-estoque-catalogo">
+    <div class="bar">
+      <h2>Estoque — Catálogo de Produtos</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
+    </div>
+    <div id="estoque-corpo-catalogo"></div>
   </div>
 
 
@@ -1424,7 +1437,9 @@ const TELAS = [
   // ── Compras
   {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
   // ── Estoque
-  {id:'estoque-painel',  nome:'Estoque — Painel',   menu:'Painel'},
+  {id:'estoque-almoxarifado',  nome:'Estoque — Almoxarifado',   menu:'Almoxarifado'},
+  {id:'estoque-movimentacoes', nome:'Estoque — Movimentações',  menu:'Movimentações'},
+  {id:'estoque-catalogo',      nome:'Estoque — Catálogo',       menu:'Catálogo'},
   {id:'usuarios',    nome:'Cadastro de Usuários'},
   {id:'grupos',      nome:'Grupos de Acesso'},
   {id:'funcoes',     nome:'Funções na Empresa'},
@@ -1485,8 +1500,8 @@ const MODULOS = [
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
   {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','srm-fases','fin-fornecedores'],     sepAntes:true},
-  {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel']},
-  {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel']}
+  {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel'], sepAntes:true},
+  {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-almoxarifado','estoque-movimentacoes','estoque-catalogo']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -4066,7 +4081,9 @@ function ativarView(viewId){
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-fornecedores')    renderFornecedores();
-  if(viewId==='estoque-painel')      renderEstoquePainel();
+  if(viewId==='estoque-almoxarifado')  renderEstoqueAlmoxarifado();
+  if(viewId==='estoque-movimentacoes') renderEstoqueMovimentacoes();
+  if(viewId==='estoque-catalogo')      renderEstoqueCatalogo();
   if(viewId==='fin-contas-pagar')    renderContasPagar();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
@@ -15915,12 +15932,7 @@ function valorMedioProduto(produtoId){
 }
 
 /* Renderiza o painel de estoque (roteador de visualizações) */
-function renderEstoquePainel(){
-  const vista=(document.getElementById('estoque-vista')||{}).value||'saldo';
-  const statsEl=document.getElementById('estoque-stats');
-  const corpoEl=document.getElementById('estoque-corpo');
-  if(!statsEl||!corpoEl) return;
-
+function _estoqueStats(){
   const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
   const movs=db.estoqueMov||[];
   const totalProd=produtos.length;
@@ -15931,17 +15943,39 @@ function renderEstoquePainel(){
     const vMed=valorMedioProduto(p.id)||0;
     return s+saldo*vMed;
   },0);
-
-  statsEl.innerHTML=`
+  return `
     <div class="stat"><div class="n">${totalProd}</div><div class="l">Produtos ativos</div></div>
     <div class="stat"><div class="n">${fmtNum(totalEntradas)}</div><div class="l">Unidades entrada</div></div>
     <div class="stat"><div class="n">${fmtNum(totalSaidas)}</div><div class="l">Unidades saída</div></div>
     ${valorEstoque>0?`<div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(valorEstoque)}</div><div class="l">Valor em estoque</div></div>`:''}
   `;
+}
 
-  if(vista==='saldo')      _renderEstoqueSaldo(corpoEl);
-  else if(vista==='movimentos') _renderEstoqueMovimentos(corpoEl);
-  else                     _renderEstoqueCatalogo(corpoEl);
+function renderEstoqueAlmoxarifado(){
+  const statsEl=document.getElementById('estoque-stats-saldo');
+  const corpoEl=document.getElementById('estoque-corpo-saldo');
+  if(!statsEl||!corpoEl) return;
+  statsEl.innerHTML=_estoqueStats();
+  _renderEstoqueSaldo(corpoEl);
+}
+
+function renderEstoqueMovimentacoes(){
+  const corpoEl=document.getElementById('estoque-corpo-movimentos');
+  if(!corpoEl) return;
+  _renderEstoqueMovimentos(corpoEl);
+}
+
+function renderEstoqueCatalogo(){
+  const corpoEl=document.getElementById('estoque-corpo-catalogo');
+  if(!corpoEl) return;
+  _renderEstoqueCatalogo(corpoEl);
+}
+
+/* Compat: chamadas legadas de renderEstoquePainel() redirecionam para a tela ativa */
+function renderEstoquePainel(){
+  renderEstoqueAlmoxarifado();
+  renderEstoqueMovimentacoes();
+  renderEstoqueCatalogo();
 }
 
 function fmtNum(v){ return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:3}); }
@@ -16287,7 +16321,7 @@ async function confirmarLancarEstoque(){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoquePainel(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); }
 load();
 atualizarMarca();
 (async function(){
