@@ -16070,20 +16070,22 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
   const labOpts={'un':'un — Unidade','m':'m — Metro','m2':'m² — Metro quadrado','kg':'kg — Quilograma','l':'l — Litro','cx':'cx — Caixa','pc':'pc — Peça','rolo':'rolo — Rolo'};
   return `
     <h3>${titulo}</h3>
-    <input type="hidden" id="prod-est-id" value="${id||''}">
-    <label>Nome Comercial *</label>
-    <input id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm" value="${esc(nome)}">
-    <label>Descrição Fiscal (xProd)</label>
-    <input id="prod-est-fiscal" placeholder="Descrição como aparece na NF" value="${esc(nomeFiscal)}">
-    <label>NCM</label>
-    <input id="prod-est-ncm" placeholder="Ex.: 85447000" value="${esc(ncm)}">
-    <label>Unidade</label>
-    <select id="prod-est-unidade">${opts.map(o=>`<option value="${o}"${o===(unidade||'un')?' selected':''}>${labOpts[o]}</option>`).join('')}</select>
-    <label>Descrição / Observação</label>
-    <textarea id="prod-est-descricao" rows="2" style="resize:vertical" placeholder="Detalhes adicionais sobre o produto">${esc(descricao)}</textarea>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
-      <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px">
-      <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
+    <div class="aba-corpo">
+      <input type="hidden" id="prod-est-id" value="${id||''}">
+      <label>Nome Comercial *</label>
+      <input id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm" value="${esc(nome)}">
+      <label>Descrição Fiscal (xProd)</label>
+      <input id="prod-est-fiscal" placeholder="Descrição como aparece na NF" value="${esc(nomeFiscal)}">
+      <label>NCM</label>
+      <input id="prod-est-ncm" placeholder="Ex.: 85447000" value="${esc(ncm)}">
+      <label>Unidade</label>
+      <select id="prod-est-unidade">${opts.map(o=>`<option value="${o}"${o===(unidade||'un')?' selected':''}>${labOpts[o]}</option>`).join('')}</select>
+      <label>Descrição / Observação</label>
+      <textarea id="prod-est-descricao" rows="3" style="resize:vertical" placeholder="Detalhes adicionais sobre o produto">${esc(descricao)}</textarea>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px">
+        <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
+      </div>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
@@ -16092,12 +16094,12 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
 }
 
 function abrirNovoProdutoEstoque(){
-  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true));
+  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true), 'cartao');
 }
 
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
-  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo));
+  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo), 'cartao');
 }
 
 async function salvarProdutoEstoque(){
