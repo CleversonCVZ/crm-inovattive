@@ -4815,9 +4815,7 @@ function abaCotacoesSRMHTML(c){
                   : `${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
                      ${cot.status==='recebida' ? `<button class="btn sm" style="background:#c62828;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'rejeitada')">✖ Rejeitar</button>` : ''}
                      ${cot.status!=='recebida' ? `<button class="btn sm neutral" onclick="statusCotacaoSRM(${cot.id},${c.id},'recebida')">↩ Desfazer</button>` : ''}`}
-                ${bloqueada
-                  ? `<span style="font-size:11px;color:#e65100" title="Remova o XML primeiro para poder excluir">🔒</span>`
-                  : `<button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>`}
+                ${bloqueada ? '' : `<button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>`}
               </div>
             </div>
           </div>`;
