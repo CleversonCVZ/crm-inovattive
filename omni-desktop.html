@@ -5440,27 +5440,28 @@ async function pagarCPdoSRM(cpId, srmId){
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
   const hoje = new Date().toISOString().slice(0,10);
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo!==false);
-  const contaOpts = contasAtivas.length
-    ? ['<option value="">— sem vínculo —</option>', ...contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}</option>`)].join('')
-    : '<option value="">— nenhuma conta cadastrada —</option>';
+  const contaOpts = contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('');
   abrirModal(`
-    <h3>Confirmar Pagamento</h3>
-    <div class="aba-corpo" style="display:grid;gap:14px">
-      <div style="background:var(--surface);border-radius:8px;padding:12px 14px;border:1px solid var(--border)">
-        <div style="font-weight:700;font-size:15px">${fmtMoney(p.valor)}</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:2px">${escHtml(p.descricao)}</div>
+    <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
+    <div class="modal-body" style="display:grid;gap:14px">
+      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b> — <b style="color:#e65100">${fmtMoney(p.valor)}</b></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Data de pagamento *
+          <input id="cprap-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
+        </label>
+        <label>Debitar em *
+          <select id="cprap-conta" class="input" style="margin-top:4px">
+            <option value="">— selecione a conta —</option>
+            ${contaOpts}
+          </select>
+        </label>
       </div>
-      <label>Data do Pagamento *
-        <input id="cprap-data" type="date" class="input" value="${hoje}" style="margin-top:4px">
-      </label>
-      <label>Conta / Banco utilizado
-        <select id="cprap-conta" class="input" style="margin-top:4px">${contaOpts}</select>
-      </label>
+      ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada. <a href="#" onclick="fecharModal();ativarView('fin-contas-correntes')">Cadastrar agora</a>.</p>`:''}
     </div>
-    <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'financeiro')">Cancelar</button>
-      <button class="btn primary" onclick="confirmarPagamentoSRM(${cpId},${srmId})">✔ Confirmar Pagamento</button>
-    </div>`, 'cartao');
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoSRM(${cpId},${srmId})">Confirmar pagamento</button>
+    </div>`);
 }
 
 async function confirmarPagamentoSRM(cpId, srmId){
