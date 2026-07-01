@@ -5097,8 +5097,18 @@ function abaPedidoAprovadoSRMHTML(c){
 
   const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
   const arqsLinks=(cot.arquivos||[]).map(a=>
-    `<button class="link-btn" style="font-size:12px" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>`
+    `<button class="arq-btn" title="${escHtml(a.nome)}" onclick="baixarPDFCotacaoSRM('${a.path}','${escHtml(a.nome)}')">📄 ${escHtml(a.nome)}</button>`
   ).join('');
+
+  /* PDF da NF — aparece inline no card, igual às propostas */
+  const pdfNfBtn=cot.pdfNfNome
+    ?`<button class="arq-btn" title="${escHtml(cot.pdfNfNome)}" onclick="baixarPdfNfSRM('${escHtml(cot.pdfNfPath||'')}','${escHtml(cot.pdfNfNome||'')}')">📄 ${escHtml(cot.pdfNfNome)}</button>
+       <button class="icon-btn del" style="font-size:11px;padding:1px 4px" title="Remover PDF da NF" onclick="removerPdfNfSRM(${cot.id},${c.id})">🗑</button>`
+    :`<label style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--muted);padding:3px 8px;border:1px dashed var(--border);border-radius:5px"
+         onmouseenter="this.style.borderColor='#1976d2';this.style.color='#1976d2'" onmouseleave="this.style.borderColor='';this.style.color=''">
+        📄 PDF da NF <span style="font-size:10px">+</span>
+        <input type="file" accept=".pdf,application/pdf" style="display:none" onchange="uploadPdfNfSRM(this,${cot.id},${c.id})">
+      </label>`;
 
   const cotCardHTML=`
     <div style="background:#f1f8e9;border:1px solid #a5d6a7;border-radius:8px;padding:11px 14px;margin-bottom:14px">
@@ -5109,63 +5119,70 @@ function abaPedidoAprovadoSRMHTML(c){
         ${forn?`<span><b>Fornecedor:</b> ${escHtml(forn.nome)}</span>`:''}
         ${cot.dataRecebimento?`<span><b>Recebida:</b> ${fmtDia2(cot.dataRecebimento)}</span>`:''}
       </div>
-      ${arqsLinks?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">${arqsLinks}</div>`:''}
-    </div>`;
-
-  /* ── Cards de arquivo (XML e PDF) — sempre visíveis ── */
-  const xmlCard=cot.xmlNfNome
-    ?`<div style="border:1px solid #a5d6a7;border-radius:7px;padding:10px 13px;background:#f1f8e9">
-        <div style="font-weight:700;font-size:12px;color:#2e7d32;margin-bottom:3px">📥 XML NF-e <span style="font-weight:400;font-size:10px;background:#c8e6c9;border-radius:8px;padding:1px 6px">✔ Enviado</span></div>
-        <div style="font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:6px">${escHtml(cot.xmlNfNome)}</div>
-        <div style="display:flex;gap:8px">
-          <button class="link-btn" style="font-size:11px" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ Baixar</button>
-          <button class="link-btn" style="font-size:11px;color:#c62828" onclick="removerXmlNfSRM(${cot.id},${c.id})">🗑 Remover</button>
-        </div>
-      </div>`
-    :`<label style="border:1px dashed var(--border);border-radius:7px;padding:10px 13px;cursor:pointer;display:flex;flex-direction:column;gap:3px"
-         onmouseenter="this.style.borderColor='#1976d2'" onmouseleave="this.style.borderColor=''">
-        <span style="font-weight:700;font-size:12px">📥 XML NF-e</span>
-        <span style="font-size:11px;color:var(--muted)">Formato completo e preciso</span>
-        <span style="font-size:11px;color:#1976d2;margin-top:2px">Clique para selecionar →</span>
-        <input type="file" accept=".xml,text/xml,application/xml" style="display:none"
-               onchange="uploadXmlNfSRM(this,${cot.id},${c.id})">
-      </label>`;
-
-  const pdfCard=cot.pdfNfNome
-    ?`<div style="border:1px solid #b0bec5;border-radius:7px;padding:10px 13px;background:#eceff1">
-        <div style="font-weight:700;font-size:12px;color:#455a64;margin-bottom:3px">📄 PDF DANFE <span style="font-weight:400;font-size:10px;background:#cfd8dc;border-radius:8px;padding:1px 6px">✔ Enviado</span></div>
-        <div style="font-size:11px;color:var(--muted);word-break:break-all;margin-bottom:6px">${escHtml(cot.pdfNfNome)}</div>
-        <div style="display:flex;gap:8px">
-          <button class="link-btn" style="font-size:11px" onclick="baixarPdfNfSRM('${escHtml(cot.pdfNfPath||'')}','${escHtml(cot.pdfNfNome||'')}')">⬇ Baixar</button>
-          <button class="link-btn" style="font-size:11px;color:#c62828" onclick="removerPdfNfSRM(${cot.id},${c.id})">🗑 Remover</button>
-        </div>
-      </div>`
-    :`<label style="border:1px dashed var(--border);border-radius:7px;padding:10px 13px;cursor:pointer;display:flex;flex-direction:column;gap:3px"
-         onmouseenter="this.style.borderColor='#1976d2'" onmouseleave="this.style.borderColor=''">
-        <span style="font-weight:700;font-size:12px">📄 PDF DANFE</span>
-        <span style="font-size:11px;color:var(--muted)">${cot.xmlNfNome?'Guardar DANFE para referência':'Quando não tiver o XML'}</span>
-        <span style="font-size:11px;color:#1976d2;margin-top:2px">Clique para selecionar →</span>
-        <input type="file" accept=".pdf,application/pdf" style="display:none"
-               onchange="uploadPdfNfSRM(this,${cot.id},${c.id})">
-      </label>`;
-
-  const arquivosHTML=`
-    <div style="border:1px solid var(--border);border-radius:8px;padding:13px 15px;margin-bottom:14px">
-      <div style="font-weight:700;font-size:13px;margin-bottom:10px">📋 Nota Fiscal — Arquivos</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
-        ${xmlCard}${pdfCard}
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        ${arqsLinks}
+        ${pdfNfBtn}
       </div>
-      <div id="nf-xml-status" style="font-size:12px;color:var(--muted);min-height:14px"></div>
-      <div id="nf-xml-progress" style="display:none;margin-top:3px">
-        <div style="background:#e0e0e0;border-radius:4px;height:5px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
-        <div id="nf-xml-size" style="font-size:10px;color:var(--muted);margin-top:2px;text-align:right"></div>
-      </div>
-      <div id="nf-pdf-status" style="font-size:12px;color:var(--muted);min-height:14px"></div>
+      <div id="nf-pdf-status" style="font-size:12px;color:var(--muted);min-height:14px;margin-top:4px"></div>
       <div id="nf-pdf-progress" style="display:none;margin-top:3px">
         <div style="background:#e0e0e0;border-radius:4px;height:5px;overflow:hidden"><div id="nf-pdf-bar" style="background:#546e7a;height:100%;width:0%;transition:width 0.15s"></div></div>
         <div id="nf-pdf-size" style="font-size:10px;color:var(--muted);margin-top:2px;text-align:right"></div>
       </div>
     </div>`;
+
+  /* ── Seção de importação XML ── */
+  let xmlSectionHTML;
+  if(cot.xmlNfNome){
+    /* XML já importado */
+    xmlSectionHTML=`
+      <div style="border:1px solid var(--border);border-radius:8px;padding:11px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:18px">📥</span>
+          <div>
+            <div style="font-weight:700;font-size:13px">XML NF-e importado</div>
+            <div style="font-size:11px;color:var(--muted)">${escHtml(cot.xmlNfNome)}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ Baixar</button>
+          <button class="btn sm danger" onclick="removerXmlNfSRM(${cot.id},${c.id})">🗑 Remover XML</button>
+        </div>
+      </div>`;
+  } else {
+    /* Sem XML — opção de importar ou marcar "sem XML" */
+    const temPdf=!!cot.pdfNfNome;
+    xmlSectionHTML=`
+      <div style="border:1px solid var(--border);border-radius:8px;padding:13px 15px;margin-bottom:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px">📥 Importar dados da Nota Fiscal</div>
+        <label style="border:1px dashed var(--border);border-radius:7px;padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;margin-bottom:${temPdf?'10px':'0'}"
+               onmouseenter="this.style.borderColor='#1976d2'" onmouseleave="this.style.borderColor=''">
+          <span style="font-size:22px">📥</span>
+          <div>
+            <div style="font-weight:700;font-size:13px">Importar XML NF-e</div>
+            <div style="font-size:11px;color:var(--muted)">Formato completo e preciso — clique para selecionar</div>
+          </div>
+          <input type="file" accept=".xml,text/xml,application/xml" style="display:none"
+                 onchange="uploadXmlNfSRM(this,${cot.id},${c.id})">
+        </label>
+        ${temPdf?`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-2);border-radius:7px;border:1px solid var(--border)">
+          <input type="checkbox" id="sem-xml-chk" style="width:16px;height:16px;cursor:pointer" onchange="toggleSemXmlSRM(${cot.id},${c.id},this.checked)">
+          <label for="sem-xml-chk" style="cursor:pointer;flex:1">
+            <div style="font-weight:700;font-size:13px">Não tenho o XML</div>
+            <div style="font-size:11px;color:var(--muted)">Tentar extrair os dados do PDF da NF já anexado acima</div>
+          </label>
+        </div>
+        <div id="sem-xml-confirm" style="display:none;margin-top:8px;padding:10px 14px;background:#fff3e0;border-radius:7px;border:1px solid #ffcc80">
+          <div style="font-size:12px;color:#e65100;margin-bottom:8px">⚠️ A extração de dados por PDF é menos precisa que o XML. Deseja continuar?</div>
+          <button class="btn sm primary" onclick="extrairDanfePdfSRM(${cot.id},${c.id})">▶ Extrair do PDF da NF</button>
+        </div>`:''}
+        <div id="nf-xml-status" style="font-size:12px;color:var(--muted);min-height:14px;margin-top:6px"></div>
+        <div id="nf-xml-progress" style="display:none;margin-top:3px">
+          <div style="background:#e0e0e0;border-radius:4px;height:5px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
+          <div id="nf-xml-size" style="font-size:10px;color:var(--muted);margin-top:2px;text-align:right"></div>
+        </div>
+      </div>`;
+  }
 
   /* ── Se há itens extraídos → tela de confrontação ── */
   if(cot.nfItens&&cot.nfItens.length>0){
@@ -5258,11 +5275,11 @@ function abaPedidoAprovadoSRMHTML(c){
         <button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Em breve: módulo de estoque">🏭 Lançar no Estoque</button>
       </div>`;
 
-    return `<div style="padding:4px 0">${cotCardHTML}${arquivosHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
+    return `<div style="padding:4px 0">${cotCardHTML}${xmlSectionHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
   }
 
   /* ── Sem itens ainda ── */
-  return `<div style="padding:4px 0">${cotCardHTML}${arquivosHTML}</div>`;
+  return `<div style="padding:4px 0">${cotCardHTML}${xmlSectionHTML}</div>`;
 }
 
 /* Upload XML NF-e: parse → upload → salva xml fields + itens (sempre source da verdade) */
@@ -5432,6 +5449,36 @@ async function removerPdfNfSRM(cotId, srmId){
   }
   await sb.from('srm_cotacoes').update(dbUpdate).eq('id',cotId);
   save(); abrirEditarSRM(srmId,'pedidos');
+}
+
+function toggleSemXmlSRM(cotId, srmId, checked){
+  const el=document.getElementById('sem-xml-confirm');
+  if(el) el.style.display=checked?'':'none';
+}
+
+/* Extrai dados do PDF da NF já armazenado (quando não há XML) */
+async function extrairDanfePdfSRM(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot||!cot.pdfNfPath) return;
+  const statusEl=document.getElementById('nf-xml-status');
+  if(statusEl) statusEl.textContent='🔍 Baixando e extraindo dados do PDF…';
+  try{
+    const {data,error}=await sb.storage.from('srm-nfs').download(cot.pdfNfPath);
+    if(error) throw error;
+    const pdfFile=new File([data], cot.pdfNfNome||'danfe.pdf',{type:'application/pdf'});
+    const nfDados=await parseDanfePDF(pdfFile);
+    cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
+    cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
+    cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
+    await sb.from('srm_cotacoes').update({
+      nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
+      nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
+      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
+    }).eq('id',cotId);
+    registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} extraída do PDF DANFE (${nfDados.itens.length} itens)`);
+    save(); abrirEditarSRM(srmId,'pedidos');
+  }catch(e){
+    if(statusEl) statusEl.textContent='❌ '+(e.message||e);
+  }
 }
 
 async function salvarCorrespondenciasNF(cotId, srmId){
