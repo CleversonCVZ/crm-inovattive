@@ -2579,7 +2579,7 @@ function _finPainelCP(statsEl, corpoEl, periodo){
   const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
   const totPendente    = lista.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
   const totCondicional = lista.filter(p=>p.status!=='pago' && !!p.condicao).reduce((s,p)=>s+p.valor,0);
-  const hoje           = new Date().toISOString().slice(0,10);
+  const hoje           = localDia(0);
   const totVencido     = lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
 
   statsEl.innerHTML=`
@@ -2638,7 +2638,7 @@ function _finPainelCP(statsEl, corpoEl, periodo){
 
 /** Sub-renderer: Contas a Receber */
 function _finPainelCR(statsEl, corpoEl, periodo){
-  const hoje  = new Date().toISOString().slice(0,10);
+  const hoje  = localDia(0);
   const lista = (db.recebimentos||[]).filter(r=>_finPainelDentroFiltro(r.dataVencimento, periodo));
 
   const totTotal    = lista.reduce((s,r)=>s+r.valor, 0);
@@ -2822,7 +2822,7 @@ function _finPainelVazio(){
 
 function renderFinanceiroPainel(){
   if(!document.getElementById('fin-tbody')) return;
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const filtroStatus = (document.getElementById('fin-filtro-status')||{}).value||'';
   const filtroTipo   = (document.getElementById('fin-filtro-tipo')||{}).value||'';
 
@@ -4139,7 +4139,7 @@ function termoBusca(){ return document.getElementById('busca').value.trim().toLo
 
 function statusAgenda(iso){
   if(!iso) return null;
-  const diaAg = iso.slice(0,10), diaHoje = new Date().toISOString().slice(0,10);
+  const diaAg = iso.slice(0,10), diaHoje = localDia(0);
   if(diaAg < diaHoje) return 'atrasado';
   if(diaAg === diaHoje) return 'hoje';
   return null;
@@ -4573,7 +4573,7 @@ async function salvarNovoSRM(){
     fornecedorId: fornId,
     faseId, centroCustoId: ccId, obraId,
     responsavel: resp, descricao: desc,
-    dataAbertura: new Date().toISOString().slice(0,10),
+    dataAbertura: localDia(0),
     encerrado: false, cancelado: false,
     pagamentoResponsavel: 'empresa',
     historico: []
@@ -4831,7 +4831,7 @@ function abaCotacoesSRMHTML(c){
           <input id="ncot-valor" type="text" inputmode="decimal" placeholder="0,00" class="input" oninput="mascaraMoeda(this)" style="margin-top:4px">
         </label>
         <label style="font-size:12px">Data de Recebimento
-          <input id="ncot-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}" style="margin-top:4px">
+          <input id="ncot-data" type="date" class="input" value="${localDia(0)}" style="margin-top:4px">
         </label>
       </div>
       <label style="font-size:12px;margin-top:8px;display:block">Descrição / Referência
@@ -5497,7 +5497,7 @@ function abaFinanceiroSRMHTML(c){
 
   // Cenário B: nós pagamos — layout espelho do financeiro CRM
   const cps  = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const totPago     = cps.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
   const totalCP     = cps.reduce((s,p)=>s+p.valor,0);
   const vencidas    = cps.filter(p=>p.status!=='pago' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
@@ -5612,7 +5612,7 @@ function abrirNovaCPSRM(srmId){
     .map(o=>`<option value="${o.id}" ${o.id===srm.obraId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===srm.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
 
   // pré-preenche valor com o restante, se positivo
   const valorSugerido = restante > 0.01 ? restante.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '';
@@ -5724,7 +5724,7 @@ async function salvarNovaCPSRM(srmId){
 async function pagarCPdoSRM(cpId, srmId){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamento.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo!==false);
   const contaOpts = contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('');
   abrirModal(`
@@ -8216,7 +8216,7 @@ function abrirLancamentoManual(contaId){
         </div>
         <div>
           <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data *</div>
-          <input id="lm-data" type="date" class="input" value="${new Date().toISOString().slice(0,10)}">
+          <input id="lm-data" type="date" class="input" value="${localDia(0)}">
         </div>
       </div>
       <div>
@@ -8573,7 +8573,7 @@ function renderFornecedores(){
 
   // Stats: total de compras (contas_pagar pagas) no mês e no ano
   if(stats){
-    const hoje     = new Date().toISOString().slice(0,10);
+    const hoje     = localDia(0);
     const mesAtual = hoje.slice(0,7);
     const anoAtual = hoje.slice(0,4);
     const pagas    = (db.contasPagar||[]).filter(p=>p.status==='pago' && p.fornecedorId);
@@ -9053,7 +9053,7 @@ async function excluirFornecedor(id){
 
 /** Atualiza status de contas vencidas no array local */
 function atualizarStatusVencidas(){
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   (db.contasPagar||[]).forEach(p=>{
     if(p.status==='pendente' && p.dataVencimento && p.dataVencimento < hoje)
       p.status = 'vencido';
@@ -9069,7 +9069,7 @@ function renderContasPagar(){
   const selCC  = document.getElementById('cp-filtro-cc');
   if(!tbody) return;
 
-  const hoje  = new Date().toISOString().slice(0,10);
+  const hoje  = localDia(0);
   const todas = db.contasPagar || [];
 
   // Popular select de CC (só uma vez)
@@ -9167,7 +9167,7 @@ function renderContasPagar(){
 function marcarContaPagaRapido(id){
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   abrirModal(`
     <h3>Confirmar Pagamento</h3>
     <div class="aba-corpo" style="display:grid;gap:14px">
@@ -9246,7 +9246,7 @@ function abrirNovaContaPagar(){
       <div id="ncp-venc-row">
         <label>Data de Vencimento *
           <input id="ncp-venc" type="date" class="input" style="margin-top:4px"
-            value="${new Date().toISOString().slice(0,10)}">
+            value="${localDia(0)}">
         </label>
       </div>
       <div id="ncp-cond-row" style="display:none">
@@ -9306,7 +9306,7 @@ async function salvarNovaContaPagar(){
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
 
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const status = 'pendente'; // status é sempre pendente ao criar; condicional é tipo, não status
   const id = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
   const row = {id, descricao, fornecedorId, valor, dataVencimento:dataVenc,
@@ -9465,7 +9465,7 @@ function abrirPagarConta(id){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamentos.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
   const contasOpts = contasAtivas.length
     ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
@@ -9872,7 +9872,7 @@ function abaObraResultadoAparente(c, ob){
         <div style="display:grid;grid-template-columns:140px 1fr;gap:8px;margin-bottom:8px">
           <div>
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Data</label>
-            <input id="ret-data" type="date" class="input-field" value="${new Date().toISOString().slice(0,10)}" style="width:100%">
+            <input id="ret-data" type="date" class="input-field" value="${localDia(0)}" style="width:100%">
           </div>
           <div>
             <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Valor</label>
@@ -9955,7 +9955,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
       <div class="form-row" style="flex-wrap:wrap;gap:8px">
         <div style="flex:0 0 140px">
           <label style="font-size:11px;color:var(--muted)">Data</label>
-          <input id="oc-data" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:100%;font-size:13px">
+          <input id="oc-data" type="date" value="${localDia(0)}" style="width:100%;font-size:13px">
         </div>
         <div style="flex:0 0 150px">
           <label style="font-size:11px;color:var(--muted)">Categoria</label>
@@ -10017,7 +10017,7 @@ async function adicionarOutroCusto(obraId, cardId){
   if(!ob.outrosCustos) ob.outrosCustos = [];
   ob.outrosCustos.push({
     id: crypto.randomUUID(),
-    data:       document.getElementById('oc-data')?.value   || new Date().toISOString().slice(0,10),
+    data:       document.getElementById('oc-data')?.value   || localDia(0),
     categoria:  document.getElementById('oc-cat')?.value    || 'outros',
     descricao:  desc,
     obs:        '',
@@ -10662,7 +10662,7 @@ function abaFinanceiroCartaoHTML(c){
   const totalPendente = recebimentos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
   const totalRecebido = recebimentos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
   const totalParcelado = recebimentos.reduce((s,r)=>s+r.valor,0);
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const vencidas = recebimentos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
 
   // valor de referência das propostas aprovadas (exclui clienteFornece)
@@ -10722,7 +10722,7 @@ function abaFinanceiroCartaoHTML(c){
 }
 
 function parcelaReceberItemHTML(r, cardId){
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
   const origemLabel = r.propostaId
     ? `Proposta ${(db.propostas.find(p=>p.id===r.propostaId)||{}).numero||'#'+r.propostaId}`
@@ -10987,7 +10987,7 @@ function marcarParcelaRecebida(id, cardId){
   if(!podeUsar(usuarioAtual,'fin-contas-receber-receber')){ alert('Sem permissão para registrar recebimentos.'); return; }
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
 
   // Monta opções de contas correntes ativas
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
@@ -11027,7 +11027,7 @@ function marcarParcelaRecebida(id, cardId){
 async function confirmarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
-  const dataRecebimento = document.getElementById('mr-data').value || new Date().toISOString().slice(0,10);
+  const dataRecebimento = document.getElementById('mr-data').value || localDia(0);
   const contaId = parseInt(document.getElementById('mr-conta').value) || null;
   if(!contaId){ alert('Selecione a conta corrente para creditar o recebimento.'); return; }
 
@@ -12237,7 +12237,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           <div style="width:120px"><label>Valor (R$)</label><input id="osc-valor" type="text" inputmode="decimal" placeholder="0,00"></div>
         </div>
         <div class="form-row">
-          <div><label>Data</label><input id="osc-data" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div><label>Data</label><input id="osc-data" type="date" value="${localDia(0)}"></div>
           <div style="flex:2">
             <label>Centro de Custo</label>
             <select id="osc-cc">
@@ -12366,7 +12366,7 @@ function abrirLancarCustoComoCP(custoId, osId, cardId){
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo)
     .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
     .map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('');
-  const hoje = new Date().toISOString().slice(0,10);
+  const hoje = localDia(0);
   abrirModal(`
     <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
       <h3>📋 Lançar como Conta a Pagar</h3>
@@ -15576,7 +15576,7 @@ function _obrasCardHTML(o){
   const card = db.cards.find(c=>c.obraId===o.id);
   const valorAprov = db.propostas.filter(p=>p.obraId===o.id&&p.status==='aprovada').reduce((s,p)=>s+(p.valor||0),0);
   const osAbertas = (db.ordensServico||[]).filter(os=>os.obraId===o.id&&!os.fechada);
-  const hojeS = new Date().toISOString().slice(0,10);
+  const hojeS = localDia(0);
   const osAtrasadas = osAbertas.filter(os=>os.dataAgend&&os.dataAgend.slice(0,10)<hojeS).length;
   const statusInfo = {
     ativa:    {label:'🟢 Ativa',      cor:'#1d8348'},
@@ -15729,7 +15729,7 @@ function _osPainelCardHTML(os){
   const ob  = db.obras.find(x=>x.id===os.obraId)?.nome||'';
   const f   = faseOS(os.faseId);
   const {label:tlabel, cor:tcor} = ostipoInfo(os.tipo);
-  const hojeS = new Date().toISOString().slice(0,10);
+  const hojeS = localDia(0);
   const pends = (os.pendencias||[]).filter(p=>!p.resolvida&&!p.transferida);
   const atrasada = !os.fechada && os.dataAgend && os.dataAgend.slice(0,10) < hojeS;
   const agHoje   = os.dataAgend && os.dataAgend.slice(0,10) === hojeS;
@@ -15792,7 +15792,7 @@ function _renderOSPainelFechadas(corpo, lista){
 
 function _renderOSPainelData(corpo, lista){
   corpo.innerHTML = '';
-  const hojeS = new Date().toISOString().slice(0,10);
+  const hojeS = localDia(0);
   // fim desta semana = próximo domingo (dow: 0=dom,1=seg,...,6=sab; ISO week starts Monday)
   const hoje = new Date();
   const diasAteDom = (7 - hoje.getDay()) % 7 || 7; // dias até o próximo domingo (0 = hoje é domingo → 7)
