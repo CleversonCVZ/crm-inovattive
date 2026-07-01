@@ -5293,71 +5293,99 @@ function abaFinanceiroSRMHTML(c){
 
 function abrirNovaCPSRM(srmId){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
-  const srm  = (db.cardsSRM||[]).find(x=>x.id===srmId); if(!srm) return;
-  const forn = (db.fornecedores||[]).find(f=>f.id===srm.fornecedorId);
-  const ccOpts  = (db.centrosCusto||[]).filter(c=>c.ativo).sort((a,b)=>a.nome.localeCompare(b.nome))
+  const srm = (db.cardsSRM||[]).find(x=>x.id===srmId); if(!srm) return;
+
+  // Bloco de referência: cotação selecionada vs CPs já lançadas
+  const cotSel   = (db.srmCotacoes||[]).find(x=>x.cardSrmId===srmId && x.status==='selecionada');
+  const valRef   = cotSel ? (cotSel.nfValorTotal != null ? cotSel.nfValorTotal : (cotSel.valor||0)) : 0;
+  const cpsExist = (db.contasPagar||[]).filter(p=>p.cardSrmId===srmId);
+  const totalCP  = cpsExist.reduce((s,p)=>s+p.valor,0);
+  const restante = valRef - totalCP;
+  const fornRef  = cotSel ? (db.fornecedores||[]).find(f=>f.id===(cotSel.fornecedorId||srm.fornecedorId)) : null;
+
+  const blocoRef = valRef > 0 ? `
+    <div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;margin-bottom:4px;font-size:12px">
+      <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">💰 Valor a Pagar</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;gap:8px">
+        <span style="color:#374151">${fornRef?escHtml(fornRef.nome):'Pedido'}${cotSel&&cotSel.nfNumero?' — NF '+cotSel.nfNumero:''}</span>
+        <span style="display:flex;gap:10px;white-space:nowrap">
+          <span style="color:var(--muted);font-size:11px">Total: ${fmtMoney(valRef)}</span>
+          ${totalCP>0?`<span style="color:var(--muted);font-size:11px">Lançado: ${fmtMoney(totalCP)}</span>`:''}
+          <span style="font-weight:700;color:${restante>0.01?'#b45309':restante<-0.01?'#c62828':'#2e7d32'}">${restante>0.01?fmtMoney(restante):restante<-0.01?'Excedeu '+fmtMoney(-restante):'✔ Quitado'}</span>
+        </span>
+      </div>
+    </div>` : '';
+
+  const ccAtualSlug = srm.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===srm.centroCustoId)||{}).slug : null;
+  const ccOpts   = (db.centrosCusto||[]).filter(c=>c.ativo).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(c=>`<option value="${c.id}" ${c.id===srm.centroCustoId?'selected':''}>${escHtml(c.nome)}</option>`).join('');
   const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(o=>`<option value="${o.id}" ${o.id===srm.obraId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===srm.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
-  const ccAtualSlug = srm.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===srm.centroCustoId)||{}).slug : null;
+  const hoje = new Date().toISOString().slice(0,10);
+
+  // pré-preenche valor com o restante, se positivo
+  const valorSugerido = restante > 0.01 ? restante.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '';
 
   abrirModal(`
     <h3>Nova Conta a Pagar — SRM #${srm.num}</h3>
-    <div class="aba-corpo" style="display:grid;gap:12px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Descrição *
-          <input id="nsrm-desc" type="text" placeholder="Ex: Material elétrico, Serviço…" class="input" style="margin-top:4px"
-            value="${srm.descricao?escHtml(srm.descricao):''}">
-        </label>
-        <label>Fornecedor
-          <select id="nsrm-forn" class="input" style="margin-top:4px">
-            <option value="">— nenhum —</option>
-            ${fornOpts}
-          </select>
-        </label>
+    ${blocoRef}
+    <div class="form-row">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Descrição *</label>
+        <input id="nsrm-desc" type="text" placeholder="Ex: 1ª parcela, Pagamento total…"
+          value="${srm.descricao?escHtml(srm.descricao):''}" style="margin-top:4px">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Valor (R$) *
-          <input id="nsrm-valor" type="text" inputmode="decimal" placeholder="0,00" class="input" oninput="mascaraMoeda(this)" style="margin-top:4px">
-        </label>
-        <label>Tipo *
-          <select id="nsrm-tipo" class="input" style="margin-top:4px" onchange="toggleCPTipo('nsrm')">
-            <option value="fixo">Data fixa</option>
-            <option value="condicional">Condicional</option>
-          </select>
-        </label>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Valor (R$) *</label>
+        <input id="nsrm-valor" type="text" inputmode="decimal" placeholder="0,00"
+          oninput="mascaraMoeda(this)" value="${valorSugerido}" style="margin-top:4px">
       </div>
-      <div id="nsrm-venc-row">
-        <label>Data de Vencimento *
-          <input id="nsrm-venc" type="date" class="input" style="margin-top:4px" value="${new Date().toISOString().slice(0,10)}">
-        </label>
+    </div>
+    <div class="form-row">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Fornecedor</label>
+        <select id="nsrm-forn" style="margin-top:4px">
+          <option value="">— nenhum —</option>
+          ${fornOpts}
+        </select>
       </div>
-      <div id="nsrm-cond-row" style="display:none">
-        <label>Condição para Pagamento *
-          <input id="nsrm-cond" type="text" class="input" style="margin-top:4px" placeholder="Ex: após entrega do material…">
-        </label>
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Tipo de Vencimento *</label>
+        <select id="nsrm-tipo" style="margin-top:4px" onchange="toggleCPTipo('nsrm')">
+          <option value="fixo">Data fixa</option>
+          <option value="condicional">Condicional / Evento</option>
+        </select>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Centro de Custo *
-          <select id="nsrm-cc" class="input" style="margin-top:4px" onchange="toggleObraCampoCp('nsrm-obra-row','nsrm-cc')">
-            <option value="">— selecione —</option>
-            ${ccOpts}
-          </select>
-        </label>
-        <div id="nsrm-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
-          <label>Obra
-            <select id="nsrm-obra" class="input" style="margin-top:4px">
-              <option value="">— selecione a obra —</option>
-              ${obraOpts}
-            </select>
-          </label>
-        </div>
+    </div>
+    <div id="nsrm-venc-row">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Data de Vencimento *</label>
+      <input id="nsrm-venc" type="date" value="${hoje}" style="margin-top:4px;width:100%;box-sizing:border-box">
+    </div>
+    <div id="nsrm-cond-row" style="display:none">
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Condição para Pagamento *</label>
+      <input id="nsrm-cond" type="text" placeholder="Ex: após entrega do material…" style="margin-top:4px;width:100%;box-sizing:border-box">
+    </div>
+    <div class="form-row">
+      <div>
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Centro de Custo *</label>
+        <select id="nsrm-cc" style="margin-top:4px" onchange="toggleObraCampoCp('nsrm-obra-row','nsrm-cc')">
+          <option value="">— selecione —</option>
+          ${ccOpts}
+        </select>
       </div>
-      <label>Observação
-        <input id="nsrm-obs" type="text" placeholder="Nota ou referência…" class="input" style="margin-top:4px">
-      </label>
+      <div id="nsrm-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Obra</label>
+        <select id="nsrm-obra" style="margin-top:4px">
+          <option value="">— selecione a obra —</option>
+          ${obraOpts}
+        </select>
+      </div>
+    </div>
+    <div>
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Observação</label>
+      <input id="nsrm-obs" type="text" placeholder="Nota ou referência…" style="margin-top:4px;width:100%;box-sizing:border-box">
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'financeiro')">Cancelar</button>
