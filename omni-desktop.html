@@ -15957,7 +15957,7 @@ function _renderEstoqueSaldo(el){
     const vMed=valorMedioProduto(p.id);
     const saldoCor=saldo<=0?'color:#c62828':saldo<5?'color:#f57c00':'';
     const ult=(db.estoqueMov||[]).filter(m=>m.produtoId===p.id).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm))[0];
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="editarProdutoEstoque(${p.id})">
       <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
       <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${p.ncm?`NCM ${p.ncm}`:''}</td>
       <td style="padding:6px 10px;text-align:center;font-size:12px">${p.unidade}</td>
@@ -15965,9 +15965,6 @@ function _renderEstoqueSaldo(el){
       <td style="padding:6px 10px;text-align:right;font-size:12px">${vMed!=null?fmtMoney(vMed):'—'}</td>
       <td style="padding:6px 10px;text-align:right;font-size:12px">${saldo>0&&vMed!=null?fmtMoney(saldo*vMed):'—'}</td>
       <td style="padding:6px 10px;font-size:11px;color:var(--muted)">${ult?fmtDia2(ult.data):'—'}</td>
-      <td style="padding:6px 10px;text-align:center">
-        <button class="icon-btn" title="Editar produto" onclick="editarProdutoEstoque(${p.id})">✏️</button>
-      </td>
     </tr>`;
   }).join('');
   el.innerHTML=`
@@ -15980,7 +15977,6 @@ function _renderEstoqueSaldo(el){
         <th style="width:110px;text-align:right">Custo médio</th>
         <th style="width:110px;text-align:right">Valor total</th>
         <th style="width:110px">Últ. mov.</th>
-        <th style="width:46px"></th>
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>`;
@@ -16039,15 +16035,12 @@ function _renderEstoqueCatalogo(el){
     return;
   }
   const linhas=todos.map(p=>`
-    <tr style="${p.ativo?'':'opacity:0.5'}">
+    <tr style="cursor:pointer;${p.ativo?'':'opacity:0.5'}" onclick="editarProdutoEstoque(${p.id})">
       <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
       <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${escHtml(p.nomeFiscal||'—')}</td>
       <td style="padding:6px 10px;font-size:12px;text-align:center">${p.ncm||'—'}</td>
       <td style="padding:6px 10px;text-align:center;font-size:12px">${p.unidade}</td>
       <td style="padding:6px 10px;text-align:center">${p.ativo?'<span style="color:#2e7d32">✔</span>':'<span style="color:#c62828">✕</span>'}</td>
-      <td style="padding:6px 10px;text-align:center">
-        <button class="icon-btn" title="Editar" onclick="editarProdutoEstoque(${p.id})">✏️</button>
-      </td>
     </tr>`).join('');
   el.innerHTML=`
     <table class="lista">
@@ -16057,7 +16050,6 @@ function _renderEstoqueCatalogo(el){
         <th style="width:120px;text-align:center">NCM</th>
         <th style="width:70px;text-align:center">Un.</th>
         <th style="width:60px;text-align:center">Ativo</th>
-        <th style="width:46px"></th>
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>`;
