@@ -2643,17 +2643,22 @@ function _finPainelCP(statsEl, corpoEl, periodo){
 /** Sub-renderer: Contas a Receber */
 function _finPainelCR(statsEl, corpoEl, periodo){
   const hoje  = localDia(0);
-  const lista = (db.recebimentos||[]).filter(r=>_finPainelDentroFiltro(r.dataVencimento, periodo));
+  // Pendentes: sempre visíveis (ainda não recebidos — sem data de evento para filtrar)
+  // Recebidos: filtra pela data em que o dinheiro entrou (dataRecebimento)
+  const pendentes = (db.recebimentos||[]).filter(r=>r.status!=='recebido');
+  const recebidos = (db.recebimentos||[]).filter(r=>r.status==='recebido' && _finPainelDentroFiltro(r.dataRecebimento, periodo));
+  const lista = [...pendentes, ...recebidos];
 
   const totTotal    = lista.reduce((s,r)=>s+r.valor, 0);
   const totRecebido = lista.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor, 0);
   const totPendente = lista.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor, 0);
   const totVencido  = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje).reduce((s,r)=>s+r.valor, 0);
 
+  const labelRecebido = periodo==='tudo' ? 'Total Recebido' : `Recebido no período`;
   statsEl.innerHTML=`
-    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
-    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totRecebido)||'R$ 0,00'}</div><div class="l">✅ Recebido</div></div>
-    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
+    <div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total (recebido + pendente)</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totRecebido)||'R$ 0,00'}</div><div class="l">✅ ${labelRecebido}</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente (todos)</div></div>
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
 
   if(!lista.length){ corpoEl.innerHTML=_finPainelVazio(); return; }
