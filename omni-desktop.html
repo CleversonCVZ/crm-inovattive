@@ -4660,7 +4660,7 @@ function abrirEditarSRM(id, aba='dados'){
   else if(aba==='pedidos') corpo=abaPedidoAprovadoSRMHTML(c);
   else if(aba==='financeiro') corpo=abaFinanceiroSRMHTML(c);
   abrirModal(`
-    <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nome):''}</h3>
+    <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nomeFantasia||forn.nome):''}</h3>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações${((db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length)?` (${(db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length})`:''}</button>
