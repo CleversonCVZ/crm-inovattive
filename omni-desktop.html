@@ -10845,28 +10845,11 @@ function abrirNovaParcelaReceber(cardId){
         <input id="nr-cond" placeholder="Ex: Após entrega do projeto, Após conclusão da obra…">
       </div>
     </div>
-    <div class="form-row">
-      <div>
-        <label>Status inicial</label>
-        <select id="nr-status">
-          <option value="pendente">Pendente</option>
-          <option value="recebido">Já recebido</option>
-        </select>
-      </div>
-      <div id="nr-data-receb-wrap" style="display:none">
-        <label>Data de recebimento</label>
-        <input id="nr-data-receb" type="date" value="${new Date().toISOString().slice(0,10)}">
-      </div>
-    </div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarNovaParcelaReceber(${cardId})">Salvar</button>
     </div>`,
-  ()=>{
-    document.getElementById('nr-status').addEventListener('change',function(){
-      document.getElementById('nr-data-receb-wrap').style.display = this.value==='recebido'?'':'none';
-    });
-  });
+  );
 }
 
 /** Mostra/oculta o campo de data ou condição conforme o tipo de vencimento no modal de nova parcela */
@@ -10886,7 +10869,6 @@ async function salvarNovaParcelaReceber(cardId){
   const valor = parseFloat((document.getElementById('nr-valor').value||'0').replace(/\./g,'').replace(',','.'));
   const tipo  = document.getElementById('nr-tipo').value;
   const origem= document.getElementById('nr-origem').value;
-  const status= document.getElementById('nr-status').value;
   if(!desc){ alert('Informe uma descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
   const btn = btnModalPrimario();
@@ -10900,8 +10882,8 @@ async function salvarNovaParcelaReceber(cardId){
     cardId, propostaId, osId, descricao:desc, valor, tipo,
     dataVencimento: tipo==='fixo' ? (document.getElementById('nr-data').value||null) : null,
     condicao: tipo==='condicional' ? (document.getElementById('nr-cond').value.trim()||null) : null,
-    status,
-    dataRecebimento: status==='recebido' ? (document.getElementById('nr-data-receb').value||new Date().toISOString().slice(0,10)) : null,
+    status: 'pendente',
+    dataRecebimento: null,
     criadoEm: new Date().toISOString()
   };
   db.recebimentos.push(novo);
