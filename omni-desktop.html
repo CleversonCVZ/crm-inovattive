@@ -2519,28 +2519,13 @@ function renderCCPainel(){ renderFinPainel(); }
 /** Sub-renderer: Centros de Custo */
 function _finPainelCC(statsEl, corpoEl, periodo){
   const mapa = {};
-  // Movimentações de saída
+  // Apenas movimentações de saída (fonte única — evita dupla contagem com CP e OS Custos)
   (db.movimentacoes||[]).forEach(m=>{
     if(m.tipo!=='saida') return;
     if(!_finPainelDentroFiltro(m.dataMovimento, periodo)) return;
     const id = m.centroCustoId||0;
     if(!mapa[id]) mapa[id]={total:0,nLanc:0};
     mapa[id].total+=m.valor||0; mapa[id].nLanc++;
-  });
-  // Contas a pagar pagas
-  (db.contasPagar||[]).forEach(p=>{
-    if(p.status!=='pago') return;
-    if(!_finPainelDentroFiltro(p.dataPagamento, periodo)) return;
-    const id = p.centroCustoId||0;
-    if(!mapa[id]) mapa[id]={total:0,nLanc:0};
-    mapa[id].total+=p.valor||0; mapa[id].nLanc++;
-  });
-  // OS Custos
-  (db.osCustos||[]).forEach(c=>{
-    if(!_finPainelDentroFiltro(c.data, periodo)) return;
-    const id = c.centroCustoId||0;
-    if(!mapa[id]) mapa[id]={total:0,nLanc:0};
-    mapa[id].total+=c.valor||0; mapa[id].nLanc++;
   });
 
   const CCs = db.centrosCusto||[];
