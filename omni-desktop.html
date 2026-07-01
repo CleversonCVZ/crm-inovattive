@@ -16085,24 +16085,26 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
       <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px">
       <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
     </div>
-    <div class="actions">
+    <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarProdutoEstoque()">Salvar</button>
+      <button class="btn primary" id="btn-salvar-produto" onclick="salvarProdutoEstoque()">Salvar</button>
     </div>`;
 }
 
 function abrirNovoProdutoEstoque(){
-  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true), 'cartao');
+  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true));
 }
 
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
-  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo), 'cartao');
+  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo));
 }
 
 async function salvarProdutoEstoque(){
   const nome=(document.getElementById('prod-est-nome').value||'').trim();
   if(!nome){ alert('Nome comercial é obrigatório.'); return; }
+  const btn=document.getElementById('btn-salvar-produto');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
   const idVal=document.getElementById('prod-est-id').value;
   const isEdit=!!idVal;
   const payload={
@@ -16116,12 +16118,12 @@ async function salvarProdutoEstoque(){
   if(isEdit){
     const id=parseInt(idVal);
     const {error}=await sb.from('estoque_produtos').update(payload).eq('id',id);
-    if(error){ alert('Erro ao salvar: '+error.message); return; }
+    if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     const p=(db.estoqueProdutos||[]).find(x=>x.id===id);
     if(p){ Object.assign(p,{nome:payload.nome,nomeFiscal:payload.nome_fiscal,ncm:payload.ncm,unidade:payload.unidade,descricao:payload.descricao||'',ativo:payload.ativo}); }
   } else {
     const {data,error}=await sb.from('estoque_produtos').insert(payload).select().single();
-    if(error){ alert('Erro ao salvar: '+error.message); return; }
+    if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,criadoEm:data.criado_em||''});
   }
