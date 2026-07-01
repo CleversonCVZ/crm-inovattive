@@ -679,7 +679,7 @@
       </select>
       <select id="finpainel-periodo" class="vista-sel" onchange="renderFinPainel()" style="margin-left:6px">
         <option value="mes">Este mês</option>
-        <option value="trim">Este trimestre</option>
+        <option value="trim">Últimos 3 meses</option>
         <option value="ano">Este ano</option>
         <option value="tudo">Todo o período</option>
       </select>
@@ -2478,8 +2478,12 @@ function _finPainelDentroFiltro(dataStr, periodo){
   const mes  = hoje.getMonth();
   if(periodo === 'ano')  return dAno === ano;
   if(periodo === 'trim'){
-    const tri = Math.floor(mes/3);
-    return dAno === ano && Math.floor(dMes/3) === tri;
+    // Janela móvel: mês atual + 2 anteriores (nunca vazia na virada de trimestre)
+    const inicio = new Date(ano, mes - 2, 1);
+    const iAno = inicio.getFullYear();
+    const iMes = inicio.getMonth(); // 0-indexed
+    const dVal = dAno * 12 + dMes;
+    return dVal >= iAno * 12 + iMes && dVal <= ano * 12 + mes;
   }
   return dAno === ano && dMes === mes;
 }
@@ -2731,8 +2735,9 @@ function _finPainelExtrato(statsEl, corpoEl, periodo, contaId){
   if(periodo==='mes'){
     const h=new Date(); dataInicio=`${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}-01`;
   } else if(periodo==='trim'){
-    const h=new Date(); const tri=Math.floor(h.getMonth()/3);
-    dataInicio=`${h.getFullYear()}-${String(tri*3+1).padStart(2,'0')}-01`;
+    const h=new Date();
+    const ini=new Date(h.getFullYear(), h.getMonth()-2, 1);
+    dataInicio=`${ini.getFullYear()}-${String(ini.getMonth()+1).padStart(2,'0')}-01`;
   } else if(periodo==='ano'){
     dataInicio=`${new Date().getFullYear()}-01-01`;
   }
