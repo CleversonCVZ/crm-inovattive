@@ -2466,18 +2466,22 @@ function podeUploadCat(catId){ const g=grupoDe(usuarioAtual); return g.admin || 
 /** Helper de filtro de período — usado pelos sub-renderers do painel financeiro */
 function _finPainelDentroFiltro(dataStr, periodo){
   if(!dataStr) return periodo === 'tudo';
-  const d = new Date(dataStr);
-  if(isNaN(d)) return false;
+  // Parseia diretamente da string para evitar conversão UTC→local (bug timezone)
+  const p = dataStr.slice(0,10).split('-');
+  if(p.length < 3) return false;
+  const dAno = parseInt(p[0]);
+  const dMes = parseInt(p[1]) - 1; // 0-indexed
+  if(isNaN(dAno) || isNaN(dMes)) return false;
   if(periodo === 'tudo') return true;
   const hoje = new Date();
   const ano  = hoje.getFullYear();
   const mes  = hoje.getMonth();
-  if(periodo === 'ano')  return d.getFullYear() === ano;
+  if(periodo === 'ano')  return dAno === ano;
   if(periodo === 'trim'){
     const tri = Math.floor(mes/3);
-    return d.getFullYear()===ano && Math.floor(d.getMonth()/3)===tri;
+    return dAno === ano && Math.floor(dMes/3) === tri;
   }
-  return d.getFullYear()===ano && d.getMonth()===mes;
+  return dAno === ano && dMes === mes;
 }
 
 /** Dispatcher principal do Painel Financeiro */
