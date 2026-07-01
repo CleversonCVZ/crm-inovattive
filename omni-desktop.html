@@ -4797,12 +4797,13 @@ function abaCotacoesSRMHTML(c){
                   ${cot.observacao ? `<span style="font-size:12px;color:var(--muted);font-style:italic">${escHtml(cot.observacao)}</span>` : ''}
                 </div>
                 ${arqsHTML ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">${arqsHTML}</div>` : ''}
+                ${!(cot.arquivos&&cot.arquivos.length) ? `
                 <div style="margin-top:6px">
                   <label style="font-size:12px;cursor:pointer;color:var(--primary)">
                     ＋ Adicionar PDF
                     <input type="file" accept=".pdf" style="display:none" onchange="uploadPDFCotacaoSRM(${cot.id},${c.id},this)">
                   </label>
-                </div>
+                </div>` : ''}
               </div>
               <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
                 ${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
