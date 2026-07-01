@@ -4728,8 +4728,7 @@ async function salvarEdicaoSRM(id){
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   saveLocal(); syncDadosSupabase();
-  if(btn){ btn.textContent='Salvo! ✓'; }
-  setTimeout(()=>{ fecharModal(); renderAll(); }, 700);
+  fecharModal(); renderAll();
 }
 
 async function registrarRapidoSRM(id){
@@ -5104,7 +5103,7 @@ function abaPedidoAprovadoSRMHTML(c){
 
     const botoesHTML=`
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
-        ${showMatchCol?`<button class="btn primary" onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
+        ${showMatchCol?`<button class="btn primary" data-btn-salvar-corresp onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
         <button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Em breve: módulo de estoque">🏭 Lançar no Estoque</button>
       </div>`;
 
@@ -5203,6 +5202,7 @@ async function salvarCorrespondenciasNF(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
   const srm=(db.cardsSRM||[]).find(x=>x.id===srmId);
   if(!cot||!srm||!cot.nfItens) return;
+  const btn=document.querySelector('[data-btn-salvar-corresp]'); btnSalvando(btn,'💾 Salvando…');
   /* reconstrói itensPropostas na mesma ordem do render */
   const itensPropostas=itensPropostasParaObra(srm.obraId);
   cot.nfItens.forEach((item,idx)=>{
@@ -5222,9 +5222,11 @@ async function salvarCorrespondenciasNF(cotId, srmId){
       }
     }
   });
-  await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
+  const {error}=await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+(error.message||error)); return; }
   save();
-  abrirEditarSRM(srmId,'pedidos');
+  if(btn){ btn.textContent='✓ Salvo!'; }
+  setTimeout(()=>abrirEditarSRM(srmId,'pedidos'), 700);
 }
 
 async function baixarPDFCotacaoSRM(path, nome){
