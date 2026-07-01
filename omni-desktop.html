@@ -966,6 +966,17 @@
     </div>
   </div>
 
+  <!-- ESTOQUE: PAINEL -->
+  <div class="view" id="view-estoque-painel">
+    <div class="bar">
+      <h2>Estoque — Painel</h2>
+    </div>
+    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
+      📦 <b>Painel de Estoque</b><br>
+      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Visão geral do estoque com alertas de reposição e indicadores de consumo.</small>
+    </div>
+  </div>
+
   <!-- ESTOQUE: ALMOXARIFADO -->
   <div class="view" id="view-estoque-almoxarifado">
     <div class="bar">
@@ -1437,6 +1448,7 @@ const TELAS = [
   // ── Compras
   {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
   // ── Estoque
+  {id:'estoque-painel',        nome:'Estoque — Painel',         menu:'Painel'},
   {id:'estoque-almoxarifado',  nome:'Estoque — Almoxarifado',   menu:'Almoxarifado'},
   {id:'estoque-movimentacoes', nome:'Estoque — Movimentações',  menu:'Movimentações'},
   {id:'estoque-catalogo',      nome:'Estoque — Catálogo',       menu:'Catálogo'},
@@ -1501,7 +1513,7 @@ const MODULOS = [
   {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','srm-fases','fin-fornecedores'],     sepAntes:true},
   {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel'], sepAntes:true},
-  {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-almoxarifado','estoque-movimentacoes','estoque-catalogo']}
+  {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel','estoque-almoxarifado','estoque-movimentacoes','estoque-catalogo']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
 const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Google','Midias Sociais','Fornecedor','Indicação Cliente','Amigo','Engenheiro'];
@@ -4081,6 +4093,7 @@ function ativarView(viewId){
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-fornecedores')    renderFornecedores();
+  if(viewId==='estoque-painel')        { /* em desenvolvimento */ }
   if(viewId==='estoque-almoxarifado')  renderEstoqueAlmoxarifado();
   if(viewId==='estoque-movimentacoes') renderEstoqueMovimentacoes();
   if(viewId==='estoque-catalogo')      renderEstoqueCatalogo();
