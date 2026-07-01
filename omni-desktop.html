@@ -4973,69 +4973,82 @@ async function parseDanfePDF(file){
   await _carregarPdfJs();
   const buf=await file.arrayBuffer();
   const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
-  let txt='';
+
+  // Coleta todos os itens de texto com posição (x,y)
+  const allItems=[];
   for(let p=1;p<=pdf.numPages;p++){
     const page=await pdf.getPage(p);
     const content=await page.getTextContent();
-    // Agrupa itens de texto pela coordenada Y (±4 unidades = mesma linha)
-    const rows=[];
     for(const item of content.items){
       if(!item.str.trim()) continue;
-      const y=Math.round(item.transform[5]);
-      const x=item.transform[4];
-      const row=rows.find(r=>Math.abs(r.y-y)<4);
-      if(row){ row.items.push({x,s:item.str}); }
-      else { rows.push({y,items:[{x,s:item.str}]}); }
-    }
-    rows.sort((a,b)=>b.y-a.y);
-    for(const row of rows){
-      row.items.sort((a,b)=>a.x-b.x);
-      txt+=row.items.map(i=>i.s).join(' ')+'\n';
+      allItems.push({x:Math.round(item.transform[4]), y:Math.round(item.transform[5]), s:item.str});
     }
   }
 
-  // ── Número da NF
-  const nNFm=txt.match(/N[ºo°\.]\s*([\d.]+)/i);
-  if(!nNFm) throw new Error('Número da NF não encontrado no PDF. Verifique se é um DANFE válido.');
+  // Agrupa por Y com tolerância de 8 unidades (maior robustez entre PDFs diferentes)
+  const rows=[];
+  for(const item of allItems){
+    const row=rows.find(r=>Math.abs(r.y-item.y)<=8);
+    if(row) row.items.push(item);
+    else rows.push({y:item.y, items:[item]});
+  }
+  rows.sort((a,b)=>b.y-a.y); // top → bottom
+
+  let txt='';
+  for(const row of rows){
+    row.items.sort((a,b)=>a.x-b.x);
+    txt+=row.items.map(i=>i.s).join(' ')+'\n';
+  }
+  console.log('[OMNI DANFE PDF] Texto extraído:\n'+txt);
+
+  // ── Número da NF (Nº / N° / NF-e nº)
+  const nNFm=txt.match(/N[º°o]\s*([\d.]+)/i)
+            ||txt.match(/NF[- ]?e?\s*n?[º°o]?\s*([\d.]+)/i)
+            ||txt.match(/N[Uu][Mm][Ee][Rr][Oo][^\d]*([\d.]+)/i);
+  if(!nNFm) throw new Error('Número da NF não encontrado. Abra o Console (F12) para ver o texto extraído.');
   const nNF=nNFm[1].replace(/\./g,'');
 
   // ── Data de emissão
-  const datem=txt.match(/DATA\s*DA\s*EMISS[ÃA]O[^\d]*([\d]{2}\/[\d]{2}\/[\d]{4})/i)
+  const datem=txt.match(/EMISS[ÃA]O[^\d]*([\d]{2}\/[\d]{2}\/[\d]{4})/i)
               ||txt.match(/([\d]{2}\/[\d]{2}\/[\d]{4})/);
   let nfData=null;
-  if(datem){ const[d,m,y]=datem[1].split('/'); nfData=`${y}-${m}-${d}`; }
+  if(datem){const[d,m,y]=datem[1].split('/');nfData=`${y}-${m}-${d}`;}
 
-  // ── CNPJ emitente (primeiro CNPJ do documento = emitente)
-  const cnpjm=txt.match(/(\d{2})[\.\s]?(\d{3})[\.\s]?(\d{3})[\/\s]?(\d{4})[\-\s]?(\d{2})/);
+  // ── CNPJ emitente (primeiro CNPJ encontrado no doc)
+  const cnpjm=txt.match(/(\d{2})\.?(\d{3})\.?(\d{3})\/?(\d{4})-?(\d{2})/);
   const emitCNPJ=cnpjm?cnpjm.slice(1).join(''):'';
 
-  // ── Nome do emitente (primeira linha com razão social)
-  const emitm=txt.match(/^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-Z0-9ÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s&,.()-]{8,}(?:LTDA|ME|EIRELI|S\.?A\.?|EPP|MICROEMPRESA))/im);
+  // ── Nome emitente
+  const emitm=txt.match(/^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇÀ][A-Z0-9ÁÉÍÓÚÂÊÎÔÛÃÕÇÀ\s&,.()-]{8,}(?:LTDA|ME|EIRELI|S\.?A\.?|EPP))/im);
   const emitNome=emitm?emitm[1].trim():'';
 
-  // ── Valor total da NF
-  const totalm=txt.match(/VALOR\s*TOTAL\s*DA\s*NOTA[^\d]*([\d.]+,\d{2})/i);
+  // ── Total NF
+  const totalm=txt.match(/TOTAL\s*DA\s*NOTA[^\d]*([\d.]+,\d{2})/i);
   const vNF=totalm?parseFloat(totalm[1].replace(/\./g,'').replace(',','.')):0;
 
-  // ── Itens: isola seção de produtos
+  // ── Itens: isola seção e transforma em linha única (regex cruza linhas facilmente)
   const si=txt.search(/DADOS DOS PRODUTOS/i);
   const secao=si>=0?txt.slice(si):txt;
-  const fi=secao.search(/CÁLCULO DO ISSQN|DADOS ADICIONAIS|RESERVADO AO FISCO/i);
+  const fi=secao.search(/C[ÁA]LCULO DO ISSQN|DADOS ADICIONAIS|RESERVADO AO FISCO/i);
   const itensTxt=fi>0?secao.slice(0,fi):secao;
+  // Converte \n em espaço para que regex funcione mesmo se colunas ficaram em linhas separadas
+  const itensSingle=itensTxt.replace(/\n/g,' ');
 
-  // Padrão: código 5 dígitos + descrição + NCM 8 dígitos + CSOSN + CFOP + UN + qtd + v.unit + v.total
-  const itemRe=/(\d{5})\s*(.+?)\s+(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
+  // Padrão: 5 dígitos (código) + descrição + NCM 8 dígitos + CSOSN + CFOP + UN + qtd + v.unit + v.total
+  const itemRe=/(\d{5})\s+(.+?)\s{1,4}(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
   const itens=[]; let im; let n=1;
-  while((im=itemRe.exec(itensTxt))!==null){
+  while((im=itemRe.exec(itensSingle))!==null){
     const[,cProd,xProdRaw,NCM,CFOP,uCom,qStr,vUStr,vTStr]=im;
     const xProd=xProdRaw.replace(/\s*Valor\s*Aproximado.*/i,'').trim();
-    const qCom=parseFloat(qStr.replace(',','.'));
-    const vUnCom=parseFloat(vUStr.replace(/\./g,'').replace(',','.'));
-    const vProd=parseFloat(vTStr.replace(/\./g,'').replace(',','.'));
-    itens.push({nItem:String(n++),cProd,xProd,NCM,CFOP,uCom,qCom,vUnCom,vProd,
-      propostaId:null,propostaItemDesc:null,semCorrespondencia:false});
+    itens.push({
+      nItem:String(n++),cProd,xProd,NCM,CFOP,uCom,
+      qCom:parseFloat(qStr.replace(',','.')),
+      vUnCom:parseFloat(vUStr.replace(/\./g,'').replace(',','.')),
+      vProd:parseFloat(vTStr.replace(/\./g,'').replace(',','.')),
+      propostaId:null,propostaItemDesc:null,semCorrespondencia:false
+    });
   }
-  if(!itens.length) throw new Error('Nenhum item encontrado no PDF. Verifique se é um DANFE NF-e ou tente importar o XML.');
+  if(!itens.length) throw new Error('Itens não encontrados no PDF. Abra o Console (F12) para ver o texto extraído e compartilhe com o suporte.');
   return{nNF,nfData,emitCNPJ,emitNome,vNF,itens};
 }
 
