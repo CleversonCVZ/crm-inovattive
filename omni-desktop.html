@@ -992,6 +992,22 @@
   <div class="view" id="view-estoque-movimentacoes">
     <div class="bar">
       <h2>Estoque — Movimentações</h2>
+      <div class="spacer"></div>
+      <select id="emov-filtro-produto" class="vista-sel" onchange="renderEstoqueMovimentacoes()">
+        <option value="">Todos os produtos</option>
+      </select>
+      <select id="emov-filtro-tipo" class="vista-sel" style="margin-left:6px" onchange="renderEstoqueMovimentacoes()">
+        <option value="">Entradas e saídas</option>
+        <option value="entrada">Entradas</option>
+        <option value="saida">Saídas</option>
+      </select>
+      <select id="emov-filtro-periodo" class="vista-sel" style="margin-left:6px" onchange="renderEstoqueMovimentacoes()">
+        <option value="">Todo o período</option>
+        <option value="7">Últimos 7 dias</option>
+        <option value="30">Últimos 30 dias</option>
+        <option value="90">Últimos 90 dias</option>
+        <option value="365">Último ano</option>
+      </select>
     </div>
     <div id="estoque-corpo-movimentos"></div>
   </div>
@@ -16065,8 +16081,26 @@ function _renderEstoqueSaldo(el){
 }
 
 function _renderEstoqueMovimentos(el){
-  const t=termoBusca();
+  // Popular combo de produtos (só uma vez se já tiver opções além do placeholder)
+  const selProd = document.getElementById('emov-filtro-produto');
+  if(selProd){
+    const valAtual = selProd.value;
+    selProd.innerHTML = '<option value="">Todos os produtos</option>' +
+      (db.estoqueProdutos||[]).slice().sort((a,b)=>(a.nome||'').localeCompare(b.nome||''))
+        .map(p=>`<option value="${p.id}">${escHtml(p.nome)}</option>`).join('');
+    selProd.value = valAtual;
+  }
+
+  const t          = termoBusca();
+  const filtroProd = parseInt((document.getElementById('emov-filtro-produto')||{}).value)||0;
+  const filtroTipo = (document.getElementById('emov-filtro-tipo')||{}).value||'';
+  const filtroDias = parseInt((document.getElementById('emov-filtro-periodo')||{}).value)||0;
+  const corte      = filtroDias ? new Date(Date.now() - filtroDias*864e5).toISOString().slice(0,10) : '';
+
   const movs=(db.estoqueMov||[]).filter(m=>{
+    if(filtroProd && m.produtoId !== filtroProd) return false;
+    if(filtroTipo && m.tipo !== filtroTipo) return false;
+    if(corte && (m.data||'') < corte) return false;
     if(!t) return true;
     const prod=(db.estoqueProdutos||[]).find(p=>p.id===m.produtoId);
     return (prod?.nome||'').toLowerCase().includes(t)
