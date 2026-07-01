@@ -4539,6 +4539,8 @@ function abrirNovoSRM(){
     <h3>Novo SRM</h3>
     <label>Fornecedor</label>
     <select id="srm-m-forn">${optsFornecedores(null)}</select>
+    <button type="button" class="link-btn" style="margin-top:2px"
+      onclick="abrirNovoFornecedor({callbackId:'srm-m-forn'})">＋ Cadastrar novo fornecedor</button>
     <label>Fase</label>
     <select id="srm-m-fase">${optsFasesSRM(primeiraFase?.id)}</select>
     <label>Responsável</label>
