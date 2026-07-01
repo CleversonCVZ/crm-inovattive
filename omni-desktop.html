@@ -5492,9 +5492,15 @@ async function confirmarPagamentoSRM(cpId, srmId){
 
 async function excluirCPdoSRM(cpId, srmId){
   if(!confirm('Excluir esta conta a pagar?')) return;
+  // remove movimentações vinculadas antes de excluir a CP
+  const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cpId));
+  for(const m of movsVinculadas){
+    await excluirDoSupabase('movimentacoes_financeiras', m.id);
+  }
+  db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cpId)));
   db.contasPagar = (db.contasPagar||[]).filter(x=>x.id!==cpId);
   await excluirDoSupabase('contas_pagar', cpId);
-  save(); renderContasPagar();
+  save(); renderContasPagar(); renderFinPainel();
   abrirEditarSRM(srmId,'financeiro');
 }
 
@@ -9157,14 +9163,19 @@ async function excluirContaPagar(id){
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   if(p.status==='pago'){
-    if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nAtenção: a movimentação de saída na conta corrente NÃO será removida automaticamente.`)) return;
+    if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nA movimentação na conta corrente também será removida.`)) return;
   } else {
     if(!confirm(`Excluir "${p.descricao}"?`)) return;
   }
+  // remove movimentações vinculadas
+  const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(id));
+  for(const m of movsVinculadas){
+    await excluirDoSupabase('movimentacoes_financeiras', m.id);
+  }
+  db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(id)));
   await excluirDoSupabase('contas_pagar', id);
   db.contasPagar = db.contasPagar.filter(x=>x.id!==id);
-  save();
-  renderContasPagar();
+  save(); renderContasPagar(); renderFinPainel();
 }
 
 // ──────────────────────────────────────────────────────────────
