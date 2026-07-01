@@ -5006,7 +5006,7 @@ async function parseDanfePDF(file){
             ||txt.match(/NF[- ]?e?\s*n?[º°o]?\s*([\d.]+)/i)
             ||txt.match(/N[Uu][Mm][Ee][Rr][Oo][^\d]*([\d.]+)/i);
   if(!nNFm) throw new Error('Número da NF não encontrado. Abra o Console (F12) para ver o texto extraído.');
-  const nNF=nNFm[1].replace(/\./g,'');
+  const nNF=nNFm[1].replace(/\./g,'').replace(/^0+/,'');
 
   // ── Data de emissão
   const datem=txt.match(/EMISS[ÃA]O[^\d]*([\d]{2}\/[\d]{2}\/[\d]{4})/i)
@@ -5035,7 +5035,7 @@ async function parseDanfePDF(file){
   const itensSingle=itensTxt.replace(/\n/g,' ');
 
   // Padrão: 5 dígitos (código) + descrição + NCM 8 dígitos + CSOSN + CFOP + UN + qtd + v.unit + v.total
-  const itemRe=/(\d{5})\s*(.+?)\s{1,4}(\d{8})\d*\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
+  const itemRe=/(\d{5})\s*(.+?)\s+(\d{8})(?:\s+\d+|\d*)\s+(\d{4})\s+(\S+)\s+([\d]+,[\d]+)\s+([\d.]+,[\d]+)\s+([\d.]+,[\d]+)/g;
   const itens=[]; let im; let n=1;
   while((im=itemRe.exec(itensSingle))!==null){
     const[,cProd,xProdRaw,NCM,CFOP,uCom,qStr,vUStr,vTStr]=im;
