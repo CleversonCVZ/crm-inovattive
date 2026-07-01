@@ -4767,6 +4767,13 @@ function abaCotacoesSRMHTML(c){
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===c.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
   const totalMenor = cots.filter(x=>x.valor!=null).reduce((m,x)=>m===null?x.valor:Math.min(m,x.valor), null);
+  /* lock: NF já extraída na aba Pedido Aprovado */
+  const cotSel = cots.find(x=>x.status==='selecionada');
+  const nfExtraida = !!(cotSel && cotSel.nfItens && cotSel.nfItens.length);
+  const lockAviso = nfExtraida ? `
+    <div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#e65100;display:flex;align-items:center;gap:8px">
+      🔒 <span>A seleção está bloqueada — a NF já foi extraída na aba <b>Pedido Aprovado</b>. Remova o XML/dados da NF para alterar a cotação selecionada.</span>
+    </div>` : '';
 
   const listaHTML = cots.length===0
     ? '<div class="empty" style="padding:20px 0">Nenhuma cotação registrada ainda.</div>'
@@ -4806,9 +4813,11 @@ function abaCotacoesSRMHTML(c){
                 </div>` : ''}
               </div>
               <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
-                ${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
-                ${cot.status==='recebida' ? `<button class="btn sm" style="background:#c62828;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'rejeitada')">✖ Rejeitar</button>` : ''}
-                ${cot.status!=='recebida' ? `<button class="btn sm neutral" onclick="statusCotacaoSRM(${cot.id},${c.id},'recebida')">↩ Desfazer</button>` : ''}
+                ${nfExtraida
+                  ? `<span style="font-size:11px;color:#e65100">🔒</span>`
+                  : `${cot.status!=='selecionada' ? `<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'selecionada')">✔ Selecionar</button>` : ''}
+                     ${cot.status==='recebida' ? `<button class="btn sm" style="background:#c62828;color:#fff;white-space:nowrap" onclick="statusCotacaoSRM(${cot.id},${c.id},'rejeitada')">✖ Rejeitar</button>` : ''}
+                     ${cot.status!=='recebida' ? `<button class="btn sm neutral" onclick="statusCotacaoSRM(${cot.id},${c.id},'recebida')">↩ Desfazer</button>` : ''}`}
                 <button class="icon-btn del" onclick="excluirCotacaoSRM(${cot.id},${c.id})" title="Excluir">🗑</button>
               </div>
             </div>
@@ -4816,6 +4825,7 @@ function abaCotacoesSRMHTML(c){
       }).join('');
 
   return `
+    ${lockAviso}
     ${cots.length>1 ? `
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
       <div class="stat-pill" style="background:#e3f2fd;color:#1565c0">${cots.length} cotação${cots.length>1?'ões':''} recebida${cots.length>1?'s':''}</div>
@@ -4924,8 +4934,24 @@ async function uploadPDFCotacaoSRM(cotId, srmId, input){
 
 async function statusCotacaoSRM(cotId, srmId, novoStatus){
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const todas = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===srmId);
   cot.status = novoStatus;
   await sb.from('srm_cotacoes').update({status:novoStatus}).eq('id',cotId);
+  if(novoStatus==='selecionada'){
+    /* auto-rejeitar todas as outras */
+    const outras = todas.filter(x=>x.id!==cotId && x.status!=='rejeitada');
+    for(const o of outras){
+      o.status='rejeitada';
+      await sb.from('srm_cotacoes').update({status:'rejeitada'}).eq('id',o.id);
+    }
+  } else if(novoStatus==='recebida'){
+    /* desfazer seleção → liberar todas as rejeitadas */
+    const rejeitadas = todas.filter(x=>x.id!==cotId && x.status==='rejeitada');
+    for(const o of rejeitadas){
+      o.status='recebida';
+      await sb.from('srm_cotacoes').update({status:'recebida'}).eq('id',o.id);
+    }
+  }
   save();
   abrirEditarSRM(srmId,'propostas');
 }
