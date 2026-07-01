@@ -4728,7 +4728,8 @@ async function salvarEdicaoSRM(id){
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   saveLocal(); syncDadosSupabase();
-  fecharModal(); renderAll();
+  if(btn){ btn.textContent='Salvo! ✓'; }
+  setTimeout(()=>{ fecharModal(); renderAll(); }, 700);
 }
 
 async function registrarRapidoSRM(id){
