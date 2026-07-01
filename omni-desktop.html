@@ -11886,10 +11886,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         <div><label>Término real</label><input id="exec-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
       </div>
       <label style="margin-top:12px">Instruções para os técnicos</label>
-      <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis}>${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>
-      ${!os.fechada?`<div style="margin-top:12px;text-align:right">
-        <button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>
-      </div>`:''}`;
+      <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis}>${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>`;
   }
 
   /* ── ABA EQUIPE ── */
@@ -12066,6 +12063,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         ${os.fechada
           ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
+        ${!os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
@@ -12150,9 +12148,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         <label>Descrição do Chamado</label>
         <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
       </div>
-      ${!os.fechada?`<div class="actions" style="justify-content:flex-end;padding-top:10px;margin-top:4px">
-        <button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>
-      </div>`:''}`;
+      `;
   }
   else if(aba === 'itens'){
     const itens = os.produtos||[];
@@ -12405,6 +12401,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         ${os.fechada
           ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>`
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
+        ${!os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
