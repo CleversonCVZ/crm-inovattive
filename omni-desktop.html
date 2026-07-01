@@ -16080,12 +16080,12 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
 }
 
 function abrirNovoProdutoEstoque(){
-  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true));
+  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true), 'cartao');
 }
 
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
-  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo));
+  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo), 'cartao');
 }
 
 async function salvarProdutoEstoque(){
