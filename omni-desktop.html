@@ -1154,11 +1154,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.9.0',
+    data: '02/07/2026',
+    itens: [
+      'Correção crítica: sincronização de Itens da Proposta apagava e regravava a tabela inteira a cada save() do app, causando perda de dados — agora grava só a proposta alterada, nos 3 pontos reais de mudança',
+      'Recuperação de dados: itens de 18 das 19 propostas aprovadas foram restaurados a partir dos Excels de aprovação originais (Efetivo_Contratado), com conferência automática do valor total contra o valor da proposta',
+      'Segurança: mesma proteção aplicada preventivamente na sincronização do Histórico dos cartões (card_historico)',
+    ]
+  },
   {
     versao: '1.8.0',
     data: '02/07/2026',
@@ -2409,7 +2418,6 @@ function syncDadosSupabase(){
       fase_id:Number(p.faseId)||null, status:p.status, aditivo:!!p.aditivo,
       data_aprovacao:toISO(p.dataAprovacao), fase_anterior:Number(p.faseAnterior)||null
     }));
-    await sincronizarItensPropostas();
     await sincronizarArquivosPropostas();
     await sincronizarTabela('card_contatos', db.cardContatos||[], c=>({
       id:c.id, card_id:Number(c.cardId)||null, nome:c.nome, funcao:c.funcao||null, tel:c.tel||null
@@ -2535,16 +2543,14 @@ function syncDadosSupabase(){
 async function sincronizarHistoricos(){
   try{
     const cardIds = db.cards.map(c=>c.id);
-    if(cardIds.length){
-      const {error:errOrf} = await sb.from('card_historico').delete().not('card_id','in', `(${cardIds.join(',')})`);
-      if(errOrf) console.error('Erro ao limpar card_historico de cards excluídos:', errOrf);
-      const {error:errDel} = await sb.from('card_historico').delete().in('card_id', cardIds);
-      if(errDel){ console.error('Erro ao limpar card_historico:', errDel); return; }
-    } else {
-      const {error:errAll} = await sb.from('card_historico').delete().neq('id', -1);
-      if(errAll) console.error('Erro ao limpar card_historico:', errAll);
-      return;
-    }
+    // Guarda de segurança (2026-07-02): NUNCA apagar tudo às cegas se db.cards estiver
+    // vazio/incompleto em memória (ex.: corrida de carregamento) — foi exatamente esse
+    // padrão em sincronizarItensPropostas() que zerou proposta_itens de 19 propostas.
+    if(!cardIds.length){ console.warn('sincronizarHistoricos: db.cards vazio — sync abortado por segurança.'); return; }
+    const {error:errOrf} = await sb.from('card_historico').delete().not('card_id','in', `(${cardIds.join(',')})`);
+    if(errOrf) console.error('Erro ao limpar card_historico de cards excluídos:', errOrf);
+    const {error:errDel} = await sb.from('card_historico').delete().in('card_id', cardIds);
+    if(errDel){ console.error('Erro ao limpar card_historico:', errDel); return; }
     const rows=[];
     db.cards.forEach(c=>(c.historico||[]).forEach(h=>rows.push({card_id:c.id, data:h.data||null, texto:h.texto})));
     if(rows.length){
@@ -2567,32 +2573,33 @@ async function sincronizarHistoricoCard(cardId){
   }
 }
 
-/* Substitui no Supabase os itens (proposta_itens) de cada proposta pelo array
-   atual (db.propostas[].itens) e remove os itens de propostas excluídas. */
-async function sincronizarItensPropostas(){
+/* Sincroniza os itens (proposta_itens) de UMA proposta específica — versão granular,
+   chamada só no momento exato em que os itens de uma proposta mudam de verdade
+   (aprovação por Excel / reversão de aprovação). NUNCA rodar isso num ciclo genérico
+   de save() disparado por qualquer ação da tela: proposta_itens não tem coluna id
+   estável do lado do app, então a única forma seria "apaga tudo e reinsere a partir
+   da memória" — e se a memória de QUALQUER proposta estivesse incompleta no momento
+   do sync (ex.: carregamento parcial, corrida entre requests), isso apagava dados
+   reais silenciosamente. Foi exatamente o que aconteceu em 2026-07-02: a função global
+   antiga (sincronizarItensPropostas, removida) rodava a cada save() do app inteiro e
+   zerou proposta_itens de todas as 19 propostas aprovadas. A FK proposta_itens→propostas
+   já é ON DELETE CASCADE, então não precisa de limpeza manual de órfãos aqui. */
+async function sincronizarItensProposta(propostaId){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  if(!p) return;
   try{
-    const propIds = db.propostas.map(p=>p.id);
-    if(propIds.length){
-      const {error:errOrf} = await sb.from('proposta_itens').delete().not('proposta_id','in', `(${propIds.join(',')})`);
-      if(errOrf) console.error('Erro ao limpar proposta_itens de propostas excluídas:', errOrf);
-      const {error:errDel} = await sb.from('proposta_itens').delete().in('proposta_id', propIds);
-      if(errDel){ console.error('Erro ao limpar proposta_itens:', errDel); return; }
-    } else {
-      const {error:errAll} = await sb.from('proposta_itens').delete().neq('id', -1);
-      if(errAll) console.error('Erro ao limpar proposta_itens:', errAll);
-      return;
-    }
-    const rows=[];
-    db.propostas.forEach(p=>(p.itens||[]).forEach(it=>rows.push({
-      proposta_id:p.id, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
+    const {error:errDel} = await sb.from('proposta_itens').delete().eq('proposta_id', propostaId);
+    if(errDel){ console.error('Erro ao limpar proposta_itens:', errDel); return; }
+    const rows = (p.itens||[]).map(it=>({
+      proposta_id:propostaId, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
       unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||'',
       cliente_fornece: !!it.clienteFornece
-    })));
+    }));
     if(rows.length){
       const {error:errIns} = await sb.from('proposta_itens').insert(rows);
       if(errIns) console.error('Erro ao gravar proposta_itens:', errIns);
     }
-  }catch(e){ console.error('Falha ao sincronizar proposta_itens:', e); }
+  }catch(e){ console.error('Falha ao sincronizar proposta_itens da proposta '+propostaId+':', e); }
 }
 
 /* Sincroniza os metadados dos arquivos das propostas (proposta_arquivos).
@@ -3760,7 +3767,8 @@ function toggleClienteFornece(propostaId, idx, checked){
   const p = db.propostas.find(x=>x.id===propostaId);
   if(!p || !p.itens || !p.itens[idx]) return;
   p.itens[idx].clienteFornece = checked;
-  save();
+  saveLocal();
+  sincronizarItensProposta(propostaId);
 }
 
 function itensContratadosHTML(p){
@@ -14430,7 +14438,7 @@ async function aprovarComExcel(cardId){
         return;
       }
       _itensAnteriorAprovacao = p.itens !== undefined ? JSON.parse(JSON.stringify(p.itens||[])) : null;
-      if(itens) p.itens=itens;
+      if(itens){ p.itens=itens; await sincronizarItensProposta(p.id); }
     }
     if(stAE) stAE.textContent = `Enviando ${i+1} de ${files.length}: ${f.name}`;
     const progAE = document.getElementById('progress-aprovar-excel');
@@ -14497,7 +14505,10 @@ async function aprovarComExcel(cardId){
 
 function cancelarAprovacaoFases(cardId, propId){
   const p = db.propostas.find(x=>x.id===propId);
-  if(p && _itensAnteriorAprovacao !== null) p.itens = _itensAnteriorAprovacao;
+  if(p && _itensAnteriorAprovacao !== null){
+    p.itens = _itensAnteriorAprovacao;
+    sincronizarItensProposta(propId);
+  }
   _itensAnteriorAprovacao = null;
   fecharModal();
   abrirEditarCartao(cardId,'aprovada');
