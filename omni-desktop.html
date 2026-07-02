@@ -2736,14 +2736,21 @@ function _finPainelCC(statsEl, corpoEl, periodo){
 /** Sub-renderer: Contas a Pagar */
 function _finPainelCP(statsEl, corpoEl, periodo){
   const t=termoBusca();
-  const lista = (db.contasPagar||[]).filter(p=>{
-    if(!_finPainelDentroFiltro(p.dataVencimento, periodo)) return false;
+  const _cpMatch=p=>{
     if(!t) return true;
     const forn=(db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
     return (p.descricao||'').toLowerCase().includes(t)
       || (forn?.nome||'').toLowerCase().includes(t)
       || (forn?.nomeFantasia||'').toLowerCase().includes(t);
-  });
+  };
+  // Pendentes/vencidas: sempre visíveis (ainda não pagas — inclusive as condicionais,
+  // que não têm data de vencimento definida, então nunca bateriam num filtro de período).
+  // Pagas: filtra pela data em que o pagamento realmente saiu (dataPagamento).
+  // Mesmo padrão já usado em Contas a Receber (pendentes sempre visíveis, recebidos
+  // filtrados por dataRecebimento) — ver _finPainelCR.
+  const pendentes = (db.contasPagar||[]).filter(p=>p.status!=='pago' && _cpMatch(p));
+  const pagas     = (db.contasPagar||[]).filter(p=>p.status==='pago' && _finPainelDentroFiltro(p.dataPagamento, periodo) && _cpMatch(p));
+  const lista = [...pendentes, ...pagas];
 
   const totTotal       = lista.reduce((s,p)=>s+p.valor,0);
   const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
@@ -2752,10 +2759,11 @@ function _finPainelCP(statsEl, corpoEl, periodo){
   const hoje           = localDia(0);
   const totVencido     = lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
 
+  const labelPago = periodo==='tudo' ? 'Total Pago' : 'Pago no período';
   statsEl.innerHTML=`
-    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total no Período</div></div>
-    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ Pago</div></div>
-    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente</div></div>
+    <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total (pago + pendente)</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ ${labelPago}</div></div>
+    <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente (todos)</div></div>
     ${totCondicional?`<div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totCondicional)}</div><div class="l">⏳ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
 
