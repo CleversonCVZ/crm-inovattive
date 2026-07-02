@@ -1154,11 +1154,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.10.0',
+    data: '02/07/2026',
+    itens: [
+      'Auditoria de segurança: revisados todos os pontos de sincronização com o Supabase em busca do mesmo padrão que causou a perda de dados em proposta_itens',
+      'Correção: sincronização do Histórico dos cartões (card_historico) também apagava e regravava os registros de TODOS os cards a cada save() do app — agora grava só o card alterado, direto nos 3 pontos reais de mudança (registro rápido, editar e excluir histórico)',
+      'Recuperados os itens da proposta #10 (cliente Dr. Zaqueu Connor), completando a restauração das 19 propostas aprovadas',
+    ]
+  },
   {
     versao: '1.9.0',
     data: '02/07/2026',
@@ -2410,7 +2419,11 @@ function syncDadosSupabase(){
       fase_id:Number(c.faseId)||null, responsavel:c.responsavel||'', agenda:c.agenda||null,
       valor:c.valor||0, perdido:!!c.perdido, concluido:!!c.concluido
     }));
-    await sincronizarHistoricos();
+    // NOTA (2026-07-02): card_historico é sincronizado granularmente por
+    // sincronizarHistoricoCard(cardId), chamada logo após cada ação que
+    // realmente muda o histórico de um card. NÃO reintroduzir aqui um sync
+    // "apaga tudo e reinsere da memória" — foi esse padrão que zerou
+    // proposta_itens de 19 propostas (ver sincronizarItensProposta).
     await sincronizarTabela('propostas', db.propostas, p=>({
       id:p.id, numero:p.numero,
       card_id:Number(p.cardId)||null, cliente_id:Number(p.clienteId)||null, obra_id:Number(p.obraId)||null,
@@ -2538,30 +2551,14 @@ function syncDadosSupabase(){
   }, 800);
 }
 
-/* Substitui no Supabase o histórico de contatos de cada card pelo array
-   atual (db.cards[].historico) e remove o histórico de cards excluídos. */
-async function sincronizarHistoricos(){
-  try{
-    const cardIds = db.cards.map(c=>c.id);
-    // Guarda de segurança (2026-07-02): NUNCA apagar tudo às cegas se db.cards estiver
-    // vazio/incompleto em memória (ex.: corrida de carregamento) — foi exatamente esse
-    // padrão em sincronizarItensPropostas() que zerou proposta_itens de 19 propostas.
-    if(!cardIds.length){ console.warn('sincronizarHistoricos: db.cards vazio — sync abortado por segurança.'); return; }
-    const {error:errOrf} = await sb.from('card_historico').delete().not('card_id','in', `(${cardIds.join(',')})`);
-    if(errOrf) console.error('Erro ao limpar card_historico de cards excluídos:', errOrf);
-    const {error:errDel} = await sb.from('card_historico').delete().in('card_id', cardIds);
-    if(errDel){ console.error('Erro ao limpar card_historico:', errDel); return; }
-    const rows=[];
-    db.cards.forEach(c=>(c.historico||[]).forEach(h=>rows.push({card_id:c.id, data:h.data||null, texto:h.texto})));
-    if(rows.length){
-      const {error:errIns} = await sb.from('card_historico').insert(rows);
-      if(errIns) console.error('Erro ao gravar card_historico:', errIns);
-    }
-  }catch(e){ console.error('Falha ao sincronizar card_historico:', e); }
-}
-
-/* Sincroniza o histórico de UM card específico — versão granular de
-   sincronizarHistoricos() usada pelas funções de save com await real. */
+/* Sincroniza o histórico de UM card específico — chamada logo após qualquer
+   ação que realmente muda c.historico (registro rápido, editar, excluir).
+   Removida em 2026-07-02 a antiga sincronizarHistoricos() (versão "apaga tudo
+   e reinsere da memória de TODOS os cards", disparada a cada save() genérico
+   do app inteiro) — mesma classe de bug que zerou proposta_itens de 19
+   propostas (ver sincronizarItensProposta). card_historico não tem coluna id
+   estável do lado do app, então delete+insert só é seguro quando escopado a
+   UM card por vez, no momento exato da mudança. */
 async function sincronizarHistoricoCard(cardId){
   const c = db.cards.find(x=>x.id===cardId);
   const {error:errDel} = await sb.from('card_historico').delete().eq('card_id', cardId);
@@ -6572,14 +6569,14 @@ function editarHistCard(cardId, idx){
   const novo = prompt('Editar registro do histórico:', h.texto);
   if(novo === null || !novo.trim()) return;
   h.texto = novo.trim();
-  save(); abrirEditarCartao(cardId, 'dados');
+  saveLocal(); sincronizarHistoricoCard(cardId); abrirEditarCartao(cardId, 'dados');
 }
 
 function excluirHistCard(cardId, idx){
   const c = db.cards.find(x=>x.id===cardId);
   if(!confirm('Excluir este registro do histórico? Esta ação não pode ser desfeita.')) return;
   c.historico.splice(idx, 1);
-  save(); abrirEditarCartao(cardId, 'dados');
+  saveLocal(); sincronizarHistoricoCard(cardId); abrirEditarCartao(cardId, 'dados');
 }
 
 function editarHistOS(osId, idx, cardId){
@@ -6712,7 +6709,7 @@ function registrarRapido(id){
   if(!ta.value.trim()){ alert('Escreva o contato antes de registrar.'); ta.focus(); return; }
   registrarHist(c, ta.value);
   registrarLog('criar','historico',c.id,`Registro rápido adicionado ao CRM #${c.num}`);
-  save();
+  saveLocal(); sincronizarHistoricoCard(c.id);
   ta.value='';
   document.getElementById('hist-wrap').innerHTML = histHTML(c);
   renderKanban(); // atualiza o "último contato" no painel ao fundo
