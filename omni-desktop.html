@@ -4696,7 +4696,7 @@ function optsFornecedores(selId){
       .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
 }
 function optsFasesSRM(selId){
-  return fasesSRMOrdenadas().filter(f=>!f.tipo)
+  return fasesSRMOrdenadas()
     .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
 }
 function srmHistHTML(c){
