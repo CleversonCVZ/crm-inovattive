@@ -1180,11 +1180,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.26.0';
+const APP_VERSION = '1.27.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.27.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — fecha gap dos modais de detalhe de O.S.: quem só tem "Visualizar" na aba O.S. do cartão CRM agora realmente não consegue mais editar campos, adicionar histórico/pendências/produtos/fotos/técnicos, nem Fechar ou Reabrir a O.S. (nos 3 tipos: Projeto, Execução e Avulsa). Antes esses botões apareciam sempre, sem checar a permissão da aba.',
+    ]
+  },
   {
     versao: '1.26.0',
     data: '02/07/2026',
@@ -6848,6 +6855,7 @@ function excluirHistCard(cardId, idx){
 }
 
 function editarHistOS(osId, idx, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os') || !podeUsar(usuarioAtual,'hist-os-editar')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
   const h = os.historico[idx];
   const novo = prompt('Editar registro do histórico:', h.texto);
@@ -6857,6 +6865,7 @@ function editarHistOS(osId, idx, cardId){
 }
 
 function excluirHistOS(osId, idx, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os') || !podeUsar(usuarioAtual,'hist-os-editar')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!confirm('Excluir este registro do histórico?')) return;
   os.historico.splice(idx, 1);
@@ -11984,6 +11993,7 @@ function abrirVerOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(os.tipo === 'execucao'){ abrirVerOSExecucao(osId, cardId); return; }
   if(os.tipo === 'avulsa'){   abrirVerOSAvulsa(osId, cardId);   return; }
+  const podeEditar = podeEditarRecurso(usuarioAtual,'aba-os');
   const c  = db.cards.find(x=>x.id===cardId);
   const obra = db.obras.find(x=>x.id===os.obraId);
   const propAprov = propostaPrincipal(cardId);
@@ -12004,7 +12014,7 @@ function abrirVerOS(osId, cardId){
         ? `<span class="os-arq-nome" title="Clique para visualizar" style="cursor:pointer;color:var(--blue-dark);text-decoration:underline" onclick="baixarArquivoOS('${ps}','${ns}')">${a.nome}</span>`
         : `<span class="os-arq-nome" title="${a.nome}">${a.nome}</span>`}
       <button class="btn sm neutral" title="${isPdf?'Visualizar':'Baixar'} ${a.nome}" onclick="baixarArquivoOS('${ps}','${ns}')">${isPdf?'👁':'⬇'}</button>
-      ${!os.fechada?`<button class="icon-btn del" onclick="excluirArquivoOSProjeto(${os.id},${i},'${tipo}',${cardId})">🗑</button>`:''}
+      ${!os.fechada&&podeEditar?`<button class="icon-btn del" onclick="excluirArquivoOSProjeto(${os.id},${i},'${tipo}',${cardId})">🗑</button>`:''}
     </div>`;
   }).join('') || '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">Nenhum arquivo.</div>';
   // histórico (mais recente no topo, com guard para data null)
@@ -12014,10 +12024,11 @@ function abrirVerOS(osId, cardId){
     if(!b.data) return -1;
     return b.data.localeCompare(a.data);
   });
-  const dis = os.fechada ? 'disabled' : '';
+  const dis = (os.fechada || !podeEditar) ? 'disabled' : '';
+  const podeEditarCampos = !os.fechada && podeEditar;
   const histRows = hist.map(h=>{
     const idx = os.historico.findIndex(x=>x.data===h.data && x.texto===h.texto);
-    const podeEditHist = podeUsar(usuarioAtual,'hist-os-editar');
+    const podeEditHist = podeUsar(usuarioAtual,'hist-os-editar') && podeEditar;
     return `<div class="hist-item">
       <div class="hist-data" style="display:flex;justify-content:space-between;align-items:center">
         <span>${fmtData(h.data)}</span>
@@ -12056,7 +12067,7 @@ function abrirVerOS(osId, cardId){
     return `<div style="margin-bottom:10px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">📦 Itens${itensAloc.length?' ('+itensAloc.length+')':''}</div>
-        ${!os.fechada?`<button class="btn sm primary" style="font-size:11px;padding:2px 8px" onclick="abrirSeletorItensOS(${osId},${cardId})">＋ Gerenciar</button>`:''}
+        ${!os.fechada&&podeEditar?`<button class="btn sm primary" style="font-size:11px;padding:2px 8px" onclick="abrirSeletorItensOS(${osId},${cardId})">＋ Gerenciar</button>`:''}
       </div>
       ${linhas||`<div style="font-size:11px;color:var(--muted);padding:3px 0">Nenhum item alocado.</div>`}
       <div style="border-top:2px solid var(--border);margin:8px 0 10px"></div>
@@ -12071,7 +12082,7 @@ function abrirVerOS(osId, cardId){
     </div>
     <div style="font-size:11px;color:var(--muted);margin-bottom:6px">DWG/PDF recebidos do arquiteto — início formal do projeto.</div>
     ${mkArqLista(os.arquivosArquiteto||[],'arquiteto')}
-    ${!os.fechada?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+    ${!os.fechada&&podeEditar?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
       <input id="vos-arq-arq-file" type="file" multiple accept=".dwg,.DWG,.pdf,.PDF" style="flex:1;font-size:12px">
       <button id="btn-upload-arq" class="btn sm primary" onclick="uploadArquivosOSProjeto(${os.id},${cardId},'arquiteto')">📎 Enviar</button>
     </div>
@@ -12170,7 +12181,7 @@ function abrirVerOS(osId, cardId){
     </div>
 
     <!-- Corpo 2 colunas -->
-    <div style="flex:1;overflow:hidden;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div style="flex:1;overflow:hidden;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:20px${podeEditar?'':';pointer-events:none;opacity:.65'}">
 
       <!-- COLUNA ESQUERDA: campos + histórico -->
       <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden">
@@ -12232,7 +12243,7 @@ function abrirVerOS(osId, cardId){
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
       <div style="display:flex;gap:8px;margin-left:auto">
-        ${os.fechada
+        ${!podeEditar ? '' : os.fechada
           ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>
              <button class="btn primary" id="btn-salvar-os-${os.id}" onclick="salvarDadosOS(${os.id},${cardId})">Salvar alterações</button>`}
@@ -12241,6 +12252,7 @@ function abrirVerOS(osId, cardId){
 }
 
 function salvarDadosOS(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
   const btn = document.getElementById(`btn-salvar-os-${osId}`);
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
@@ -12507,9 +12519,10 @@ async function exportarPDFOSExecucao(osId, modo='download'){
 
 function abrirVerOSExecucao(osId, cardId, aba='geral'){
   const os   = db.ordensServico.find(x=>x.id===osId); if(!os) return;
+  const podeEditar = podeEditarRecurso(usuarioAtual,'aba-os');
   const obra = db.obras.find(x=>x.id===os.obraId);
   const resp = db.usuarios.find(u=>u.id===os.responsavelId);
-  const dis  = os.fechada ? 'disabled' : '';
+  const dis  = (os.fechada || !podeEditar) ? 'disabled' : '';
   const tipoColor = ostipoInfo(os.tipo).cor;
 
   const tabBtn = (t, label) =>
@@ -12757,7 +12770,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
     </div>
 
     <!-- Conteúdo da aba -->
-    <div style="flex:1;overflow-y:auto;min-height:0">
+    <div style="flex:1;overflow-y:auto;min-height:0${podeEditar?'':';pointer-events:none;opacity:.65'}">
       ${tabContent}
     </div>
 
@@ -12766,15 +12779,16 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
       <div style="display:flex;gap:8px;margin-left:auto">
         <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSExecucao(${osId},'visualizar')">👁 Visualizar PDF</button>
         <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSExecucao(${osId},'download')">⬇ Exportar PDF</button>
-        ${os.fechada
+        ${!podeEditar ? '' : os.fechada
           ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>`
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
-        ${!os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>` : ''}
+        ${podeEditar && !os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
 
 function salvarDadosOSExec(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
   const btn = document.getElementById(`btn-salvar-os-${osId}`);
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
@@ -12797,10 +12811,11 @@ function salvarDadosOSExec(osId, cardId){
 /* =============== OS AVULSA — modal com abas =============== */
 function abrirVerOSAvulsa(osId, cardId, aba='geral'){
   const os   = db.ordensServico.find(x=>x.id===osId);
+  const podeEditar = podeEditarRecurso(usuarioAtual,'aba-os');
   const obra = db.obras.find(x=>x.id===os.obraId);
   const resp = db.usuarios.find(u=>u.id===os.responsavelId);
   const tipoColor = ostipoInfo(os.tipo).cor;
-  const dis = os.fechada ? 'disabled' : '';
+  const dis = (os.fechada || !podeEditar) ? 'disabled' : '';
 
   const tabBtn = (id, label) =>
     `<button onclick="abrirVerOSAvulsa(${osId},${cardId},'${id}')"
@@ -13096,7 +13111,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       ${tabBtn('equipe','👷 Equipe'+(os.tecnicos?.length?` (${os.tecnicos.length})`:' '))}
       ${tabBtn('historico','📋 Histórico'+(os.historico?.length?` (${os.historico.length})`:' '))}
     </div>
-    <div style="flex:1;overflow-y:auto;min-height:0">
+    <div style="flex:1;overflow-y:auto;min-height:0${podeEditar?'':';pointer-events:none;opacity:.65'}">
       ${tabContent}
     </div>
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
@@ -13104,10 +13119,10 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       <div style="display:flex;gap:8px;margin-left:auto">
         <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSAvulsa(${osId},'visualizar')">👁 Visualizar PDF</button>
         <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSAvulsa(${osId},'download')">⬇ Exportar PDF</button>
-        ${os.fechada
+        ${!podeEditar ? '' : os.fechada
           ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>`
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
-        ${!os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>` : ''}
+        ${podeEditar && !os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
@@ -13443,6 +13458,7 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
 }
 
 function salvarDadosOSAvulsa(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
   const btn = document.getElementById(`btn-salvar-os-${osId}`);
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const os = db.ordensServico.find(x=>x.id===osId);
@@ -13954,6 +13970,7 @@ function confirmarTransferirPend(osId, idx, cardId){
 }
 
 function fecharOS(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para fechar esta O.S.'); return; }
   const os = db.ordensServico.find(x=>x.id===osId);
   if(os.tipo === 'projeto' && !(os.arquivosProjeto||[]).length){
     alert(`Não é possível encerrar a O.S. ${os.numero}.\n\nO.S. de Projeto só pode ser concluída após o upload dos arquivos do projeto de automação finalizado.\n\nFaça o upload na seção "⚡ Projeto de Automação Finalizado" e tente novamente.`);
@@ -14013,6 +14030,7 @@ function fecharOS(osId, cardId){
 }
 
 function confirmarFecharOS(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para fechar esta O.S.'); return; }
   const os   = db.ordensServico.find(x=>x.id===osId);
   const card = db.cards.find(x=>x.id===cardId);
   const novaFaseOS   = +document.getElementById('fechar-os-fase-os').value   || null;
@@ -14046,6 +14064,7 @@ function confirmarFecharOS(osId, cardId){
 }
 
 function reabrirOS(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para reabrir esta O.S.'); return; }
   const os = db.ordensServico.find(x=>x.id===osId);
   // Para OS de projeto com arquivos enviados, oferece escolha
   if(os.tipo === 'projeto' && (os.arquivosProjeto||[]).length){
@@ -14069,6 +14088,7 @@ function reabrirOS(osId, cardId){
 }
 
 async function confirmarReabrirOS(osId, cardId, removerArquivos){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para reabrir esta O.S.'); return; }
   const os = db.ordensServico.find(x=>x.id===osId);
   if(removerArquivos){
     const arquivosRemovidos = os.arquivosProjeto||[];
@@ -14084,6 +14104,7 @@ async function confirmarReabrirOS(osId, cardId, removerArquivos){
 }
 
 function _doReabrirOS(osId, cardId, removeuArquivos){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
   const faseInicial = fasesOSOrdenadas().find(f=>!f.tipo);
   if(faseInicial) os.faseId = faseInicial.id;
