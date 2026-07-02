@@ -464,7 +464,7 @@
     <div class="bar">
       <h2>Fases da Obra</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaFaseObra()">+ Nova Fase</button>
+      <button class="btn primary" id="btn-nova-fase-obra" onclick="novaFaseObra()">+ Nova Fase</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As fases representam as etapas do andamento físico de uma obra (ex.: Projeto, Instalação, Testes, Entrega). Edite nome, cor e ordem direto na tabela.
@@ -480,7 +480,7 @@
     <div class="bar">
       <h2>Categoria Custos Obra</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaCategoriaCusto()">+ Nova Categoria</button>
+      <button class="btn primary" id="btn-nova-cat-custo" onclick="novaCategoriaCusto()">+ Nova Categoria</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Categorias disponíveis ao lançar custos avulsos em obras. Clique no ícone para escolher outro, edite o nome diretamente na linha.
@@ -555,7 +555,7 @@
     <div class="bar">
       <h2>Fases da O.S.</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaFaseOS()">+ Nova Fase</button>
+      <button class="btn primary" id="btn-nova-fase-os" onclick="novaFaseOS()">+ Nova Fase</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As fases representam o andamento de uma Ordem de Serviço (ex.: Aguardando, Em Execução, Concluída). Edite nome, cor e ordem direto na tabela.
@@ -571,7 +571,7 @@
     <div class="bar">
       <h2>Fases do SRM</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaSRMFase()">+ Nova Fase</button>
+      <button class="btn primary" id="btn-nova-fase-srm" onclick="novaSRMFase()">+ Nova Fase</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As fases representam as etapas do relacionamento com fornecedores e do processo de aquisição (ex.: Prospecção, Cotação, Pedido Emitido). Edite nome, cor e ordem direto na tabela.
@@ -645,7 +645,7 @@
     <div class="bar">
       <h2>Fases da Proposta</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaFaseProposta()">+ Nova Fase</button>
+      <button class="btn primary" id="btn-nova-fase-proposta" onclick="novaFaseProposta()">+ Nova Fase</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As fases viram colunas do painel de propostas, na ordem definida. Edite nome, cor e ordem direto na tabela.
@@ -726,7 +726,7 @@
         <option value="ativa">Ativas</option>
         <option value="pausada">Pausadas</option>
       </select>
-      <button class="btn primary" onclick="abrirNovaRecorrente()">＋ Nova</button>
+      <button class="btn primary" id="btn-nova-recorrente" onclick="abrirNovaRecorrente()">＋ Nova</button>
     </div>
     <div class="stats" id="rec-stats-bar" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <table class="lista" id="rec-table" style="display:none">
@@ -969,7 +969,7 @@
       </select>
       <span id="srm-arq-info" style="font-size:12.5px;color:var(--muted)"></span>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovoSRM()">+ Abrir novo SRM</button>
+      <button class="btn primary" id="btn-novo-srm" onclick="abrirNovoSRM()">+ Abrir novo SRM</button>
     </div>
     <div class="kanban" id="srm-kanban"></div>
   </div>
@@ -1001,7 +1001,7 @@
     <div class="bar">
       <h2>Categorias de Produtos</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaEstoqueCategoria()">+ Nova Categoria</button>
+      <button class="btn primary" id="btn-nova-estoque-cat" onclick="novaEstoqueCategoria()">+ Nova Categoria</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Categorias agrupam os produtos do estoque por área ou finalidade (ex.: Rede de Dados, Automação, Áudio e Vídeo). Edite nome, cor e ordem direto na tabela — as alterações salvam automaticamente.
@@ -1017,7 +1017,7 @@
     <div class="bar">
       <h2>Estoque — Almoxarifado</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
+      <button class="btn primary" id="btn-novo-produto-almox" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
     </div>
     <div class="stats" id="estoque-stats-saldo" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
     <div id="estoque-corpo-saldo"></div>
@@ -1055,7 +1055,7 @@
       <select id="cat-filtro-categoria" class="input" style="font-size:13px" onchange="renderEstoqueCatalogo()">
         <option value="">Todas as categorias</option>
       </select>
-      <button class="btn primary" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
+      <button class="btn primary" id="btn-novo-produto-catalogo" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
     </div>
     <div id="estoque-corpo-catalogo"></div>
   </div>
@@ -1180,11 +1180,54 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.26.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.26.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo Estoque: nível Visualizar/Editar/Excluir aplicado às Categorias de Estoque e ao cadastro de Produtos (Novo/Editar produto, acessível tanto pelo Almoxarifado quanto pelo Catálogo — as duas telas compartilham a mesma permissão, já que editam o mesmo cadastro). Painel de Estoque é só uma tela "Em desenvolvimento" e Movimentações é só consulta (sem lançamento manual — toda entrada vem do SRM) — nenhuma das duas precisou de bloqueio.',
+      'Com isso, a rolagem de permissões por tela (Visualizar/Editar/Excluir) cobre agora todos os módulos do sistema (CRM, Propostas, Obras, O.S., Financeiro, SRM/Compras, Estoque). Gaps conhecidos e ainda não fechados: os modais de detalhe da O.S. (Execução/Avulsa/Projeto) e as abas internas do cartão SRM (Cotações, Pedido Aprovado, Financeiro) permitem ver/editar campos internos sem checagem própria — ficam como possível próximo passo.',
+    ]
+  },
+  {
+    versao: '1.25.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo SRM e Compras: nível Visualizar/Editar/Excluir aplicado ao Painel de SRM (abrir novo, arrastar entre fases, editar dados, registrar histórico, excluir) e às Fases do SRM. As abas internas do cartão SRM (Propostas/Cotações, Pedido Aprovado, Financeiro) ainda não têm bloqueio próprio — mesmo gap já conhecido dos modais de O.S., fica como próximo passo se for necessário. Fornecedores já tem sua própria permissão granular ("Fornecedores — Adicionar, Editar e Excluir") e continua controlado por ela, sem o novo seletor. Compras — Painel é só uma tela "Em desenvolvimento", sem conteúdo — não precisou de bloqueio.',
+    ]
+  },
+  {
+    versao: '1.24.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo Financeiro: nível Visualizar/Editar/Excluir aplicado a Contas Recorrentes (única tela do módulo sem permissão própria até então). Contas a Pagar/Receber, Contas Correntes e Centros de Custo continuam controlados pelas permissões finas já existentes (ex.: "Contas a Pagar — Adicionar e Editar", "Contas a Receber — Marcar como Recebido"), mais específicas que o nível por tela — o seletor aparece no formulário de Grupos mas não tem efeito nessas 5 telas, por decisão explícita para não conflitar com o sistema fino já em uso. O Painel Financeiro é só consulta (dashboard/extrato) e não precisou de bloqueio.',
+    ]
+  },
+  {
+    versao: '1.23.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo O.S.: nível Visualizar/Editar/Excluir aplicado às Fases da O.S. (criar/editar/excluir). O Painel e a Lista de O.S. já eram só navegação (abrem o cartão CRM, onde a aba O.S. já é protegida) e não têm arrastar-para-mudar-fase — não precisaram de bloqueio.',
+    ]
+  },
+  {
+    versao: '1.22.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo Obras: nível Visualizar/Editar/Excluir aplicado às Fases da Obra (criar/editar/excluir) e à Categoria de Custos da Obra. Na lista "Obras", corrigida uma falha em que uma obra sem cartão CRM vinculado podia ser aberta para edição direta sem checar permissão. O Painel de Obras (kanban) não tem arrastar-para-mudar-fase nem ação própria — só navega para o cartão já protegido, então não precisou de bloqueio.',
+    ]
+  },
+  {
+    versao: '1.21.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo Propostas: nível Visualizar/Editar/Excluir aplicado ao Painel (arrastar proposta entre fases) e às Fases da Proposta (criar/editar/excluir). A tela "Controle de Propostas" (lista) já era só consulta, sem ações — não precisou de bloqueio.',
+    ]
+  },
   {
     versao: '1.20.0',
     data: '02/07/2026',
@@ -4480,7 +4523,7 @@ function aplicarPermissoes(){
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
   });
   // botões estáticos de "＋ Novo X" no cabeçalho de cada tela — exigem nível Editar na tela
-  const botoesEditarTela = {'btn-novo-crm':'painel', 'btn-nova-fase':'fases', 'btn-nova-origem':'origens', 'btn-novo-cliente':'clientes'};
+  const botoesEditarTela = {'btn-novo-crm':'painel', 'btn-nova-fase':'fases', 'btn-nova-origem':'origens', 'btn-novo-cliente':'clientes', 'btn-nova-fase-proposta':'prop-fases', 'btn-nova-fase-obra':'obras-fases', 'btn-nova-cat-custo':'cat-outros-custos', 'btn-nova-fase-os':'os-fases', 'btn-nova-recorrente':'fin-recorrentes', 'btn-novo-srm':'srm-painel', 'btn-nova-fase-srm':'srm-fases', 'btn-nova-estoque-cat':'estoque-categorias', 'btn-novo-produto-almox':'estoque-catalogo', 'btn-novo-produto-catalogo':'estoque-catalogo'};
   Object.entries(botoesEditarTela).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeEditarTela(usuarioAtual, tela) ? '' : 'none';
@@ -4851,6 +4894,9 @@ function categoriasEstoqueOrdenadas(){ return (db.estoqueCats||[]).slice().sort(
 function renderEstoqueCategorias(){
   const tb = document.getElementById('estoque-cats-tbody'); if(!tb) return;
   tb.innerHTML='';
+  const podeEditar = podeEditarTela(usuarioAtual,'estoque-categorias');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'estoque-categorias');
+  const ro = podeEditar?'':'disabled';
   categoriasEstoqueOrdenadas().forEach(c=>{
     const tc = textColor(c.cor);
     const qtd = (db.estoqueProdutos||[]).filter(p=>p.categoriaId===c.id).length;
@@ -4860,21 +4906,22 @@ function renderEstoqueCategorias(){
     tr.style.color = tc;
     tr.innerHTML = `
       <td>${c.id}</td>
-      <td><input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome"></td>
+      <td><input type="text" value="${escHtml(c.nome)}" data-id="${c.id}" data-campo="nome" ${ro}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${c.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${c.cor}" data-id="${c.id}" data-campo="cor">
+          <input type="color" value="${c.cor}" data-id="${c.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${c.ordem}" data-id="${c.id}" data-campo="ordem"></td>
+      <td><input type="number" step="1" value="${c.ordem}" data-id="${c.id}" data-campo="ordem" ${ro}></td>
       <td>${qtd} produto${qtd!==1?'s':''}</td>
-      <td style="text-align:right"><button class="icon-btn del" title="Excluir categoria" data-del="${c.id}">🗑</button></td>`;
+      <td style="text-align:right">${podeExcluir?`<button class="icon-btn del" title="Excluir categoria" data-del="${c.id}">🗑</button>`:''}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange = ()=>{
+      if(!podeEditarTela(usuarioAtual,'estoque-categorias')) return;
       const c = categoriaEstoque(+inp.dataset.id); if(!c) return;
       if(inp.dataset.campo==='ordem') c.ordem = parseFloat(inp.value)||0;
       else c[inp.dataset.campo] = inp.value;
@@ -4888,6 +4935,7 @@ function renderEstoqueCategorias(){
 }
 
 async function novaEstoqueCategoria(){
+  if(!podeEditarTela(usuarioAtual,'estoque-categorias')){ alert('Sem permissão para criar categorias de estoque.'); return; }
   const ordemMax = (db.estoqueCats||[]).reduce((m,c)=>Math.max(m,c.ordem),0);
   const nc = {id: await proximoIdSeguro('estoque_categorias', db.estoqueCats||[]), nome:'Nova Categoria', cor:'#9e9e9e', ordem:ordemMax+1};
   (db.estoqueCats = db.estoqueCats||[]).push(nc);
@@ -4896,6 +4944,7 @@ async function novaEstoqueCategoria(){
 }
 
 function excluirEstoqueCategoria(id){
+  if(!podeExcluirTela(usuarioAtual,'estoque-categorias')){ alert('Sem permissão para excluir categorias de estoque.'); return; }
   const c = categoriaEstoque(id);
   const qtd = (db.estoqueProdutos||[]).filter(p=>p.categoriaId===id).length;
   if(qtd>0){
@@ -4919,7 +4968,7 @@ function srmCard(c, showFase){
   const el = document.createElement('div');
   el.className='kcard';
   el.style.borderLeftColor = f.cor;
-  el.draggable = true;
+  el.draggable = podeEditarTela(usuarioAtual,'srm-painel');
   el.ondragstart = e=> e.dataTransfer.setData('text', c.id);
   el.onclick = ()=> abrirEditarSRM(c.id);
   const ult = c.historico && c.historico.length ? c.historico[c.historico.length-1] : null;
@@ -4973,6 +5022,7 @@ function _srmVistaFases(k){
     k.appendChild(colEl(f.nome, f.cor, itens, {
       render: srmCard,
       onDrop: id=>{
+        if(!podeEditarTela(usuarioAtual,'srm-painel')) return;
         const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
         if(f.tipo==='recebido'){
           if(!confirm(`Mover para "${f.nome}" marcará o SRM como ENCERRADO. Confirmar?`)) return;
@@ -5058,6 +5108,7 @@ function registrarSRMHist(c, texto){
 
 /* ---- Novo SRM ---- */
 function abrirNovoSRM(){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para abrir novo SRM.'); return; }
   const primeiraFase = fasesSRMOrdenadas().filter(f=>!f.tipo)[0];
   abrirModal(`
     <h3>Novo SRM</h3>
@@ -5134,10 +5185,12 @@ async function salvarNovoSRM(){
 function abrirEditarSRM(id, aba='dados'){
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
   const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
+  const podeEditar = podeEditarTela(usuarioAtual,'srm-painel');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'srm-painel');
   let corpo='';
   const ccAtualSlug = c.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===c.centroCustoId)||{}).slug : null;
   if(aba==='dados') corpo=`
-    <div class="dados-grid">
+    <div class="dados-grid"${podeEditar?'':' style="pointer-events:none;opacity:.65"'}>
       <div>
         <label>Fornecedor</label>
         <select id="srm-m-forn">${optsFornecedores(c.fornecedorId)}</select>
@@ -5186,13 +5239,14 @@ function abrirEditarSRM(id, aba='dados'){
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
-      <button class="btn danger" data-btn-perigo onclick="excluirSRMCard(${c.id})">Excluir</button>
+      ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirSRMCard(${c.id})">Excluir</button>`:''}
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      <button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoSRM(${c.id})`:`abrirEditarSRM(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
+      ${(aba!=='dados'||podeEditar)?`<button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoSRM(${c.id})`:`abrirEditarSRM(${c.id},'dados')`}">${aba==='dados'?'Salvar':(podeEditar?'Salvar Dados':'Ver Dados')}</button>`:''}
     </div>`, 'cartao');
 }
 
 async function salvarEdicaoSRM(id){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para editar este SRM.'); return; }
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
   c.fornecedorId  = +document.getElementById('srm-m-forn').value||null;
   c.faseId        = +document.getElementById('srm-m-fase').value||null;
@@ -5258,6 +5312,7 @@ async function salvarEdicaoSRM(id){
 }
 
 async function registrarRapidoSRM(id){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para registrar neste SRM.'); return; }
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
   const ta=document.getElementById('srm-m-hist');
   if(!ta||!ta.value.trim()){ alert('Escreva o registro antes de confirmar.'); ta&&ta.focus(); return; }
@@ -5270,6 +5325,7 @@ async function registrarRapidoSRM(id){
 }
 
 async function excluirSRMCard(id){
+  if(!podeExcluirTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para excluir este SRM.'); return; }
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
 
   // Cotações vinculadas
@@ -6552,6 +6608,9 @@ function renderSRMFases(){
   const tb=document.getElementById('srm-fases-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'srm-fases')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'srm-fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'srm-fases');
+  const ro = podeEditar?'':'disabled';
   fasesSRMOrdenadas().forEach(f=>{
     const tc=textColor(f.cor);
     const tr=document.createElement('tr');
@@ -6560,21 +6619,22 @@ function renderSRMFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
-      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesSRM.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesSRM.length>1&&podeExcluir?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
       </td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange=()=>{
+      if(!podeEditarTela(usuarioAtual,'srm-fases')) return;
       const f=faseSRM(+inp.dataset.id);
       if(!f) return;
       if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
@@ -6589,6 +6649,7 @@ function renderSRMFases(){
   });
 }
 async function novaSRMFase(){
+  if(!podeEditarTela(usuarioAtual,'srm-fases')){ alert('Sem permissão para criar fases do SRM.'); return; }
   if(!db.fasesSRM) db.fasesSRM=[];
   const ordemMax=db.fasesSRM.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_srm', db.fasesSRM), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
@@ -6597,6 +6658,7 @@ async function novaSRMFase(){
   save(); renderAll();
 }
 function excluirSRMFase(id){
+  if(!podeExcluirTela(usuarioAtual,'srm-fases')){ alert('Sem permissão para excluir fases do SRM.'); return; }
   const f=faseSRM(id);
   if(f?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
   if(db.fasesSRM.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
@@ -7989,6 +8051,7 @@ function renderRecorrentes(){
 }
 
 function abrirNovaRecorrente(){
+  if(!podeEditarTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para criar Contas Recorrentes.'); return; }
   const fornOpts = (db.fornecedores||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}">${f.nome}</option>`).join('');
   const ccOpts = (db.centrosCusto||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
@@ -8044,6 +8107,7 @@ function abrirNovaRecorrente(){
 }
 
 async function salvarNovaRecorrente(btn){
+  if(!podeEditarTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para criar Contas Recorrentes.'); return; }
   const nome  = document.getElementById('rec-nome').value.trim();
   const valor = parseFloat((document.getElementById('rec-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
   const dia   = parseInt(document.getElementById('rec-dia').value)||10;
@@ -8077,6 +8141,9 @@ async function salvarNovaRecorrente(btn){
 function abrirEditarRecorrente(id){
   const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
   if(!r) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'fin-recorrentes');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'fin-recorrentes');
+  const ro = podeEditar?'':'disabled';
   const fornOpts = (db.fornecedores||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===r.fornecedorId?'selected':''}>${f.nome}</option>`).join('');
   const ccOpts = (db.centrosCusto||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
@@ -8089,55 +8156,56 @@ function abrirEditarRecorrente(id){
     <h3>${escHtml(r.nome)}</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
       <label>Nome / Descrição *
-        <input id="rec-nome" class="input" style="margin-top:4px" value="${escHtml(r.nome||'')}">
+        <input id="rec-nome" class="input" style="margin-top:4px" value="${escHtml(r.nome||'')}" ${ro}>
       </label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Fornecedor
-          <select id="rec-fornecedor" class="input" style="margin-top:4px">
+          <select id="rec-fornecedor" class="input" style="margin-top:4px" ${ro}>
             <option value="">— nenhum —</option>${fornOpts}
           </select>
-          <button type="button" class="link-btn" style="margin-top:2px"
-            onclick="abrirNovoFornecedor({callbackId:'rec-fornecedor'})">＋ Cadastrar novo fornecedor</button>
+          ${podeEditar?`<button type="button" class="link-btn" style="margin-top:2px"
+            onclick="abrirNovoFornecedor({callbackId:'rec-fornecedor'})">＋ Cadastrar novo fornecedor</button>`:''}
         </label>
         <label>Centro de Custo
-          <select id="rec-cc" class="input" style="margin-top:4px">
+          <select id="rec-cc" class="input" style="margin-top:4px" ${ro}>
             <option value="">— nenhum —</option>${ccOpts}
           </select>
         </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <label>Valor (R$) *
-          <input id="rec-valor" class="input" type="text" inputmode="decimal" placeholder="0,00" oninput="mascaraMoeda(this)" value="${r.valor?fmtMoney(r.valor).replace('R$','').trim():''}" style="margin-top:4px">
+          <input id="rec-valor" class="input" type="text" inputmode="decimal" placeholder="0,00" oninput="mascaraMoeda(this)" value="${r.valor?fmtMoney(r.valor).replace('R$','').trim():''}" style="margin-top:4px" ${ro}>
         </label>
         <label>Dia de Vencimento *
-          <input id="rec-dia" class="input" type="number" min="1" max="31" value="${r.diaVencimento||10}" style="margin-top:4px">
+          <input id="rec-dia" class="input" type="number" min="1" max="31" value="${r.diaVencimento||10}" style="margin-top:4px" ${ro}>
         </label>
         <label>Obra (opcional)
-          <select id="rec-obra" class="input" style="margin-top:4px">
+          <select id="rec-obra" class="input" style="margin-top:4px" ${ro}>
             <option value="">— nenhuma —</option>${obraOpts}
           </select>
         </label>
       </div>
       <label>Pagar via (conta / cartão)
-        <select id="rec-conta" class="input" style="margin-top:4px">
+        <select id="rec-conta" class="input" style="margin-top:4px" ${ro}>
           <option value="">— não definido —</option>${contaOpts}
         </select>
       </label>
     </div>
     <div class="actions rodape-cartao">
       <div style="display:flex;gap:8px">
-        <button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>
-        <button class="btn neutral" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸ Pausar':'▶ Ativar'}</button>
+        ${podeExcluir?`<button class="btn danger" onclick="excluirRecorrente(${r.id})">Excluir</button>`:''}
+        ${podeEditar?`<button class="btn neutral" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸ Pausar':'▶ Ativar'}</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-        <button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>
+        ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>`:''}
       </div>
     </div>
   `,'cartao');
 }
 
 async function salvarEdicaoRecorrente(id, btn){
+  if(!podeEditarTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para editar Contas Recorrentes.'); return; }
   const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
   if(!r) return;
   const nome  = document.getElementById('rec-nome').value.trim();
@@ -8167,6 +8235,7 @@ async function salvarEdicaoRecorrente(id, btn){
 }
 
 async function toggleRecorrente(id){
+  if(!podeEditarTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para pausar/ativar Contas Recorrentes.'); return; }
   const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
   if(!r) return;
   r.ativa = !r.ativa;
@@ -8178,6 +8247,7 @@ async function toggleRecorrente(id){
 }
 
 async function excluirRecorrente(id){
+  if(!podeExcluirTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para excluir Contas Recorrentes.'); return; }
   const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
   if(!r) return;
   if(!confirm(`Excluir recorrente "${r.nome}"?\n\nAs CPs já geradas não serão afetadas.`)) return;
@@ -8210,6 +8280,7 @@ const EMOJIS_CUSTO = [
 let _emojiPickerCatId = null;
 
 function abrirEmojiPicker(catId, el){
+  if(!podeEditarTela(usuarioAtual,'cat-outros-custos')) return;
   _emojiPickerCatId = catId;
   const picker = document.getElementById('emoji-picker');
   const grid   = document.getElementById('emoji-picker-grid');
@@ -10250,29 +10321,31 @@ function renderCatOutrosCustos(){
     return;
   }
   tbody.innerHTML = '';
+  const podeEditar = podeEditarTela(usuarioAtual,'cat-outros-custos');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'cat-outros-custos');
   cats.forEach(cat=>{
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="padding:8px 10px;text-align:center">
         <button data-emoji-btn title="Clique para escolher outro ícone"
-          onclick="abrirEmojiPicker(${cat.id}, this)"
+          ${podeEditar?`onclick="abrirEmojiPicker(${cat.id}, this)"`:'disabled'}
           style="font-size:24px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;width:44px;height:44px;cursor:pointer;line-height:1;transition:background .15s"
           onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">${cat.emoji||'📦'}</button>
       </td>
       <td style="padding:8px 10px">
-        <input type="text" value="${(cat.nome||'').replace(/"/g,'&quot;')}" data-id="${cat.id}"
+        <input type="text" value="${(cat.nome||'').replace(/"/g,'&quot;')}" data-id="${cat.id}" ${podeEditar?'':'disabled'}
           style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:5px 8px;border-radius:6px"
           onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
           onblur="this.style.borderColor='transparent';this.style.background='none'">
       </td>
       <td style="padding:8px 10px;text-align:center">
-        <input type="number" value="${cat.ordem||0}" min="0" data-ord="${cat.id}"
+        <input type="number" value="${cat.ordem||0}" min="0" data-ord="${cat.id}" ${podeEditar?'':'disabled'}
           style="width:56px;text-align:center;border:1px solid transparent;background:none;font-size:13px;padding:4px;border-radius:6px"
           onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
           onblur="this.style.borderColor='transparent';this.style.background='none'">
       </td>
       <td style="padding:8px 10px;text-align:right">
-        <button class="icon-btn del" data-del="${cat.id}" title="Excluir categoria">🗑</button>
+        ${podeExcluir?`<button class="icon-btn del" data-del="${cat.id}" title="Excluir categoria">🗑</button>`:''}
       </td>`;
     tbody.appendChild(tr);
   });
@@ -10298,6 +10371,7 @@ function renderCatOutrosCustos(){
 }
 
 async function novaCategoriaCusto(){
+  if(!podeEditarTela(usuarioAtual,'cat-outros-custos')){ alert('Sem permissão para criar categorias de custo.'); return; }
   const nome = prompt('Nome da nova categoria:');
   if(!nome || !nome.trim()) return;
   const ordem = (db.catOutrosCustos||[]).reduce((m,c)=>Math.max(m,c.ordem||0),0)+1;
@@ -10310,6 +10384,7 @@ async function novaCategoriaCusto(){
 }
 
 async function atualizarCategoriaCusto(id, campos){
+  if(!podeEditarTela(usuarioAtual,'cat-outros-custos')) return;
   const cat = (db.catOutrosCustos||[]).find(c=>c.id===id);
   if(!cat) return;
   Object.assign(cat, campos);
@@ -10317,6 +10392,7 @@ async function atualizarCategoriaCusto(id, campos){
 }
 
 async function excluirCategoriaCusto(id){
+  if(!podeExcluirTela(usuarioAtual,'cat-outros-custos')){ alert('Sem permissão para excluir categorias de custo.'); return; }
   const cat = (db.catOutrosCustos||[]).find(c=>c.id===id);
   if(!confirm(`Excluir a categoria "${cat?.nome||id}"? Os lançamentos existentes manterão o texto da categoria, mas ela não aparecerá mais no seletor.`)) return;
   await sb.from('categorias_outros_custos').delete().eq('id',id);
@@ -14822,7 +14898,7 @@ function propCard(p){
   const el=document.createElement('div');
   el.className='kcard';
   el.style.borderLeftColor = p.status==='aprovada' ? '#6a1b9a' : f.cor;
-  el.draggable = p.status==='emitida';
+  el.draggable = p.status==='emitida' && podeEditarTela(usuarioAtual,'prop-painel');
   el.ondragstart=e=>e.dataTransfer.setData('text', p.id);
   el.onclick=()=>abrirEditarCartao(p.cardId, p.status==='aprovada'?'aprovada':'emitidas');
   el.innerHTML=`
@@ -14855,6 +14931,7 @@ function renderPropPainel(){
         .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
       if(!db.propostas.some(p=>p.status==='emitida' && p.faseId===f.id)) return; // só fases com proposta
       k.appendChild(colEl(f.nome, f.cor, itens, {render:propCard, onDrop:id=>{
+        if(!podeEditarTela(usuarioAtual,'prop-painel')) return;
         const p=db.propostas.find(x=>x.id===id);
         if(p && p.status==='emitida'){ p.faseId=f.id; save(); renderAll(); }
       }}));
@@ -14919,6 +14996,8 @@ function renderPropFases(){
   const tb=document.getElementById('prop-fases-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'prop-fases')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'prop-fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'prop-fases');
   fasesPropOrdenadas().forEach(f=>{
     const tc=textColor(f.cor);
     const qtd=db.propostas.filter(p=>p.faseId===f.id && p.status==='emitida').length;
@@ -14926,19 +15005,20 @@ function renderPropFases(){
     tr.className='fase-row';
     tr.style.background=f.cor;
     tr.style.color=tc;
+    const ro=podeEditar?'':'disabled';
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':(podeExcluir?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
@@ -14954,6 +15034,7 @@ function renderPropFases(){
   });
   tb.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick=()=>{
+      if(!podeExcluirTela(usuarioAtual,'prop-fases')){ alert('Sem permissão para excluir fases de proposta.'); return; }
       const id=+btn.dataset.del;
       if(db.fasesProposta.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
       const fp=faseProp(id);
@@ -14970,6 +15051,7 @@ function renderPropFases(){
   });
 }
 async function novaFaseProposta(){
+  if(!podeEditarTela(usuarioAtual,'prop-fases')){ alert('Sem permissão para criar fases de proposta.'); return; }
   const ordemMax=db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_proposta', db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fasesProposta.push(nf);
@@ -14982,6 +15064,8 @@ function renderObrasFases(){
   const tb=document.getElementById('obras-fases-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'obras-fases')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'obras-fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'obras-fases');
   fasesObraOrdenadas().forEach(f=>{
     const tc=textColor(f.cor);
     const qtd=db.obras.filter(o=>o.faseId===f.id).length;
@@ -14989,19 +15073,20 @@ function renderObrasFases(){
     tr.className='fase-row';
     tr.style.background=f.cor;
     tr.style.color=tc;
+    const ro=podeEditar?'':'disabled';
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesObra.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(podeExcluir && db.fasesObra.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
       </td>`;
     tb.appendChild(tr);
   });
@@ -15018,6 +15103,7 @@ function renderObrasFases(){
   });
   tb.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick=()=>{
+      if(!podeExcluirTela(usuarioAtual,'obras-fases')){ alert('Sem permissão para excluir fases de obra.'); return; }
       const id=+btn.dataset.del;
       const fo=faseObra(id);
       if(fo?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
@@ -15035,6 +15121,7 @@ function renderObrasFases(){
   });
 }
 async function novaFaseObra(){
+  if(!podeEditarTela(usuarioAtual,'obras-fases')){ alert('Sem permissão para criar fases de obra.'); return; }
   if(!db.fasesObra) db.fasesObra=[];
   const ordemMax=db.fasesObra.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_obra', db.fasesObra), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
@@ -15048,6 +15135,9 @@ function renderOSFases(){
   const tb=document.getElementById('os-fases-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'os-fases')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'os-fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'os-fases');
+  const ro = podeEditar?'':'disabled';
   fasesOSOrdenadas().forEach(f=>{
     const tc=textColor(f.cor);
     const qtd=(db.ordensServico||[]).filter(o=>o.faseId===f.id).length;
@@ -15057,21 +15147,22 @@ function renderOSFases(){
     tr.style.color=tc;
     tr.innerHTML=`
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
       <td>${qtd}</td>
-      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesOS.length>1?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesOS.length>1&&podeExcluir?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
     inp.onchange=()=>{
+      if(!podeEditarTela(usuarioAtual,'os-fases')) return;
       const f=faseOS(+inp.dataset.id);
       if(!f) return;
       if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
@@ -15083,6 +15174,7 @@ function renderOSFases(){
   });
   tb.querySelectorAll('[data-del]').forEach(btn=>{
     btn.onclick=()=>{
+      if(!podeExcluirTela(usuarioAtual,'os-fases')){ alert('Sem permissão para excluir fases da O.S.'); return; }
       const id=+btn.dataset.del;
       if(db.fasesOS.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
       const fo=faseOS(id);
@@ -15100,6 +15192,7 @@ function renderOSFases(){
   });
 }
 async function novaFaseOS(){
+  if(!podeEditarTela(usuarioAtual,'os-fases')){ alert('Sem permissão para criar fases da O.S.'); return; }
   if(!db.fasesOS) db.fasesOS=[];
   const ordemMax=db.fasesOS.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_os', db.fasesOS), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
@@ -16376,7 +16469,12 @@ function renderObrasLista(){
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.title = 'Clique para abrir a obra';
-    tr.onclick = ()=>{ const card=db.cards.find(c=>c.obraId===o.id); if(card) abrirEditarCartao(card.id,'obras'); else abrirObraModal(o.id,o.clienteId); };
+    tr.onclick = ()=>{
+      const card=db.cards.find(c=>c.obraId===o.id);
+      if(card){ abrirEditarCartao(card.id,'obras'); return; }
+      if(!podeEditarTela(usuarioAtual,'obras-lista')){ alert('Sem permissão para editar esta obra.'); return; }
+      abrirObraModal(o.id,o.clienteId);
+    };
     tr.innerHTML=`
       <td><b>${o.nome}</b></td>
       <td>${cli?.nome||'—'}</td>
@@ -16952,34 +17050,37 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
   const labOpts={'un':'un — Unidade','m':'m — Metro','m2':'m² — Metro quadrado','kg':'kg — Quilograma','l':'l — Litro','cx':'cx — Caixa','pc':'pc — Peça','rolo':'rolo — Rolo'};
   const optsCategoria = `<option value="">— Sem categoria —</option>` +
     categoriasEstoqueOrdenadas().map(c=>`<option value="${c.id}"${c.id===categoriaId?' selected':''}>${escHtml(c.nome)}</option>`).join('');
+  const podeEditar = podeEditarTela(usuarioAtual,'estoque-catalogo');
+  const ro = podeEditar?'':'disabled';
   return `
     <h3>${titulo}</h3>
     <div class="aba-corpo">
       <input type="hidden" id="prod-est-id" value="${id||''}">
       <label>Nome Comercial *</label>
-      <input id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm" value="${esc(nome)}">
+      <input id="prod-est-nome" placeholder="Ex.: Cabo Flexível 2,5mm" value="${esc(nome)}" ${ro}>
       <label>Categoria</label>
-      <select id="prod-est-categoria">${optsCategoria}</select>
+      <select id="prod-est-categoria" ${ro}>${optsCategoria}</select>
       <label>Descrição Fiscal (xProd)</label>
-      <input id="prod-est-fiscal" placeholder="Descrição como aparece na NF" value="${esc(nomeFiscal)}">
+      <input id="prod-est-fiscal" placeholder="Descrição como aparece na NF" value="${esc(nomeFiscal)}" ${ro}>
       <label>NCM</label>
-      <input id="prod-est-ncm" placeholder="Ex.: 85447000" value="${esc(ncm)}">
+      <input id="prod-est-ncm" placeholder="Ex.: 85447000" value="${esc(ncm)}" ${ro}>
       <label>Unidade</label>
-      <select id="prod-est-unidade">${opts.map(o=>`<option value="${o}"${o===(unidade||'un')?' selected':''}>${labOpts[o]}</option>`).join('')}</select>
+      <select id="prod-est-unidade" ${ro}>${opts.map(o=>`<option value="${o}"${o===(unidade||'un')?' selected':''}>${labOpts[o]}</option>`).join('')}</select>
       <label>Descrição / Observação</label>
-      <textarea id="prod-est-descricao" rows="3" style="resize:vertical" placeholder="Detalhes adicionais sobre o produto">${esc(descricao)}</textarea>
+      <textarea id="prod-est-descricao" rows="3" style="resize:vertical" placeholder="Detalhes adicionais sobre o produto" ${ro}>${esc(descricao)}</textarea>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px">
+        <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px" ${ro}>
         <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
       </div>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" id="btn-salvar-produto" onclick="salvarProdutoEstoque()">Salvar</button>
+      ${podeEditar?`<button class="btn primary" id="btn-salvar-produto" onclick="salvarProdutoEstoque()">Salvar</button>`:''}
     </div>`;
 }
 
 function abrirNovoProdutoEstoque(){
+  if(!podeEditarTela(usuarioAtual,'estoque-catalogo')){ alert('Sem permissão para cadastrar produtos.'); return; }
   abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true,null), 'cartao');
 }
 
@@ -16989,6 +17090,7 @@ function editarProdutoEstoque(id){
 }
 
 async function salvarProdutoEstoque(){
+  if(!podeEditarTela(usuarioAtual,'estoque-catalogo')){ alert('Sem permissão para editar produtos.'); return; }
   const nome=(document.getElementById('prod-est-nome').value||'').trim();
   if(!nome){ alert('Nome comercial é obrigatório.'); return; }
   const btn=document.getElementById('btn-salvar-produto');
