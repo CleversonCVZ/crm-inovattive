@@ -4928,10 +4928,33 @@ async function registrarRapidoSRM(id){
 
 async function excluirSRMCard(id){
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
-  if(!confirm(`Excluir SRM #${c.num}? Esta ação não pode ser desfeita.`)) return;
+
+  // Cotações vinculadas
+  const cotIds=(db.srmCotacoes||[]).filter(x=>x.cardSrmId===id).map(x=>x.id);
+  // Movimentações de estoque vinculadas às cotações
+  const movsVinc=(db.estoqueMov||[]).filter(m=>cotIds.includes(m.srmCotacaoId));
+  // CPs vinculadas (sobrevivem mas perdem o vínculo)
+  const cpsVinc=(db.contasPagar||[]).filter(x=>x.cardSrmId===id);
+
+  let msg=`Excluir SRM #${c.num}? Esta ação não pode ser desfeita.`;
+  if(movsVinc.length) msg+=`\n\n📦 ${movsVinc.length} movimentação(ões) de estoque serão excluídas.`;
+  if(cpsVinc.length)  msg+=`\n💳 ${cpsVinc.length} conta(s) a pagar perderão o vínculo com este SRM (não serão excluídas).`;
+  if(!confirm(msg)) return;
+
+  // 1. Remover movimentações de estoque no Supabase e na memória
+  for(const m of movsVinc){
+    await sb.from('estoque_movimentacoes').delete().eq('id',m.id);
+  }
+  if(movsVinc.length) db.estoqueMov=(db.estoqueMov||[]).filter(m=>!cotIds.includes(m.srmCotacaoId));
+
+  // 2. Remover cotações da memória (Supabase deleta via CASCADE junto com o card)
+  db.srmCotacoes=(db.srmCotacoes||[]).filter(x=>x.cardSrmId!==id);
+
+  // 3. Deletar o card (CASCADE no Supabase apaga as cotações)
   registrarLog('excluir','srm',c.id,`SRM #${c.num} excluído`);
   db.cardsSRM=db.cardsSRM.filter(x=>x.id!==id);
-  excluirDoSupabase('cards_srm', id);
+  await excluirDoSupabase('cards_srm', id);
+
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
 }
