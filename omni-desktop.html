@@ -1154,11 +1154,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.11.0',
+    data: '02/07/2026',
+    itens: [
+      'Estoque: padronizados os nomes dos produtos importados de NF-e que estavam em CAIXA ALTA — Nome Comercial e Descrição Fiscal agora em Título/Frase, preservando códigos de modelo e siglas técnicas',
+      'Estoque: novas importações de itens de NF (Lançar no Estoque / Cadastrar no Catálogo) já pré-preenchem o nome em Título/Frase automaticamente, em vez do texto literal em maiúsculas da nota',
+    ]
+  },
   {
     versao: '1.10.0',
     data: '02/07/2026',
@@ -16694,6 +16702,47 @@ async function salvarProdutoEstoque(){
   renderEstoquePainel();
 }
 
+/** Converte um texto normalmente em CAIXA ALTA (como vem de NF-e de fornecedor) para
+ *  Título/Frase legível, preservando: números e tokens com dígito (medidas, códigos
+ *  com número), códigos de modelo com hífen (ex.: UDM-PRO-BR, UNVR-BR — partes curtas
+ *  sem vogal de palavra normal), siglas técnicas conhecidas (GHZ, MBPS, NVR...) e
+ *  palavras que já não estão 100% em maiúsculas (mantidas como o usuário digitou).
+ *  NÃO corrige acentuação — só padroniza maiúscula/minúscula. Usada tanto para
+ *  padronizar o catálogo existente quanto para pré-preencher nome/nome_fiscal
+ *  na importação de itens de NF (Lançar no Estoque / Cadastrar no Catálogo). */
+const _NORM_STOPWORDS = new Set(['de','da','do','das','dos','e','em','com','para','por','sem','a','o','as','os','na','no','nas','nos']);
+const _NORM_KEEP_UPPER = new Set(['GHZ','MBPS','NVR','DVR','IP','POE','RJ','USB','HDMI','LED','UTP','FTP','WIFI','CFTV','NF','NCM','PC','TV','AC','DC','UF']);
+function _normTemDigito(s){ return /\d/.test(s); }
+function _normPareceCodigo(core){
+  if(!core.includes('-')) return false;
+  const partes = core.split('-');
+  if(partes.length<2) return false;
+  return partes.every(p=>p.length<=4 || _normTemDigito(p));
+}
+function _normPalavra(tok, primeira){
+  const m = tok.match(/^([\(\["']*)(.*?)([\)\],\."':;]*)$/);
+  const pre=m[1], core=m[2], suf=m[3];
+  if(!core) return tok;
+  const coreUp = core.toUpperCase();
+  if(_normTemDigito(core) || _normPareceCodigo(core)) return pre+coreUp+suf;
+  if(_NORM_KEEP_UPPER.has(coreUp)) return pre+coreUp+suf;
+  if(core !== coreUp) return pre+core+suf; // já não é 100% maiúscula — não mexe
+  const low = core.toLowerCase();
+  if(_NORM_STOPWORDS.has(low) && !primeira) return pre+low+suf;
+  const partesCased = core.split('-').map(p=>p?p[0].toUpperCase()+p.slice(1).toLowerCase():p);
+  return pre+partesCased.join('-')+suf;
+}
+function normalizarNomeProduto(s){
+  if(!s) return s;
+  let primeira=true;
+  return s.split(' ').map(w=>{
+    if(w===''){ return w; }
+    const r=_normPalavra(w, primeira);
+    primeira=false;
+    return r;
+  }).join(' ');
+}
+
 /** Tenta casar um item de NF com um produto já cadastrado no catálogo de estoque,
  *  por NCM (exato) e, na falta, por nome fiscal (exato, case-insensitive).
  *  Usada tanto no lançamento no estoque quanto no cadastro de catálogo sem estoque. */
@@ -16736,7 +16785,7 @@ function abrirLancarEstoque(cotId, srmId){
               <input id="est-qtd-${idx}" style="font-size:12px;text-align:right" type="number" step="0.001" min="0" value="${it.qCom}" placeholder="Qtd">
             </div>
             <div id="est-novo-${idx}" style="${autoMatch?'display:none':'margin-top:5px'}">
-              <input id="est-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(it.xProd||'')}">
+              <input id="est-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(normalizarNomeProduto(it.xProd)||'')}">
             </div>
           </div>
         </div>
@@ -16809,13 +16858,14 @@ async function confirmarLancarEstoque(){
       /* criar novo produto */
       const nomeNovo=(document.getElementById(`est-nome-${idx}`)?.value||'').trim();
       if(!nomeNovo){ alert(`Item "${it.xProd}": informe o nome comercial do produto.`); return; }
+      const nomeFiscalNovo = normalizarNomeProduto(it.xProd)||null;
       const {data:pData,error:pErr}=await sb.from('estoque_produtos').insert({
-        nome:nomeNovo, nome_fiscal:it.xProd||null,
+        nome:nomeNovo, nome_fiscal:nomeFiscalNovo,
         ncm:it.NCM||null, unidade:it.uCom||'un', descricao:'', ativo:true
       }).select().single();
       if(pErr){ alert('Erro ao criar produto: '+pErr.message); return; }
       produtoId=pData.id;
-      const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:it.xProd||null,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
+      const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:nomeFiscalNovo,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
       if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
       db.estoqueProdutos.push(novoProd);
       novosProdutos.push(novoProd);
@@ -16887,7 +16937,7 @@ function abrirCadastrarCatalogo(cotId, srmId){
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(it.xProd)}">${escHtml(it.xProd)}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${it.NCM?`NCM ${it.NCM} · `:''}${fmtNum(it.qCom)} ${it.uCom}</div>
-            <input id="cat-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(it.xProd||'')}">
+            <input id="cat-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(normalizarNomeProduto(it.xProd)||'')}">
           </div>
         </div>
       </div>`;
@@ -16934,8 +16984,9 @@ async function confirmarCadastrarCatalogo(){
       if(btn){ btn.disabled=false; btn.textContent='✅ Cadastrar'; }
       return;
     }
+    const nomeFiscalNovo = normalizarNomeProduto(it.xProd)||null;
     const {data:pData,error:pErr}=await sb.from('estoque_produtos').insert({
-      nome:nomeNovo, nome_fiscal:it.xProd||null,
+      nome:nomeNovo, nome_fiscal:nomeFiscalNovo,
       ncm:it.NCM||null, unidade:it.uCom||'un', descricao:'', ativo:true
     }).select().single();
     if(pErr){
@@ -16943,7 +16994,7 @@ async function confirmarCadastrarCatalogo(){
       if(btn){ btn.disabled=false; btn.textContent='✅ Cadastrar'; }
       return;
     }
-    const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:it.xProd||null,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
+    const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:nomeFiscalNovo,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push(novoProd);
     cot.nfItens[idx].catalogoRevisado=true;
