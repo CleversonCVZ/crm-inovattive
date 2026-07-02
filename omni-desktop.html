@@ -1154,11 +1154,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.7.0',
+    data: '02/07/2026',
+    itens: [
+      'SRM: botão "Cadastrar no Catálogo" para compras vinculadas a obra ou pagas pelo cliente — cadastra a ficha do produto (nome/NCM/unidade) sem lançar quantidade no estoque',
+    ]
+  },
   {
     versao: '1.6.0',
     data: '02/07/2026',
@@ -5680,10 +5687,22 @@ function abaPedidoAprovadoSRMHTML(c){
     } else {
       btnEstoque=`<button class="btn primary" onclick="abrirLancarEstoque(${cot.id},${c.id})">🏭 Lançar no Estoque</button>`;
     }
+
+    /* Botão "Cadastrar no Catálogo": para compras que NÃO passam pelo estoque
+       (vinculadas a obra, ou pagas pelo cliente) — cadastra só a ficha do produto
+       (nome/NCM/unidade) no catálogo de estoque_produtos, sem lançar quantidade
+       nem movimentação. Só aparece se sobrar item sem correspondência no catálogo. */
+    const semEstoque = !cot.estoqueLancado && (!!c.obraId || c.pagamentoResponsavel!=='empresa');
+    const itensParaCatalogar = semEstoque ? cot.nfItens.filter(it=>!it.catalogoRevisado && !matchProdutoEstoque(it)) : [];
+    const btnCatalogo = itensParaCatalogar.length
+      ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
+      : '';
+
     const botoesHTML=`
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
         ${showMatchCol?`<button class="btn primary" data-btn-salvar-corresp onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
         ${btnEstoque}
+        ${btnCatalogo}
       </div>`;
 
     return `<div style="padding:4px 0">${cotCardHTML}${xmlSectionHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
@@ -16575,6 +16594,20 @@ async function salvarProdutoEstoque(){
   renderEstoquePainel();
 }
 
+/** Tenta casar um item de NF com um produto já cadastrado no catálogo de estoque,
+ *  por NCM (exato) e, na falta, por nome fiscal (exato, case-insensitive).
+ *  Usada tanto no lançamento no estoque quanto no cadastro de catálogo sem estoque. */
+function matchProdutoEstoque(it){
+  const produtos=db.estoqueProdutos||[];
+  let m=null;
+  if(it.NCM) m=produtos.find(p=>p.ativo&&p.ncm===it.NCM);
+  if(!m&&it.xProd){
+    const xUp=it.xProd.toUpperCase();
+    m=produtos.find(p=>p.ativo&&p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
+  }
+  return m;
+}
+
 /* ---- Modal "Lançar no Estoque" ---- */
 let _estoqueCtx=null; // {cotId, srmId}
 
@@ -16583,15 +16616,10 @@ function abrirLancarEstoque(cotId, srmId){
   if(!cot||!cot.nfItens||!cot.nfItens.length){ alert('Sem itens da NF para lançar.'); return; }
   _estoqueCtx={cotId,srmId};
 
-  /* Para cada item da NF, tenta auto-match por NCM */
+  /* Para cada item da NF, tenta auto-match por NCM/nome fiscal */
   const linhas=cot.nfItens.map((it,idx)=>{
     const produtos=db.estoqueProdutos||[];
-    let autoMatch=null;
-    if(it.NCM) autoMatch=produtos.find(p=>p.ativo&&p.ncm===it.NCM);
-    if(!autoMatch&&it.xProd){
-      const xUp=it.xProd.toUpperCase();
-      autoMatch=produtos.find(p=>p.ativo&&p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
-    }
+    const autoMatch=matchProdutoEstoque(it);
     const opts=produtos.filter(p=>p.ativo).map(p=>`<option value="${p.id}" ${autoMatch&&autoMatch.id===p.id?'selected':''}>${escHtml(p.nome)}${p.ncm?` (NCM ${p.ncm})`:''}</option>`).join('');
     return `
       <div style="padding:8px 0;border-bottom:1px solid var(--border)">
@@ -16733,6 +16761,99 @@ async function confirmarLancarEstoque(){
   fecharLancarEstoque();
   renderEstoquePainel();
   /* Re-renderizar a aba Pedido Aprovado do SRM para mostrar badge "✅ Lançado" */
+  abrirEditarSRM(srmId,'pedidos');
+}
+
+/* ---- Modal "Cadastrar no Catálogo" (sem lançar estoque) ----
+   Para compras vinculadas a obra ou pagas pelo cliente: cadastra só a ficha do
+   produto (nome comercial, nome fiscal, NCM, unidade) em estoque_produtos, sem
+   criar movimentação nem quantidade — o material não passa pelo almoxarifado,
+   mas o catálogo continua crescendo para melhorar os auto-matches futuros. */
+let _catalogoCtx=null; // {cotId, srmId}
+
+function abrirCadastrarCatalogo(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  if(!cot||!cot.nfItens||!cot.nfItens.length) return;
+  _catalogoCtx={cotId,srmId};
+
+  const idxParaCatalogar=[];
+  const linhas=cot.nfItens.map((it,idx)=>{
+    if(it.catalogoRevisado || matchProdutoEstoque(it)) return '';
+    idxParaCatalogar.push(idx);
+    return `
+      <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <input type="checkbox" id="cat-inc-${idx}" checked style="width:14px;height:14px;margin-top:3px;flex-shrink:0">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(it.xProd)}">${escHtml(it.xProd)}</div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${it.NCM?`NCM ${it.NCM} · `:''}${fmtNum(it.qCom)} ${it.uCom}</div>
+            <input id="cat-nome-${idx}" style="font-size:12px" placeholder="Nome comercial do produto *" value="${escHtml(it.xProd||'')}">
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  if(!idxParaCatalogar.length) return; // nada pra fazer — não deveria chegar aqui (botão nem apareceria)
+
+  abrirModal(`
+    <h3>📦 Cadastrar Produtos no Catálogo</h3>
+    <div style="background:#e3f2fd;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px">
+      ℹ️ Cadastra só a ficha do produto (nome, NCM, unidade) no catálogo — não lança quantidade nem movimentação, já que este material não passa pelo almoxarifado. Desmarque os itens que não quer cadastrar.
+    </div>
+    <div style="max-height:52vh;overflow-y:auto;padding-right:2px;margin-bottom:10px">
+      ${linhas}
+    </div>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharCadastrarCatalogo()">Agora não</button>
+      <button class="btn primary" id="btn-confirmar-catalogo" onclick="confirmarCadastrarCatalogo()">✅ Cadastrar</button>
+    </div>`, 'wide');
+}
+
+function fecharCadastrarCatalogo(){
+  fecharModal();
+  _catalogoCtx=null;
+}
+
+async function confirmarCadastrarCatalogo(){
+  if(!_catalogoCtx) return;
+  const {cotId,srmId}=_catalogoCtx;
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  if(!cot) return;
+
+  const btn=document.getElementById('btn-confirmar-catalogo');
+  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+
+  for(let idx=0;idx<(cot.nfItens||[]).length;idx++){
+    const chk=document.getElementById(`cat-inc-${idx}`);
+    if(!chk) continue; // item não estava nesta tela (já catalogado ou já casava com algo existente)
+    if(!chk.checked){ cot.nfItens[idx].catalogoRevisado=true; continue; } // pulado — não pergunta de novo
+    const it=cot.nfItens[idx];
+    const nomeNovo=(document.getElementById(`cat-nome-${idx}`)?.value||'').trim();
+    if(!nomeNovo){
+      alert(`Item "${it.xProd}": informe o nome comercial do produto.`);
+      if(btn){ btn.disabled=false; btn.textContent='✅ Cadastrar'; }
+      return;
+    }
+    const {data:pData,error:pErr}=await sb.from('estoque_produtos').insert({
+      nome:nomeNovo, nome_fiscal:it.xProd||null,
+      ncm:it.NCM||null, unidade:it.uCom||'un', descricao:'', ativo:true
+    }).select().single();
+    if(pErr){
+      alert('Erro ao criar produto: '+pErr.message);
+      if(btn){ btn.disabled=false; btn.textContent='✅ Cadastrar'; }
+      return;
+    }
+    const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:it.xProd||null,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
+    if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
+    db.estoqueProdutos.push(novoProd);
+    cot.nfItens[idx].catalogoRevisado=true;
+  }
+
+  const {error:cotErr}=await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
+  if(cotErr){ console.error('Erro ao salvar nf_itens:',cotErr.message); }
+
+  fecharCadastrarCatalogo();
+  renderEstoquePainel();
   abrirEditarSRM(srmId,'pedidos');
 }
 
