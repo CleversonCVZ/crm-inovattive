@@ -5691,8 +5691,11 @@ function abaPedidoAprovadoSRMHTML(c){
     /* Botão "Cadastrar no Catálogo": para compras que NÃO passam pelo estoque
        (vinculadas a obra, ou pagas pelo cliente) — cadastra só a ficha do produto
        (nome/NCM/unidade) no catálogo de estoque_produtos, sem lançar quantidade
-       nem movimentação. Só aparece se sobrar item sem correspondência no catálogo. */
-    const semEstoque = !cot.estoqueLancado && (!!c.obraId || c.pagamentoResponsavel!=='empresa');
+       nem movimentação. Checagem é por item (não pela cotação inteira): mesmo que
+       a cotação já tenha sido parcialmente lançada no estoque (itens desmarcados
+       no modal "Lançar no Estoque" nunca ganham produto no catálogo), os itens que
+       ainda não batem com nenhum produto existente continuam elegíveis aqui. */
+    const semEstoque = !!c.obraId || c.pagamentoResponsavel!=='empresa';
     const itensParaCatalogar = semEstoque ? cot.nfItens.filter(it=>!it.catalogoRevisado && !matchProdutoEstoque(it)) : [];
     const btnCatalogo = itensParaCatalogar.length
       ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
