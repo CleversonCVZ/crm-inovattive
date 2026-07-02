@@ -5062,6 +5062,8 @@ function abaCotacoesSRMHTML(c){
     </div>`;
 }
 
+/** Adiciona uma nova cotação ao SRM. Lê os campos do formulário inline (#ncot-*),
+ *  persiste no Supabase (srm_cotacoes) e atualiza db.srmCotacoes em memória. */
 async function adicionarCotacaoSRM(srmId){
   const valor   = parseFloat((document.getElementById('ncot-valor').value||'0').replace(/\./g,'').replace(',','.'))||null;
   const data    = document.getElementById('ncot-data').value||null;
@@ -5131,6 +5133,9 @@ async function uploadPDFCotacaoSRM(cotId, srmId, input){
   }catch(e){ alert('Erro no upload: '+(e.message||e)); }
 }
 
+/** Muda o status de uma cotação (recebida → selecionada → etc.).
+ *  Ao selecionar uma cotação, desseleciona automaticamente qualquer outra
+ *  que estava como 'selecionada' no mesmo SRM. */
 async function statusCotacaoSRM(cotId, srmId, novoStatus){
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const todas = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===srmId);
@@ -5662,7 +5667,9 @@ function toggleSemXmlSRM(cotId, srmId, checked){
   if(el) el.style.display=checked?'':'none';
 }
 
-/* Extrai dados do PDF da NF já armazenado (quando não há XML) */
+/** Extrai dados da DANFE em PDF via PDF.js (fallback quando não há XML da NF-e).
+ *  Usa regex sobre o texto extraído para tentar preencher nfItens, nfValorTotal e nfData.
+ *  Resultados são aproximados — o XML sempre tem prioridade quando disponível. */
 async function extrairDanfePdfSRM(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot||!cot.pdfNfPath) return;
   const statusEl=document.getElementById('nf-xml-status');
@@ -5687,6 +5694,9 @@ async function extrairDanfePdfSRM(cotId, srmId){
   }
 }
 
+/** Salva as correspondências entre itens da NF (nfItens[]) e produtos do estoque.
+ *  Lê os selects #est-prod-{idx} do modal e grava nfItens[idx].produtoEstoqueId.
+ *  Chamada antes de lançar no estoque para garantir que os vínculos estejam persistidos. */
 async function salvarCorrespondenciasNF(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
   const srm=(db.cardsSRM||[]).find(x=>x.id===srmId);
@@ -5923,6 +5933,9 @@ function abrirNovaCPSRM(srmId){
     </div>`, 'cartao');
 }
 
+/** Cria uma nova Conta a Pagar vinculada ao SRM (aba Financeiro do card SRM).
+ *  Persiste em contas_pagar com card_srm_id preenchido e cria a movimentação
+ *  correspondente em movimentacoes_financeiras (saída na conta corrente escolhida). */
 async function salvarNovaCPSRM(srmId){
   const descricao = (document.getElementById('nsrm-desc').value||'').trim();
   const fornId    = parseInt(document.getElementById('nsrm-forn').value)||null;
@@ -5962,6 +5975,8 @@ async function salvarNovaCPSRM(srmId){
   abrirEditarSRM(srmId,'financeiro');
 }
 
+/** Abre o modal de confirmação de pagamento de uma CP vinculada ao SRM.
+ *  Verifica permissão fin-contas-pagar-pagar antes de abrir. */
 async function pagarCPdoSRM(cpId, srmId){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamento.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
@@ -5991,6 +6006,8 @@ async function pagarCPdoSRM(cpId, srmId){
     </div>`);
 }
 
+/** Efetiva o pagamento: marca a CP como 'pago', registra dataPagamento e
+ *  cria movimentação de saída na conta corrente selecionada. Recarrega a aba Financeiro. */
 async function confirmarPagamentoSRM(cpId, srmId){
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
   const data   = (document.getElementById('cprap-data')||{}).value;
@@ -6021,6 +6038,8 @@ async function confirmarPagamentoSRM(cpId, srmId){
   abrirEditarSRM(srmId,'financeiro');
 }
 
+/** Exclui uma CP vinculada ao SRM e remove a movimentação financeira correspondente
+ *  (padrão cascade delete movimentações: origemTipo='contas_pagar', origemId=cpId). */
 async function excluirCPdoSRM(cpId, srmId){
   if(!confirm('Excluir esta conta a pagar?')) return;
   // remove movimentações vinculadas antes de excluir a CP
@@ -8752,6 +8771,8 @@ async function excluirMovimentacao(id, contaId){
 }
 
 // ──────────────────────────────────────────────────────────────
+// CONTAS CORRENTES — helpers internos
+// ──────────────────────────────────────────────────────────────
 
 /** Retorna true se o CC vincula a uma obra (material ou mão de obra) */
 function _ccVinculaObra(cc){ return cc && (cc.slug==='material_obra' || cc.slug==='mao_de_obra'); }
@@ -9782,6 +9803,8 @@ async function excluirContaPagar(id){
   save(); renderContasPagar(); renderFinPainel();
 }
 
+// ──────────────────────────────────────────────────────────────
+// CATEGORIAS DE OUTROS CUSTOS — tela de configuração global
 // ──────────────────────────────────────────────────────────────
 
 function renderCatOutrosCustos(){
@@ -16105,6 +16128,8 @@ function _estoqueStats(){
   `;
 }
 
+/** Renderiza a tela Almoxarifado: stats de resumo (total de produtos, entradas, saídas, valor)
+ *  + tabela de saldo por produto com badge de categoria. */
 function renderEstoqueAlmoxarifado(){
   const statsEl=document.getElementById('estoque-stats-saldo');
   const corpoEl=document.getElementById('estoque-corpo-saldo');
@@ -16113,12 +16138,16 @@ function renderEstoqueAlmoxarifado(){
   _renderEstoqueSaldo(corpoEl);
 }
 
+/** Renderiza a tela Movimentações: lista cronológica de entradas/saídas,
+ *  respeitando os filtros de produto, tipo e período do cabeçalho. */
 function renderEstoqueMovimentacoes(){
   const corpoEl=document.getElementById('estoque-corpo-movimentos');
   if(!corpoEl) return;
   _renderEstoqueMovimentos(corpoEl);
 }
 
+/** Renderiza a tela Catálogo: todos os produtos (ativos e inativos),
+ *  com badge de categoria, NCM, unidade e status ativo/inativo. */
 function renderEstoqueCatalogo(){
   const corpoEl=document.getElementById('estoque-corpo-catalogo');
   if(!corpoEl) return;
