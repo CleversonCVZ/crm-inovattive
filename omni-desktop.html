@@ -738,12 +738,6 @@
     </table>
   </div>
 
-  <!-- FINANCEIRO: FASES (removido — placeholder mantido para não quebrar IDs) -->
-  <div id="view-fin-fases" style="display:none"><div class="empty" style="padding:60px;text-align:center;color:var(--muted)">
-      💳 <b>Fases Financeiras</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Aqui você configurará as fases e categorias financeiras.</small>
-    </div>
-  </div>
 
   <!-- FINANCEIRO: CONTAS CORRENTES -->
   <div class="view" id="view-fin-contas-correntes">
@@ -8183,29 +8177,6 @@ function renderContasCorrente(){
   });
 }
 
-/** Salva um campo inline de uma conta corrente */
-async function salvarCampoContaCorrente(id, campo, valor){
-  const c = (db.contasCorrente||[]).find(x=>x.id===id);
-  if(!c) return;
-  if(campo==='ativo')        c.ativo = !!valor;
-  else if(campo==='saldoInicial') c.saldoInicial = Number(String(valor).replace(/\./g,'').replace(',','.')) || 0;
-  else                             c[campo] = valor;
-
-  // Persiste direto no Supabase (sem debounce — campo inline importante)
-  await sb.from('contas_correntes').upsert({
-    id: c.id,
-    nome: c.nome,
-    banco: c.banco||null,
-    agencia: c.agencia||null,
-    conta: c.conta||null,
-    tipo: c.tipo||'corrente',
-    saldo_inicial: c.saldoInicial,
-    fatura_inicial: c.faturaInicial||0,
-    ativo: !!c.ativo
-  });
-  save();
-  renderContasCorrente();
-}
 
 /** HTML compartilhado do formulário de conta corrente.
     Ao mudar o tipo para "cartao", mostra campos extras de limite/fechamento. */
@@ -9302,14 +9273,6 @@ async function excluirFornecedor(id){
 // CONTAS A PAGAR — tela, CRUD e integração com contas correntes
 // ──────────────────────────────────────────────────────────────
 
-/** Atualiza status de contas vencidas no array local */
-function atualizarStatusVencidas(){
-  const hoje = localDia(0);
-  (db.contasPagar||[]).forEach(p=>{
-    if(p.status==='pendente' && p.dataVencimento && p.dataVencimento < hoje)
-      p.status = 'vencido';
-  });
-}
 
 /** Renderiza a tela Contas a Pagar — padrão visual de Contas a Receber */
 function renderContasPagar(){
