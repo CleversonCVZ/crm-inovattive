@@ -1154,11 +1154,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.8.0',
+    data: '02/07/2026',
+    itens: [
+      'O.S.: aba Diário redesenhada no padrão visual do Histórico do CRM — data editável, texto e imagens registrados juntos, múltiplos registros por dia, área de anexo de imagens estilizada',
+    ]
+  },
   {
     versao: '1.7.0',
     data: '02/07/2026',
@@ -12307,47 +12314,86 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
       `;
   }
 
-  /* ── ABA DIÁRIO ── */
+  /* ── ABA DIÁRIO ──
+     Padrão visual/interação alinhado ao "Histórico" do cartão CRM (camposCartaoContato +
+     histHTML): formulário de registro no topo (agora com data editável + anexo de imagens)
+     e lista de cards abaixo (.hist-item). Múltiplos registros na mesma data são permitidos —
+     cada clique em "Registrar" sempre cria uma entrada nova. */
   else if(aba==='diario'){
-    const diario = (os.diario||[]).slice().sort((a,b)=>b.data.localeCompare(a.data));
-    tabContent = `
-      ${!os.fechada?`<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
-        <button class="btn primary" onclick="novaEntradaDiario(${osId},${cardId})">＋ Nova entrada</button>
-      </div>`:''}
-      <div id="exec-diario-lista">
-        ${diario.map(d=>{
-          const autor = db.usuarios.find(u=>u.id===d.autorId);
-          return `<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:12px;overflow:hidden">
-            <div style="background:#f5f5f5;padding:8px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)">
-              <span style="font-weight:700">📅 ${fmtDia2(d.data)}</span>
-              ${autor?`<span style="font-size:12px;color:var(--muted)">por ${autor.nome}</span>`:''}
-              <span style="flex:1"></span>
-              ${!os.fechada?`<button class="btn sm danger" onclick="excluirEntradaDiario(${osId},${d.id},${cardId})">🗑</button>`:''}
-            </div>
-            <div style="padding:10px 12px">
-              ${!os.fechada
-                ? `<textarea id="diario-txt-${d.id}" rows="3" style="width:100%;resize:vertical;font-size:13px" onblur="salvarTextoDiario(${osId},${d.id},${cardId})">${(d.descricao||'').replace(/</g,'&lt;')}</textarea>`
-                : `<p style="font-size:13px;white-space:pre-wrap;margin:0">${(d.descricao||'').replace(/</g,'&lt;')||'<span style="color:var(--muted)">Sem descrição.</span>'}</p>`}
-              <div class="os-imagens" style="margin-top:8px">
-                ${(d.imagens||[]).map((img,ii)=>`
-                  <div class="os-img-card">
-                    <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}','os-diario-imagens')">
-                    <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
-                    ${!os.fechada?`
-                    <button class="icon-btn" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="editarLegendaImagemDiario(${osId},${d.id},${ii},${cardId})">✏️ legenda</button>
-                    <button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirImagemDiario(${osId},${d.id},${ii},${cardId})">🗑 remover</button>`:''}
-                  </div>`).join('')}
-              </div>
-              ${!os.fechada?`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-                <input id="diario-img-file-${d.id}" type="file" multiple accept="image/*" style="flex:1;font-size:12px">
-                <input id="diario-img-leg-${d.id}" placeholder="Legenda" style="width:140px;font-size:12px">
-                <button class="btn sm primary" onclick="uploadImagemDiario(${osId},${d.id},${cardId})">📷 Upload</button>
-              </div>
-              <div id="diario-status-${d.id}" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:3px"></div>`:''}
-            </div>
-          </div>`;
-        }).join('')||'<div class="empty" style="padding:30px">Nenhuma entrada no diário ainda.</div>'}
+    const diario = (os.diario||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||'')||(b.id-a.id));
+
+    const formNovo = os.fechada ? '' : `
+      <div style="border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px;background:#fafafa">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;display:block">Data</label>
+        <input id="diario-nova-data" type="date" value="${localDia(0)}" style="max-width:180px;margin-bottom:10px">
+        <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;display:block">Novo registro do diário</label>
+        <textarea id="diario-nova-txt" rows="3" placeholder="Escreva a atualização do dia e clique em Registrar (ou Ctrl+Enter)"
+          style="width:100%;resize:vertical;margin-bottom:10px" onkeydown="if(event.ctrlKey&&event.key==='Enter')registrarDiario(${osId},${cardId})"></textarea>
+        <div class="dl-upload-area" id="diario-drop-area" onclick="document.getElementById('diario-nova-imgs').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--blue)'"
+          ondragleave="this.style.borderColor=''"
+          ondrop="event.preventDefault();this.style.borderColor='';document.getElementById('diario-nova-imgs').files=event.dataTransfer.files;_diarioAtualizaPreviewImgs();"
+          style="padding:14px;margin-bottom:10px">
+          <div id="diario-nova-imgs-txt">📷 Clique ou arraste imagens aqui (opcional)</div>
+          <input type="file" id="diario-nova-imgs" multiple accept="image/*" style="display:none" onchange="_diarioAtualizaPreviewImgs()">
+        </div>
+        <input id="diario-nova-leg" placeholder="Legenda das imagens (opcional)" style="width:100%;margin-bottom:10px">
+        <button id="btn-registrar-diario" class="btn primary" onclick="registrarDiario(${osId},${cardId})">＋ Registrar no Diário</button>
       </div>`;
+
+    const listaHTML = diario.length ? diario.map(d=>{
+      const autor = db.usuarios.find(u=>u.id===d.autorId);
+      const emEdicao = _diarioEditId===d.id && !os.fechada;
+
+      if(emEdicao) return `
+        <div class="hist-item" style="border:1px solid var(--blue-dark)">
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;display:block">Data</label>
+          <input id="diario-edit-data-${d.id}" type="date" value="${d.data}" style="max-width:180px;margin-bottom:10px">
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px;display:block">Texto</label>
+          <textarea id="diario-edit-txt-${d.id}" rows="3" style="width:100%;resize:vertical;margin-bottom:10px">${(d.descricao||'').replace(/</g,'&lt;')}</textarea>
+          <div class="os-imagens" style="margin-bottom:8px">
+            ${(d.imagens||[]).map((img,ii)=>`
+              <div class="os-img-card">
+                <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}','os-diario-imagens')">
+                <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
+                <button class="icon-btn" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="editarLegendaImagemDiario(${osId},${d.id},${ii},${cardId})">✏️ legenda</button>
+                <button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirImagemDiario(${osId},${d.id},${ii},${cardId})">🗑 remover</button>
+              </div>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+            <input id="diario-add-imgs-${d.id}" type="file" multiple accept="image/*" style="flex:1;font-size:12px">
+            <input id="diario-add-leg-${d.id}" placeholder="Legenda" style="width:140px;font-size:12px">
+            <button class="btn sm primary" onclick="uploadImagemDiario(${osId},${d.id},${cardId})">📷 Adicionar</button>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn sm neutral" onclick="_diarioEditId=null;abrirVerOSExecucao(${osId},${cardId},'diario')">Cancelar</button>
+            <button class="btn sm primary" onclick="salvarEdicaoDiario(${osId},${d.id},${cardId})">Salvar</button>
+          </div>
+        </div>`;
+
+      return `
+        <div class="hist-item">
+          <div class="hist-data" style="display:flex;justify-content:space-between;align-items:center">
+            <span>📅 ${fmtDia2(d.data)}${autor?` <span style="font-weight:400;color:var(--muted)">por ${autor.nome}</span>`:''}</span>
+            ${!os.fechada?`<span style="display:flex;gap:2px;flex-shrink:0">
+              <button class="icon-btn" style="font-size:11px;padding:1px 5px" title="Editar" onclick="_diarioEditId=${d.id};abrirVerOSExecucao(${osId},${cardId},'diario')">✏️</button>
+              <button class="icon-btn del" style="font-size:11px;padding:1px 5px" title="Excluir" onclick="excluirEntradaDiario(${osId},${d.id},${cardId})">🗑</button>
+            </span>`:''}
+          </div>
+          <div style="white-space:pre-wrap">${(d.descricao||'').replace(/</g,'&lt;')||'<span style="color:var(--muted)">Sem descrição.</span>'}</div>
+          ${(d.imagens||[]).length?`<div class="os-imagens" style="margin-top:8px">
+            ${d.imagens.map(img=>`<div class="os-img-card">
+              <img src="${getOSImageUrl(img.path,'os-diario-imagens')}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}','os-diario-imagens')">
+              <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||''}</div>
+            </div>`).join('')}
+          </div>`:''}
+        </div>`;
+    }).join('') : '<div class="empty" style="padding:20px 0">Nenhuma entrada no diário ainda.</div>';
+
+    tabContent = `
+      ${formNovo}
+      <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px;display:block">Histórico (${diario.length} registro${diario.length!==1?'s':''})</label>
+      <div class="hist" style="height:auto;max-height:460px">${listaHTML}</div>`;
   }
 
   /* ── ABA PENDÊNCIAS ── */
@@ -13376,31 +13422,73 @@ function removerItemSit(osId, key, propostaId, idx, cardId){
   abrirSeletorItensOS(osId, cardId); // re-abre atualizado
 }
 
-async function novaEntradaDiario(osId, cardId){
-  const os = db.ordensServico.find(x=>x.id===osId);
-  const hoje = localDia(0);
-  if((os.diario||[]).some(d=>d.data===hoje)){
-    alert('Já existe uma entrada para hoje ('+fmtDia2(hoje)+'). Edite-a diretamente no diário.');
-    abrirVerOSExecucao(osId, cardId, 'diario'); return;
-  }
-  const {data, error} = await sb.from('os_diario').insert({
-    os_id:osId, data:hoje, autor_id:usuarioAtual?.id||null, descricao:'', imagens:[]
-  }).select().single();
-  if(error){ console.error(error); alert('Erro ao criar entrada.'); return; }
-  if(!os.diario) os.diario=[];
-  os.diario.push({id:data.id, data:hoje, autorId:usuarioAtual?.id||null, descricao:'', imagens:[]});
-  registrarLog('editar','os',osId,`Nova entrada no diário de obra: ${os.numero} — ${fmtDia2(hoje)}`);
-  save(); abrirVerOSExecucao(osId, cardId, 'diario');
+/* id da entrada de diário atualmente em edição (null = nenhuma) — ids do os_diario são
+   globalmente únicos (sequência única da tabela), então não há risco de colisão entre O.S. */
+let _diarioEditId = null;
+
+/** Atualiza o texto do dropzone de imagens do formulário "Novo registro" conforme a seleção. */
+function _diarioAtualizaPreviewImgs(){
+  const inp = document.getElementById('diario-nova-imgs');
+  const txt = document.getElementById('diario-nova-imgs-txt');
+  if(!inp || !txt) return;
+  const n = inp.files?.length || 0;
+  txt.textContent = n ? `📷 ${n} imagem${n>1?'ns':''} selecionada${n>1?'s':''}` : '📷 Clique ou arraste imagens aqui (opcional)';
 }
 
-async function salvarTextoDiario(osId, diaId, cardId){
-  const os  = db.ordensServico.find(x=>x.id===osId);
-  const d   = (os.diario||[]).find(x=>x.id===diaId);
-  const txt = document.getElementById(`diario-txt-${diaId}`)?.value||'';
-  if(!d || d.descricao===txt) return;
-  d.descricao = txt;
-  await sb.from('os_diario').update({descricao:txt}).eq('id', diaId);
+/** Cria uma nova entrada no diário (data + texto + imagens, tudo de uma vez).
+ *  Múltiplos registros na mesma data são permitidos — cada clique cria uma entrada nova. */
+async function registrarDiario(osId, cardId){
+  const os   = db.ordensServico.find(x=>x.id===osId);
+  const data = document.getElementById('diario-nova-data')?.value;
+  const txt  = (document.getElementById('diario-nova-txt')?.value||'').trim();
+  const files= document.getElementById('diario-nova-imgs')?.files;
+  const leg  = (document.getElementById('diario-nova-leg')?.value||'').trim();
+  if(!data){ alert('Selecione a data.'); return; }
+  if(!txt && !(files&&files.length)){ alert('Escreva um texto ou anexe ao menos uma imagem.'); return; }
+
+  const btn = document.getElementById('btn-registrar-diario');
+  if(btn){ btn.disabled=true; btn.textContent='Registrando…'; }
+
+  const {data:row, error} = await sb.from('os_diario').insert({
+    os_id:osId, data, autor_id:usuarioAtual?.id||null, descricao:txt, imagens:[]
+  }).select().single();
+  if(error){ if(btn){btn.disabled=false;btn.textContent='＋ Registrar no Diário';} alert('Erro ao registrar: '+error.message); return; }
+
+  const diaId = row.id;
+  const imagens = [];
+  if(files && files.length){
+    for(const file of files){
+      const ext  = file.name.split('.').pop();
+      const path = `os${osId}/dia${diaId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const {error:eImg} = await sb.storage.from('os-diario-imagens').upload(path, file, {upsert:false});
+      if(eImg){ console.error(eImg); continue; }
+      imagens.push({path, descricao:leg});
+    }
+    if(imagens.length) await sb.from('os_diario').update({imagens}).eq('id', diaId);
+  }
+
+  if(!os.diario) os.diario=[];
+  os.diario.push({id:diaId, data, autorId:usuarioAtual?.id||null, descricao:txt, imagens});
+  registrarLog('editar','os',osId,`Novo registro no diário de obra: ${os.numero} — ${fmtDia2(data)}`);
   save();
+  abrirVerOSExecucao(osId, cardId, 'diario');
+}
+
+/** Salva edição de data/texto de uma entrada existente do diário (imagens são geridas à parte). */
+async function salvarEdicaoDiario(osId, diaId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const d  = (os.diario||[]).find(x=>x.id===diaId);
+  if(!d) return;
+  const data = document.getElementById(`diario-edit-data-${diaId}`)?.value;
+  const txt  = document.getElementById(`diario-edit-txt-${diaId}`)?.value||'';
+  if(!data){ alert('Selecione a data.'); return; }
+  const {error} = await sb.from('os_diario').update({data, descricao:txt}).eq('id', diaId);
+  if(error){ alert('Erro ao salvar: '+error.message); return; }
+  d.data = data; d.descricao = txt;
+  registrarLog('editar','os',osId,`Registro do diário editado: ${os.numero} — ${fmtDia2(data)}`);
+  save();
+  _diarioEditId = null;
+  abrirVerOSExecucao(osId, cardId, 'diario');
 }
 
 async function excluirEntradaDiario(osId, diaId, cardId){
@@ -13412,14 +13500,15 @@ async function excluirEntradaDiario(osId, diaId, cardId){
   }
   await sb.from('os_diario').delete().eq('id', diaId);
   os.diario = (os.diario||[]).filter(x=>x.id!==diaId);
+  if(_diarioEditId===diaId) _diarioEditId=null;
   save(); abrirVerOSExecucao(osId, cardId, 'diario');
 }
 
 async function uploadImagemDiario(osId, diaId, cardId){
   const os    = db.ordensServico.find(x=>x.id===osId);
   const d     = (os.diario||[]).find(x=>x.id===diaId);
-  const files = document.getElementById(`diario-img-file-${diaId}`)?.files;
-  const leg   = document.getElementById(`diario-img-leg-${diaId}`)?.value||'';
+  const files = document.getElementById(`diario-add-imgs-${diaId}`)?.files;
+  const leg   = document.getElementById(`diario-add-leg-${diaId}`)?.value||'';
   const statusEl = document.getElementById(`diario-status-${diaId}`);
   if(!files?.length){ alert('Selecione ao menos uma imagem.'); return; }
   if(statusEl) statusEl.textContent = 'Enviando…';
