@@ -2171,6 +2171,7 @@ async function carregarDadosSupabase(){
         descricao:m.descricao||'',
         dataMovimento:m.data_movimento ? m.data_movimento.slice(0,10) : null,
         centroCustoId:m.centro_custo_id||null,
+        obraId:m.obra_id||null,
         origemTipo:m.origem_tipo||'manual',
         origemId:m.origem_id||null,
         contaDestinoId:m.conta_destino_id||null,
@@ -8565,6 +8566,8 @@ function abrirLancamentoManual(contaId){
     .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
   const contasOpts = (db.contasCorrente||[]).filter(x=>x.ativo && x.id!==contaId)
     .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
+    .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
 
   const html = `
     <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
@@ -8602,10 +8605,18 @@ function abrirLancamentoManual(contaId){
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
-        <select id="lm-cc" class="input">
+        <select id="lm-cc" class="input" onchange="toggleObraCampoCp('lm-obra-row','lm-cc')">
           <option value="">— nenhum —</option>
           ${ccOpts}
         </select>
+      </div>
+      <div id="lm-obra-row" style="display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Obra</div>
+        <select id="lm-obra" class="input">
+          <option value="">— selecione a obra —</option>
+          ${obraOpts}
+        </select>
+        <p class="cp-obra-hint" style="display:none;margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic"></p>
       </div>
     </div>
     <div class="actions rodape-cartao">
@@ -8630,6 +8641,8 @@ async function salvarLancamentoManual(contaId){
   const data      = document.getElementById('lm-data').value;
   const descricao = (document.getElementById('lm-descricao').value||'').trim();
   const ccId      = parseInt(document.getElementById('lm-cc').value) || null;
+  const ccSel     = (db.centrosCusto||[]).find(x=>x.id===ccId);
+  const obraId    = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('lm-obra').value)||null) : null;
   const destinoId = tipo==='transferencia'
     ? (parseInt(document.getElementById('lm-destino').value) || null)
     : null;
@@ -8638,6 +8651,7 @@ async function salvarLancamentoManual(contaId){
   if(!data)     { alert('Informe a data.'); return; }
   if(!descricao){ alert('Informe uma descrição.'); return; }
   if(tipo==='transferencia' && !destinoId){ alert('Selecione a conta de destino.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
   const btn = btnModalPrimario();
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
@@ -8647,6 +8661,7 @@ async function salvarLancamentoManual(contaId){
     id, conta_id:contaId, tipo, valor,
     descricao, data_movimento:data,
     centro_custo_id:ccId||null,
+    obra_id:obraId||null,
     origem_tipo:'manual', origem_id:null,
     conta_destino_id:destinoId
   };
@@ -8656,7 +8671,7 @@ async function salvarLancamentoManual(contaId){
 
   const movObj = {
     id, contaId, tipo, valor, descricao, dataMovimento:data,
-    centroCustoId:ccId, origemTipo:'manual', origemId:null,
+    centroCustoId:ccId, obraId, origemTipo:'manual', origemId:null,
     contaDestinoId:destinoId, criadoEm:new Date().toISOString()
   };
   db.movimentacoes = db.movimentacoes || [];
@@ -8721,13 +8736,14 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   const linhas = movs.length
     ? movs.map(m=>{
         const cc  = (db.centrosCusto||[]).find(x=>x.id===m.centroCustoId);
+        const obraM = m.obraId ? (db.obras||[]).find(x=>x.id===m.obraId) : null;
         const cor = m.tipo==='entrada' ? '#16a34a' : '#dc2626';
         const sinal = m.tipo==='entrada' ? '+' : '-';
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:8px 10px;color:var(--muted);font-size:12px;white-space:nowrap">${m.dataMovimento?fmtDia2(m.dataMovimento):''}</td>
           <td style="padding:8px 10px">
             <div style="font-size:13px">${TIPO_ICON[m.tipo]||''} ${escHtml(m.descricao)}</div>
-            ${cc?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtml(cc.nome)}</div>`:''}
+            ${cc?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtml(cc.nome)}${obraM?' · 🏗️ '+escHtml(obraM.nome):''}</div>`:''}
           </td>
           <td style="padding:8px 10px;font-size:11px;color:var(--muted);white-space:nowrap">${TIPO_LABEL[m.tipo]||m.tipo}</td>
           <td style="padding:8px 10px;text-align:right;font-weight:700;color:${cor};white-space:nowrap">${sinal} ${fmtMoney(m.valor)}</td>
@@ -8817,6 +8833,10 @@ function editarMovimentacao(id, contaId){
   if(!m) return;
   const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
     .map(x=>`<option value="${x.id}" ${m.centroCustoId===x.id?'selected':''}>${escHtml(x.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
+    .map(o=>`<option value="${o.id}" ${m.obraId===o.id?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+  const ccAtual = (db.centrosCusto||[]).find(x=>x.id===m.centroCustoId);
+  const mostrarObra = _ccVinculaObra(ccAtual);
   const valorFmt = m.valor.toFixed(2).replace('.',',');
 
   abrirModal(`
@@ -8850,10 +8870,18 @@ function editarMovimentacao(id, contaId){
       </div>
       <div>
         <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Centro de Custo</label>
-        <select id="em-cc" class="input" style="margin-top:6px;width:100%">
+        <select id="em-cc" class="input" style="margin-top:6px;width:100%" onchange="toggleObraCampoCp('em-obra-row','em-cc')">
           <option value="">— nenhum —</option>
           ${ccOpts}
         </select>
+      </div>
+      <div id="em-obra-row" style="display:${mostrarObra?'block':'none'}">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Obra</label>
+        <select id="em-obra" class="input" style="margin-top:6px;width:100%">
+          <option value="">— selecione a obra —</option>
+          ${obraOpts}
+        </select>
+        <p class="cp-obra-hint" style="display:none;margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic"></p>
       </div>
       ${m.origemTipo!=='manual'?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</div>':''}
     </div>
@@ -8872,22 +8900,25 @@ async function salvarEdicaoMovimentacao(id, contaId){
   const data      = document.getElementById('em-data').value;
   const descricao = (document.getElementById('em-descricao').value||'').trim();
   const ccId      = parseInt(document.getElementById('em-cc').value) || null;
+  const ccSel     = (db.centrosCusto||[]).find(x=>x.id===ccId);
+  const obraId    = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('em-obra').value)||null) : null;
 
   if(!valor)    { alert('Informe o valor.'); return; }
   if(!data)     { alert('Informe a data.'); return; }
   if(!descricao){ alert('Informe uma descrição.'); return; }
+  if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
 
   const {error} = await sb.from('movimentacoes_financeiras').update({
-    tipo, valor, descricao, data_movimento:data, centro_custo_id:ccId||null
+    tipo, valor, descricao, data_movimento:data, centro_custo_id:ccId||null, obra_id:obraId||null
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
   m.tipo = tipo; m.valor = valor; m.descricao = descricao;
-  m.dataMovimento = data; m.centroCustoId = ccId;
+  m.dataMovimento = data; m.centroCustoId = ccId; m.obraId = obraId;
   save();
   await _delay;
   renderContasCorrente(); // atualiza saldo na tela principal
