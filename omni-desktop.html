@@ -303,6 +303,10 @@
   .perm-item-lvl-ck{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer;font-weight:600;white-space:nowrap}
   .perm-item-lvl-ck input{width:auto;accent-color:var(--green)}
   .perm-item-lvl-ck input:disabled{accent-color:var(--muted);cursor:not-allowed}
+  .perm-item-tela{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border)}
+  .perm-item-tela:last-child{border-bottom:none}
+  .ck-gtela-nivel{font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);flex-shrink:0}
+  .ck-gtela-nivel:disabled{opacity:.4;cursor:not-allowed}
   .badge-papel{font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px}
   .badge-papel.admin{background:#cfe2ff;color:var(--blue-dark)}
   .badge-papel.usuario{background:#e9ecef;color:var(--muted)}
@@ -385,7 +389,7 @@
       </select>
       <span id="arquivados-info" style="font-size:12.5px;color:var(--muted)"></span>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovoCartao()">+ Novo CRM</button>
+      <button class="btn primary" id="btn-novo-crm" onclick="abrirNovoCartao()">+ Novo CRM</button>
     </div>
     <div class="kanban" id="kanban"></div>
   </div>
@@ -395,7 +399,7 @@
     <div class="bar">
       <h2>Fases do CRM</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaFase()">+ Nova Fase</button>
+      <button class="btn primary" id="btn-nova-fase" onclick="novaFase()">+ Nova Fase</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       As fases viram colunas do painel, na ordem definida. Edite nome, cor e ordem direto na tabela — as alterações salvam automaticamente.
@@ -428,7 +432,7 @@
         <option value="emitidas">Mais emitidas</option>
         <option value="crms">Mais CRMs</option>
       </select>
-      <button class="btn primary" onclick="abrirNovoCliente()">+ Novo Cliente</button>
+      <button class="btn primary" id="btn-novo-cliente" onclick="abrirNovoCliente()">+ Novo Cliente</button>
     </div>
     <div class="stats" id="cli-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <table class="lista">
@@ -1104,7 +1108,7 @@
     <div class="bar">
       <h2>Origem do Lead</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="novaOrigem()">+ Nova Origem</button>
+      <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()">+ Nova Origem</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Edite o nome direto na lista.
@@ -1176,11 +1180,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.20.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.20.0',
+    data: '02/07/2026',
+    itens: [
+      'Permissões — módulo CRM: o nível Visualizar/Editar/Excluir agora vale de verdade nas telas Painel (cartões), Fases, Origem do Lead e Clientes/Prospects. Quem só tem Visualizar não vê mais os botões de criar/editar/excluir e não consegue mais arrastar cartões entre fases; a aba "Dados" do cartão fica travada e o botão Excluir cartão só aparece com nível Excluir',
+    ]
+  },
   {
     versao: '1.18.0',
     data: '02/07/2026',
@@ -1837,6 +1848,8 @@ function load(){
     RECURSOS.forEach(r=>{ if(g.admin && !g.recursos.includes(r.id)) g.recursos.push(r.id); });
     // recursosEditar: nível "editar" dentro dos recursos vistos. Ausente = herda de recursos (comportamento antigo).
     if(!Array.isArray(g.recursosEditar)) g.recursosEditar = g.recursos.slice();
+    // telasNivel: nível ver/editar/excluir por tela. Ausente = objeto vazio (cada tela lida como 'excluir', ver nivelTela()).
+    if(!g.telasNivel || typeof g.telasNivel!=='object') g.telasNivel = {};
     // fasesPermitidas: null = sem restrição (todos veem tudo)
     if(!('fasesPermitidas' in g)) g.fasesPermitidas = null;
     // filtrarOS: true = o grupo só enxerga OS onde consta como responsável ou técnico
@@ -2073,6 +2086,10 @@ async function carregarConfigSupabase(){
            definida para este grupo (null = nunca migrado), herda de recursos[] inteiro — preserva o
            comportamento antigo (quem via, editava) até o admin salvar o grupo de novo explicitamente. */
         recursosEditar: g.recursos_editar!=null ? g.recursos_editar : (g.recursos||[]),
+        /* telasNivel: nível ver/editar/excluir por tela individual (checkbox de sempre continua
+           em telas[]; isso só refina o que pode ser feito dentro de uma tela já visível).
+           Tela ausente no mapa = 'excluir' (acesso total), ver nivelTela(). */
+        telasNivel: g.telas_nivel||{},
         fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico}));
     if(catOutrosCustos.data && catOutrosCustos.data.length)
       db.catOutrosCustos = catOutrosCustos.data.map(c=>({id:c.id, nome:c.nome, emoji:c.emoji||'📦', ordem:c.ordem||0}));
@@ -2491,7 +2508,7 @@ function syncConfigSupabase(){
     sincronizarTabela('estoque_categorias', db.estoqueCats||[], c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -4316,16 +4333,18 @@ function renderFuncoes(){
 function renderOrigens(){
   const tb=document.getElementById('origens-tbody'); tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'origens')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'origens');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'origens');
   db.origens.forEach(o=>{
     const emUso = db.cards.filter(c=>c.origemId===o.id).length;
     const tr=document.createElement('tr');
     tr.innerHTML=`
-      <td><input type="text" value="${o.nome.replace(/"/g,'&quot;')}" data-id="${o.id}"
+      <td><input type="text" value="${o.nome.replace(/"/g,'&quot;')}" data-id="${o.id}" ${podeEditar?'':'disabled'}
         style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:4px;border-radius:6px"
         onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
         onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
       <td>${emUso}</td>
-      <td style="text-align:right"><button class="icon-btn del" title="Excluir origem" data-del="${o.id}">🗑</button></td>`;
+      <td style="text-align:right">${podeExcluir?`<button class="icon-btn del" title="Excluir origem" data-del="${o.id}">🗑</button>`:''}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
@@ -4353,6 +4372,7 @@ function renderOrigens(){
   });
 }
 async function novaOrigem(){
+  if(!podeEditarTela(usuarioAtual,'origens')){ alert('Sem permissão para criar origens.'); return; }
   const nome=prompt('Nome da nova origem:');
   if(!nome || !nome.trim()) return;
   if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
@@ -4408,6 +4428,25 @@ function podeEditarRecurso(u, recursoId){
   return (g.recursosEditar||[]).includes(recursoId);
 }
 
+/* nivelTela/podeEditarTela/podeExcluirTela: nível de ação (cumulativo) DENTRO de uma
+   tela já visível — 'visualizar' < 'editar' < 'excluir'. Independente de podeVer(),
+   que só decide se a tela aparece no menu. Tela ausente do mapa telasNivel do grupo
+   (grupo antigo, ainda não reconfigurado nessa UI) = 'excluir', preservando o acesso
+   total que o grupo já tinha antes dessa funcionalidade existir. */
+function nivelTela(u, telaId){
+  const g = grupoDe(u);
+  if(g.admin) return 'excluir';
+  if(!(g.telas||[]).includes(telaId)) return 'nenhum';
+  return (g.telasNivel||{})[telaId] || 'excluir';
+}
+function podeEditarTela(u, telaId){
+  const n = nivelTela(u, telaId);
+  return n==='editar' || n==='excluir';
+}
+function podeExcluirTela(u, telaId){
+  return nivelTela(u, telaId)==='excluir';
+}
+
 function podeVerFase(faseId){
   const g = grupoDe(usuarioAtual);
   if(g.admin) return true;
@@ -4439,6 +4478,12 @@ function aplicarPermissoes(){
   Object.entries(itens).forEach(([elId, tela])=>{
     const el=document.getElementById(elId);
     if(el) el.style.display = podeVer(usuarioAtual, tela) ? '' : 'none';
+  });
+  // botões estáticos de "＋ Novo X" no cabeçalho de cada tela — exigem nível Editar na tela
+  const botoesEditarTela = {'btn-novo-crm':'painel', 'btn-nova-fase':'fases', 'btn-nova-origem':'origens', 'btn-novo-cliente':'clientes'};
+  Object.entries(botoesEditarTela).forEach(([elId, tela])=>{
+    const el=document.getElementById(elId);
+    if(el) el.style.display = podeEditarTela(usuarioAtual, tela) ? '' : 'none';
   });
 }
 
@@ -4706,7 +4751,7 @@ function crmCard(c, showFase){
   const el = document.createElement('div');
   el.className='kcard';
   el.style.borderLeftColor = f.cor;
-  el.draggable=true;
+  el.draggable = podeEditarTela(usuarioAtual,'painel'); // só quem edita a tela pode arrastar entre fases
   el.ondragstart = e=> e.dataTransfer.setData('text', c.id);
   el.onclick = ()=> abrirEditarCartao(c.id);
   const st = cardAtivo(c) ? statusAgenda(c.agenda) : null;
@@ -4729,6 +4774,8 @@ function crmCard(c, showFase){
 /* ================= FASES ================= */
 function renderFases(){
   const tb = document.getElementById('fases-tbody'); tb.innerHTML='';
+  const podeEditar = podeEditarTela(usuarioAtual,'fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'fases');
   fasesOrdenadas().forEach(f=>{
     const tc = textColor(f.cor);
     const qtd = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c)).length;
@@ -4737,19 +4784,20 @@ function renderFases(){
     tr.className='fase-row';
     tr.style.background = f.cor;
     tr.style.color = tc;
+    const ro = podeEditar?'':'disabled';
     tr.innerHTML = `
       <td>${f.id}</td>
-      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome"${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
       <td>
         <label class="cor-chip" title="Clique para escolher outra cor">
           <span class="cor-amostra" style="background:${f.cor}"></span>
           🎨 Trocar cor
-          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor">
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
         </label>
       </td>
-      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem"></td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
       <td>${qtd}${arq?` <small>(+${arq} arquivado${arq>1?'s':''})</small>`:''}</td>
-      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`}</td>`;
+      <td style="text-align:right">${f.tipo?'<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>':(podeExcluir?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}</td>`;
     tb.appendChild(tr);
   });
   tb.querySelectorAll('input').forEach(inp=>{
@@ -4769,6 +4817,7 @@ function renderFases(){
 }
 
 async function novaFase(){
+  if(!podeEditarTela(usuarioAtual,'fases')){ alert('Sem permissão para criar fases.'); return; }
   const ordemMax = db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf = {id: await proximoIdSeguro('fases_crm', db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
   db.fases.push(nf);
@@ -4777,6 +4826,7 @@ async function novaFase(){
 }
 
 function excluirFase(id){
+  if(!podeExcluirTela(usuarioAtual,'fases')){ alert('Sem permissão para excluir fases.'); return; }
   const f = fase(id);
   if(f?.tipo){ alert('Fases de sistema não podem ser excluídas.'); return; }
   const qtd = db.cards.filter(c=>c.faseId===id).length;
@@ -6815,9 +6865,9 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
     <label>Nome da obra</label>
     <div style="display:flex;gap:6px;align-items:center">
       <select id="m-obra" style="flex:1" onchange="toggleBtnEditarObra()">${optsObras(cid, c?c.obraId:null)}</select>
-      <button type="button" id="btn-editar-obra" class="icon-btn" title="Editar dados desta obra"
+      ${podeEditarRecurso(usuarioAtual,'obra-informacoes')?`<button type="button" id="btn-editar-obra" class="icon-btn" title="Editar dados desta obra"
         onclick="editarObraDoCartao(${c?c.id:'null'},${cid})"
-        style="${c&&c.obraId?'':'display:none'}">✏️</button>
+        style="${c&&c.obraId?'':'display:none'}">✏️</button>`:''}
     </div>
     <button class="link-btn" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
     <div class="novo-cliente-box" id="nova-obra-box">
@@ -6860,6 +6910,7 @@ function camposCartaoContato(c){
 
 /* Registro rápido no histórico sem fechar o cartão */
 function registrarRapido(id){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para registrar histórico neste cartão.'); return; }
   const c = db.cards.find(x=>x.id===id);
   const ta = document.getElementById('m-contato');
   if(!ta.value.trim()){ alert('Escreva o contato antes de registrar.'); ta.focus(); return; }
@@ -7015,6 +7066,7 @@ async function confirmarPerdido(cardId){
 }
 
 function abrirNovoCartao(faseIdInicial){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para criar novos cartões.'); return; }
   const f = faseIdInicial || fasesOrdenadas()[0].id;
   const clientesOrd = db.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
   const primeiroCliente = clientesOrd.length ? clientesOrd[0].id : null;
@@ -7121,6 +7173,8 @@ function abrirEditarCartao(id, aba='dados'){
   const verObras       = podeUsar(usuarioAtual,'aba-obras');
   const verOS          = podeUsar(usuarioAtual,'aba-os');
   const verFinanceiro  = podeUsar(usuarioAtual,'aba-financeiro');
+  const podeEditarPainel = podeEditarTela(usuarioAtual,'painel');
+  const podeExcluirPainel = podeExcluirTela(usuarioAtual,'painel');
   if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS) || (aba==='financeiro' && !verFinanceiro)) aba='dados';
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
@@ -7137,18 +7191,18 @@ function abrirEditarCartao(id, aba='dados'){
       <option>Engenheiro</option><option>Sócio</option><option>Gerente</option>
       <option>Empreiteiro</option><option>Assistente</option>
     </datalist>
-    <div class="dados-grid">
+    <div class="dados-grid" style="${podeEditarPainel?'':'pointer-events:none;opacity:.65'}">
       <div>
         <label>Cliente</label>
         <div style="display:flex;gap:6px;align-items:center">
           <select id="m-cliente" style="flex:1" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
-          <button type="button" class="icon-btn" title="Editar dados deste cliente" onclick="abrirEditarClienteDoCartao(+document.getElementById('m-cliente').value,${c.id})">✏️</button>
+          ${podeEditarTela(usuarioAtual,'clientes')?`<button type="button" class="icon-btn" title="Editar dados deste cliente" onclick="abrirEditarClienteDoCartao(+document.getElementById('m-cliente').value,${c.id})" style="pointer-events:auto">✏️</button>`:''}
         </div>
         ${camposCartaoForm(c)}
       </div>
       <div class="col-hist">${camposCartaoContato(c)}</div>
     </div>
-    ${secaoOutrosContatosCard(c)}`;
+    <div style="${podeEditarPainel?'':'pointer-events:none;opacity:.65'}">${secaoOutrosContatosCard(c)}</div>`;
   else if(aba==='emitidas') corpo=abaPropostasHTML(c);
   else if(aba==='aprovada') corpo=abaAprovadaHTML(c);
   else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
@@ -7168,11 +7222,11 @@ function abrirEditarCartao(id, aba='dados'){
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
-      <button class="btn danger" data-btn-perigo onclick="excluirCartao(${c.id})">Excluir</button>
+      ${podeExcluirPainel?`<button class="btn danger" data-btn-perigo onclick="excluirCartao(${c.id})">Excluir</button>`:''}
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      <button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>
+      ${(aba!=='dados' || podeEditarPainel)?`<button class="btn primary" data-btn-salvar onclick="${aba==='dados'?`salvarEdicaoCartao(${c.id})`:`abrirEditarCartao(${c.id},'dados')`}">${aba==='dados'?'Salvar':'Salvar Dados'}</button>`:''}
     </div>`, 'cartao');
-  if(aba==='dados') wireValidacao(c.id);
+  if(aba==='dados' && podeEditarPainel) wireValidacao(c.id);
 }
 
 /* secaoOutrosContatosCard(c):
@@ -15138,6 +15192,7 @@ function renderPropostas(){
 }
 
 async function salvarEdicaoCartao(id){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para editar este cartão.'); return; }
   const c=db.cards.find(x=>x.id===id);
   c.clienteId=+document.getElementById('m-cliente').value;
   c.obraId=+document.getElementById('m-obra').value||null;
@@ -15175,6 +15230,7 @@ async function salvarEdicaoCartao(id){
 }
 
 async function excluirCartao(id){
+  if(!podeExcluirTela(usuarioAtual,'painel')){ alert('Sem permissão para excluir cartões.'); return; }
   const c=db.cards.find(x=>x.id===id);
   const props=db.propostas.filter(p=>p.cardId===id);
   const oss=db.ordensServico.filter(o=>o.cardId===id);
@@ -15278,6 +15334,7 @@ function resumoEnd(e){
 function enderecoResumo(c){ return resumoEnd(c.endereco) || c.cidade || ''; }
 
 function abrirNovoCliente(){
+  if(!podeEditarTela(usuarioAtual,'clientes')){ alert('Sem permissão para cadastrar clientes.'); return; }
   abrirModal(`
     <h3>Novo Cliente</h3>
     <label>Nome</label><input id="m-nome">
@@ -15326,33 +15383,38 @@ async function salvarNovoCliente(){
 
 function obrasDoClienteHTML(c){
   const obras=db.obras.filter(o=>o.clienteId===c.id);
+  const podeEditar = podeEditarTela(usuarioAtual,'clientes');
   return `
     <label style="margin-top:16px;color:var(--blue-dark)">— Obras do Cliente (${obras.length}) —</label>
     ${obras.map(o=>`
       <div class="obra-item">
         <div><b>${o.nome}</b><br><small style="color:var(--muted)">${resumoEnd(o.endereco)||'sem endereço cadastrado'}</small></div>
-        <button class="btn sm" type="button" onclick="irEditarObra(${o.id},${c.id})">Editar</button>
+        ${podeEditar?`<button class="btn sm" type="button" onclick="irEditarObra(${o.id},${c.id})">Editar</button>`:''}
       </div>`).join('') || '<div style="font-size:13px;color:var(--muted);margin-top:4px">Nenhuma obra cadastrada.</div>'}
-    <button class="link-btn" type="button" onclick="irNovaObraCliente(${c.id})">+ Cadastrar nova obra</button>`;
+    ${podeEditar?`<button class="link-btn" type="button" onclick="irNovaObraCliente(${c.id})">+ Cadastrar nova obra</button>`:''}`;
 }
 
 function abrirEditarCliente(id){
   const c=db.clientes.find(x=>x.id===id);
+  const podeEditar = podeEditarTela(usuarioAtual,'clientes');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'clientes');
+  const ro = podeEditar?'':'disabled';
   abrirModal(`
     <h3>Cliente — ${c.nome}</h3>
-    <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
-    <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
-    <label>E-mail</label><input id="m-email" value="${c.email||''}">
-    ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
+    <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}" ${ro}>
+    <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)" ${ro}>
+    <label>E-mail</label><input id="m-email" value="${c.email||''}" ${ro}>
+    <div style="${podeEditar?'':'pointer-events:none;opacity:.65'}">${camposEndereco(c.endereco,'e','Endereço do Cliente')}</div>
     ${obrasDoClienteHTML(c)}
     <div class="actions">
-      <button class="btn danger" data-btn-perigo onclick="excluirCliente(${c.id})">Excluir</button>
+      ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirCliente(${c.id})">Excluir</button>`:''}
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="salvarEdicaoCliente(${c.id})">Salvar</button>
+      ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoCliente(${c.id})">Salvar</button>`:''}
     </div>`);
 }
 
 function salvarClienteCampos(id){
+  if(!podeEditarTela(usuarioAtual,'clientes')) return false;
   const c=db.clientes.find(x=>x.id===id);
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return false; }
@@ -15372,6 +15434,7 @@ function salvarEdicaoCliente(id){
 
 /* Edição de cliente a partir do cartão CRM — retorna ao cartão ao salvar/voltar */
 function abrirEditarClienteDoCartao(clienteId, cardId){
+  if(!podeEditarTela(usuarioAtual,'clientes')){ alert('Sem permissão para editar clientes.'); return; }
   const c=db.clientes.find(x=>x.id===clienteId);
   if(!c){ alert('Cliente não encontrado.'); return; }
   abrirModal(`
@@ -15435,6 +15498,7 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
 
 /* ── CRUD de Outros Contatos do Cartão CRM ──────────────────────────────── */
 async function adicionarContatoCard(cardId){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para adicionar contatos neste cartão.'); return; }
   const nome = (document.getElementById('cc-nome')?.value||'').trim();
   if(!nome){ alert('Informe o nome do contato.'); document.getElementById('cc-nome')?.focus(); return; }
   const funcao = (document.getElementById('cc-funcao')?.value||'').trim();
@@ -15449,6 +15513,7 @@ async function adicionarContatoCard(cardId){
 }
 
 function editarContatoCard(id, cardId){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para editar contatos deste cartão.'); return; }
   const ct = (db.cardContatos||[]).find(x=>x.id===id);
   if(!ct){ alert('Contato não encontrado.'); return; }
   abrirModal(`
@@ -15485,6 +15550,7 @@ function salvarEdicaoContatoCard(id, cardId){
 }
 
 async function excluirContatoCard(id, cardId){
+  if(!podeEditarTela(usuarioAtual,'painel')){ alert('Sem permissão para remover contatos deste cartão.'); return; }
   const ct = (db.cardContatos||[]).find(x=>x.id===id);
   if(!confirm(`Remover o contato "${ct?.nome||'?'}"?`)) return;
   registrarLog('excluir','card_contato',id,`Contato removido do cartão CRM #${db.cards.find(x=>x.id===cardId)?.num||cardId}: ${ct?.nome||'?'}`);
@@ -15674,6 +15740,7 @@ async function excluirObra(id, clienteId, returnCardId=null){
   else abrirEditarCliente(clienteId);
 }
 async function excluirCliente(id){
+  if(!podeExcluirTela(usuarioAtual,'clientes')){ alert('Sem permissão para excluir clientes.'); return; }
   const qtd=db.cards.filter(x=>x.clienteId===id).length;
   const cl=db.clientes.find(x=>x.id===id);
   if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
@@ -15864,8 +15931,23 @@ function renderGrupos(){
 }
 
 function formGrupo(g){
-  const telasCk = TELAS.map(t=>`
-    <label class="perm-item"><input type="checkbox" class="ck-gtela" value="${t.id}" ${g&&(g.telas||[]).includes(t.id)?'checked':''}> ${t.nome}</label>`).join('');
+  /* telasCk: cada tela tem sua checkbox de sempre (visibilidade) + um seletor de nível
+     (Visualizar/Editar/Excluir, cumulativo) que só faz sentido com a tela marcada.
+     Nível ausente no grupo = 'excluir' (acesso total) — preserva o comportamento
+     de hoje em grupos ainda não reconfigurados nessa tela (ver nivelTela()). */
+  const telasCk = TELAS.map(t=>{
+    const marcada = !g || (g.telas||[]).includes(t.id);
+    const nivel = (g&&g.telasNivel||{})[t.id] || 'excluir';
+    return `
+    <div class="perm-item-tela">
+      <label class="perm-item" style="flex:1;padding:0"><input type="checkbox" class="ck-gtela" value="${t.id}" ${marcada?'checked':''} onchange="_toggleTelaNivel(this)"> ${t.nome}</label>
+      <select class="ck-gtela-nivel" data-tid="${t.id}" ${marcada?'':'disabled'}>
+        <option value="visualizar" ${nivel==='visualizar'?'selected':''}>Visualizar</option>
+        <option value="editar" ${nivel==='editar'?'selected':''}>Editar</option>
+        <option value="excluir" ${nivel==='excluir'?'selected':''}>Excluir</option>
+      </select>
+    </div>`;
+  }).join('');
   /* RECURSOS_NIVEL: subconjunto dos RECURSOS que ganham o degrau Ver/Editar
      (em vez de um único checkbox tudo-ou-nada). São a aba-propostas e a aba-os
      do cartão CRM (que têm ações de escrita próprias — nova proposta, aprovar,
@@ -15997,6 +16079,14 @@ function formGrupo(g){
     </div>`;
 }
 
+/* Habilita/desabilita o seletor de nível (Visualizar/Editar/Excluir) de uma tela
+   conforme a checkbox de visibilidade dela é marcada/desmarcada. */
+function _toggleTelaNivel(chkTela){
+  const wrap = chkTela.closest('.perm-item-tela');
+  const sel = wrap ? wrap.querySelector('.ck-gtela-nivel') : null;
+  if(sel) sel.disabled = !chkTela.checked;
+}
+
 /* Marca/desmarca e habilita/desabilita o checkbox "Editar" quando o "Ver"
    correspondente (mesma linha .perm-item-lvl) muda. Sem Ver não tem Editar. */
 function _toggleRecursoEditar(chkVer){
@@ -16046,6 +16136,15 @@ async function salvarGrupo(id){
   btnSalvando(btn);
   const _delay=new Promise(r=>setTimeout(r,800));
   const telas=[...document.querySelectorAll('.ck-gtela:checked')].map(c=>c.value);
+  /* telasNivel: lê o seletor de nível de CADA tela marcada (mesmo que o admin não
+     tenha mexido nele) — assim, a partir do primeiro salvamento com essa UI, o nível
+     fica sempre explícito para as telas visíveis, substituindo o "ausente = excluir"
+     usado só para grupos antigos ainda não reconfigurados. */
+  const telasNivel={};
+  telas.forEach(tid=>{
+    const sel=document.querySelector(`.ck-gtela-nivel[data-tid="${tid}"]`);
+    telasNivel[tid]=sel?sel.value:'excluir';
+  });
   /* recursos = tudo que passou no "Ver" (recursos com nível ver/editar) + os recursos
      simples (financeiro/downloads, que continuam com um único checkbox .ck-grec).
      recursosEditar = só os que também marcaram "Editar". */
@@ -16062,17 +16161,17 @@ async function salvarGrupo(id){
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; }
+    if(!g.admin){ g.telas=telas; g.telasNivel=telasNivel; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; }
     row=g;
     registrarLog('editar','grupo',id,`Grupo editado: "${nome}"`);
   } else {
-    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,recursos,recursosEditar,fasesPermitidas,filtrarOS,acessoComercial,acessoTecnico};
+    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,telasNivel,recursos,recursosEditar,fasesPermitidas,filtrarOS,acessoComercial,acessoTecnico};
     db.grupos.push(ng);
     row=ng;
     registrarLog('criar','grupo',ng.id,`Novo grupo criado: "${nome}"`);
   }
   try{
-    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico});
+    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],telas_nivel:row.telasNivel||{},recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico});
     if(error) throw error;
     await _delay;
   }catch(e){
