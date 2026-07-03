@@ -1267,11 +1267,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.42.0';
+const APP_VERSION = '1.43.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.43.0',
+    data: '03/07/2026',
+    itens: [
+      'A geração automática de Contas a Pagar a partir das Contas Recorrentes não roda mais no login — ficou só no pg_cron (Supabase), rodando direto no banco todo dia às 03h. Evita gerar duas vezes (login + servidor) e deixa o login mais leve.',
+    ]
+  },
   {
     versao: '1.42.0',
     data: '03/07/2026',
@@ -4302,8 +4309,11 @@ async function entrarComSessao(erro){
     return false;
   }
   iniciarApp(u);
-  // Gera automaticamente as CPs recorrentes do mês corrente (se ainda não geradas)
-  gerarRecorrentesDoMes();
+  // v1.43.0: a geração de CPs recorrentes NÃO roda mais no login — ficou só no
+  // pg_cron (Supabase), rodando direto no banco todo dia às 03h (Brasília),
+  // independente de alguém abrir o sistema. Função gerarRecorrentesDoMes() abaixo
+  // ficou sem uso automático, mantida no código só como referência da lógica
+  // client-side original (espelhada em public.gerar_recorrentes_pendentes() no SQL).
   // loga somente logins explícitos pelo botão (não restaurações de sessão)
   if(erro) registrarLog('login', 'sistema', null, `Login efetuado: ${u.nome}`);
   return true;
@@ -8654,8 +8664,12 @@ async function removerMOOS(osId, idx, cardId){
 
 /* ===== Contas Recorrentes ===== */
 
-/** Geração automática: ao abrir o sistema, verifica para cada recorrente ativa
-    se já existe uma CP com recorrente_id no mês/ano atual. Se não, cria. */
+/** Geração automática de CPs a partir das recorrentes ativas (mensal/anual).
+    ATENÇÃO (v1.43.0): esta função NÃO é mais chamada automaticamente no login —
+    a geração ficou só no pg_cron, direto no Supabase (ver public.gerar_recorrentes_pendentes(),
+    agendado via cron.schedule('gerar-recorrentes-diario', ...)). Mantida aqui só
+    como referência da lógica original; se precisar disparar manualmente por algum
+    motivo, dá pra chamar gerarRecorrentesDoMes() no console do navegador. */
 async function gerarRecorrentesDoMes(){
   const recorrentes = (db.contasRecorrentes||[]).filter(r=>r.ativa);
   if(!recorrentes.length) return;
