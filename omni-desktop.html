@@ -695,7 +695,7 @@
   <!-- FINANCEIRO: PAINEL -->
   <div class="view" id="view-fin-painel">
     <div class="bar">
-      <h2>Financeiro — Painel</h2>
+      <h2>Financeiro — Acompanhamento</h2>
       <select id="finpainel-vista" class="vista-sel" onchange="renderFinPainel()">
         <option value="cc">Visualização: Centros de Custo</option>
         <option value="cp">Visualização: Contas a Pagar</option>
@@ -977,7 +977,7 @@
   <!-- FATURAMENTO: PAINEL -->
   <div class="view" id="view-fat-painel">
     <div class="bar">
-      <h2>Faturamento — Painel</h2>
+      <h2>Faturamento — Acompanhamento</h2>
       <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-nf" onclick="abrirNovaNF()">+ Nova Nota Fiscal</button>
     </div>
@@ -1052,7 +1052,7 @@
   <!-- ESTOQUE: PAINEL -->
   <div class="view" id="view-estoque-painel">
     <div class="bar">
-      <h2>Estoque — Painel</h2>
+      <h2>Estoque — Acompanhamento</h2>
     </div>
     <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
       📦 <b>Painel de Estoque</b><br>
@@ -1244,11 +1244,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.31.0';
+const APP_VERSION = '1.32.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.32.0',
+    data: '03/07/2026',
+    itens: [
+      'Título das telas de Painel do Financeiro, Faturamento e Estoque trocado de "— Painel" para "— Acompanhamento", igual já era em Obras.',
+    ]
+  },
   {
     versao: '1.31.0',
     data: '03/07/2026',
