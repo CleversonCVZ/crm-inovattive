@@ -1244,16 +1244,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.32.0';
+const APP_VERSION = '1.33.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
   {
-    versao: '1.32.0',
+    versao: '1.33.0',
     data: '03/07/2026',
     itens: [
-      'Título das telas de Painel do Financeiro, Faturamento e Estoque trocado de "— Painel" para "— Acompanhamento", igual já era em Obras.',
+      'Corrigido bug real: criar um novo Centro de Custo podia "sumir" — o cadastro ficava só na memória do navegador por até 800ms (ou mais, se qualquer outra ação disparasse o mesmo temporizador de sincronização nesse meio-tempo) antes de ser gravado no banco. Se o centro de custo fosse usado em outra tela (ex.: Editar Lançamento) antes desse tempo passar, a gravação falhava com erro de chave estrangeira e o centro de custo criado era perdido. Agora a criação salva direto no banco antes de fechar o formulário, igual já era feito em Fornecedores.',
     ]
   },
   {
@@ -9019,9 +9019,21 @@ async function salvarNovoCentroCusto(){
     tipo: document.getElementById('cc-tipo').value,
     ativo: true
   };
+  // Grava direto no Supabase (aguardando o resultado) em vez de confiar no
+  // save()/syncConfigSupabase() debounced: esse CC pode ser usado em outra tela
+  // (ex.: Editar Lançamento) segundos depois, e o debounce de 800ms do sync de
+  // config pode ser adiado por qualquer outra chamada de save() nesse meio-tempo,
+  // causando erro de FK ao referenciar um centro de custo que ainda não existe
+  // de fato no banco (bug real reportado por cleverson em 03/07/2026).
+  try{
+    const [{error}] = await Promise.all([
+      sb.from('centros_custo').upsert({id:novo.id, nome:novo.nome, descricao:novo.descricao||'', tipo:novo.tipo, ativo:true}),
+      _delay
+    ]);
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   db.centrosCusto.push(novo);
-  try{ await Promise.all([save(), _delay]); }
-  catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); return; }
+  saveLocal();
   fecharModal();
   renderCentrosCusto();
 }
