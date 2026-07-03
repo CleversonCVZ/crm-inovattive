@@ -974,15 +974,79 @@
     <div class="kanban" id="srm-kanban"></div>
   </div>
 
-  <!-- COMPRAS: PAINEL -->
-  <div class="view" id="view-compras-painel">
+  <!-- FATURAMENTO: PAINEL -->
+  <div class="view" id="view-fat-painel">
     <div class="bar">
-      <h2>Compras — Painel</h2>
+      <h2>Faturamento — Painel</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btn-nova-nf" onclick="abrirNovaNF()">+ Nova Nota Fiscal</button>
     </div>
-    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
-      🛒 <b>Compras</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Controle de ordens de compra e pedidos a fornecedores.</small>
+    <div class="kanban" id="fat-kanban"></div>
+  </div>
+
+  <!-- FATURAMENTO: FASES -->
+  <div class="view" id="view-fat-fases">
+    <div class="bar">
+      <h2>Fases do Faturamento</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" id="btn-nova-fase-fat" onclick="novaFatFase()">+ Nova Fase</button>
     </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      As fases representam as etapas de uma Nota Fiscal (ex.: A Emitir, Emitida, Enviada ao Cliente, Paga). Edite nome, cor e ordem direto na tabela.
+    </p>
+    <table class="fases-table">
+      <thead><tr><th>ID</th><th>Fase</th><th>Cor</th><th>Ordem</th><th>NFs</th><th></th></tr></thead>
+      <tbody id="fat-fases-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- FATURAMENTO: ESPELHOS DE NF -->
+  <div class="view" id="view-fat-espelhos">
+    <div class="bar">
+      <h2>Espelhos de NF</h2>
+      <div class="spacer"></div>
+      <button class="btn primary" onclick="abrirNovaNF()">+ Nova Nota Fiscal</button>
+    </div>
+    <table class="lista">
+      <thead>
+        <tr>
+          <th>Número</th>
+          <th>Obra / Cliente</th>
+          <th style="width:110px">Data</th>
+          <th style="width:130px">Valor</th>
+          <th style="width:130px">Impostos Retidos</th>
+          <th style="width:150px">Fase</th>
+        </tr>
+      </thead>
+      <tbody id="fat-espelhos-tbody"></tbody>
+    </table>
+  </div>
+
+  <!-- FATURAMENTO: PREVISÃO DE TRIBUTOS -->
+  <div class="view" id="view-fat-tributos">
+    <div class="bar">
+      <h2>Previsão de Tributos</h2>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Cálculo automático da previsão de tributos sobre o faturamento (Notas Fiscais cadastradas em Espelhos de NF), agrupado por mês de emissão.
+    </p>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <label style="margin:0">Alíquota de tributos (%)</label>
+      <input id="fat-aliquota" type="text" inputmode="decimal" style="width:90px" oninput="mascaraPercentual(this)">
+      <button class="btn sm" onclick="salvarAliquotaTributos()">Salvar</button>
+    </div>
+    <table class="lista">
+      <thead>
+        <tr>
+          <th>Competência</th>
+          <th style="width:150px">Faturamento Total</th>
+          <th style="width:150px">Impostos Retidos</th>
+          <th style="width:150px">Previsão de Tributos</th>
+          <th style="width:150px">A Recolher</th>
+        </tr>
+      </thead>
+      <tbody id="fat-tributos-tbody"></tbody>
+    </table>
   </div>
 
   <!-- ESTOQUE: PAINEL -->
@@ -1180,11 +1244,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.30.0';
-const APP_VERSION_DATE = '02/07/2026';
+const APP_VERSION = '1.31.0';
+const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.31.0',
+    data: '03/07/2026',
+    itens: [
+      'Novo módulo Faturamento no lugar de Compras: telas Painel (kanban de Notas Fiscais por fase), Fases (configuráveis, como nos demais módulos), Espelhos de NF (lista de todas as NFs cadastradas) e Previsão de Tributos (cálculo automático de tributos sobre o valor faturado, por mês, a partir de uma alíquota configurável).',
+    ]
+  },
   {
     versao: '1.30.0',
     data: '02/07/2026',
@@ -1769,8 +1840,11 @@ const TELAS = [
   {id:'srm-painel',        nome:'SRM — Painel',         menu:'Painel'},
   {id:'srm-fases',         nome:'SRM — Fases',          menu:'Fases'},
   {id:'fin-fornecedores',  nome:'SRM — Fornecedores',   menu:'Fornecedores'},
-  // ── Compras
-  {id:'compras-painel',  nome:'Compras — Painel',   menu:'Painel'},
+  // ── Faturamento
+  {id:'fat-painel',    nome:'Faturamento — Painel',              menu:'Painel'},
+  {id:'fat-fases',     nome:'Faturamento — Fases',               menu:'Fases'},
+  {id:'fat-espelhos',  nome:'Faturamento — Espelhos de NF',      menu:'Espelhos de NF'},
+  {id:'fat-tributos',  nome:'Faturamento — Previsão de Tributos', menu:'Previsão Tributos'},
   // ── Estoque
   {id:'estoque-painel',        nome:'Estoque — Painel',         menu:'Painel'},
   {id:'estoque-categorias',    nome:'Estoque — Categorias',     menu:'Categorias'},
@@ -1838,7 +1912,7 @@ const MODULOS = [
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
   {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','srm-fases','fin-fornecedores'],     sepAntes:true},
-  {id:'compras', nome:'Compras', icone:'🛒', telas:['compras-painel'], sepAntes:true},
+  {id:'faturamento', nome:'Faturamento', icone:'🧾', telas:['fat-painel','fat-fases','fat-espelhos','fat-tributos'], sepAntes:true},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel','estoque-categorias','estoque-almoxarifado','estoque-movimentacoes','estoque-catalogo']}
 ];
 const FUNCOES_SEED = ['Técnico','Projetista','Vendedor','Administrativo','Sócio'];
@@ -1907,6 +1981,7 @@ function load(){
     db.empresa = {logo:'', razao:'', fantasia:'', cnpj:'', ie:'', tel:'', email:'', site:'',
       endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''}};
   }
+  if(!('aliquotaTributos' in db.empresa)) db.empresa.aliquotaTributos = 6;
   // grupos de acesso (RBAC) + migração do modelo antigo papel/telas por usuário
   if(!Array.isArray(db.grupos) || !db.grupos.length){
     db.grupos = [
@@ -1961,6 +2036,7 @@ function load(){
   if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
   if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
   if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
+  if(!Array.isArray(db.notasFiscais))   db.notasFiscais=[];
   if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
   if(!Array.isArray(db.estoqueMov))      db.estoqueMov=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
@@ -2022,10 +2098,21 @@ function load(){
       {id:8,nome:'Cancelado',cor:'#c62828',ordem:8,tipo:'cancelado'}
     ];
   }
+  if(!Array.isArray(db.fasesFaturamento) || !db.fasesFaturamento.length){
+    db.fasesFaturamento = [
+      {id:1,nome:'A Emitir',cor:'#78909c',ordem:1},
+      {id:2,nome:'Emitida',cor:'#0288d1',ordem:2},
+      {id:3,nome:'Enviada ao Cliente',cor:'#f57c00',ordem:3},
+      {id:4,nome:'Paga',cor:'#2e7d32',ordem:4,tipo:'paga'},
+      {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}
+    ];
+  }
   // Marcar fases de sistema por nome (garante dados vindos do Supabase sem tipo)
   db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   db.fasesSRM.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('recebid')) f.tipo='recebido'; else if(n.includes('cancel')) f.tipo='cancelado'; } });
+  db.fasesFaturamento.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('paga')) f.tipo='paga'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
+  db.notasFiscais.forEach(n=>{ if(!('faseId' in n)) n.faseId = db.fasesFaturamento[0].id; });
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
   if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
   if(!Array.isArray(db.downloadArquivos)) db.downloadArquivos = [];
@@ -2127,12 +2214,13 @@ function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',b
    db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
 async function carregarConfigSupabase(){
   try{
-    const [fasesCrm, fasesProp, fasesObra, fasesOS, fasesSRM, estoqueCatsRes, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
+    const [fasesCrm, fasesProp, fasesObra, fasesOS, fasesSRM, fasesFat, estoqueCatsRes, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
       sb.from('fases_crm').select('*').order('ordem'),
       sb.from('fases_proposta').select('*').order('ordem'),
       sb.from('fases_obra').select('*').order('ordem'),
       sb.from('fases_os').select('*').order('ordem'),
       sb.from('fases_srm').select('*').order('ordem'),
+      sb.from('fases_faturamento').select('*').order('ordem'),
       sb.from('estoque_categorias').select('*').order('ordem'),
       sb.from('origens').select('*').order('id'),
       sb.from('funcoes').select('*').order('id'),
@@ -2150,6 +2238,8 @@ async function carregarConfigSupabase(){
       db.fasesOS = fasesOS.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(fasesSRM.data && fasesSRM.data.length)
       db.fasesSRM = fasesSRM.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    if(fasesFat.data && fasesFat.data.length)
+      db.fasesFaturamento = fasesFat.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(estoqueCatsRes.data && estoqueCatsRes.data.length)
       db.estoqueCats = estoqueCatsRes.data.map(c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
     if(origens.data && origens.data.length)
@@ -2174,7 +2264,8 @@ async function carregarConfigSupabase(){
         id:empresa.data.id, logo:empresa.data.logo||'', razao:empresa.data.razao||'', fantasia:empresa.data.fantasia||'',
         cnpj:empresa.data.cnpj||'', ie:empresa.data.ie||'', tel:empresa.data.tel||'', email:empresa.data.email||'',
         site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''},
-        logRetencaoDias: empresa.data.log_retencao_dias || 90
+        logRetencaoDias: empresa.data.log_retencao_dias || 90,
+        aliquotaTributos: empresa.data.aliquota_tributos!=null ? Number(empresa.data.aliquota_tributos) : 6
       };
     }
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
@@ -2192,7 +2283,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -2224,7 +2315,8 @@ async function carregarDadosSupabase(){
       sb.from('srm_cotacoes').select('*').order('id'),
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
       sb.from('estoque_produtos').select('*').order('nome'),
-      sb.from('estoque_movimentacoes').select('*').order('criado_em', {ascending:false})
+      sb.from('estoque_movimentacoes').select('*').order('criado_em', {ascending:false}),
+      sb.from('notas_fiscais').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -2488,6 +2580,12 @@ async function carregarDadosSupabase(){
         pagamentoResponsavel: c.pagamento_responsavel || 'empresa',
         historico: Array.isArray(c.historico) ? c.historico : []
       }));
+    if(notasFiscaisRes.data)
+      db.notasFiscais = notasFiscaisRes.data.map(n=>({
+        id:n.id, numero:n.numero||'', obraId:n.obra_id||null, faseId:n.fase_id||null,
+        valor:Number(n.valor)||0, impostosRetidos:n.impostos_retidos!=null?Number(n.impostos_retidos):0,
+        dataEmissao:n.data_emissao ? n.data_emissao.slice(0,10) : '', observacoes:n.observacoes||''
+      }));
     if(srmCotacoesRes.data)
       db.srmCotacoes = srmCotacoesRes.data.map(x=>({
         id:x.id,
@@ -2581,6 +2679,7 @@ function syncConfigSupabase(){
     sincronizarTabela('fases_obra', db.fasesObra||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('fases_os', db.fasesOS||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('fases_srm', db.fasesSRM||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
+    sincronizarTabela('fases_faturamento', db.fasesFaturamento||[], f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     sincronizarTabela('estoque_categorias', db.estoqueCats||[], c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
@@ -2589,7 +2688,7 @@ function syncConfigSupabase(){
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
       tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
-      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90
+      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90, aliquota_tributos: e.aliquotaTributos!=null?e.aliquotaTributos:6
     }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
   }, 800);
 }
@@ -2726,6 +2825,11 @@ function syncDadosSupabase(){
       cancelado:!!c.cancelado,
       pagamento_responsavel: c.pagamentoResponsavel || 'empresa',
       historico:c.historico||[]
+    }));
+    await sincronizarTabela('notas_fiscais', db.notasFiscais||[], n=>({
+      id:n.id, numero:n.numero||'', obra_id:n.obraId||null, fase_id:n.faseId||null,
+      valor:n.valor||0, impostos_retidos:n.impostosRetidos||0,
+      data_emissao:toISO(n.dataEmissao)||null, observacoes:n.observacoes||''
     }));
     await sincronizarTabela('srm_cotacoes', db.srmCotacoes||[], x=>({
       id:x.id, card_srm_id:x.cardSrmId,
@@ -3708,6 +3812,8 @@ function faseOS(id){ return (db.fasesOS||[]).find(f=>f.id===id); }
 function fasesOSOrdenadas(){ return (db.fasesOS||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function faseSRM(id){ return (db.fasesSRM||[]).find(f=>f.id===id); }
 function fasesSRMOrdenadas(){ return (db.fasesSRM||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
+function faseFat(id){ return (db.fasesFaturamento||[]).find(f=>f.id===id); }
+function fasesFatOrdenadas(){ return (db.fasesFaturamento||[]).slice().sort((a,b)=>a.ordem-b.ordem || a.id-b.id); }
 function ostipoInfo(tipo){
   if(tipo==='projeto')  return {label:'PRJ', cor:'#7b1fa2'};
   if(tipo==='execucao') return {label:'OBR', cor:'#e65100'};
@@ -3746,6 +3852,13 @@ function mascaraMoeda(el){
 function lerMoeda(id){
   const v = (document.getElementById(id)?.value||'0').replace(/\./g,'').replace(',','.');
   return parseFloat(v)||0;
+}
+// Máscara de percentual simples: aceita só números e vírgula/ponto decimal (ex: "6" ou "6,5")
+function mascaraPercentual(el){
+  let v = el.value.replace(/[^0-9,\.]/g,'').replace('.',',');
+  const partes = v.split(',');
+  if(partes.length>2) v = partes[0]+','+partes.slice(1).join('');
+  el.value = v;
 }
 function utcParaLocalInput(iso){ if(!iso) return ''; const d=new Date(iso); const p=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
 function fmtData(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return iso; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -4600,6 +4713,10 @@ function ativarView(viewId){
   if(viewId==='estoque-movimentacoes') renderEstoqueMovimentacoes();
   if(viewId==='estoque-catalogo')      renderEstoqueCatalogo();
   if(viewId==='fin-contas-pagar')    renderContasPagar();
+  if(viewId==='fat-painel')    renderFatPainel();
+  if(viewId==='fat-fases')     renderFatFases();
+  if(viewId==='fat-espelhos')  renderFatEspelhos();
+  if(viewId==='fat-tributos')  renderFatTributos();
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
@@ -6708,6 +6825,325 @@ function excluirSRMFase(id){
   db.fasesSRM=db.fasesSRM.filter(f=>f.id!==id);
   excluirDoSupabase('fases_srm', id);
   save(); renderAll();
+}
+
+/* ================= FATURAMENTO ================= */
+/* Módulo Faturamento: cadastro de Notas Fiscais emitidas (db.notasFiscais), com
+   fases próprias (db.fasesFaturamento, ex.: A Emitir → Emitida → Enviada ao
+   Cliente → Paga/Cancelada) exibidas em kanban (Painel) e em lista/CRUD
+   (Espelhos de NF) — mesma NF, duas visualizações, igual ao par Painel/Lista
+   já usado em Propostas. Previsão de Tributos é um relatório calculado (sem
+   cadastro próprio) que aplica um percentual configurável sobre o valor das
+   NFs, agrupado por mês de emissão. */
+
+function optsObrasFat(selId){
+  return `<option value="">— selecione a obra —</option>` +
+    (db.obras||[]).slice().sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(o=>`<option value="${o.id}" ${o.id===selId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+}
+function optsFasesFat(selId){
+  return fasesFatOrdenadas()
+    .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
+}
+
+/* ---- Fases do Faturamento ---- */
+function renderFatFases(){
+  const tb=document.getElementById('fat-fases-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'fat-fases')) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-fases');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'fat-fases');
+  const ro = podeEditar?'':'disabled';
+  fasesFatOrdenadas().forEach(f=>{
+    const tc=textColor(f.cor);
+    const qtd=(db.notasFiscais||[]).filter(n=>n.faseId===f.id).length;
+    const tr=document.createElement('tr');
+    tr.className='fase-row';
+    tr.style.background=f.cor;
+    tr.style.color=tc;
+    tr.innerHTML=`
+      <td>${f.id}</td>
+      <td><input type="text" value="${f.nome.replace(/"/g,'&quot;')}" data-id="${f.id}" data-campo="nome" ${ro}${f.tipo?' readonly onclick="alert(\'⚠️ Fase de sistema — o nome não pode ser alterado.\')"':''}></td>
+      <td>
+        <label class="cor-chip" title="Clique para escolher outra cor">
+          <span class="cor-amostra" style="background:${f.cor}"></span>
+          🎨 Trocar cor
+          <input type="color" value="${f.cor}" data-id="${f.id}" data-campo="cor" ${ro}>
+        </label>
+      </td>
+      <td><input type="number" step="1" value="${f.ordem}" data-id="${f.id}" data-campo="ordem" ${ro}></td>
+      <td style="text-align:center">${qtd||'—'}</td>
+      <td style="text-align:right">${f.tipo?`<small title="Fase de sistema — não pode ser renomeada ou excluída">🔒</small>`:(db.fasesFaturamento.length>1&&podeExcluir?`<button class="icon-btn del" title="Excluir fase" data-del="${f.id}">🗑</button>`:'')}
+      </td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange=()=>{
+      if(!podeEditarTela(usuarioAtual,'fat-fases')) return;
+      const f=faseFat(+inp.dataset.id);
+      if(!f) return;
+      if(f.tipo && inp.dataset.campo==='nome'){ inp.value=f.nome; return; }
+      if(inp.dataset.campo==='ordem') f.ordem=parseFloat(inp.value)||0;
+      else f[inp.dataset.campo]=inp.value;
+      registrarLog('editar','fase_faturamento',f.id,`Fase de Faturamento editada: "${f.nome}" (campo: ${inp.dataset.campo})`);
+      save(); renderAll();
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick=()=>excluirFatFase(+btn.dataset.del);
+  });
+}
+async function novaFatFase(){
+  if(!podeEditarTela(usuarioAtual,'fat-fases')){ alert('Sem permissão para criar fases de Faturamento.'); return; }
+  if(!db.fasesFaturamento) db.fasesFaturamento=[];
+  const ordemMax=db.fasesFaturamento.reduce((m,f)=>Math.max(m,f.ordem),0);
+  const nf={id: await proximoIdSeguro('fases_faturamento', db.fasesFaturamento), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  db.fasesFaturamento.push(nf);
+  registrarLog('criar','fase_faturamento',nf.id,`Nova fase de Faturamento criada: "${nf.nome}"`);
+  save(); renderAll();
+}
+function excluirFatFase(id){
+  if(!podeExcluirTela(usuarioAtual,'fat-fases')){ alert('Sem permissão para excluir fases de Faturamento.'); return; }
+  const f=faseFat(id);
+  if(f?.tipo){ alert('⚠️ Fases de sistema não podem ser excluídas.'); return; }
+  if(db.fasesFaturamento.length<=1){ alert('É preciso manter ao menos uma fase.'); return; }
+  if((db.notasFiscais||[]).some(n=>n.faseId===id)){ alert('Existem Notas Fiscais nesta fase — mova-as antes de excluir.'); return; }
+  if(!confirm('Excluir esta fase?')) return;
+  registrarLog('excluir','fase_faturamento',id,`Fase de Faturamento excluída: "${f?f.nome:id}"`);
+  db.fasesFaturamento=db.fasesFaturamento.filter(f=>f.id!==id);
+  excluirDoSupabase('fases_faturamento', id);
+  save(); renderAll();
+}
+
+/* ---- Painel (kanban) ---- */
+function notaFiscalCard(n){
+  const f = faseFat(n.faseId) || {cor:'#dee2e6', nome:'—'};
+  const ob = (db.obras||[]).find(o=>o.id===n.obraId);
+  const el = document.createElement('div');
+  el.className='kcard';
+  el.style.borderLeftColor = f.cor;
+  el.draggable = podeEditarTela(usuarioAtual,'fat-painel');
+  el.ondragstart = e=> e.dataTransfer.setData('text', n.id);
+  el.onclick = ()=> abrirEditarNF(n.id);
+  const cli = ob ? cliente(ob.clienteId) : null;
+  el.innerHTML = `
+    <div class="top"><span class="num">NF ${escHtml(n.numero||'—')}</span></div>
+    <div class="row">${ob ? '🏗 '+escHtml(ob.nome)+(cli&&cli.nome!=='—'?' · 👤 '+escHtml(cli.nome):'') : '<em style="color:var(--muted)">Sem obra vinculada</em>'}</div>
+    <div class="row"><b>Valor:</b> ${fmtMoney(n.valor)||'—'}</div>
+    ${n.impostosRetidos ? `<div class="row"><b>Retido:</b> ${fmtMoney(n.impostosRetidos)}</div>` : ''}
+    ${n.dataEmissao ? `<div class="row" style="font-size:11px;color:var(--muted)">Emitida em ${fmtDia2(n.dataEmissao)}</div>` : ''}`;
+  return el;
+}
+function renderFatPainel(){
+  const k = document.getElementById('fat-kanban'); if(!k) return;
+  k.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'fat-painel')) return;
+  fasesFatOrdenadas().forEach(f=>{
+    const itens = (db.notasFiscais||[]).filter(n=>n.faseId===f.id);
+    k.appendChild(colEl(f.nome, f.cor, itens, {
+      render: notaFiscalCard,
+      onDrop: id=>{
+        if(!podeEditarTela(usuarioAtual,'fat-painel')) return;
+        const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
+        n.faseId=f.id; save(); renderAll();
+      }
+    }));
+  });
+  if(!(db.notasFiscais||[]).length){
+    k.innerHTML='<div class="empty" style="padding:60px;text-align:center">Nenhuma Nota Fiscal cadastrada. Clique em <b>+ Nova Nota Fiscal</b> para começar.</div>';
+  }
+}
+
+/* ---- Espelhos de NF (lista) ---- */
+function renderFatEspelhos(){
+  const tb=document.getElementById('fat-espelhos-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'fat-espelhos')) return;
+  const lista=(db.notasFiscais||[]).slice().sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||'') || b.id-a.id);
+  if(!lista.length){
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Nenhuma Nota Fiscal cadastrada.</td></tr>';
+    return;
+  }
+  lista.forEach(n=>{
+    const f = faseFat(n.faseId)||{};
+    const ob = (db.obras||[]).find(o=>o.id===n.obraId);
+    const cli = ob ? cliente(ob.clienteId) : null;
+    const tr=document.createElement('tr');
+    tr.style.cursor='pointer';
+    tr.title='Clique para editar';
+    tr.onclick=()=>abrirEditarNF(n.id);
+    tr.innerHTML=`
+      <td><b>${escHtml(n.numero||'—')}</b></td>
+      <td>${ob?escHtml(ob.nome)+(cli&&cli.nome!=='—'?' <small style="color:var(--muted)">('+escHtml(cli.nome)+')</small>':''):'<em style="color:var(--muted)">—</em>'}</td>
+      <td>${n.dataEmissao?fmtDia2(n.dataEmissao):'—'}</td>
+      <td>${fmtMoney(n.valor)||'—'}</td>
+      <td>${fmtMoney(n.impostosRetidos)||'—'}</td>
+      <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:${f.cor||'#dee2e6'};color:${textColor(f.cor||'#dee2e6')}">${f.nome||'—'}</span></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* ---- Novo/Editar NF ---- */
+function abrirNovaNF(){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para cadastrar Notas Fiscais.'); return; }
+  const primeiraFase = fasesFatOrdenadas().filter(f=>!f.tipo)[0]||fasesFatOrdenadas()[0];
+  abrirModal(`
+    <h3>Nova Nota Fiscal</h3>
+    <label>Número da NF</label>
+    <input id="nf-m-numero" placeholder="Ex.: 1234">
+    <label>Obra</label>
+    <select id="nf-m-obra">${optsObrasFat(null)}</select>
+    <label>Fase</label>
+    <select id="nf-m-fase">${optsFasesFat(primeiraFase?.id)}</select>
+    <label>Data de emissão</label>
+    <input id="nf-m-data" type="date" value="${localDia(0)}">
+    <label>Valor</label>
+    <input id="nf-m-valor" type="text" inputmode="decimal" value="0,00" oninput="mascaraMoeda(this)">
+    <label>Impostos Retidos</label>
+    <input id="nf-m-retido" type="text" inputmode="decimal" value="0,00" oninput="mascaraMoeda(this)">
+    <label>Observações</label>
+    <textarea id="nf-m-obs" placeholder="Opcional"></textarea>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNovaNF()">Salvar</button>
+    </div>`);
+}
+async function salvarNovaNF(){
+  const numero = document.getElementById('nf-m-numero').value.trim();
+  const obraId = +document.getElementById('nf-m-obra').value||null;
+  const faseId = +document.getElementById('nf-m-fase').value||null;
+  const dataEmissao = document.getElementById('nf-m-data').value||localDia(0);
+  const valor = lerMoeda('nf-m-valor');
+  const impostosRetidos = lerMoeda('nf-m-retido');
+  const observacoes = document.getElementById('nf-m-obs').value.trim();
+  if(!numero){ alert('Informe o número da NF.'); return; }
+  if(!faseId){ alert('Selecione uma fase.'); return; }
+  if(!db.notasFiscais) db.notasFiscais=[];
+  const novo = { id: await proximoIdSeguro('notas_fiscais', db.notasFiscais), numero, obraId, faseId, dataEmissao, valor, impostosRetidos, observacoes };
+  db.notasFiscais.push(novo);
+  registrarLog('criar','nota_fiscal',novo.id,`Nova NF ${novo.numero} cadastrada`);
+  const btn = btnModalPrimario(); btnSalvando(btn);
+  try{
+    const {error} = await sb.from('notas_fiscais').upsert({
+      id:novo.id, numero:novo.numero, obra_id:novo.obraId||null, fase_id:novo.faseId||null,
+      valor:novo.valor||0, impostos_retidos:novo.impostosRetidos||0,
+      data_emissao:novo.dataEmissao||null, observacoes:novo.observacoes||''
+    });
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
+}
+function abrirEditarNF(id){
+  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'fat-painel');
+  abrirModal(`
+    <h3>Nota Fiscal ${escHtml(n.numero||'')}</h3>
+    <div${podeEditar?'':' style="pointer-events:none;opacity:.65"'}>
+      <label>Número da NF</label>
+      <input id="nf-m-numero" value="${escHtml(n.numero||'')}">
+      <label>Obra</label>
+      <select id="nf-m-obra">${optsObrasFat(n.obraId)}</select>
+      <label>Fase</label>
+      <select id="nf-m-fase">${optsFasesFat(n.faseId)}</select>
+      <label>Data de emissão</label>
+      <input id="nf-m-data" type="date" value="${n.dataEmissao||''}">
+      <label>Valor</label>
+      <input id="nf-m-valor" type="text" inputmode="decimal" value="${(n.valor||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
+      <label>Impostos Retidos</label>
+      <input id="nf-m-retido" type="text" inputmode="decimal" value="${(n.impostosRetidos||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
+      <label>Observações</label>
+      <textarea id="nf-m-obs">${escHtml(n.observacoes||'')}</textarea>
+    </div>
+    <div class="actions">
+      ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirNF(${n.id})">Excluir</button>`:''}
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+      ${podeEditar?`<button class="btn primary" data-btn-salvar onclick="salvarEdicaoNF(${n.id})">Salvar</button>`:''}
+    </div>`);
+}
+async function salvarEdicaoNF(id){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar esta NF.'); return; }
+  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
+  const numero = document.getElementById('nf-m-numero').value.trim();
+  if(!numero){ alert('Informe o número da NF.'); return; }
+  n.numero = numero;
+  n.obraId = +document.getElementById('nf-m-obra').value||null;
+  n.faseId = +document.getElementById('nf-m-fase').value||null;
+  n.dataEmissao = document.getElementById('nf-m-data').value||n.dataEmissao;
+  n.valor = lerMoeda('nf-m-valor');
+  n.impostosRetidos = lerMoeda('nf-m-retido');
+  n.observacoes = document.getElementById('nf-m-obs').value.trim();
+  registrarLog('editar','nota_fiscal',n.id,`NF ${n.numero} editada`);
+  const btn=btnModalPrimario(); btnSalvando(btn);
+  try{
+    const {error}=await sb.from('notas_fiscais').upsert({
+      id:n.id, numero:n.numero, obra_id:n.obraId||null, fase_id:n.faseId||null,
+      valor:n.valor||0, impostos_retidos:n.impostosRetidos||0,
+      data_emissao:n.dataEmissao||null, observacoes:n.observacoes||''
+    });
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
+}
+async function excluirNF(id){
+  if(!podeExcluirTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para excluir esta NF.'); return; }
+  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
+  if(!confirm(`Excluir a NF ${n.numero}? Esta ação não pode ser desfeita.`)) return;
+  registrarLog('excluir','nota_fiscal',n.id,`NF ${n.numero} excluída`);
+  db.notasFiscais=db.notasFiscais.filter(x=>x.id!==id);
+  await excluirDoSupabase('notas_fiscais', id);
+  saveLocal(); syncDadosSupabase();
+  fecharModal(); renderAll();
+}
+
+/* ---- Previsão de Tributos (relatório calculado, sem cadastro próprio) ---- */
+function renderFatTributos(){
+  const tb=document.getElementById('fat-tributos-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  if(!usuarioAtual || !podeVer(usuarioAtual,'fat-tributos')) return;
+  const aliqEl = document.getElementById('fat-aliquota');
+  const aliquota = Number((db.empresa||{}).aliquotaTributos)||0;
+  if(aliqEl && document.activeElement!==aliqEl) aliqEl.value = String(aliquota).replace('.',',');
+  const porMes = {};
+  (db.notasFiscais||[]).forEach(n=>{
+    if(!n.dataEmissao) return;
+    const mes = n.dataEmissao.slice(0,7); // "YYYY-MM"
+    if(!porMes[mes]) porMes[mes] = {valor:0, retido:0};
+    porMes[mes].valor += n.valor||0;
+    porMes[mes].retido += n.impostosRetidos||0;
+  });
+  const meses = Object.keys(porMes).sort().reverse();
+  if(!meses.length){
+    tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Nenhuma NF com data de emissão cadastrada ainda.</td></tr>';
+    return;
+  }
+  meses.forEach(mes=>{
+    const {valor, retido} = porMes[mes];
+    const previsao = valor * aliquota/100;
+    const aRecolher = previsao - retido;
+    const [ano,mm] = mes.split('-');
+    const label = new Date(+ano, +mm-1, 1).toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${label.charAt(0).toUpperCase()+label.slice(1)}</td>
+      <td>${fmtMoney(valor)}</td>
+      <td>${fmtMoney(retido)}</td>
+      <td>${fmtMoney(previsao)}</td>
+      <td style="font-weight:600;color:${aRecolher>0?'var(--red)':'var(--green)'}">${fmtMoney(aRecolher)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function salvarAliquotaTributos(){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para alterar a alíquota de tributos.'); return; }
+  const el = document.getElementById('fat-aliquota');
+  const aliquota = Math.max(0, Math.min(100, parseFloat((el.value||'0').replace(',','.'))||0));
+  db.empresa = db.empresa || {};
+  db.empresa.aliquotaTributos = aliquota;
+  save();
+  registrarLog('config','config',null,`Alíquota de tributos (Faturamento) alterada para ${aliquota}%`);
+  renderFatTributos();
 }
 
 /* ================= CLIENTES ================= */
@@ -17536,7 +17972,7 @@ async function confirmarCadastrarCatalogo(){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoqueCategorias(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoqueCategorias(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); renderFatFases(); renderFatPainel(); renderFatEspelhos(); renderFatTributos(); }
 load();
 atualizarMarca();
 (async function(){
