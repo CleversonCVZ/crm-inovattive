@@ -769,6 +769,8 @@
     <div class="bar">
       <h2>Contas Correntes</h2>
       <div class="spacer"></div>
+      <button class="btn neutral" onclick="abrirEscolherConta('extrato')">📋 Extrato</button>
+      <button class="btn neutral" onclick="abrirEscolherConta('lancar')">＋ Lançar</button>
       <button class="btn primary" onclick="abrirNovaContaCorrente()">＋ Nova Conta</button>
     </div>
     <div class="stats" id="cc-saldo-total-bar" style="display:none;gap:14px;flex-wrap:wrap"></div>
@@ -1244,11 +1246,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.34.0';
+const APP_VERSION = '1.35.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.35.0',
+    data: '03/07/2026',
+    itens: [
+      'Contas Correntes: novos botões "📋 Extrato" e "＋ Lançar" no topo da tela — perguntam qual conta e abrem direto o extrato ou o lançamento dela, sem precisar abrir a conta primeiro.',
+    ]
+  },
   {
     versao: '1.34.0',
     data: '03/07/2026',
@@ -9274,6 +9283,31 @@ function _ccFormHTML(c={}){
         </label>
       </div>
     </div>`;
+}
+
+/** Abre um modal pra escolher uma conta corrente antes de ver o Extrato ou Lançar
+ *  (botões "📋 Extrato" e "＋ Lançar" no topo da tela de Contas Correntes, que agem
+ *  sobre uma conta qualquer em vez de precisar abrir a conta primeiro). */
+function abrirEscolherConta(acao){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para acessar Contas Correntes.'); return; }
+  const contas = (db.contasCorrente||[]).filter(c=>c.ativo);
+  if(!contas.length){ alert('Nenhuma conta cadastrada ainda. Clique em "＋ Nova Conta" para começar.'); return; }
+  const opts = contas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
+    .map(c=>`<option value="${c.id}">${escHtml(c.nome)}</option>`).join('');
+  abrirModal(`
+    <h3>${acao==='extrato'?'📋 Ver Extrato':'＋ Lançar Movimentação'}</h3>
+    <label>Conta</label>
+    <select id="esc-conta-cc">${opts}</select>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="confirmarEscolherConta('${acao}')">Continuar</button>
+    </div>`);
+}
+function confirmarEscolherConta(acao){
+  const contaId = +document.getElementById('esc-conta-cc').value;
+  fecharModal();
+  if(acao==='extrato') abrirMovimentacoesContaCorrente(contaId);
+  else abrirLancamentoManual(contaId);
 }
 
 /** Abre modal para cadastrar nova conta corrente */
