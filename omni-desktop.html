@@ -1267,11 +1267,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.41.0';
+const APP_VERSION = '1.42.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.42.0',
+    data: '03/07/2026',
+    itens: [
+      'Exclusões de alto impacto (Cartão do CRM, Obra, Cliente, Conta Corrente, Usuário, Grupo de Acesso) agora pedem pra digitar o nome do item antes de habilitar o botão "Excluir" — troca o confirm() simples, fácil de clicar sem querer no automático, por uma trava que exige prestar atenção no que está sendo apagado.',
+    ]
+  },
   {
     versao: '1.41.0',
     data: '03/07/2026',
@@ -7466,6 +7473,49 @@ function abrirModal(html, classe){
   modal.innerHTML = html;
   overlay.classList.add('open');
 }
+
+/** Confirmação reforçada pra exclusões de alto impacto (cascata/irreversível).
+    Um confirm() nativo é fácil de clicar no automático (dedo rápido, mesma caixinha
+    de sempre) — aqui, o botão de excluir só habilita quando o usuário digita o nome
+    exato do item, o que exige ler e prestar atenção no que está apagando. */
+function confirmarExclusaoForte({titulo, nomeItem, avisoHtml, onConfirmar}){
+  window._exclForte = { nomeItem: String(nomeItem||''), onConfirmar };
+  abrirModal(`
+    <h3 style="color:#c62828">⚠️ ${escHtml(titulo||'Excluir')}</h3>
+    <div style="background:#fff3f3;border:1px solid #ffcdd2;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:#8a1c1c">
+      ${avisoHtml || 'Esta ação não pode ser desfeita.'}
+    </div>
+    <label>Pra confirmar, digite <b>${escHtml(nomeItem)}</b> abaixo:
+      <input id="excl-forte-input" class="input" style="margin-top:6px" autocomplete="off"
+        oninput="_toggleBtnExclForte()" placeholder="${escHtml(nomeItem)}">
+    </label>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn danger" id="btn-excl-forte" disabled onclick="_confirmarExclForte(this)">Excluir</button>
+    </div>
+  `,'cartao');
+  setTimeout(()=>document.getElementById('excl-forte-input')?.focus(), 50);
+}
+function _toggleBtnExclForte(){
+  const input = document.getElementById('excl-forte-input');
+  const btn   = document.getElementById('btn-excl-forte');
+  if(!input || !btn || !window._exclForte) return;
+  const ok = input.value.trim().toLowerCase() === window._exclForte.nomeItem.trim().toLowerCase();
+  btn.disabled = !ok;
+}
+async function _confirmarExclForte(btn){
+  if(!window._exclForte) return;
+  const { onConfirmar } = window._exclForte;
+  btnSalvando(btn, 'Excluindo…');
+  try{
+    await onConfirmar();
+  }catch(e){
+    btnRestaurar(btn);
+    alert('Erro ao excluir: '+(e.message||e));
+    return;
+  }
+  window._exclForte = null;
+}
 function optsClientes(sel){ return db.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(c=>`<option value="${c.id}" ${c.id==sel?'selected':''}>${c.nome}</option>`).join(''); }
 function optsFases(sel){ return fasesOrdenadas().map(f=>`<option value="${f.id}" ${f.id==sel?'selected':''}>${f.nome}</option>`).join(''); }
 
@@ -9620,13 +9670,18 @@ async function excluirContaCorrente(id){
     alert(`"${c.nome}" possui ${movs.length} movimentação(ões) e não pode ser excluída.\nDesative-a em vez disso.`);
     return;
   }
-  if(!confirm(`Excluir a conta "${c.nome}"?`)) return;
-  const {error} = await sb.from('contas_correntes').delete().eq('id', id);
-  if(error){ alert('Erro ao excluir: '+error.message); return; }
-  db.contasCorrente = (db.contasCorrente||[]).filter(x=>x.id!==id);
-  save();
-  fecharModal();
-  renderContasCorrente();
+  confirmarExclusaoForte({
+    titulo: 'Excluir conta corrente',
+    nomeItem: c.nome,
+    onConfirmar: async ()=>{
+      const {error} = await sb.from('contas_correntes').delete().eq('id', id);
+      if(error) throw new Error(error.message);
+      db.contasCorrente = (db.contasCorrente||[]).filter(x=>x.id!==id);
+      save();
+      fecharModal();
+      renderContasCorrente();
+    }
+  });
 }
 
 /** Persiste nova conta corrente */
@@ -16140,33 +16195,35 @@ async function excluirCartao(id){
   const partes=[];
   if(props.length) partes.push(`${props.length} proposta(s)`);
   if(oss.length) partes.push(`${oss.length} O.S.`);
-  const aviso = partes.length ? `Este cartão tem ${partes.join(' e ')}, que serão excluídas junto. Continuar?` : 'Excluir este cartão?';
-  if(!confirm(aviso)) return;
-  const btnExc = btnModalPerigo();
-  btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,800));
-  registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${c?cliente(c.clienteId).nome:''}${partes.length?` (+ ${partes.join(', ')})`:''}`);
-  for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
-  for(const os of oss){
-    try{
-      const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
-      if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
-      const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
-      if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
-    }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
-    await excluirDoSupabase('ordens_servico', os.id);
-  }
-  for(const p of props){
-    await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
-    await excluirDoSupabase('propostas', p.id);
-  }
-  await sb.from('card_historico').delete().eq('card_id', id);
-  await excluirDoSupabase('cards', id);
-  db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
-  db.propostas=db.propostas.filter(p=>p.cardId!==id);
-  db.cards=db.cards.filter(x=>x.id!==id);
-  await _delay;
-  saveLocal(); fecharModal(); renderAll();
+  const nomeCliente = c?cliente(c.clienteId).nome:`Cartão #${id}`;
+  confirmarExclusaoForte({
+    titulo: 'Excluir cartão do CRM',
+    nomeItem: nomeCliente,
+    avisoHtml: partes.length ? `Este cartão tem ${partes.join(' e ')}, que serão excluídas junto.` : null,
+    onConfirmar: async ()=>{
+      registrarLog('excluir', 'card', id, `CRM #${c?c.num:'?'} excluído — ${nomeCliente}${partes.length?` (+ ${partes.join(', ')})`:''}`);
+      for(const p of props){ for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); } }
+      for(const os of oss){
+        try{
+          const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+          if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+          const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+          if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+        }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
+        await excluirDoSupabase('ordens_servico', os.id);
+      }
+      for(const p of props){
+        await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
+        await excluirDoSupabase('propostas', p.id);
+      }
+      await sb.from('card_historico').delete().eq('card_id', id);
+      await excluirDoSupabase('cards', id);
+      db.ordensServico=db.ordensServico.filter(o=>o.cardId!==id);
+      db.propostas=db.propostas.filter(p=>p.cardId!==id);
+      db.cards=db.cards.filter(x=>x.id!==id);
+      saveLocal(); fecharModal(); renderAll();
+    }
+  });
 }
 
 /* ---- Endereço da obra + busca por CEP (ViaCEP) ---- */
@@ -16630,17 +16687,20 @@ async function excluirObra(id, clienteId, returnCardId=null){
   }
   // --- aviso: cards vinculados ficarão sem obra ---
   const nCards = db.cards.filter(c=>c.obraId===id).length;
-  const msg = nCards
-    ? `A obra "${o?.nome||'?'}" está vinculada a ${nCards} cartão(ões) CRM — eles ficarão sem obra. Excluir mesmo assim?`
-    : `Excluir a obra "${o?.nome||'?'}"? Esta ação não pode ser desfeita.`;
-  if(!confirm(msg)) return;
-  registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
-  await excluirDoSupabase('obras', id);
-  db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
-  db.obras = db.obras.filter(x=>x.id!==id);
-  save(); renderAll();
-  if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
-  else abrirEditarCliente(clienteId);
+  confirmarExclusaoForte({
+    titulo: 'Excluir obra',
+    nomeItem: o?.nome || `Obra #${id}`,
+    avisoHtml: nCards ? `Esta obra está vinculada a ${nCards} cartão(ões) CRM — eles ficarão sem obra.` : null,
+    onConfirmar: async ()=>{
+      registrarLog('excluir', 'obra', id, `Obra excluída: "${o?o.nome:'?'}" (cliente: "${cliente(clienteId).nome}")`);
+      await excluirDoSupabase('obras', id);
+      db.cards.forEach(c=>{ if(c.obraId===id) c.obraId=null; });
+      db.obras = db.obras.filter(x=>x.id!==id);
+      save(); renderAll();
+      if(returnCardId) abrirEditarCartao(returnCardId, 'obras');
+      else abrirEditarCliente(clienteId);
+    }
+  });
 }
 async function excluirCliente(id){
   if(!podeExcluirTela(usuarioAtual,'clientes')){ alert('Sem permissão para excluir clientes.'); return; }
@@ -16648,39 +16708,41 @@ async function excluirCliente(id){
   const cl=db.clientes.find(x=>x.id===id);
   if(qtd>0){ alert(`Este cliente tem ${qtd} CRM(s) vinculado(s) e não pode ser excluído.`); return; }
   const qtdObras=db.obras.filter(o=>o.clienteId===id).length;
-  if(!confirm(qtdObras?`Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto. Continuar?`:'Excluir este cliente?')) return;
-  const btnExc = btnModalPerigo();
-  btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,800));
-  registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
-  const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
-  // propostas vinculadas às obras e ao cliente
-  const propostasDoCliente = db.propostas.filter(p=>obraIds.includes(p.obraId)||p.clienteId===id);
-  for(const p of propostasDoCliente){
-    for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
-    await sb.from('proposta_itens').delete().eq('proposta_id', p.id);
-    await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
-    await excluirDoSupabase('propostas', p.id);
-  }
-  const ossDoCliente = db.ordensServico.filter(o=>obraIds.includes(o.obraId)||o.clienteId===id);
-  for(const os of ossDoCliente){
-    try{
-      const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
-      if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
-      const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
-      if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
-    }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
-  }
-  const ossIds = ossDoCliente.map(o=>o.id);
-  for(const osId of ossIds) await excluirDoSupabase('ordens_servico', osId);
-  for(const obraId of obraIds) await excluirDoSupabase('obras', obraId);
-  await excluirDoSupabase('clientes', id);
-  db.propostas = db.propostas.filter(p=>!obraIds.includes(p.obraId)&&p.clienteId!==id);
-  db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
-  db.obras=db.obras.filter(o=>o.clienteId!==id);
-  db.clientes=db.clientes.filter(x=>x.id!==id);
-  await _delay;
-  saveLocal(); fecharModal(); renderAll();
+  confirmarExclusaoForte({
+    titulo: 'Excluir cliente',
+    nomeItem: cl?.nome || `Cliente #${id}`,
+    avisoHtml: qtdObras ? `Este cliente tem ${qtdObras} obra(s) cadastrada(s), que serão excluídas junto.` : null,
+    onConfirmar: async ()=>{
+      registrarLog('excluir', 'cliente', id, `Cliente excluído: "${cl?cl.nome:'?'}"${qtdObras?` (+ ${qtdObras} obra(s))`:''}`);
+      const obraIds = db.obras.filter(o=>o.clienteId===id).map(o=>o.id);
+      // propostas vinculadas às obras e ao cliente
+      const propostasDoCliente = db.propostas.filter(p=>obraIds.includes(p.obraId)||p.clienteId===id);
+      for(const p of propostasDoCliente){
+        for(const a of (p.arquivos||[])){ await excluirArquivoStorage(a.path); }
+        await sb.from('proposta_itens').delete().eq('proposta_id', p.id);
+        await sb.from('proposta_arquivos').delete().eq('proposta_id', p.id);
+        await excluirDoSupabase('propostas', p.id);
+      }
+      const ossDoCliente = db.ordensServico.filter(o=>obraIds.includes(o.obraId)||o.clienteId===id);
+      for(const os of ossDoCliente){
+        try{
+          const imgs=(os.imagens||[]).map(i=>i.path).filter(Boolean);
+          if(imgs.length) await sb.storage.from('os-imagens').remove(imgs);
+          const arqs=[...(os.arquivosArquiteto||[]),...(os.arquivosProjeto||[])].map(a=>a.path).filter(Boolean);
+          if(arqs.length) await sb.storage.from('os-arquivos').remove(arqs);
+        }catch(e){ console.warn('Falha ao remover arquivos de OS do storage:', e); }
+      }
+      const ossIds = ossDoCliente.map(o=>o.id);
+      for(const osId of ossIds) await excluirDoSupabase('ordens_servico', osId);
+      for(const obraId of obraIds) await excluirDoSupabase('obras', obraId);
+      await excluirDoSupabase('clientes', id);
+      db.propostas = db.propostas.filter(p=>!obraIds.includes(p.obraId)&&p.clienteId!==id);
+      db.ordensServico = db.ordensServico.filter(o=>!obraIds.includes(o.obraId)&&o.clienteId!==id);
+      db.obras=db.obras.filter(o=>o.clienteId!==id);
+      db.clientes=db.clientes.filter(x=>x.id!==id);
+      saveLocal(); fecharModal(); renderAll();
+    }
+  });
 }
 
 /* ================= USUÁRIOS ================= */
@@ -16804,16 +16866,17 @@ async function excluirUsuario(id){
   if(ehAdmin(u) && !db.usuarios.some(x=>x.id!==id && ehAdmin(x) && x.ativo!==false)){
     alert('Este é o único usuário ativo do grupo Administradores — o sistema não pode ficar sem admin.'); return;
   }
-  if(!confirm(`Excluir o usuário "${u.nome}"?`)) return;
-  const btnExc = btnModalPerigo();
-  btnSalvando(btnExc, 'Excluindo…');
-  const _delay = new Promise(r=>setTimeout(r,800));
-  const res = await chamarAdminUsuarios({acao:'excluir', id});
-  if(res.error){ btnRestaurar(btnExc); alert(res.error); return; }
-  registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
-  await carregarUsuariosSupabase();
-  await _delay;
-  saveLocal(); fecharModal(); renderAll();
+  confirmarExclusaoForte({
+    titulo: 'Excluir usuário',
+    nomeItem: u.nome,
+    onConfirmar: async ()=>{
+      const res = await chamarAdminUsuarios({acao:'excluir', id});
+      if(res.error) throw new Error(res.error);
+      registrarLog('excluir', 'usuario', id, `Usuário excluído: "${u.nome}" (login: ${u.login})`);
+      await carregarUsuariosSupabase();
+      saveLocal(); fecharModal(); renderAll();
+    }
+  });
 }
 
 /* ================= GRUPOS DE ACESSO ================= */
@@ -17108,24 +17171,19 @@ async function excluirGrupo(id){
   if(g.admin){ alert('O grupo Administradores não pode ser excluído.'); return; }
   const qtd=db.usuarios.filter(u=>u.grupoId===id).length;
   if(qtd>0){ alert(`Este grupo tem ${qtd} usuário(s). Mova-os para outro grupo antes de excluir.`); return; }
-  if(!confirm(`Excluir o grupo "${g.nome}"?`)) return;
-  const btn=document.getElementById('grupo-form-btn-excluir');
-  btnSalvando(btn,'Excluindo…');
-  const _delay=new Promise(r=>setTimeout(r,800));
-  try{
-    const {error}=await sb.from('grupos').delete().eq('id',id);
-    if(error) throw error;
-    await _delay;
-  }catch(e){
-    btnRestaurar(btn);
-    alert('Erro ao excluir: '+e.message);
-    return;
-  }
-  registrarLog('excluir','grupo',id,`Grupo excluído: "${g.nome}"`);
-  db.grupos=db.grupos.filter(x=>x.id!==id);
-  saveLocal();
-  renderAll();
-  ativarView('grupos');
+  confirmarExclusaoForte({
+    titulo: 'Excluir grupo de acesso',
+    nomeItem: g.nome,
+    onConfirmar: async ()=>{
+      const {error}=await sb.from('grupos').delete().eq('id',id);
+      if(error) throw error;
+      registrarLog('excluir','grupo',id,`Grupo excluído: "${g.nome}"`);
+      db.grupos=db.grupos.filter(x=>x.id!==id);
+      saveLocal();
+      renderAll();
+      ativarView('grupos');
+    }
+  });
 }
 
 /* osVisivelParaUsuario(os):
