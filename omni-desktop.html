@@ -1244,11 +1244,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.33.0';
+const APP_VERSION = '1.34.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.34.0',
+    data: '03/07/2026',
+    itens: [
+      'Auditoria do bug de Centro de Custo (v1.33.0): o mesmo risco existia em todas as telas de "Nova Fase" (CRM, Propostas, Obras, O.S., SRM, Faturamento), Origem do Lead e Categoria de Estoque — todas corrigidas para gravar direto no banco antes de fechar a tela. Conferido também Fornecedores, Contas Correntes, Grupos de Acesso, Contas Recorrentes, Clientes e Categorias de Download: já seguros.',
+    ]
+  },
   {
     versao: '1.33.0',
     data: '03/07/2026',
@@ -4573,9 +4580,15 @@ async function novaOrigem(){
   if(!nome || !nome.trim()) return;
   if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
   const no={id: await proximoIdSeguro('origens', db.origens), nome:nome.trim()};
+  // grava direto no Supabase antes de existir localmente: origens é FK de cards.origem_id,
+  // e o card pode ser criado (com upsert direto e awaited) segundos depois — se essa origem
+  // ainda não tivesse sido persistida, o insert do card falharia por violação de FK
+  // (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('origens').upsert({id:no.id, nome:no.nome});
+  if(error){ alert('Erro ao criar origem: '+error.message); return; }
   db.origens.push(no);
   registrarLog('criar', 'origem', no.id, `Nova origem do lead criada: "${no.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 async function novaFuncao(){
@@ -5028,9 +5041,13 @@ async function novaFase(){
   if(!podeEditarTela(usuarioAtual,'fases')){ alert('Sem permissão para criar fases.'); return; }
   const ordemMax = db.fases.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf = {id: await proximoIdSeguro('fases_crm', db.fases), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: fases_crm é FK de cards.fase_id
+  // (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('fases_crm').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fases.push(nf);
   registrarLog('criar', 'fase_crm', nf.id, `Nova fase CRM criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 function excluirFase(id){
@@ -5103,9 +5120,13 @@ async function novaEstoqueCategoria(){
   if(!podeEditarTela(usuarioAtual,'estoque-categorias')){ alert('Sem permissão para criar categorias de estoque.'); return; }
   const ordemMax = (db.estoqueCats||[]).reduce((m,c)=>Math.max(m,c.ordem),0);
   const nc = {id: await proximoIdSeguro('estoque_categorias', db.estoqueCats||[]), nome:'Nova Categoria', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: estoque_categorias é FK de
+  // estoque_produtos.categoria_id (mesma causa raiz do bug de Centro de Custo, v1.33.0).
+  const {error} = await sb.from('estoque_categorias').upsert({id:nc.id, nome:nc.nome, cor:nc.cor, ordem:nc.ordem});
+  if(error){ alert('Erro ao criar categoria: '+error.message); return; }
   (db.estoqueCats = db.estoqueCats||[]).push(nc);
   registrarLog('criar', 'estoque_categorias', nc.id, `Nova categoria de estoque criada: "${nc.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 function excluirEstoqueCategoria(id){
@@ -6818,9 +6839,13 @@ async function novaSRMFase(){
   if(!db.fasesSRM) db.fasesSRM=[];
   const ordemMax=db.fasesSRM.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_srm', db.fasesSRM), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: fases_srm é FK de cards_srm.fase_id
+  // (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('fases_srm').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fasesSRM.push(nf);
   registrarLog('criar','fase_srm',nf.id,`Nova fase SRM criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 function excluirSRMFase(id){
   if(!podeExcluirTela(usuarioAtual,'srm-fases')){ alert('Sem permissão para excluir fases do SRM.'); return; }
@@ -6905,9 +6930,13 @@ async function novaFatFase(){
   if(!db.fasesFaturamento) db.fasesFaturamento=[];
   const ordemMax=db.fasesFaturamento.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_faturamento', db.fasesFaturamento), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: fases_faturamento é FK de
+  // notas_fiscais.fase_id (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('fases_faturamento').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fasesFaturamento.push(nf);
   registrarLog('criar','fase_faturamento',nf.id,`Nova fase de Faturamento criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 function excluirFatFase(id){
   if(!podeExcluirTela(usuarioAtual,'fat-fases')){ alert('Sem permissão para excluir fases de Faturamento.'); return; }
@@ -15572,9 +15601,13 @@ async function novaFaseProposta(){
   if(!podeEditarTela(usuarioAtual,'prop-fases')){ alert('Sem permissão para criar fases de proposta.'); return; }
   const ordemMax=db.fasesProposta.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_proposta', db.fasesProposta), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: fases_proposta é FK de propostas.fase_id
+  // (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('fases_proposta').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fasesProposta.push(nf);
   registrarLog('criar', 'fase_proposta', nf.id, `Nova fase da proposta criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 /* ===== OBRAS: Fases da Obra ===== */
@@ -15643,9 +15676,13 @@ async function novaFaseObra(){
   if(!db.fasesObra) db.fasesObra=[];
   const ordemMax=db.fasesObra.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_obra', db.fasesObra), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: fases_obra é FK de obras.fase_id
+  // e ordens_servico.fase_obra_id (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
+  const {error} = await sb.from('fases_obra').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fasesObra.push(nf);
   registrarLog('criar','fase_obra',nf.id,`Nova fase da obra criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 /* ===== O.S.: Fases da Ordem de Serviço ===== */
@@ -15714,9 +15751,13 @@ async function novaFaseOS(){
   if(!db.fasesOS) db.fasesOS=[];
   const ordemMax=db.fasesOS.reduce((m,f)=>Math.max(m,f.ordem),0);
   const nf={id: await proximoIdSeguro('fases_os', db.fasesOS), nome:'Nova Fase', cor:'#9e9e9e', ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente, por consistência com as
+  // demais telas de fase (mesma causa raiz do bug de Centro de Custo, v1.33.0).
+  const {error} = await sb.from('fases_os').upsert({id:nf.id, nome:nf.nome, cor:nf.cor, ordem:nf.ordem, tipo:null});
+  if(error){ alert('Erro ao criar fase: '+error.message); return; }
   db.fasesOS.push(nf);
   registrarLog('criar','fase_os',nf.id,`Nova fase da O.S. criada: "${nf.nome}"`);
-  save(); renderAll();
+  saveLocal(); renderAll();
 }
 
 function renderPropostas(){
