@@ -1180,11 +1180,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.29.0';
+const APP_VERSION = '1.30.0';
 const APP_VERSION_DATE = '02/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.30.0',
+    data: '02/07/2026',
+    itens: [
+      'Cartão CRM: as abas "Propostas Emitidas" e "Proposta Aprovada" dentro do próprio cartão agora respeitam a restrição "Ver apenas as próprias Propostas". O cartão continua visível normalmente (Dados, Obras, O.S., etc.) — só o conteúdo dessas 2 abas fica bloqueado com uma mensagem de acesso restrito quando o cartão não é do usuário logado.',
+    ]
+  },
   {
     versao: '1.29.0',
     data: '02/07/2026',
@@ -14596,6 +14603,7 @@ async function salvarEdicaoProposta(id){
 }
 
 function abaPropostasHTML(c){
+  if(!propostasDoCartaoVisiveis(c)) return `<div class="empty">🔒 Você só pode ver propostas de cartões em que consta como responsável.</div>`;
   const podeEditar = podeEditarRecurso(usuarioAtual,'aba-propostas');
   const emitidas=db.propostas.filter(p=>p.cardId===c.id && p.status==='emitida')
     .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
@@ -14651,6 +14659,7 @@ function formAprovacaoHTML(c, candidatas, rotulo){
 }
 
 function abaAprovadaHTML(c){
+  if(!propostasDoCartaoVisiveis(c)) return `<div class="empty">🔒 Você só pode ver propostas de cartões em que consta como responsável.</div>`;
   const podeEditar = podeEditarRecurso(usuarioAtual,'aba-propostas');
   const principal=propostaPrincipal(c.id);
   if(!principal){
@@ -14682,6 +14691,7 @@ function abaAprovadaHTML(c){
 
 async function novaProposta(cardId){
   const c=db.cards.find(x=>x.id===cardId);
+  if(!propostasDoCartaoVisiveis(c)) return;
   const numero=document.getElementById('pn-numero').value.trim();
   if(!numero){ alert('Informe o número da proposta.'); return; }
   if(db.propostas.some(p=>p.numero.toLowerCase()===numero.toLowerCase())){ alert('Já existe uma proposta com esse número.'); return; }
@@ -16398,6 +16408,18 @@ function propostaVisivelParaUsuario(p){
   if(g.admin || !g.filtrarPropostas) return true; // admin ou sem restrição: vê tudo
   const card = db.cards.find(c=>c.id===p.cardId);
   return !!card && card.responsavelId === usuarioAtual.id;
+}
+
+/* propostasDoCartaoVisiveis(c): mesma regra de propostaVisivelParaUsuario, mas a
+   partir do cartão em vez da proposta — usada dentro do próprio cartão CRM
+   (abas "Propostas Emitidas"/"Proposta Aprovada") pra bloquear o conteúdo quando
+   o cartão não é do usuário logado. O cartão em si continua visível normalmente
+   (só o conteúdo dessas 2 abas fica restrito). */
+function propostasDoCartaoVisiveis(c){
+  if(!usuarioAtual) return false;
+  const g = grupoDe(usuarioAtual);
+  if(g.admin || !g.filtrarPropostas) return true;
+  return c.responsavelId === usuarioAtual.id;
 }
 
 function renderOSLista(){
