@@ -1246,11 +1246,26 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.37.0';
+const APP_VERSION = '1.39.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.39.0',
+    data: '03/07/2026',
+    itens: [
+      'Contas Recorrentes agora suportam periodicidade Anual (além da Mensal). Ao criar/editar uma recorrente anual, informe o mês de vencimento — a geração automática de Contas a Pagar passa a checar por ano (não só por mês) e só cria a pendência no mês configurado.',
+      'Tela de Contas Recorrentes mostra "Anual — <mês>" ou "Mensal — Dia X" na listagem, conforme a periodicidade de cada uma.',
+    ]
+  },
+  {
+    versao: '1.38.0',
+    data: '03/07/2026',
+    itens: [
+      'Modal de pagamento de Conta a Pagar (Confirmar Pagamento) agora tem o valor editável — útil pra recorrentes cujo valor varia mês a mês (ex: Google Ads). O valor corrigido é salvo tanto na Conta a Pagar quanto no lançamento gerado na Conta Corrente.',
+    ]
+  },
   {
     versao: '1.37.0',
     data: '03/07/2026',
@@ -2064,6 +2079,10 @@ function load(){
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
   if(!Array.isArray(db.contasPagar))       db.contasPagar=[];
   if(!Array.isArray(db.contasRecorrentes)) db.contasRecorrentes=[];
+  db.contasRecorrentes.forEach(r=>{
+    if(!('periodicidade' in r)) r.periodicidade='mensal';
+    if(!('mesVencimento' in r)) r.mesVencimento=null;
+  });
   if(!Array.isArray(db.fornecedores))      db.fornecedores=[];
   if(!Array.isArray(db.fornecedorContatos)) db.fornecedorContatos=[];
   if(!Array.isArray(db.cardsSRM))           db.cardsSRM=[];
@@ -2600,6 +2619,8 @@ async function carregarDadosSupabase(){
         contaId:r.conta_id||null,
         valor:Number(r.valor)||0,
         diaVencimento:Number(r.dia_vencimento)||10,
+        periodicidade:r.periodicidade||'mensal',
+        mesVencimento:r.mes_vencimento||null,
         ativa:r.ativa!==false,
         criadoEm:r.criado_em||''
       }));
@@ -2830,6 +2851,8 @@ function syncDadosSupabase(){
       conta_id:r.contaId||null,
       valor:r.valor||0,
       dia_vencimento:r.diaVencimento||10,
+      periodicidade:r.periodicidade||'mensal',
+      mes_vencimento:r.mesVencimento||null,
       ativa:r.ativa!==false
     }));
     await sincronizarTabela('fornecedores', db.fornecedores||[], f=>({
@@ -8487,10 +8510,14 @@ async function gerarRecorrentesDoMes(){
   const prefixo   = `${anoAtual}-${mesStr}`;
   let gerou = false;
   for(const r of recorrentes){
-    // Verifica se já existe CP para este recorrente neste mês
+    const periodicidade = r.periodicidade || 'mensal';
+    // Anual: só gera quando o mês atual bater com o mês de vencimento configurado
+    if(periodicidade==='anual' && Number(r.mesVencimento)!==mesAtual) continue;
+    // Verifica se já existe CP para este recorrente no período (mês, se mensal; ano, se anual)
+    const prefixoCheck = periodicidade==='anual' ? String(anoAtual) : prefixo;
     const jaExiste = (db.contasPagar||[]).some(p=>
       p.recorrenteId===r.id &&
-      p.dataVencimento && p.dataVencimento.startsWith(prefixo)
+      p.dataVencimento && p.dataVencimento.startsWith(prefixoCheck)
     );
     if(jaExiste) continue;
     // Calcula data de vencimento: dia configurado no mês atual
@@ -8597,13 +8624,27 @@ function renderRecorrentes(){
       <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${conta?`${conta.tipo==='cartao'?'💳 ':''}${escHtml(conta.nome)}`:'—'}</td>
       <td style="font-weight:700;text-align:right">${fmtMoney(r.valor)}</td>
-      <td style="font-size:12px;color:var(--muted)">Dia ${r.diaVencimento}</td>
+      <td style="font-size:12px;color:var(--muted)">${r.periodicidade==='anual'?`Anual — ${optsMesesNome(r.mesVencimento)}`:`Mensal — Dia ${r.diaVencimento}`}</td>
       <td>${badge}</td>
       <td style="text-align:right"><button class="icon-btn" title="Editar" onclick="event.stopPropagation();abrirEditarRecorrente(${r.id})">↗</button></td>
     </tr>`;
   }).join('');
 }
 
+/** Nomes dos meses pra selects/exibição de "mês de vencimento" (recorrência anual) */
+const NOMES_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+function optsMeses(selecionado){
+  return NOMES_MESES.map((n,i)=>`<option value="${i+1}" ${(i+1)===selecionado?'selected':''}>${n}</option>`).join('');
+}
+function optsMesesNome(mes){
+  return NOMES_MESES[(mes||1)-1] || '—';
+}
+/** Mostra/esconde o campo "Mês de Vencimento" conforme a Periodicidade escolhida */
+function toggleRecMesVencimento(){
+  const per = document.getElementById('rec-periodicidade')?.value;
+  const row = document.getElementById('rec-mes-row');
+  if(row) row.style.display = per==='anual' ? '' : 'none';
+}
 function abrirNovaRecorrente(){
   if(!podeEditarTela(usuarioAtual,'fin-recorrentes')){ alert('Sem permissão para criar Contas Recorrentes.'); return; }
   const fornOpts = (db.fornecedores||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
@@ -8620,6 +8661,17 @@ function abrirNovaRecorrente(){
       <label>Nome / Descrição *
         <input id="rec-nome" class="input" style="margin-top:4px" placeholder="Ex: Assinatura Claude, Contabilidade…">
       </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Periodicidade *
+          <select id="rec-periodicidade" class="input" style="margin-top:4px" onchange="toggleRecMesVencimento()">
+            <option value="mensal">Mensal</option>
+            <option value="anual">Anual</option>
+          </select>
+        </label>
+        <label id="rec-mes-row" style="display:none">Mês de Vencimento *
+          <select id="rec-mes" class="input" style="margin-top:4px">${optsMeses()}</select>
+        </label>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Fornecedor
           <select id="rec-fornecedor" class="input" style="margin-top:4px">
@@ -8665,8 +8717,11 @@ async function salvarNovaRecorrente(btn){
   const nome  = document.getElementById('rec-nome').value.trim();
   const valor = parseFloat((document.getElementById('rec-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
   const dia   = parseInt(document.getElementById('rec-dia').value)||10;
+  const periodicidade = document.getElementById('rec-periodicidade').value;
+  const mesVencimento = periodicidade==='anual' ? parseInt(document.getElementById('rec-mes').value)||null : null;
   if(!nome){ alert('Informe o nome da recorrente.'); return; }
   if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  if(periodicidade==='anual' && !mesVencimento){ alert('Selecione o mês de vencimento da recorrência anual.'); return; }
   const fornId  = parseInt(document.getElementById('rec-fornecedor').value)||null;
   const ccId    = parseInt(document.getElementById('rec-cc').value)||null;
   const obraId  = parseInt(document.getElementById('rec-obra').value)||null;
@@ -8675,7 +8730,8 @@ async function salvarNovaRecorrente(btn){
   const _delay = new Promise(r=>setTimeout(r,800));
   const {data, error} = await sb.from('contas_recorrentes').insert({
     nome, fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId,
-    conta_id:contaId, valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true
+    conta_id:contaId, valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true,
+    periodicidade, mes_vencimento:mesVencimento
   }).select().single();
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
   db.contasRecorrentes = db.contasRecorrentes||[];
@@ -8684,6 +8740,7 @@ async function salvarNovaRecorrente(btn){
     centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
     contaId:data.conta_id||null,
     valor:Number(data.valor)||0, diaVencimento:data.dia_vencimento||10,
+    periodicidade:data.periodicidade||'mensal', mesVencimento:data.mes_vencimento||null,
     ativa:true, criadoEm:data.criado_em||''
   });
   await _delay;
@@ -8712,6 +8769,17 @@ function abrirEditarRecorrente(id){
       <label>Nome / Descrição *
         <input id="rec-nome" class="input" style="margin-top:4px" value="${escHtml(r.nome||'')}" ${ro}>
       </label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Periodicidade *
+          <select id="rec-periodicidade" class="input" style="margin-top:4px" onchange="toggleRecMesVencimento()" ${ro}>
+            <option value="mensal" ${r.periodicidade!=='anual'?'selected':''}>Mensal</option>
+            <option value="anual" ${r.periodicidade==='anual'?'selected':''}>Anual</option>
+          </select>
+        </label>
+        <label id="rec-mes-row" style="display:${r.periodicidade==='anual'?'':'none'}">Mês de Vencimento *
+          <select id="rec-mes" class="input" style="margin-top:4px" ${ro}>${optsMeses(r.mesVencimento)}</select>
+        </label>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Fornecedor
           <select id="rec-fornecedor" class="input" style="margin-top:4px" ${ro}>
@@ -8765,8 +8833,11 @@ async function salvarEdicaoRecorrente(id, btn){
   const nome  = document.getElementById('rec-nome').value.trim();
   const valor = parseFloat((document.getElementById('rec-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
   const dia   = parseInt(document.getElementById('rec-dia').value)||10;
+  const periodicidade = document.getElementById('rec-periodicidade').value;
+  const mesVencimento = periodicidade==='anual' ? parseInt(document.getElementById('rec-mes').value)||null : null;
   if(!nome){ alert('Informe o nome.'); return; }
   if(valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  if(periodicidade==='anual' && !mesVencimento){ alert('Selecione o mês de vencimento da recorrência anual.'); return; }
   const fornId  = parseInt(document.getElementById('rec-fornecedor').value)||null;
   const ccId    = parseInt(document.getElementById('rec-cc').value)||null;
   const obraId  = parseInt(document.getElementById('rec-obra').value)||null;
@@ -8775,10 +8846,12 @@ async function salvarEdicaoRecorrente(id, btn){
   const _delay = new Promise(r=>setTimeout(r,800));
   r.nome=nome; r.valor=valor; r.diaVencimento=Math.min(Math.max(dia,1),31);
   r.fornecedorId=fornId; r.centroCustoId=ccId; r.obraId=obraId; r.contaId=contaId;
+  r.periodicidade=periodicidade; r.mesVencimento=mesVencimento;
   try{
     const {error} = await sb.from('contas_recorrentes').update({
       nome, valor, dia_vencimento:r.diaVencimento,
-      fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId, conta_id:contaId
+      fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId, conta_id:contaId,
+      periodicidade, mes_vencimento:mesVencimento
     }).eq('id',id);
     if(error) throw error;
     await Promise.all([save(), _delay]);
@@ -10809,18 +10882,22 @@ function abrirPagarConta(id){
     <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
     <div class="modal-body" style="display:grid;gap:14px">
       <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?' — '+escHtml(f.nome):''})()}</p>
-      <p style="margin:0;font-size:18px;font-weight:700;color:#dc2626">${fmtMoney(p.valor)}</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor (R$) *
+          <input id="pp-valor" type="text" inputmode="decimal" class="input" style="margin-top:4px;font-size:18px;font-weight:700;color:#dc2626"
+            value="${(p.valor||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
+        </label>
         <label>Data do pagamento *
           <input id="pp-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
         </label>
-        <label>Debitar de *
-          <select id="pp-conta" class="input" style="margin-top:4px">
-            <option value="">— selecione a conta —</option>
-            ${contasOpts}
-          </select>
-        </label>
       </div>
+      <label>Debitar de *
+        <select id="pp-conta" class="input" style="margin-top:4px">
+          <option value="">— selecione a conta —</option>
+          ${contasOpts}
+        </select>
+      </label>
+      <p style="margin:0;font-size:11px;color:var(--muted);font-style:italic">O valor vem pré-preenchido com o previsto — corrija aqui se o valor real cobrado for diferente (ex.: contas com valor variável).</p>
       ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada.</p>`:''}
     </div>
     <div class="modal-footer">
@@ -10835,29 +10912,31 @@ async function confirmarPagamentoConta(id){
   if(!p) return;
   const dataPagamento = document.getElementById('pp-data').value;
   const contaId = parseInt(document.getElementById('pp-conta').value) || null;
+  const valorPago = lerMoeda('pp-valor');
 
   if(!dataPagamento){ alert('Informe a data do pagamento.'); return; }
   if(!contaId){ alert('Selecione a conta corrente a debitar.'); return; }
+  if(!valorPago){ alert('Informe o valor pago.'); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn, 'Confirmando…');
   const _delay = new Promise(r=>setTimeout(r,800));
 
-  // Atualiza conta a pagar
+  // Atualiza conta a pagar (valor também é atualizado, caso tenha sido corrigido nesse passo)
   const {error:ePagar} = await sb.from('contas_pagar').update({
-    status:'pago', data_pagamento:dataPagamento, conta_id:contaId
+    status:'pago', data_pagamento:dataPagamento, conta_id:contaId, valor:valorPago
   }).eq('id', id);
   if(ePagar){ btnRestaurar(btn); alert('Erro ao confirmar: '+ePagar.message); return; }
 
-  p.status='pago'; p.dataPagamento=dataPagamento; p.contaId=contaId;
+  p.status='pago'; p.dataPagamento=dataPagamento; p.contaId=contaId; p.valor=valorPago;
 
-  // Cria movimentação de saída na conta corrente
+  // Cria movimentação de saída na conta corrente, já com o valor corrigido
   const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
   const _forn = (db.fornecedores||[]).find(x=>x.id===p.fornecedorId);
   const descMov = `Pagamento: ${p.descricao}${_forn?' — '+_forn.nome:''}`;
   const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
-    id:idMov, conta_id:contaId, tipo:'saida', valor:p.valor,
+    id:idMov, conta_id:contaId, tipo:'saida', valor:valorPago,
     descricao:descMov, data_movimento:dataPagamento,
     centro_custo_id:p.centroCustoId||null,
     origem_tipo:'contas_pagar', origem_id:id,
@@ -10866,7 +10945,7 @@ async function confirmarPagamentoConta(id){
   if(!eMov){
     db.movimentacoes = db.movimentacoes || [];
     db.movimentacoes.push({
-      id:idMov, contaId, tipo:'saida', valor:p.valor,
+      id:idMov, contaId, tipo:'saida', valor:valorPago,
       descricao:descMov, dataMovimento:dataPagamento,
       centroCustoId:p.centroCustoId||null,
       origemTipo:'contas_pagar', origemId:id,
