@@ -1246,11 +1246,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.36.0';
+const APP_VERSION = '1.37.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.37.0',
+    data: '03/07/2026',
+    itens: [
+      'Corrigido bug real: a geração automática de Contas a Pagar a partir das Contas Recorrentes (que deveria rodar todo login, criando a pendência do mês se ainda não existisse) nunca tinha funcionado — faltava um "await" no código, o que fazia o Supabase rejeitar a gravação silenciosamente (erro só no console, nunca visível). Falhas assim agora também ficam registradas em Auditoria & Logs, não só no console do navegador.',
+      'Geradas manualmente as 2 Contas a Pagar de julho que faltavam ("Assinatura Claude mensal" e "Guia DAS arrecadação"). As outras 3 recorrentes (Contabilidade x2 e Google Ads) não foram geradas de propósito, pois já haviam sido pagas manualmente por fora do sistema.',
+    ]
+  },
   {
     versao: '1.36.0',
     data: '03/07/2026',
@@ -8490,7 +8498,11 @@ async function gerarRecorrentesDoMes(){
     const dia       = Math.min(r.diaVencimento, diasNoMes);
     const dataVenc  = `${prefixo}-${String(dia).padStart(2,'0')}`;
     // Insere direto no Supabase (sem depender do debounce)
-    const novoId = proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+    // BUG CORRIGIDO em v1.37.0: faltava o await aqui — proximoIdSeguro é async,
+    // então `novoId` virava uma Promise (não um número), o insert falhava com
+    // "id" inválido, o erro só ia pro console.error (nunca visível pro usuário),
+    // e a rotina inteira nunca gerou uma única Conta a Pagar desde que existe.
+    const novoId = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
     const {data, error} = await sb.from('contas_pagar').insert({
       id:            novoId,
       descricao:     r.nome,
@@ -8503,7 +8515,13 @@ async function gerarRecorrentesDoMes(){
       conta_id:      r.contaId||null,
       recorrente_id: r.id
     }).select().single();
-    if(error){ console.error('Erro ao gerar recorrente:', r.nome, error); continue; }
+    if(error){
+      console.error('Erro ao gerar recorrente:', r.nome, error);
+      // registra no log de auditoria (não só no console) pra falhas silenciosas
+      // como essa não passarem despercebidas de novo — ver Auditoria & Logs.
+      registrarLog('erro','contas-pagar',null,`Falha ao gerar CP automática da recorrente "${r.nome}": ${error.message||error}`);
+      continue;
+    }
     db.contasPagar = db.contasPagar||[];
     db.contasPagar.push({
       id:data.id, descricao:data.descricao, fornecedorId:data.fornecedor_id||null,
