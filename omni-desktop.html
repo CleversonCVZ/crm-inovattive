@@ -1246,11 +1246,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.35.0';
+const APP_VERSION = '1.36.0';
 const APP_VERSION_DATE = '03/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.36.0',
+    data: '03/07/2026',
+    itens: [
+      'Extrato de Contas Correntes: dentro do mesmo dia, entradas agora aparecem sempre antes de saídas/transferências (tanto no modal de Extrato quanto na view "Extrato por Conta" do Painel Financeiro). A data continua sendo o critério principal de ordenação.',
+    ]
+  },
   {
     versao: '1.35.0',
     data: '03/07/2026',
@@ -3266,10 +3273,10 @@ function _finPainelExtrato(statsEl, corpoEl, periodo, contaId){
     return;
   }
 
-  // Todos os movimentos da conta, ordenados por data
+  // Todos os movimentos da conta, ordenados por data (entradas antes de saídas/transferências no mesmo dia)
   const todasMovs = (db.movimentacoes||[])
     .filter(m=>m.contaId===contaId)
-    .sort((a,b)=>(a.dataMovimento||'').localeCompare(b.dataMovimento||''));
+    .sort((a,b)=>((a.dataMovimento||'').localeCompare(b.dataMovimento||'')) || (_pesoTipoMov(a.tipo)-_pesoTipoMov(b.tipo)));
 
   // Saldo inicial: base + movimentos ANTES do período
   const base = c.tipo==='cartao' ? -(c.faturaInicial||0) : (c.saldoInicial||0);
@@ -9605,6 +9612,10 @@ async function salvarLancamentoManual(contaId){
   renderContasCorrente();
 }
 
+/** Peso pra ordenar movimentações dentro do mesmo dia: entradas sempre antes de
+ *  saídas/transferências (a data continua sendo o critério principal). */
+function _pesoTipoMov(tipo){ return tipo==='entrada' ? 0 : 1; }
+
 /** Abre modal de extrato de movimentações de uma conta */
 function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para visualizar o extrato.'); return; }
@@ -9613,7 +9624,7 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
 
   const todasMovs = (db.movimentacoes||[])
     .filter(m=>m.contaId===contaId)
-    .sort((a,b)=>b.dataMovimento?.localeCompare(a.dataMovimento)||0);
+    .sort((a,b)=>(b.dataMovimento?.localeCompare(a.dataMovimento)||0) || (_pesoTipoMov(a.tipo)-_pesoTipoMov(b.tipo)));
 
   const movs = filtroTipo==='todos' ? todasMovs : todasMovs.filter(m=>m.tipo===filtroTipo);
 
