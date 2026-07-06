@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.45.1';
+const APP_VERSION = '1.45.2';
 const APP_VERSION_DATE = '06/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.45.2',
+    data: '06/07/2026',
+    itens: [
+      'Corrigido: o botão ✔ de pagamento rápido na lista de Contas a Pagar marcava a conta como paga só na tela, mas isso nunca era gravado no banco (voltava a aparecer como pendente ao recarregar) e não pedia de qual conta corrente debitar nem lançava a movimentação financeira. Esse botão agora abre o mesmo fluxo completo já usado no detalhe da conta: pede a conta corrente e a data, grava o pagamento direto no banco e cria a movimentação de saída correspondente.',
+    ]
+  },
   {
     versao: '1.45.1',
     data: '06/07/2026',
@@ -10816,47 +10823,22 @@ function renderContasPagar(){
       <td style="font-size:12px">${vencLabel}</td>
       <td>${statusBadge}${pago&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}</td>
       <td style="white-space:nowrap;text-align:right">
-        ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();marcarContaPagaRapido(${p.id})">✔</button>`:''}
+        ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();abrirPagarConta(${p.id})">✔</button>`:''}
         <button class="icon-btn" onclick="event.stopPropagation();abrirEditarContaPagar(${p.id})" title="Editar">↗</button>
       </td>
     </tr>`;
   }).join('');
 }
 
-/** Pagamento rápido via botão ✔ na lista */
-function marcarContaPagaRapido(id){
-  const p = (db.contasPagar||[]).find(x=>x.id===id);
-  if(!p) return;
-  const hoje = localDia(0);
-  abrirModal(`
-    <h3>Confirmar Pagamento</h3>
-    <div class="aba-corpo" style="display:grid;gap:14px">
-      <div style="background:var(--surface);border-radius:8px;padding:12px">
-        <div style="font-weight:600">${escHtml(p.descricao)}</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:4px">${fmtMoney(p.valor)}</div>
-      </div>
-      <label>Data do Pagamento *
-        <input id="cprap-data" type="date" class="input" value="${hoje}" style="margin-top:4px">
-      </label>
-    </div>
-    <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" onclick="confirmarPagamentoRapido(${id})">✔ Confirmar Pagamento</button>
-    </div>`, 'cartao');
-}
-
-async function confirmarPagamentoRapido(id){
-  const p = (db.contasPagar||[]).find(x=>x.id===id);
-  if(!p) return;
-  const data = (document.getElementById('cprap-data')||{}).value;
-  if(!data){ alert('Informe a data do pagamento.'); return; }
-  p.status = 'pago';
-  p.dataPagamento = data;
-  fecharModal();
-  await save();
-  renderContasPagar();
-  renderFinPainel();
-}
+/* v1.45.2: marcarContaPagaRapido()/confirmarPagamentoRapido() foram removidas —
+   era um atalho duplicado e incompleto do botão ✔ na lista: não pedia a conta
+   corrente a debitar, não criava movimentação financeira nenhuma, e como
+   contas_pagar é sincronizada só via CRUD direto (nunca pelo sync em bulk —
+   ver nota em syncDadosSupabase), o status "pago" setado só localmente nunca
+   era persistido no Supabase, revertendo pra "pendente" ao recarregar.
+   O botão ✔ agora chama abrirPagarConta() diretamente, o mesmo fluxo completo
+   usado dentro do modal de detalhe (pede conta corrente, valor conferível,
+   grava direto via update awaited, cria a movimentação de saída). */
 
 /** Alterna exibição de data/condição no modal CP conforme tipo */
 function toggleCPTipo(prefix){
