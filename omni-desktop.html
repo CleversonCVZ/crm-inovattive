@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.45.2';
+const APP_VERSION = '1.45.3';
 const APP_VERSION_DATE = '06/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.45.3',
+    data: '06/07/2026',
+    itens: [
+      'O extrato de Contas Correntes (📋) agora mostra, abaixo da descrição de cada lançamento, dados de contexto sempre que a movimentação vier de um recebimento ou pagamento vinculado: cliente e cartão CRM (recebimentos) ou fornecedor e obra (contas a pagar) — deixa o registro mais completo pra consulta futura.',
+    ]
+  },
   {
     versao: '1.45.2',
     data: '06/07/2026',
@@ -9967,6 +9974,33 @@ async function salvarLancamentoManual(contaId){
  *  saídas/transferências (a data continua sendo o critério principal). */
 function _pesoTipoMov(tipo){ return tipo==='entrada' ? 0 : 1; }
 
+/** Contexto adicional de uma movimentação, derivado da origem (recebimento/contas_pagar),
+ *  pra enriquecer o extrato com cliente, cartão CRM, fornecedor e obra sem precisar
+ *  gravar esses dados de novo na própria movimentação. Retorna array de strings já formatadas. */
+function metaOrigemMovimentacao(m){
+  if(m.origemTipo==='recebimento'){
+    const r = (db.recebimentos||[]).find(x=>x.id===m.origemId);
+    if(!r) return [];
+    const card = r.cardId ? (db.cards||[]).find(x=>x.id===r.cardId) : null;
+    const cliente = card ? (db.clientes||[]).find(x=>x.id===card.clienteId) : null;
+    const partes = [];
+    if(cliente) partes.push('👤 '+escHtml(cliente.nome));
+    if(card) partes.push('🗂️ Cartão #'+(card.num||card.id));
+    return partes;
+  }
+  if(m.origemTipo==='contas_pagar'){
+    const p = (db.contasPagar||[]).find(x=>x.id===m.origemId);
+    if(!p) return [];
+    const forn = p.fornecedorId ? (db.fornecedores||[]).find(x=>x.id===p.fornecedorId) : null;
+    const obra = p.obraId ? (db.obras||[]).find(x=>x.id===p.obraId) : null;
+    const partes = [];
+    if(forn) partes.push('🏢 '+escHtml(forn.nome));
+    if(obra) partes.push('🏗️ '+escHtml(obra.nome));
+    return partes;
+  }
+  return [];
+}
+
 /** Abre modal de extrato de movimentações de uma conta */
 function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para visualizar o extrato.'); return; }
@@ -10004,11 +10038,16 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
         const obraM = m.obraId ? (db.obras||[]).find(x=>x.id===m.obraId) : null;
         const cor = m.tipo==='entrada' ? '#16a34a' : '#dc2626';
         const sinal = m.tipo==='entrada' ? '+' : '-';
+        const subPartes = [];
+        if(cc) subPartes.push(escHtml(cc.nome));
+        if(obraM) subPartes.push('🏗️ '+escHtml(obraM.nome));
+        subPartes.push(...metaOrigemMovimentacao(m));
+        const subLinha = subPartes.length ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">${subPartes.join(' · ')}</div>` : '';
         return `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:8px 10px;color:var(--muted);font-size:12px;white-space:nowrap">${m.dataMovimento?fmtDia2(m.dataMovimento):''}</td>
           <td style="padding:8px 10px">
             <div style="font-size:13px">${TIPO_ICON[m.tipo]||''} ${escHtml(m.descricao)}</div>
-            ${cc?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${escHtml(cc.nome)}${obraM?' · 🏗️ '+escHtml(obraM.nome):''}</div>`:''}
+            ${subLinha}
           </td>
           <td style="padding:8px 10px;font-size:11px;color:var(--muted);white-space:nowrap">${TIPO_LABEL[m.tipo]||m.tipo}</td>
           <td style="padding:8px 10px;text-align:right;font-weight:700;color:${cor};white-space:nowrap">${sinal} ${fmtMoney(m.valor)}</td>
