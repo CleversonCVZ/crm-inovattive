@@ -954,6 +954,7 @@
       <select id="fin-filtro-status" onchange="renderFinanceiroPainel()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
         <option value="">Todos</option>
         <option value="pendente">Pendentes</option>
+        <option value="parcial">Parciais</option>
         <option value="recebido">Recebidos</option>
         <option value="vencido">Vencidos</option>
       </select>
@@ -1267,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.45.0';
+const APP_VERSION = '1.45.1';
 const APP_VERSION_DATE = '06/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.45.1',
+    data: '06/07/2026',
+    itens: [
+      'Corrigido: a tela "Contas a Receber" (lista geral) não estava considerando o status Parcial recém-criado — ainda mostrava o valor cheio da parcela, jogava ela pro fim da lista (junto com as recebidas) e escondia o botão de registrar o próximo pagamento. Agora mostra "🔶 Parcial" com recebido/restante, mantém a parcela junto das pendentes na ordenação, e o botão de recebimento continua disponível.',
+    ]
+  },
   {
     versao: '1.45.0',
     data: '06/07/2026',
@@ -3504,8 +3512,8 @@ function renderFinanceiroPainel(){
   const fBusca = termoBusca();
   let lista = (db.recebimentos||[]).slice();
   if(filtroTipo) lista = lista.filter(r=>r.tipo===filtroTipo);
-  // "vencido" não é um status no banco — é filtrado como pendente com data passada
-  if(filtroStatus==='vencido') lista = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
+  // "vencido" não é um status no banco — é filtrado como pendente/parcial com data passada
+  if(filtroStatus==='vencido') lista = lista.filter(r=>r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
   else if(filtroStatus) lista = lista.filter(r=>r.status===filtroStatus);
   if(fBusca) lista = lista.filter(r=>{
     const c = db.cards.find(x=>x.id===r.cardId);
@@ -3514,17 +3522,20 @@ function renderFinanceiroPainel(){
       || (cl?.nome||'').toLowerCase().includes(fBusca);
   });
   lista.sort((a,b)=>{
-    if(a.status!==b.status) return a.status==='pendente'?-1:1; // pendentes primeiro
+    // pendente e parcial (ainda falta receber) sempre antes de recebido (quitado)
+    const aAberta = a.status!=='recebido', bAberta = b.status!=='recebido';
+    if(aAberta!==bAberta) return aAberta?-1:1;
     if(a.dataVencimento && b.dataVencimento) return a.dataVencimento.localeCompare(b.dataVencimento);
     return a.id-b.id;
   });
 
-  // totalizadores (sempre sobre tudo, sem filtro)
+  // totalizadores (sempre sobre tudo, sem filtro) — Recebido soma valorPago (cobre parcial
+  // e quitado), Pendente soma o restante (valor - valorPago) de tudo que não está quitado.
   const todos = db.recebimentos||[];
-  const totPendente = todos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
-  const totRecebido = todos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
-  const totGeral    = totPendente + totRecebido;
-  const totVencido  = todos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje).reduce((s,r)=>s+r.valor,0);
+  const totPendente = todos.filter(r=>r.status!=='recebido').reduce((s,r)=>s+(r.valor-(r.valorPago||0)),0);
+  const totRecebido = todos.reduce((s,r)=>s+(r.valorPago||0),0);
+  const totGeral    = todos.reduce((s,r)=>s+r.valor,0);
+  const totVencido  = todos.filter(r=>r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje).reduce((s,r)=>s+(r.valor-(r.valorPago||0)),0);
 
   const statsEl = document.getElementById('fin-stats');
   if(statsEl) statsEl.innerHTML = `
@@ -3543,26 +3554,32 @@ function renderFinanceiroPainel(){
     const proposta = r.propostaId ? db.propostas.find(p=>Number(p.id)===Number(r.propostaId)) : null;
     const os = r.osId ? db.ordensServico.find(o=>Number(o.id)===Number(r.osId)) : null;
     const origemLabel = proposta ? `Prop. ${proposta.numero}` : os ? `OS ${os.numero}` : '—';
-    const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
+    const vencida = r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
+    const restante = Math.max(r.valor-(r.valorPago||0), 0);
     const statusBadge = r.status==='recebido'
       ? `<span style="color:#2e7d32;font-weight:700">✔ Recebido</span>`
-      : vencida
-        ? `<span style="color:#c62828;font-weight:700">⚠ Vencido</span>`
-        : `<span style="color:#e65100">⏳ Pendente</span>`;
+      : r.status==='parcial'
+        ? `<span style="color:#b45309;font-weight:700">🔶 Parcial</span>`
+        : vencida
+          ? `<span style="color:#c62828;font-weight:700">⚠ Vencido</span>`
+          : `<span style="color:#e65100">⏳ Pendente</span>`;
     const vencLabel = r.tipo==='fixo'
       ? (r.dataVencimento ? fmtDia2(r.dataVencimento) : '—')
       : `<span style="font-size:11px;color:var(--muted)">${escHtml(r.condicao||'—')}</span>`;
+    const valorCel = r.status==='parcial'
+      ? `${fmtMoney(r.valor)}<div style="font-size:11px;font-weight:400;color:#b45309;margin-top:2px">Recebido ${fmtMoney(r.valorPago)} · falta ${fmtMoney(restante)}</div>`
+      : fmtMoney(r.valor);
     return `<tr style="${r.status==='recebido'?'opacity:.7':''}">
       <td>${cl?escHtml(cl.nome):'—'}</td>
       <td>${c?`<a href="#" onclick="abrirEditarCartao(${c.id},'financeiro');return false" style="color:var(--green)">#${c.num}</a>`:'—'}</td>
       <td><div style="font-weight:600;font-size:14px">${origemLabel}</div></td>
       <td>${escHtml(r.descricao)}</td>
-      <td style="font-weight:700">${fmtMoney(r.valor)}</td>
+      <td style="font-weight:700">${valorCel}</td>
       <td style="font-size:12px">${r.tipo==='fixo'?'Data fixa':'Condicional'}</td>
       <td style="font-size:12px">${vencLabel}</td>
       <td>${statusBadge}${r.status==='recebido'&&r.dataRecebimento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(r.dataRecebimento)}</div>`:''}</td>
       <td>
-        ${r.status==='pendente'&&c&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
+        ${r.status!=='recebido'&&c&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff;white-space:nowrap" onclick="marcarParcelaRecebida(${r.id},${c.id})">✔</button>`:''}
         ${c?`<button class="icon-btn" onclick="abrirEditarCartao(${c.id},'financeiro')" title="Abrir cartão">↗</button>`:''}
       </td>
     </tr>`;
