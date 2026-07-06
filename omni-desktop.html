@@ -1267,11 +1267,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.44.0';
+const APP_VERSION = '1.45.0';
 const APP_VERSION_DATE = '06/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.45.0',
+    data: '06/07/2026',
+    itens: [
+      'Contas a Receber agora suporta pagamento parcial: ao confirmar um recebimento, o valor pode ser menor que o total da parcela — ela fica marcada como "🔶 Parcial" (mostrando quanto já foi pago e quanto falta) e continua na lista até ser quitada, com histórico de cada pagamento recebido.',
+      'Corrigida uma race condition ao criar Nova Parcela a Receber (mesma classe de bug já corrigida em outras telas): a parcela agora é gravada direto no Supabase antes de aparecer na lista, evitando erro se for marcada como recebida logo em seguida.',
+    ]
+  },
   {
     versao: '1.44.0',
     data: '06/07/2026',
@@ -2133,6 +2141,12 @@ function load(){
   db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; });
   if(!Array.isArray(db.cardContatos))    db.cardContatos=[];
   if(!Array.isArray(db.recebimentos))    db.recebimentos=[];
+  db.recebimentos.forEach(r=>{
+    // valorPago: soma já recebida da parcela — migração assume "tudo ou nada" pro histórico
+    // anterior a este recurso (recebido = valor inteiro, pendente = zero).
+    if(!('valorPago' in r)) r.valorPago = r.status==='recebido' ? r.valor : 0;
+    if(!Array.isArray(r.pagamentos)) r.pagamentos = [];
+  });
   if(!Array.isArray(db.centrosCusto))    db.centrosCusto=[];
   if(!Array.isArray(db.contasCorrente))  db.contasCorrente=[];
   if(!Array.isArray(db.movimentacoes))   db.movimentacoes=[];
@@ -2399,11 +2413,13 @@ async function carregarConfigSupabase(){
    - proposta_itens → agrupados por proposta_id → db.propostas[i].itens[]
    - proposta_arquivos → agrupados por proposta_id → db.propostas[i].arquivos[]
    - os_tecnicos, os_diario → agrupados por os_id → db.ordensServico[i].tecnicos/diario
+   - financeiro_recebimentos_pagamentos → agrupados por recebimento_id → db.recebimentos[i].pagamentos[]
+     (histórico de pagamentos parciais de uma parcela a receber — v1.45.0)
    Qualquer campo snake_case do banco vira camelCase no JS (ex.: fase_id → faseId).
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -2423,6 +2439,7 @@ async function carregarDadosSupabase(){
       sb.from('os_diario').select('*').order('data', {ascending:false}),
       sb.from('obra_retiradas').select('*').order('data_retirada', {ascending:false}),
       sb.from('financeiro_recebimentos').select('*').order('id'),
+      sb.from('financeiro_recebimentos_pagamentos').select('*').order('data'),
       sb.from('centros_custo').select('*').order('id'),
       sb.from('contas_correntes').select('*').order('id'),
       sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
@@ -2587,19 +2604,26 @@ async function carregarDadosSupabase(){
         descricao:a.descricao||'', storagePath:a.storage_path,
         tamanho:Number(a.tamanho)||0, criadoEm:a.criado_em, criadoPor:a.criado_por||''
       }));
-    if(recebimentos.data)
+    if(recebimentos.data){
       db.recebimentos = recebimentos.data.map(r=>({
         id:r.id, cardId:r.card_id,
         propostaId:r.proposta_id ? Number(r.proposta_id) : null,
         osId:r.os_id ? Number(r.os_id) : null,
         descricao:r.descricao||'', valor:Number(r.valor)||0,
+        valorPago:Number(r.valor_pago)||0,
         tipo:r.tipo||'fixo',
         dataVencimento:r.data_vencimento ? r.data_vencimento.slice(0,10) : null,
         condicao:r.condicao||null,
         status:r.status||'pendente',
         dataRecebimento:r.data_recebimento ? r.data_recebimento.slice(0,10) : null,
-        criadoEm:r.created_at||''
+        criadoEm:r.created_at||'',
+        pagamentos:[]
       }));
+      if(pagamentosReceb.data) pagamentosReceb.data.forEach(p=>{
+        const r = db.recebimentos.find(x=>x.id===p.recebimento_id);
+        if(r) r.pagamentos.push({id:p.id, data:p.data ? p.data.slice(0,10) : '', valor:Number(p.valor)||0, contaId:p.conta_id, movimentacaoId:p.movimentacao_id});
+      });
+    }
     if(centrosCusto.data)
       db.centrosCusto = centrosCusto.data.map(c=>({
         id:c.id, nome:c.nome, descricao:c.descricao||'',
@@ -3287,10 +3311,12 @@ function _finPainelCR(statsEl, corpoEl, periodo){
   const recebidos = (db.recebimentos||[]).filter(r=>r.status==='recebido' && _finPainelDentroFiltro(r.dataRecebimento, periodo) && _srmMatch(r));
   const lista = [...pendentes, ...recebidos];
 
+  // Recebido considera valorPago (cobre tanto quitado quanto parcial); Pendente/Vencido
+  // considera o restante (valor - valorPago) — uma parcela "parcial" conta nos dois.
   const totTotal    = lista.reduce((s,r)=>s+r.valor, 0);
-  const totRecebido = lista.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor, 0);
-  const totPendente = lista.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor, 0);
-  const totVencido  = lista.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje).reduce((s,r)=>s+r.valor, 0);
+  const totRecebido = lista.reduce((s,r)=>s+(r.valorPago||0), 0);
+  const totPendente = lista.filter(r=>r.status!=='recebido').reduce((s,r)=>s+(r.valor-(r.valorPago||0)), 0);
+  const totVencido  = lista.filter(r=>r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje).reduce((s,r)=>s+(r.valor-(r.valorPago||0)), 0);
 
   const labelRecebido = periodo==='tudo' ? 'Total Recebido' : `Recebido no período`;
   statsEl.innerHTML=`
@@ -3308,11 +3334,12 @@ function _finPainelCR(statsEl, corpoEl, periodo){
     const clId = card?.clienteId||0;
     if(!mapaCliente[clId]) mapaCliente[clId]={total:0,recebido:0,pendente:0,vencido:0,n:0};
     mapaCliente[clId].total+=r.valor; mapaCliente[clId].n++;
-    if(r.status==='recebido') mapaCliente[clId].recebido+=r.valor;
-    else{
-      mapaCliente[clId].pendente+=r.valor;
+    mapaCliente[clId].recebido+=(r.valorPago||0);
+    if(r.status!=='recebido'){
+      const restante = r.valor-(r.valorPago||0);
+      mapaCliente[clId].pendente+=restante;
       if(r.tipo==='fixo' && r.dataVencimento && r.dataVencimento<hoje)
-        mapaCliente[clId].vencido+=r.valor;
+        mapaCliente[clId].vencido+=restante;
     }
   });
 
@@ -12291,11 +12318,12 @@ function abaFinanceiroCartaoHTML(c){
   const recebimentos = (db.recebimentos||[]).filter(r=>r.cardId===c.id).sort((a,b)=>a.id-b.id);
   const propostas = db.propostas.filter(p=>p.cardId===c.id && ['aprovada','concluida'].includes(p.status));
   const osAvulsas = db.ordensServico.filter(o=>o.cardId===c.id && o.tipo==='avulsa');
-  const totalPendente = recebimentos.filter(r=>r.status==='pendente').reduce((s,r)=>s+r.valor,0);
-  const totalRecebido = recebimentos.filter(r=>r.status==='recebido').reduce((s,r)=>s+r.valor,0);
+  // "A receber" considera o que falta (valor - valorPago) tanto pra pendente quanto parcial
+  const totalPendente = recebimentos.filter(r=>r.status!=='recebido').reduce((s,r)=>s+(r.valor-(r.valorPago||0)),0);
+  const totalRecebido = recebimentos.reduce((s,r)=>s+(r.valorPago||0),0);
   const totalParcelado = recebimentos.reduce((s,r)=>s+r.valor,0);
   const hoje = localDia(0);
-  const vencidas = recebimentos.filter(r=>r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
+  const vencidas = recebimentos.filter(r=>r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje);
 
   // valor de referência das propostas aprovadas (exclui clienteFornece)
   const refProposta = propostas.reduce((s,p)=>s+valorReceberProposta(p),0);
@@ -12355,7 +12383,7 @@ function abaFinanceiroCartaoHTML(c){
 
 function parcelaReceberItemHTML(r, cardId){
   const hoje = localDia(0);
-  const vencida = r.status==='pendente' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
+  const vencida = r.status!=='recebido' && r.tipo==='fixo' && r.dataVencimento && r.dataVencimento < hoje;
   const origemLabel = r.propostaId
     ? `Proposta ${(db.propostas.find(p=>p.id===r.propostaId)||{}).numero||'#'+r.propostaId}`
     : r.osId
@@ -12364,19 +12392,26 @@ function parcelaReceberItemHTML(r, cardId){
   const vencLabel = r.tipo==='fixo'
     ? (r.dataVencimento ? `Venc: ${fmtDia2(r.dataVencimento)}` : 'Sem data')
     : `Cond: ${r.condicao||'—'}`;
+  const restante = Math.max(r.valor - (r.valorPago||0), 0);
   const statusLabel = r.status==='recebido'
     ? `<span style="color:#2e7d32;font-weight:700">✔ Recebido${r.dataRecebimento?' em '+fmtDia2(r.dataRecebimento):''}</span>`
-    : `<span style="color:${vencida?'#c62828':'#e65100'}">${vencida?'⚠ Vencida':'⏳ Pendente'}</span>`;
+    : r.status==='parcial'
+      ? `<span style="color:#b45309;font-weight:700">🔶 Parcial: ${fmtMoney(r.valorPago)} de ${fmtMoney(r.valor)} — falta ${fmtMoney(restante)}</span>`
+      : `<span style="color:${vencida?'#c62828':'#e65100'}">${vencida?'⚠ Vencida':'⏳ Pendente'}</span>`;
+  const historicoLabel = (r.pagamentos||[]).length>1
+    ? `<div style="font-size:11px;color:var(--muted);margin-top:2px">Pagamentos: ${r.pagamentos.map(p=>`${fmtMoney(p.valor)} em ${fmtDia2(p.data)}`).join(' · ')}</div>`
+    : '';
   return `
-    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${r.status==='recebido'?'#f1f8e9':'#fff'}">
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${r.status==='recebido'?'#f1f8e9':r.status==='parcial'?'#fffbeb':'#fff'}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1">
           <div style="font-weight:700;font-size:14px">${fmtMoney(r.valor)} <span style="font-size:12px;font-weight:400;color:var(--muted)">— ${r.descricao}</span></div>
           <div style="font-size:12px;color:var(--muted);margin-top:3px">${origemLabel} · ${vencLabel}</div>
           <div style="font-size:12px;margin-top:3px">${statusLabel}</div>
+          ${historicoLabel}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          ${r.status==='pendente'&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Marcar como recebida">✔ Recebido</button>`:''}
+          ${r.status!=='recebido'&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Registrar recebimento">${r.status==='parcial'?'✔ Receber restante':'✔ Recebido'}</button>`:''}
           ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn" onclick="editarParcelaReceber(${r.id},${cardId})" title="Editar">✏️</button>`:''}
           ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn del" onclick="excluirParcelaReceber(${r.id},${cardId})" title="Excluir">🗑</button>`:''}
         </div>
@@ -12512,12 +12547,25 @@ async function salvarNovaParcelaReceber(cardId){
     dataVencimento: tipo==='fixo' ? (document.getElementById('nr-data').value||null) : null,
     condicao: tipo==='condicional' ? (document.getElementById('nr-cond').value.trim()||null) : null,
     status: 'pendente',
+    valorPago: 0,
     dataRecebimento: null,
-    criadoEm: new Date().toISOString()
+    criadoEm: new Date().toISOString(),
+    pagamentos: []
   };
+  // Grava direto no Supabase (await) antes de existir localmente — evita a mesma
+  // race condition já corrigida em outras telas (ver salvarNovoCentroCusto etc.):
+  // se o usuário marcar "recebido" logo em seguida, o insert na tabela de histórico
+  // de pagamentos (FK pra financeiro_recebimentos) precisa achar a linha já criada.
+  const {error: eNovo} = await sb.from('financeiro_recebimentos').upsert({
+    id: novo.id, card_id: cardId, proposta_id: propostaId, os_id: osId,
+    descricao: desc, valor, tipo,
+    data_vencimento: novo.dataVencimento, condicao: novo.condicao,
+    status: 'pendente', valor_pago: 0, data_recebimento: null
+  });
+  if(eNovo){ btnRestaurar(btn); alert('Erro ao salvar: '+eNovo.message); return; }
   db.recebimentos.push(novo);
-  try{ await Promise.all([save(), _delay]); }
-  catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); return; }
+  saveLocal();
+  await _delay;
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
 }
@@ -12596,8 +12644,14 @@ async function salvarEdicaoParcelaReceber(id, cardId){
   try{
     const tipo   = document.getElementById('er-tipo').value;
     const origem = document.getElementById('er-origem').value;
+    const novoValor = parseFloat((document.getElementById('er-valor').value||'0').replace(/\./g,'').replace(',','.')) || r.valor;
+    if(novoValor < (r.valorPago||0) - 0.01){
+      btnRestaurar(btn);
+      alert(`O valor não pode ficar menor que o já recebido (${fmtMoney(r.valorPago)}).`);
+      return;
+    }
     r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
-    r.valor     = parseFloat((document.getElementById('er-valor').value||'0').replace(/\./g,'').replace(',','.')) || r.valor;
+    r.valor     = novoValor;
     r.tipo      = tipo;
     if(origem.startsWith('proposta:')){ r.propostaId=Number(origem.split(':')[1]); r.osId=null; }
     else if(origem.startsWith('os:')){ r.osId=Number(origem.split(':')[1]); r.propostaId=null; }
@@ -12612,7 +12666,8 @@ async function salvarEdicaoParcelaReceber(id, cardId){
 
 /**
  * Abre modal de confirmação de recebimento.
- * O usuário escolhe a data real de recebimento e a conta corrente a creditar.
+ * O usuário escolhe o valor recebido agora (pode ser menor que o restante — gera
+ * pagamento parcial), a data real e a conta corrente a creditar.
  * Se não há contas ativas, exibe aviso e link para a tela de Contas Correntes.
  */
 function marcarParcelaRecebida(id, cardId){
@@ -12620,6 +12675,7 @@ function marcarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
   const hoje = localDia(0);
+  const restante = Math.max(r.valor - (r.valorPago||0), 0);
 
   // Monta opções de contas correntes ativas
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
@@ -12627,21 +12683,33 @@ function marcarParcelaRecebida(id, cardId){
     ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
     : '<option value="">— nenhuma conta cadastrada —</option>';
 
+  const historicoHTML = (r.pagamentos||[]).length ? `
+    <div style="font-size:12px;color:var(--muted)">Pagamentos anteriores: ${r.pagamentos.map(p=>`${fmtMoney(p.valor)} em ${fmtDia2(p.data)}`).join(' · ')}</div>` : '';
+
   abrirModal(`
     <div class="modal-header"><h3>✅ Confirmar Recebimento</h3></div>
     <div class="modal-body" style="display:grid;gap:14px">
-      <p style="margin:0">Parcela: <b>${escHtml(r.descricao)}</b> — <b style="color:#16a34a">${fmtMoney(r.valor)}</b></p>
+      <div>
+        <p style="margin:0">Parcela: <b>${escHtml(r.descricao)}</b></p>
+        <p style="margin:4px 0 0;font-size:13px">Total: <b>${fmtMoney(r.valor)}</b>${(r.valorPago||0)>0?` · Já recebido: <b style="color:#16a34a">${fmtMoney(r.valorPago)}</b> · Restante: <b style="color:#e65100">${fmtMoney(restante)}</b>`:''}</p>
+        ${historicoHTML}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor recebido agora (R$) *
+          <input id="mr-valor" type="text" inputmode="decimal" class="input" style="margin-top:4px;font-weight:700;color:#16a34a"
+            value="${fmtMoney(restante).replace('R$','').trim()}" oninput="mascaraMoeda(this)">
+        </label>
         <label>Data de recebimento *
           <input id="mr-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
         </label>
-        <label>Creditar em *
-          <select id="mr-conta" class="input" style="margin-top:4px">
-            <option value="">— selecione a conta —</option>
-            ${contasOpts}
-          </select>
-        </label>
       </div>
+      <label>Creditar em *
+        <select id="mr-conta" class="input" style="margin-top:4px">
+          <option value="">— selecione a conta —</option>
+          ${contasOpts}
+        </select>
+      </label>
+      <p style="font-size:11.5px;color:var(--muted);margin:0">Se o valor recebido for menor que o restante, a parcela fica marcada como <b>Parcial</b> e continua na lista pra registrar o próximo pagamento depois.</p>
       ${!contasAtivas.length ? `<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada. <a href="#" onclick="fecharModal();ativarView('fin-contas-correntes')">Cadastrar agora</a>.</p>` : ''}
     </div>
     <div class="modal-footer">
@@ -12651,42 +12719,53 @@ function marcarParcelaRecebida(id, cardId){
 }
 
 /**
- * Confirma o recebimento de uma parcela:
- * 1. Atualiza status da parcela para "recebido" no Supabase.
- * 2. Insere movimentação de ENTRADA na conta corrente escolhida, com origemTipo="recebimento"
- *    e origemId=id, permitindo rastreabilidade bidirecional (extrato ↔ parcela).
+ * Confirma o recebimento (total ou parcial) de uma parcela:
+ * 1. Soma o valor informado a valorPago; se atingir o valor total (com tolerância de
+ *    centavos), status vira "recebido"; senão vira "parcial" e a parcela continua na lista.
+ * 2. Insere movimentação de ENTRADA na conta corrente escolhida (uma por pagamento),
+ *    com origemTipo="recebimento" e origemId=id, permitindo rastreabilidade extrato ↔ parcela.
+ * 3. Registra o pagamento no histórico (financeiro_recebimentos_pagamentos), permitindo
+ *    múltiplos pagamentos parciais ao longo do tempo até a parcela ser quitada.
  */
 async function confirmarParcelaRecebida(id, cardId){
   const r = db.recebimentos.find(x=>x.id===id);
   if(!r) return;
   const dataRecebimento = document.getElementById('mr-data').value || localDia(0);
   const contaId = parseInt(document.getElementById('mr-conta').value) || null;
+  const valorInformado = parseFloat((document.getElementById('mr-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   if(!contaId){ alert('Selecione a conta corrente para creditar o recebimento.'); return; }
+  if(valorInformado<=0){ alert('Informe um valor recebido maior que zero.'); return; }
+  const restante = Math.max(r.valor - (r.valorPago||0), 0);
+  if(valorInformado > restante + 0.01){ alert(`O valor informado (${fmtMoney(valorInformado)}) é maior que o restante desta parcela (${fmtMoney(restante)}).`); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn, 'Confirmando…');
-  const _delay = new Promise(r=>setTimeout(r,800));
+  const _delay = new Promise(res=>setTimeout(res,800));
 
-  // Atualiza status da parcela
-  r.status = 'recebido';
-  r.dataRecebimento = dataRecebimento;
+  const novoValorPago = (r.valorPago||0) + valorInformado;
+  const quitado = novoValorPago >= r.valor - 0.01;
+  const novoStatus = quitado ? 'recebido' : 'parcial';
+  const novaDataRecebimento = quitado ? dataRecebimento : r.dataRecebimento;
 
   // Persiste alteração da parcela diretamente no Supabase
   const {error:eParcela} = await sb.from('financeiro_recebimentos').update({
-    status:'recebido', data_recebimento:dataRecebimento
+    status:novoStatus, valor_pago:novoValorPago, data_recebimento:novaDataRecebimento
   }).eq('id', id);
   if(eParcela){ btnRestaurar(btn); alert('Erro ao confirmar: '+eParcela.message); return; }
+  r.status = novoStatus;
+  r.valorPago = novoValorPago;
+  r.dataRecebimento = novaDataRecebimento;
 
-  // Se escolheu uma conta, cria movimentação de entrada
+  // Cria movimentação de entrada na conta escolhida (só do valor recebido agora)
+  let movimentacaoId = null;
   if(contaId){
-    const conta = (db.contasCorrente||[]).find(c=>c.id===contaId);
-    const descMovimento = `Recebimento: ${r.descricao}`;
+    const descMovimento = `Recebimento: ${r.descricao}${quitado?'':' (parcial)'}`;
     const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
     const {error} = await sb.from('movimentacoes_financeiras').insert({
       id: idMov,
       conta_id: contaId,
       tipo: 'entrada',
-      valor: r.valor,
+      valor: valorInformado,
       descricao: descMovimento,
       data_movimento: dataRecebimento,
       centro_custo_id: null,
@@ -12695,14 +12774,26 @@ async function confirmarParcelaRecebida(id, cardId){
       conta_destino_id: null
     });
     if(!error){
+      movimentacaoId = idMov;
       db.movimentacoes = db.movimentacoes || [];
       db.movimentacoes.push({
-        id:idMov, contaId, tipo:'entrada', valor:r.valor,
+        id:idMov, contaId, tipo:'entrada', valor:valorInformado,
         descricao:descMovimento, dataMovimento:dataRecebimento,
         centroCustoId:null, origemTipo:'recebimento', origemId:id,
         contaDestinoId:null, criadoEm:new Date().toISOString()
       });
     }
+  }
+
+  // Registra este pagamento no histórico da parcela (permite vários parciais no tempo)
+  const idPag = await proximoIdSeguro('financeiro_recebimentos_pagamentos', (db.recebimentos||[]).flatMap(x=>x.pagamentos||[]));
+  const {error:ePag} = await sb.from('financeiro_recebimentos_pagamentos').insert({
+    id: idPag, recebimento_id: id, data: dataRecebimento, valor: valorInformado,
+    conta_id: contaId, movimentacao_id: movimentacaoId
+  });
+  if(!ePag){
+    r.pagamentos = r.pagamentos || [];
+    r.pagamentos.push({id:idPag, data:dataRecebimento, valor:valorInformado, contaId, movimentacaoId});
   }
 
   save();
