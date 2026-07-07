@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.6';
+const APP_VERSION = '1.46.7';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.7',
+    data: '07/07/2026',
+    itens: [
+      'CPF/CNPJ com máscara automática: o campo entende sozinho se é CPF (000.000.000-00) ou CNPJ (00.000.000/0001-00) pela quantidade de números digitados. Aplicado no campo "CNPJ / CPF" de Fornecedores (que já existia, sem máscara) e num campo novo "CPF/CNPJ" no cadastro de Clientes — este último pensado para uso futuro no módulo Faturamento.',
+    ]
+  },
   {
     versao: '1.46.6',
     data: '07/07/2026',
@@ -2530,6 +2537,7 @@ async function carregarDadosSupabase(){
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
         id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'',
+        cnpjCpf:c.cnpj_cpf||'',
         endereco: (c.endereco && Object.keys(c.endereco).length) ? c.endereco : enderecoVazio(c.cidade)
       }));
     if(obras.data)
@@ -2926,7 +2934,7 @@ function syncDadosSupabase(){
   clearTimeout(_syncDadosTimer);
   _syncDadosTimer = setTimeout(async ()=>{
     await sincronizarTabela('clientes', db.clientes, c=>({
-      id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'', endereco:c.endereco||{}
+      id:c.id, nome:c.nome, tel:c.tel||'', email:c.email||'', cidade:c.cidade||'', cnpj_cpf:c.cnpjCpf||'', endereco:c.endereco||{}
     }));
     await sincronizarTabela('obras', db.obras, o=>({
       id:o.id, cliente_id:Number(o.clienteId)||null, nome:o.nome,
@@ -4374,6 +4382,34 @@ function fmtTel(v){
   if(!v) return '';
   const el = {value: String(v)};
   mascaraTel(el);
+  return el.value;
+}
+
+/* v1.46.7: máscara única pra campo "CPF/CNPJ" (Fornecedores e Clientes) — decide
+   sozinha qual dos dois formatos aplicar pela quantidade de dígitos já digitados:
+   até 11 dígitos vira CPF (000.000.000-00); a partir do 12º dígito, o texto inteiro
+   é reformatado do zero como CNPJ (00.000.000/0000-00). Mesmo princípio de
+   mascaraTel()/fmtTel(), só que com a decisão extra de qual máscara usar. */
+function mascaraCpfCnpj(el){
+  let v = el.value.replace(/\D/g,'').slice(0,14);
+  if(v.length<=11){
+    v = v.replace(/(\d{3})(\d)/,'$1.$2')
+         .replace(/(\d{3})(\d)/,'$1.$2')
+         .replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+  } else {
+    v = v.replace(/(\d{2})(\d)/,'$1.$2')
+         .replace(/(\d{3})(\d)/,'$1.$2')
+         .replace(/(\d{3})(\d)/,'$1/$2')
+         .replace(/(\d{4})(\d{1,2})$/,'$1-$2');
+  }
+  el.value = v;
+}
+/* Formata um CPF/CNPJ já salvo (ex.: "12345678901" → "123.456.789-01").
+   Usado ao carregar valores do banco em campos de formulário/listagens. */
+function fmtCpfCnpj(v){
+  if(!v) return '';
+  const el = {value: String(v)};
+  mascaraCpfCnpj(el);
   return el.value;
 }
 
@@ -10406,7 +10442,7 @@ function renderFornecedores(){
       <td><span style="font-size:12px;font-weight:600;color:${cor};white-space:nowrap">${selo}</span></td>
       <td style="font-weight:600">${escHtml(f.nome)}</td>
       <td style="font-size:13px">${f.nomeFantasia?escHtml(f.nomeFantasia):'<span style="color:var(--muted)">—</span>'}</td>
-      <td style="font-size:13px;font-family:monospace">${escHtml(f.cnpjCpf)||'—'}</td>
+      <td style="font-size:13px;font-family:monospace">${escHtml(fmtCpfCnpj(f.cnpjCpf))||'—'}</td>
       <td style="font-size:13px">${escHtml(fmtTel(f.telefone))||'—'}</td>
       <td style="font-size:13px">${escHtml(f.email)||'—'}</td>
       <td style="font-size:13px">${f.cidade?escHtml(f.cidade)+(f.estado?' / '+f.estado:''):'—'}</td>`;
@@ -10431,7 +10467,7 @@ function _fornFormHTML(f={}){
     <!-- Linha 1b: CNPJ/CPF -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>CNPJ / CPF
-        <input id="ff-cnpj" type="text" value="${escHtml(f.cnpjCpf||'')}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00">
+        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
       </label>
       <div></div>
     </div>
@@ -16601,6 +16637,7 @@ function abrirNovoCliente(){
   abrirModal(`
     <h3>Novo Cliente</h3>
     <label>Nome</label><input id="m-nome">
+    <label>CPF/CNPJ</label><input id="m-cnpj" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
     <label>Telefone</label><input id="m-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
     <label>E-mail</label><input id="m-email">
     ${camposEndereco(null,'e','Endereço do Cliente')}
@@ -16617,6 +16654,7 @@ async function salvarNovoCliente(){
   const clienteId = await proximoIdSeguro('clientes', db.clientes);
   const cli = {
     id:clienteId, nome,
+    cnpjCpf:document.getElementById('m-cnpj').value,
     tel:document.getElementById('m-tel').value,
     email:document.getElementById('m-email').value,
     cidade:end.cidade,
@@ -16631,7 +16669,7 @@ async function salvarNovoCliente(){
   try{
     const {error} = await sb.from('clientes').upsert({
       id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
-      cidade:cli.cidade||'', endereco:cli.endereco||{}
+      cnpj_cpf:cli.cnpjCpf||'', cidade:cli.cidade||'', endereco:cli.endereco||{}
     });
     if(error) throw error;
     await _delay;
@@ -16665,6 +16703,7 @@ function abrirEditarCliente(id){
   abrirModal(`
     <h3>Cliente — ${c.nome}</h3>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}" ${ro}>
+    <label>CPF/CNPJ</label><input id="m-cnpj" value="${fmtCpfCnpj(c.cnpjCpf||'')}" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)" ${ro}>
     <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)" ${ro}>
     <label>E-mail</label><input id="m-email" value="${c.email||''}" ${ro}>
     <div style="${podeEditar?'':'pointer-events:none;opacity:.65'}">${camposEndereco(c.endereco,'e','Endereço do Cliente')}</div>
@@ -16682,6 +16721,7 @@ function salvarClienteCampos(id){
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return false; }
   c.nome=nome;
+  c.cnpjCpf=document.getElementById('m-cnpj').value;
   c.tel=document.getElementById('m-tel').value;
   c.email=document.getElementById('m-email').value;
   c.endereco=lerEndereco();
@@ -16703,6 +16743,7 @@ function abrirEditarClienteDoCartao(clienteId, cardId){
   abrirModal(`
     <h3>Cliente — ${c.nome}</h3>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
+    <label>CPF/CNPJ</label><input id="m-cnpj" value="${fmtCpfCnpj(c.cnpjCpf||'')}" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
     <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
     <label>E-mail</label><input id="m-email" value="${c.email||''}">
     ${camposEndereco(c.endereco,'e','Endereço do Cliente')}
