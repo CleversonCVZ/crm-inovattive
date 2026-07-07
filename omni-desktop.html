@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.11';
+const APP_VERSION = '1.46.12';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.12',
+    data: '07/07/2026',
+    itens: [
+      'Na aba "Custo M.Obra" do cartão CRM, lançamentos de mão de obra do tipo 🏢 Fornecedor agora podem ser enviados direto pro Contas a Pagar com o botão "📋 → C.P." (informando vencimento e centro de custo). A conta entra como pendente — a baixa (pagamento) é feita normalmente na tela de Contas a Pagar, como já funciona hoje.',
+    ]
+  },
   {
     versao: '1.46.11',
     data: '07/07/2026',
@@ -8918,12 +8925,23 @@ function abrirSeletorMOOS(osId, cardId, tipoSel='tecnico'){
     </div>
     <label style="font-weight:700;font-size:13px">Lançamentos</label>
     <div id="mo-lista" style="margin-top:8px;min-height:40px">
-      ${itens.length ? itens.map((t,i)=>`
+      ${itens.length ? itens.map((t,i)=>{
+        const isForn = (t.tipo||'tecnico')==='fornecedor';
+        const cpBtn = !isForn ? '' : (
+          t.cpId
+            ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>`
+            : (podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')
+                ? `<button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarMOComoCP(${osId},${i},${cardId})">📋 → C.P.</button>`
+                : '')
+        );
+        return `
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
           <span style="flex:1;font-size:13px;font-weight:600">${nomeMOItem(t)}</span>
           <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${fmtR(t.valor)}</span>
+          ${cpBtn}
           <button class="icon-btn del" title="Remover" onclick="removerMOOS(${osId},${i},${cardId},'${tipoSel}')">✖</button>
-        </div>`).join('') : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum lançamento ainda.</div>`}
+        </div>`;
+      }).join('') : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum lançamento ainda.</div>`}
     </div>
     ${itens.length ? `<div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--border);display:flex;justify-content:flex-end;gap:10px;align-items:center">
       <span style="font-size:13px;color:var(--muted)">Total M.O. desta O.S.:</span>
@@ -8955,9 +8973,101 @@ async function adicionarMOOS(osId, cardId, tipo='tecnico'){
 
 async function removerMOOS(osId, idx, cardId, tipoSel='tecnico'){
   const os = db.ordensServico.find(x=>x.id===osId);
+  const item = os.custoMO.tecnicos[idx];
+  if(item?.cpId && !confirm('Este lançamento já está vinculado a uma Conta a Pagar (não será excluída automaticamente). Remover mesmo assim?')) return;
   os.custoMO.tecnicos.splice(idx,1);
   await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
   save(); abrirSeletorMOOS(osId, cardId, tipoSel);
+}
+
+/** v1.46.12: lança um item de M.O. tipo fornecedor como Conta a Pagar pendente
+    (dar baixa fica pra tela normal de Contas a Pagar, fluxo já existente). */
+function abrirLancarMOComoCP(osId, idx, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const item = os?.custoMO?.tecnicos?.[idx];
+  if(!item || item.tipo!=='fornecedor') return;
+  const forn = (db.fornecedores||[]).find(f=>f.id===item.fornecedorId);
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const hoje = localDia(0);
+  const ccOpts = (db.centrosCusto||[]).map(cc=>`<option value="${cc.id}">${escHtml(cc.nome)}</option>`).join('');
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3>📋 Lançar M.O. como Conta a Pagar</h3>
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
+        <div style="font-size:12px;color:var(--muted)">O.S. ${escHtml(os.numero)} — ${escHtml(os.titulo)}</div>
+        <div style="font-weight:600">🏢 ${escHtml(forn?forn.nome:'Fornecedor removido')}</div>
+        <div style="font-size:13px;color:#dc2626;font-weight:700">${fmtR(item.valor)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data de Vencimento *</div>
+        <input id="lmo-venc" type="date" class="input" value="${hoje}">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
+        <select id="lmo-cc" class="input">
+          <option value="">— nenhum —</option>
+          ${ccOpts}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
+        <input id="lmo-obs" type="text" class="input" placeholder="Opcional…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirSeletorMOOS(${osId},${cardId},'fornecedor')">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarLancarMOComoCP(${osId},${idx},${cardId})">Lançar C.P.</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarLancarMOComoCP(osId, idx, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const item = os?.custoMO?.tecnicos?.[idx];
+  if(!item || item.tipo!=='fornecedor') return;
+  const venc = document.getElementById('lmo-venc').value;
+  const ccId = parseInt(document.getElementById('lmo-cc').value)||null;
+  const obs  = (document.getElementById('lmo-obs').value||'').trim();
+  if(!venc){ alert('Informe a data de vencimento.'); return; }
+
+  const forn = (db.fornecedores||[]).find(f=>f.id===item.fornecedorId);
+  const descricaoCP = `M.O. — ${os.numero}${forn?' — '+forn.nome:''}`;
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  const novoId = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+  const payload = {
+    id: novoId,
+    descricao: descricaoCP,
+    valor: item.valor,
+    data_vencimento: venc,
+    fornecedor_id: item.fornecedorId,
+    centro_custo_id: ccId,
+    obra_id: os.obraId||null,
+    os_id: osId,
+    status: 'pendente',
+    observacao: obs||null
+  };
+  const {data:cp, error:errCP} = await sb.from('contas_pagar').insert(payload).select().single();
+  if(errCP){ btnRestaurar(btn); alert('Erro ao criar C.P.: '+errCP.message); return; }
+
+  item.cpId = cp.id;
+  const {error:errOS} = await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
+  if(errOS){ btnRestaurar(btn); alert('C.P. criado mas erro ao vincular na O.S.: '+errOS.message); return; }
+
+  db.contasPagar = db.contasPagar||[];
+  db.contasPagar.push({
+    id:cp.id, descricao:cp.descricao, valor:cp.valor,
+    dataVencimento:cp.data_vencimento, fornecedorId:item.fornecedorId,
+    centroCustoId:ccId, obraId:os.obraId||null, osId, status:'pendente',
+    observacao:obs||'', dataPagamento:null, criadoEm:cp.created_at||''
+  });
+  save();
+  fecharModal();
+  abrirSeletorMOOS(osId, cardId, 'fornecedor');
 }
 
 /* ===== Contas Recorrentes ===== */
