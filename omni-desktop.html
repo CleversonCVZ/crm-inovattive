@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.3';
+const APP_VERSION = '1.46.4';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.4',
+    data: '07/07/2026',
+    itens: [
+      'O mesmo autosave campo a campo da O.S. Avulsa (v1.46.3) foi estendido para as O.S. de Execução/Obra e Projeto: a aba Geral dessas duas telas também deixou de depender do botão "Salvar alterações" — cada campo salva sozinho assim que é alterado, com o aviso "✔ Salvo automaticamente". As 3 telas de O.S. agora se comportam da mesma forma.',
+    ]
+  },
   {
     versao: '1.46.3',
     data: '07/07/2026',
@@ -13249,14 +13256,15 @@ function abrirVerOS(osId, cardId){
       <!-- COLUNA ESQUERDA: campos + histórico -->
       <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden">
         <div style="flex-shrink:0">
+          ${podeEditar && !os.fechada ? `<div id="vos-save-status" style="font-size:12px;color:#2e7d32;font-weight:600;min-height:16px"></div>` : ''}
           <div class="form-row">
             <div>
               <label>Fase da O.S.</label>
-              <select id="vos-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+              <select id="vos-fase" ${dis} onchange="autoSalvarCampoOS(${osId},'faseId',+this.value||undefined,'vos-save-status')">${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
             </div>
             <div>
               <label>${isProjeto ? 'Projetista' : 'Responsável'}</label>
-              <select id="vos-resp" ${dis}>
+              <select id="vos-resp" ${dis} onchange="autoSalvarCampoOS(${osId},'responsavelId',+this.value||null,'vos-save-status')">
                 <option value="">— Selecione —</option>
                 ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
               </select>
@@ -13266,22 +13274,22 @@ function abrirVerOS(osId, cardId){
             <div>
               <label>Agendamento</label>
               <div style="display:flex;gap:6px;align-items:center">
-                <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+                <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'vos-save-status')">
                 ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
                 ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
               </div>
             </div>
             ${isProjeto ? `<div>
               <label>Fase da Obra</label>
-              <select id="vos-fase-obra" ${dis}>
+              <select id="vos-fase-obra" ${dis} onchange="autoSalvarCampoOS(${osId},'faseObraId',+this.value||null,'vos-save-status')">
                 <option value="">— Selecione —</option>
                 ${fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseObraId?'selected':''}>${f.nome}</option>`).join('')}
               </select>
             </div>` : ''}
           </div>
           <div class="form-row" style="margin-top:4px">
-            <div><label>Início real</label><input id="vos-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
-            <div><label>Término real</label><input id="vos-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+            <div><label>Início real</label><input id="vos-di" type="datetime-local" value="${os.dataInicio||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataInicio',this.value,'vos-save-status')"></div>
+            <div><label>Término real</label><input id="vos-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataTermino',this.value,'vos-save-status')"></div>
           </div>
           <div style="border-top:1px solid var(--border);margin:12px 0"></div>
           <label>Histórico ${hist.length?`(${hist.length} registro${hist.length>1?'s':''})`:''}
@@ -13309,36 +13317,12 @@ function abrirVerOS(osId, cardId){
       <div style="display:flex;gap:8px;margin-left:auto">
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>` : '')
-          : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>
-             <button class="btn primary" id="btn-salvar-os-${os.id}" onclick="salvarDadosOS(${os.id},${cardId})">Salvar alterações</button>`}
+          : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
       </div>
     </div>`, 'cartao');
 }
-
-function salvarDadosOS(osId, cardId){
-  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
-  const btn = document.getElementById(`btn-salvar-os-${osId}`);
-  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
-  const os = db.ordensServico.find(x=>x.id===osId);
-  os.faseId       = +document.getElementById('vos-fase').value;
-  os.responsavelId = +document.getElementById('vos-resp').value || null;
-  os.dataAgend    = document.getElementById('vos-ai').value||'';
-  os.dataInicio   = document.getElementById('vos-di').value||'';
-  os.dataTermino  = document.getElementById('vos-dt').value||'';
-  // fase da obra — só presente em OS de projeto
-  const selFO = document.getElementById('vos-fase-obra');
-  if(selFO){
-    const faseObraId = +selFO.value || null;
-    os.faseObraId = faseObraId;
-    if(faseObraId && os.obraId){
-      const obra = db.obras.find(x=>x.id===os.obraId);
-      if(obra) obra.faseId = faseObraId;
-    }
-  }
-  registrarLog('editar', 'os', osId, `O.S. atualizada: ${os.numero}`);
-  save(); renderAll();
-  setTimeout(()=>{ abrirVerOS(osId, cardId); }, 400);
-}
+/* v1.46.4: salvarDadosOS() removida — a aba Geral desta tela (O.S. Projeto)
+   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa. */
 
 /* =============== OS EXECUÇÃO — modal com abas =============== */
 function _itensPropostasAprovadas(cardId){
@@ -13598,28 +13582,29 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
   /* ── ABA GERAL ── */
   if(aba==='geral'){
     tabContent = `
+      ${podeEditar && !os.fechada ? `<div id="exec-save-status" style="font-size:12px;color:#2e7d32;font-weight:600;min-height:16px;margin-bottom:6px"></div>` : ''}
       <div class="form-row">
         <div>
           <label>Fase da O.S.</label>
-          <select id="exec-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+          <select id="exec-fase" ${dis} onchange="autoSalvarCampoOS(${osId},'faseId',+this.value||undefined,'exec-save-status')">${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
         </div>
         <div>
           <label>Fase da Obra executada</label>
-          <select id="exec-fase-obra" ${dis}>
+          <select id="exec-fase-obra" ${dis} onchange="autoSalvarCampoOS(${osId},'faseObraId',+this.value||null,'exec-save-status')">
             <option value="">— sem fase —</option>
             ${fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseObraId?'selected':''}>${f.nome}</option>`).join('')}
           </select>
         </div>
       </div>
       <label>Responsável principal</label>
-      <select id="exec-resp" ${dis}>
+      <select id="exec-resp" ${dis} onchange="autoSalvarCampoOS(${osId},'responsavelId',+this.value||null,'exec-save-status')">
         <option value="">— Selecione —</option>
         ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
       </select>
       <div class="form-row" style="margin-top:8px">
         <div><label>Agendamento</label>
           <div style="display:flex;gap:6px;align-items:center">
-            <input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+            <input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'exec-save-status')">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
             ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
           </div>
@@ -13627,11 +13612,11 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         <div></div>
       </div>
       <div class="form-row">
-        <div><label>Início real</label><input id="exec-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
-        <div><label>Término real</label><input id="exec-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+        <div><label>Início real</label><input id="exec-di" type="datetime-local" value="${os.dataInicio||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataInicio',this.value,'exec-save-status')"></div>
+        <div><label>Término real</label><input id="exec-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataTermino',this.value,'exec-save-status')"></div>
       </div>
       <label style="margin-top:12px">Instruções para os técnicos</label>
-      <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis}>${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>`;
+      <textarea id="exec-instrucoes" rows="4" placeholder="Descreva instruções específicas para esta O.S..." style="resize:vertical;font-size:13px" ${dis} onchange="autoSalvarCampoOS(${osId},'instrucoes',this.value,'exec-save-status')">${(os.instrucoes||'').replace(/</g,'&lt;')}</textarea>`;
   }
 
   /* ── ABA EQUIPE ── */
@@ -13847,31 +13832,11 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>` : '')
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
-        ${podeEditar && !os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSExec(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
-
-function salvarDadosOSExec(osId, cardId){
-  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
-  const btn = document.getElementById(`btn-salvar-os-${osId}`);
-  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
-  const os = db.ordensServico.find(x=>x.id===osId);
-  os.faseId     = +document.getElementById('exec-fase').value || os.faseId;
-  os.faseObraId = +document.getElementById('exec-fase-obra').value || null;
-  if(os.faseObraId && os.obraId){
-    const obraVinc = db.obras.find(x=>x.id===os.obraId);
-    if(obraVinc) obraVinc.faseId = os.faseObraId;
-  }
-  os.responsavelId = +document.getElementById('exec-resp').value || null;
-  os.dataAgend  = document.getElementById('exec-agend').value||'';
-  os.dataInicio = document.getElementById('exec-di').value||'';
-  os.dataTermino= document.getElementById('exec-dt').value||'';
-  os.instrucoes = document.getElementById('exec-instrucoes').value||'';
-  registrarLog('editar', 'os', osId, `O.S. Execução atualizada: ${os.numero}`);
-  save(); renderAll();
-  setTimeout(()=>{ abrirVerOSExecucao(osId, cardId, 'geral'); }, 400);
-}
+/* v1.46.4: salvarDadosOSExec() removida — a aba Geral desta tela (O.S. Execução)
+   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa. */
 
 /* =============== OS AVULSA — modal com abas =============== */
 function abrirVerOSAvulsa(osId, cardId, aba='geral'){
@@ -14528,13 +14493,22 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
    de aba sem salvar como uma armadilha silenciosa de perda de edição). Agora
    cada campo salva sozinho no onchange, igual todas as outras abas da O.S.
    (Itens/Custos/Fotos/Equipe/Histórico) já faziam — comportamento unificado.
-   autoSalvarCampoOS() substitui a antiga salvarDadosOSAvulsa(). */
+   autoSalvarCampoOS() substitui a antiga salvarDadosOSAvulsa().
+   v1.46.4: generalizada para as 3 telas de O.S. (Avulsa/Execução/Projeto) —
+   substitui também salvarDadosOS() e salvarDadosOSExec(). O campo 'faseObraId'
+   ganhou um efeito colateral próprio (replica a fase pra obra vinculada), igual
+   as antigas funções de salvar em lote já faziam. */
 function autoSalvarCampoOS(osId, campo, valor, statusElId){
   if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os || valor===undefined || os[campo]===valor) return;
   os[campo] = valor;
-  registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
+  if(campo==='faseObraId' && valor && os.obraId){
+    const obraVinc = db.obras.find(x=>x.id===os.obraId);
+    if(obraVinc) obraVinc.faseId = valor;
+  }
+  const tipoLabel = os.tipo==='projeto' ? 'O.S.' : os.tipo==='execucao' ? 'O.S. Execução' : 'O.S. Avulsa';
+  registrarLog('editar','os',osId,`${tipoLabel} atualizada: ${os.numero}`);
   save(); renderAll();
   if(statusElId){
     const el = document.getElementById(statusElId);
