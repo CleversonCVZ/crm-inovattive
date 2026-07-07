@@ -1105,6 +1105,7 @@
     <div class="bar">
       <h2>Estoque — Almoxarifado</h2>
       <div class="spacer"></div>
+      <button class="btn neutral" id="btn-saida-estoque" onclick="abrirSaidaEstoque()">− Registrar Saída</button>
       <button class="btn primary" id="btn-novo-produto-almox" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
     </div>
     <div class="stats" id="estoque-stats-saldo" style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap"></div>
@@ -1268,11 +1269,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.13';
+const APP_VERSION = '1.47.0';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.0',
+    data: '07/07/2026',
+    itens: [
+      'Novo: Saída de Estoque, com reserva por Obra. O saldo de cada produto agora se divide em "estoque geral" e "reservado" por obra (entradas do SRM já marcam a obra de destino). Na tela Almoxarifado dá pra registrar saída manual (botão "− Registrar Saída") e liberar/transferir reserva de uma obra pra outra ou pro estoque geral.',
+      'Na aba "Itens" da O.S. de Obra (Execução), itens da proposta que são produto (não serviço) e não são fornecimento do cliente agora casam automaticamente com o catálogo de estoque (ou você cadastra na hora) e, ao serem alocados na O.S., já baixam do estoque sozinhos — consumindo primeiro a reserva da própria obra e completando do estoque geral se faltar. Remover o item devolve a quantidade.',
+    ]
+  },
   {
     versao: '1.46.13',
     data: '07/07/2026',
@@ -2634,7 +2643,8 @@ async function carregarDadosSupabase(){
           if(p) p.itens.push({
             item:it.item||'', descricao:it.descricao||'', qtd:Number(it.qtd)||0,
             unit:Number(it.unit)||0, total:Number(it.total)||0, tipo:it.tipo||'', categoria:it.categoria||'',
-            clienteFornece: !!it.cliente_fornece
+            clienteFornece: !!it.cliente_fornece,
+            produtoEstoqueId: it.produto_estoque_id!=null ? Number(it.produto_estoque_id) : null
           });
         });
       }
@@ -2893,7 +2903,7 @@ async function carregarDadosSupabase(){
         valorUnitario:m.valor_unitario!=null?Number(m.valor_unitario):null,
         data:m.data?m.data.slice(0,10):'',
         srmCotacaoId:m.srm_cotacao_id||null, nfItemIdx:m.nf_item_idx!=null?Number(m.nf_item_idx):null,
-        obraId:m.obra_id||null, observacao:m.observacao||'',
+        obraId:m.obra_id||null, osId:m.os_id||null, observacao:m.observacao||'',
         criadoEm:m.criado_em||'', criadoPor:m.criado_por||''
       }));
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
@@ -3165,7 +3175,8 @@ async function sincronizarItensProposta(propostaId){
     const rows = (p.itens||[]).map(it=>({
       proposta_id:propostaId, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
       unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||'',
-      cliente_fornece: !!it.clienteFornece
+      cliente_fornece: !!it.clienteFornece,
+      produto_estoque_id: it.produtoEstoqueId||null
     }));
     if(rows.length){
       const {error:errIns} = await sb.from('proposta_itens').insert(rows);
@@ -14876,25 +14887,45 @@ async function removerTecnicoOS(osId, tecId, cardId){
   save(); abrirVerOSExecucao(osId, cardId, 'equipe');
 }
 
-function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
+/* v1.47.0: só itens de O.S. de Obra (Execução), categoria produto e que NÃO sejam
+   fornecimento do cliente baixam estoque — e só se já tiverem um produtoEstoqueId
+   casado com o catálogo (ver abrirVincularProdutoEstoque). Sempre que a quantidade
+   muda, estorna tudo que já tinha sido baixado pra esse registro (nunca apaga
+   movimentação, só cria estornos — mesmo princípio de auditoria do resto do app) e
+   refaz do zero com a quantidade nova, pra nunca ficar com saldo dessincronizado. */
+async function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os.itensTrabalho) os.itensTrabalho=[];
   const todosItens = _itensPropostasAprovadas(cardId);
   const it = todosItens.find(x=>x.propostaId===propostaId && x.idx===idx);
   const existente = os.itensTrabalho.find(m=>m.propostaId===propostaId && m.idx===idx);
+  const elegivelEstoque = os.tipo==='execucao' && it?.categoria==='produto' && !it?.clienteFornece && it?.produtoEstoqueId;
+
+  if(elegivelEstoque && existente?.estoqueMovIds?.length){
+    await estornarEstoque(existente.estoqueMovIds, `Ajuste de alocação — O.S. ${os.numero}`);
+  }
+
   if(qtdOS > 0){
+    let novosMovIds = [];
+    if(elegivelEstoque){
+      novosMovIds = await debitarEstoque(it.produtoEstoqueId, os.obraId, qtdOS, {osId, observacao:`Consumo O.S. ${os.numero} — ${it.descricao||it.item||''}`});
+    }
     if(existente){
       existente.qtdOS = qtdOS;
+      existente.produtoEstoqueId = it?.produtoEstoqueId||null;
+      existente.estoqueMovIds = novosMovIds;
     } else {
       os.itensTrabalho.push({
         propostaId, idx,
         descricao: it?.descricao||it?.item||'',
         qtdOS,
-        tipo: it?.tipo||'', categoria: it?.categoria||''
+        tipo: it?.tipo||'', categoria: it?.categoria||'',
+        produtoEstoqueId: it?.produtoEstoqueId||null,
+        estoqueMovIds: novosMovIds
       });
     }
   } else {
-    // qtd 0 = remove o registro
+    // qtd 0 = remove o registro (o estorno acima já devolveu o estoque, se aplicável)
     os.itensTrabalho = os.itensTrabalho.filter(m=>!(m.propostaId===propostaId && m.idx===idx));
   }
   save();
@@ -15033,7 +15064,7 @@ function atualizarSaldoSit(){
   }
 }
 
-function adicionarItemSit(osId, cardId){
+async function adicionarItemSit(osId, cardId){
   const sel  = document.getElementById('sit-sel');
   const qtdI = document.getElementById('sit-qtd');
   if(!sel.value){ alert('Selecione um item.'); return; }
@@ -15044,21 +15075,103 @@ function adicionarItemSit(osId, cardId){
   if(qtd > saldo){ alert(`Quantidade máxima disponível: ${saldo}`); return; }
 
   const todosItens = _itensPropostasAprovadas(cardId);
-  const outrasOS   = db.ordensServico.filter(o=>o.cardId===cardId && o.id!==osId);
   const os         = db.ordensServico.find(x=>x.id===osId);
-  const marcados   = (os.itensTrabalho||[]);
   // busca o item pelo par propostaId_idx (valor estável independente de ordenação)
   const [pIdStr, idxStr] = sel.value.split('_');
   const it = todosItens.find(x=>x.propostaId===+pIdStr && x.idx===+idxStr);
   if(!it){ alert('Item não encontrado.'); return; }
-  const key = `${it.propostaId}_${it.idx}`;
-  salvarQtdItemOS(osId, key, it.propostaId, it.idx, qtd, cardId);
+
+  // v1.47.0: item elegível pra baixa de estoque (só O.S. de Obra/Execução, categoria
+  // produto, não-clienteFornece) e ainda sem produto do catálogo casado — pede pra
+  // vincular antes de adicionar de fato.
+  const elegivelEstoque = os.tipo==='execucao' && it.categoria==='produto' && !it.clienteFornece;
+  if(elegivelEstoque && !it.produtoEstoqueId){
+    abrirVincularProdutoEstoque(osId, cardId, it.propostaId, it.idx, qtd);
+    return;
+  }
+  if(elegivelEstoque && it.produtoEstoqueId && !_confirmaSaldoEstoqueSuficiente(it.produtoEstoqueId, os.obraId, qtd)) return;
+  await _confirmarAdicaoItemSit(osId, cardId, it.propostaId, it.idx, qtd);
+}
+
+/** v1.47.0: se a quantidade pedida for maior que o saldo de estoque disponível (reservado
+ *  da obra + estoque geral), avisa mas não bloqueia — decisão já tomada no desenho. */
+function _confirmaSaldoEstoqueSuficiente(produtoId, obraId, qtd){
+  const disponivel = saldoProdutoObra(produtoId,obraId) + saldoProdutoObra(produtoId,null);
+  if(qtd > disponivel){
+    return confirm(`Saldo de estoque disponível pra esse produto é ${fmtNum(disponivel)}, menor que a quantidade (${fmtNum(qtd)}). Alocar mesmo assim?`);
+  }
+  return true;
+}
+
+async function _confirmarAdicaoItemSit(osId, cardId, propostaId, idx, qtd){
+  const key = `${propostaId}_${idx}`;
+  await salvarQtdItemOS(osId, key, propostaId, idx, qtd, cardId);
   abrirSeletorItensOS(osId, cardId); // re-abre atualizado
 }
 
-function removerItemSit(osId, key, propostaId, idx, cardId){
-  salvarQtdItemOS(osId, key, propostaId, idx, 0, cardId);
+async function removerItemSit(osId, key, propostaId, idx, cardId){
+  await salvarQtdItemOS(osId, key, propostaId, idx, 0, cardId);
   abrirSeletorItensOS(osId, cardId); // re-abre atualizado
+}
+
+/** v1.47.0: mini-modal pra casar a descrição comercial do item da proposta com um produto
+ *  do catálogo de estoque (ou criar um novo), antes de permitir alocá-lo numa O.S. de Obra
+ *  — mesmo espírito do casamento já usado no lançamento de NF (matchProdutoEstoque), só
+ *  que aqui por nome aproximado (proposta não tem NCM/nome fiscal). */
+function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const it = p?.itens?.[idx];
+  if(!it){ alert('Item não encontrado.'); return; }
+  const sugestao = matchProdutoEstoquePorNome(it.descricao||it.item);
+  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  abrirModal(`
+    <h3>📦 Vincular ao Catálogo de Estoque</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:12px;color:var(--muted)">Item da proposta</div>
+        <div style="font-weight:600">${escHtml(it.descricao||it.item)}</div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0">Esse item baixa do estoque quando alocado numa O.S. de Obra. Confirme a qual produto do catálogo ele corresponde (ou cadastre um novo) — só é perguntado uma vez por item de proposta.</p>
+      <div>
+        <label>Produto do catálogo *</label>
+        <select id="vpe-sel" onchange="document.getElementById('vpe-novo').style.display=this.value?'none':''">
+          <option value="">— Criar novo produto —</option>
+          ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
+        </select>
+      </div>
+      <div id="vpe-novo" style="${sugestao?'display:none':''}">
+        <label>Nome comercial do novo produto *</label>
+        <input id="vpe-nome" placeholder="Nome comercial" value="${escHtml(normalizarNomeProduto(it.descricao||it.item)||'')}">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirSeletorItensOS(${osId},${cardId})">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEstoque(${osId},${cardId},${propostaId},${idx},${qtd})">Confirmar e Adicionar</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const it = p?.itens?.[idx];
+  if(!it) return;
+  const selVal = document.getElementById('vpe-sel')?.value;
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  let produtoId = parseInt(selVal)||null;
+  if(!produtoId){
+    const nomeNovo = (document.getElementById('vpe-nome')?.value||'').trim();
+    if(!nomeNovo){ btnRestaurar(btn); alert('Informe o nome do novo produto.'); return; }
+    const {data, error} = await sb.from('estoque_produtos').insert({nome:nomeNovo, unidade:it.tipo||'un', descricao:'', ativo:true}).select().single();
+    if(error){ btnRestaurar(btn); alert('Erro ao criar produto: '+error.message); return; }
+    produtoId = data.id;
+    if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
+    db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:null,ncm:null,unidade:data.unidade||'un',descricao:'',ativo:true,categoriaId:null,criadoEm:data.criado_em||''});
+  }
+  it.produtoEstoqueId = produtoId;
+  await sincronizarItensProposta(propostaId);
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!_confirmaSaldoEstoqueSuficiente(produtoId, os.obraId, qtd)){ btnRestaurar(btn); return; }
+  await _confirmarAdicaoItemSit(osId, cardId, propostaId, idx, qtd);
 }
 
 /* id da entrada de diário atualmente em edição (null = nenhuma) — ids do os_diario são
@@ -18315,6 +18428,85 @@ function valorMedioProduto(produtoId){
   return tot>0 ? valTot/tot : null;
 }
 
+/* ===== v1.47.0: reserva de estoque por obra =====
+   O saldo deixa de ser só global — passa a existir por (produto, obra). obraId=null
+   representa o "estoque geral", não reservado a nenhuma obra específica. saldoProduto()
+   acima continua valendo como o total geral (soma de tudo), usado na listagem do
+   Almoxarifado; as funções abaixo abrem a quebra por obra. */
+
+/** Saldo de um produto reservado a uma obra específica (obraId null/undefined = estoque geral). */
+function saldoProdutoObra(produtoId, obraId){
+  const obraKey = obraId||null;
+  return (db.estoqueMov||[]).filter(m=>m.produtoId===produtoId && (m.obraId||null)===obraKey)
+    .reduce((s,m)=> m.tipo==='entrada' ? s+m.quantidade : s-m.quantidade, 0);
+}
+
+/** Quebra do saldo de um produto: geral + reservado por obra (só obras com saldo != 0). */
+function saldosPorObraProduto(produtoId){
+  const obraIds = new Set();
+  (db.estoqueMov||[]).filter(m=>m.produtoId===produtoId && m.obraId).forEach(m=>obraIds.add(m.obraId));
+  const porObra = Array.from(obraIds).map(obraId=>{
+    const obra = (db.obras||[]).find(o=>o.id===obraId);
+    return {obraId, obraNome: obra?obra.nome:'Obra removida', saldo: saldoProdutoObra(produtoId, obraId)};
+  }).filter(x=>Math.abs(x.saldo)>0.0001).sort((a,b)=>a.obraNome.localeCompare(b.obraNome,'pt-BR'));
+  return {geral: saldoProdutoObra(produtoId, null), porObra};
+}
+
+function _pushMovLocal(m){
+  if(!Array.isArray(db.estoqueMov)) db.estoqueMov=[];
+  db.estoqueMov.unshift({
+    id:m.id, produtoId:m.produto_id, tipo:m.tipo, quantidade:Number(m.quantidade)||0,
+    valorUnitario:m.valor_unitario!=null?Number(m.valor_unitario):null,
+    data:m.data?m.data.slice(0,10):'', srmCotacaoId:m.srm_cotacao_id||null,
+    nfItemIdx:m.nf_item_idx!=null?Number(m.nf_item_idx):null,
+    obraId:m.obra_id||null, osId:m.os_id||null, observacao:m.observacao||'',
+    criadoEm:m.criado_em||'', criadoPor:m.criado_por||''
+  });
+}
+
+/** Debita `qtd` de um produto pra uma obra (ou estoque geral se obraId for null): consome
+ *  primeiro o saldo RESERVADO daquela obra e completa do estoque GERAL se não for suficiente
+ *  — nunca mexe na reserva de outra obra (só a ação explícita de "Liberar reserva" faz isso).
+ *  Permite saldo negativo (o aviso é responsabilidade de quem chama, antes de confirmar).
+ *  Retorna os ids das movimentações criadas, pra permitir estorno exato depois. */
+async function debitarEstoque(produtoId, obraId, qtd, {osId=null, observacao=null, data=null}={}){
+  if(!qtd || qtd<=0) return [];
+  const dataMov = data||localDia(0);
+  const criadoPor = usuarioAtual?usuarioAtual.nome:'';
+  const linhas = [];
+  if(obraId){
+    const reservado = saldoProdutoObra(produtoId, obraId);
+    const daReserva = Math.min(Math.max(reservado,0), qtd);
+    if(daReserva>0) linhas.push({produto_id:produtoId, tipo:'saida', quantidade:daReserva, data:dataMov, obra_id:obraId, os_id:osId, observacao, criado_por:criadoPor});
+    const restante = qtd - daReserva;
+    if(restante>0) linhas.push({produto_id:produtoId, tipo:'saida', quantidade:restante, data:dataMov, obra_id:null, os_id:osId, observacao, criado_por:criadoPor});
+  } else {
+    linhas.push({produto_id:produtoId, tipo:'saida', quantidade:qtd, data:dataMov, obra_id:null, os_id:osId, observacao, criado_por:criadoPor});
+  }
+  const {data:rows, error} = await sb.from('estoque_movimentacoes').insert(linhas).select();
+  if(error){ console.error('Erro ao debitar estoque:', error.message); alert('Erro ao registrar saída de estoque: '+error.message); return []; }
+  (rows||[]).forEach(_pushMovLocal);
+  return (rows||[]).map(m=>m.id);
+}
+
+/** Estorna (devolve) movimentações de saída específicas pelos ids gerados por `debitarEstoque`
+ *  — sempre cria entradas espelhadas novas (mesma obra/produto/quantidade), nunca apaga o
+ *  histórico original, seguindo o mesmo princípio de auditoria já usado em Contas a Pagar. */
+async function estornarEstoque(movIds, observacao='Estorno de saída'){
+  if(!movIds || !movIds.length) return;
+  const dataHoje = localDia(0);
+  const criadoPor = usuarioAtual?usuarioAtual.nome:'';
+  const linhas = movIds.map(id=>{
+    const m = (db.estoqueMov||[]).find(x=>x.id===id);
+    if(!m) return null;
+    return {produto_id:m.produtoId, tipo:'entrada', quantidade:m.quantidade, data:dataHoje, obra_id:m.obraId||null, os_id:m.osId||null, observacao, criado_por:criadoPor};
+  }).filter(Boolean);
+  if(!linhas.length) return;
+  const {data, error} = await sb.from('estoque_movimentacoes').insert(linhas).select();
+  if(error){ console.error('Erro ao estornar estoque:', error.message); alert('Erro ao estornar estoque: '+error.message); return; }
+  (data||[]).forEach(_pushMovLocal);
+}
+
 /* Renderiza o painel de estoque (roteador de visualizações) */
 function _estoqueStats(){
   const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
@@ -18382,13 +18574,33 @@ function _renderEstoqueSaldo(el){
   }
   const linhas=produtos.map(p=>{
     const saldo=saldoProduto(p.id);
+    const {geral, porObra} = saldosPorObraProduto(p.id);
     const vMed=valorMedioProduto(p.id);
     const saldoCor=saldo<=0?'color:#c62828':saldo<5?'color:#f57c00':'';
     const ult=(db.estoqueMov||[]).filter(m=>m.produtoId===p.id).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm))[0];
     const cat=categoriaEstoque(p.categoriaId);
     const catBadge=cat?`<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;background:${cat.cor};color:${textColor(cat.cor)}">${escHtml(cat.nome)}</span>`:'';
+    const temReserva = porObra.length>0;
+    const toggleBtn = temReserva
+      ? `<div><button type="button" class="link-btn" style="font-size:11px" onclick="event.stopPropagation();_toggleDetalheEstoque(${p.id})">🏗 ${porObra.length} obra${porObra.length>1?'s':''} reservada${porObra.length>1?'s':''} <span id="seta-estoque-${p.id}">▸</span></button></div>`
+      : '';
+    const detalheHtml = temReserva ? `
+      <tr id="detalhe-estoque-${p.id}" style="display:none;background:#f8f9fa">
+        <td colspan="8" style="padding:6px 10px 10px 30px">
+          <table style="width:100%;font-size:12px">
+            <tbody>
+              <tr><td style="padding:2px 6px;color:var(--muted)">Estoque geral (não reservado)</td><td style="padding:2px 6px;text-align:right;font-weight:600">${fmtNum(geral)}</td><td></td></tr>
+              ${porObra.map(o=>`<tr>
+                <td style="padding:2px 6px;color:var(--muted)">🏗 ${escHtml(o.obraNome)}</td>
+                <td style="padding:2px 6px;text-align:right;font-weight:600">${fmtNum(o.saldo)}</td>
+                <td style="padding:2px 6px;text-align:right"><button type="button" class="link-btn" style="font-size:11px" onclick="event.stopPropagation();abrirLiberarReservaEstoque(${p.id},${o.obraId})">Liberar reserva</button></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </td>
+      </tr>` : '';
     return `<tr style="cursor:pointer" onclick="editarProdutoEstoque(${p.id})">
-      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}${toggleBtn}</td>
       <td style="padding:6px 10px">${catBadge}</td>
       <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${p.ncm?`NCM ${p.ncm}`:''}</td>
       <td style="padding:6px 10px;text-align:center;font-size:12px">${p.unidade}</td>
@@ -18396,7 +18608,7 @@ function _renderEstoqueSaldo(el){
       <td style="padding:6px 10px;text-align:right;font-size:12px">${vMed!=null?fmtMoney(vMed):'—'}</td>
       <td style="padding:6px 10px;text-align:right;font-size:12px">${saldo>0&&vMed!=null?fmtMoney(saldo*vMed):'—'}</td>
       <td style="padding:6px 10px;font-size:11px;color:var(--muted)">${ult?fmtDia2(ult.data):'—'}</td>
-    </tr>`;
+    </tr>${detalheHtml}`;
   }).join('');
   el.innerHTML=`
     <table class="lista">
@@ -18412,6 +18624,15 @@ function _renderEstoqueSaldo(el){
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>`;
+}
+
+function _toggleDetalheEstoque(produtoId){
+  const row = document.getElementById(`detalhe-estoque-${produtoId}`);
+  const seta = document.getElementById(`seta-estoque-${produtoId}`);
+  if(!row) return;
+  const show = row.style.display==='none';
+  row.style.display = show?'':'none';
+  if(seta) seta.textContent = show?'▾':'▸';
 }
 
 function _renderEstoqueMovimentos(el){
@@ -18451,16 +18672,21 @@ function _renderEstoqueMovimentos(el){
     const badge=m.tipo==='entrada'
       ?`<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">↓ Entrada</span>`
       :`<span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">↑ Saída</span>`;
-    let origem='Manual';
+    const origemPartes=[];
     if(m.srmCotacaoId){
       const cot=(db.srmCotacoes||[]).find(x=>x.id===m.srmCotacaoId);
       const card=cot?(db.cardsSRM||[]).find(c=>c.id===cot.cardSrmId):null;
-      origem=card?`SRM #${card.num}`:'SRM';
+      origemPartes.push(card?`SRM #${card.num}`:'SRM');
+    }
+    if(m.osId){
+      const osOrig=(db.ordensServico||[]).find(o=>o.id===m.osId);
+      origemPartes.push(osOrig?`O.S. ${osOrig.numero}`:'O.S.');
     }
     if(m.obraId){
       const ob=(db.obras||[]).find(o=>o.id===m.obraId);
-      origem=ob?`Obra: ${escHtml(ob.nome)}`:'Obra';
+      origemPartes.push(`Obra: ${ob?ob.nome:'—'}`);
     }
+    const origem = origemPartes.length ? origemPartes.join(' · ') : 'Manual';
     return `<tr>
       <td style="padding:6px 10px;font-size:12px">${fmtDia2(m.data)}</td>
       <td style="padding:6px 10px;font-weight:600">${escHtml(prod?prod.nome:'—')}</td>
@@ -18576,6 +18802,152 @@ function abrirNovoProdutoEstoque(){
   abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true,null), 'cartao');
 }
 
+/* ===== v1.47.0: Saída manual de estoque ===== */
+
+function abrirSaidaEstoque(){
+  if(!podeEditarTela(usuarioAtual,'estoque-almoxarifado')){ alert('Sem permissão para registrar saída de estoque.'); return; }
+  const produtos = (db.estoqueProdutos||[]).filter(p=>p.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa').sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
+    .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
+  abrirModal(`
+    <h3>− Registrar Saída de Estoque</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div>
+        <label>Produto *</label>
+        <select id="se-produto" onchange="_atualizaSaldoSaidaEstoque()">
+          <option value="">— Selecione —</option>
+          ${produtos.map(p=>`<option value="${p.id}">${escHtml(p.nome)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label>Quantidade *</label>
+          <input id="se-qtd" type="number" step="0.001" min="0.001" placeholder="0">
+        </div>
+        <div>
+          <label>Data *</label>
+          <input id="se-data" type="date" value="${localDia(0)}">
+        </div>
+      </div>
+      <div>
+        <label>Obra (opcional)</label>
+        <select id="se-obra" onchange="_atualizaSaldoSaidaEstoque()">
+          <option value="">— Estoque geral (sem obra específica) —</option>
+          ${obraOpts}
+        </select>
+      </div>
+      <div id="se-saldo-info" style="font-size:12px;color:var(--muted)"></div>
+      <div>
+        <label>Observação</label>
+        <input id="se-obs" type="text" placeholder="Ex.: ajuste de inventário, perda, uso administrativo…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarSaidaEstoque()">Registrar Saída</button>
+    </div>`, 'cartao');
+}
+
+function _atualizaSaldoSaidaEstoque(){
+  const produtoId = parseInt(document.getElementById('se-produto')?.value)||null;
+  const obraId = parseInt(document.getElementById('se-obra')?.value)||null;
+  const info = document.getElementById('se-saldo-info');
+  if(!info) return;
+  if(!produtoId){ info.textContent=''; return; }
+  if(obraId){
+    const reservado = saldoProdutoObra(produtoId, obraId);
+    const geral = saldoProdutoObra(produtoId, null);
+    info.textContent = `Reservado para esta obra: ${fmtNum(reservado)} · Estoque geral: ${fmtNum(geral)}`;
+  } else {
+    info.textContent = `Estoque geral disponível: ${fmtNum(saldoProdutoObra(produtoId, null))}`;
+  }
+}
+
+async function confirmarSaidaEstoque(){
+  const produtoId = parseInt(document.getElementById('se-produto')?.value)||null;
+  const qtd = parseFloat(document.getElementById('se-qtd')?.value)||0;
+  const data = document.getElementById('se-data')?.value;
+  const obraId = parseInt(document.getElementById('se-obra')?.value)||null;
+  const obs = (document.getElementById('se-obs')?.value||'').trim();
+  if(!produtoId){ alert('Selecione o produto.'); return; }
+  if(!qtd || qtd<=0){ alert('Informe uma quantidade válida.'); return; }
+  if(!data){ alert('Informe a data.'); return; }
+
+  const disponivel = obraId ? (saldoProdutoObra(produtoId,obraId)+saldoProdutoObra(produtoId,null)) : saldoProdutoObra(produtoId,null);
+  if(qtd > disponivel){
+    if(!confirm(`Saldo disponível é ${fmtNum(disponivel)}, menor que a quantidade informada (${fmtNum(qtd)}). Registrar mesmo assim?`)) return;
+  }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const ids = await debitarEstoque(produtoId, obraId, qtd, {osId:null, observacao:obs||null, data});
+  if(!ids.length){ btnRestaurar(btn); return; }
+  fecharModal();
+  renderEstoquePainel();
+}
+
+/* ===== v1.47.0: Liberar/transferir reserva entre obras ===== */
+
+function abrirLiberarReservaEstoque(produtoId, obraOrigemId){
+  if(!podeEditarTela(usuarioAtual,'estoque-almoxarifado')){ alert('Sem permissão pra liberar reserva.'); return; }
+  const produto = (db.estoqueProdutos||[]).find(p=>p.id===produtoId);
+  const obraOrigem = (db.obras||[]).find(o=>o.id===obraOrigemId);
+  const saldoOrigem = saldoProdutoObra(produtoId, obraOrigemId);
+  const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa' && o.id!==obraOrigemId).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
+    .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
+  abrirModal(`
+    <h3>Liberar Reserva de Estoque</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
+        <div style="font-weight:600">${escHtml(produto?produto.nome:'—')}</div>
+        <div style="font-size:12px;color:var(--muted)">🏗 Reservado em ${escHtml(obraOrigem?obraOrigem.nome:'—')}: <b>${fmtNum(saldoOrigem)}</b></div>
+      </div>
+      <div>
+        <label>Quantidade a liberar *</label>
+        <input id="lr-qtd" type="number" step="0.001" min="0.001" max="${saldoOrigem}" value="${saldoOrigem}">
+      </div>
+      <div>
+        <label>Destino *</label>
+        <select id="lr-destino">
+          <option value="">— Estoque geral (sem obra específica) —</option>
+          ${obraOpts}
+        </select>
+      </div>
+      <div>
+        <label>Observação</label>
+        <input id="lr-obs" type="text" placeholder="Opcional…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarLiberarReserva(${produtoId},${obraOrigemId})">Liberar</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarLiberarReserva(produtoId, obraOrigemId){
+  const qtd = parseFloat(document.getElementById('lr-qtd')?.value)||0;
+  const destinoId = parseInt(document.getElementById('lr-destino')?.value)||null;
+  const obs = (document.getElementById('lr-obs')?.value||'').trim();
+  if(!qtd || qtd<=0){ alert('Informe uma quantidade válida.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const dataHoje = localDia(0);
+  const criadoPor = usuarioAtual?usuarioAtual.nome:'';
+  const obraDestino = destinoId ? (db.obras||[]).find(o=>o.id===destinoId) : null;
+  const obraOrigem = (db.obras||[]).find(o=>o.id===obraOrigemId);
+  const descTransf = `Transferência de reserva: ${obraOrigem?obraOrigem.nome:'—'} → ${obraDestino?obraDestino.nome:'Estoque geral'}${obs?' — '+obs:''}`;
+  const linhas = [
+    {produto_id:produtoId, tipo:'saida', quantidade:qtd, data:dataHoje, obra_id:obraOrigemId, observacao:descTransf, criado_por:criadoPor},
+    {produto_id:produtoId, tipo:'entrada', quantidade:qtd, data:dataHoje, obra_id:destinoId||null, observacao:descTransf, criado_por:criadoPor}
+  ];
+  const {data, error} = await sb.from('estoque_movimentacoes').insert(linhas).select();
+  if(error){ btnRestaurar(btn); alert('Erro ao liberar reserva: '+error.message); return; }
+  (data||[]).forEach(_pushMovLocal);
+  fecharModal();
+  renderEstoquePainel();
+}
+
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
   abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo,p.categoriaId||null), 'cartao');
@@ -18668,6 +19040,16 @@ function matchProdutoEstoque(it){
     m=produtos.find(p=>p.ativo&&p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
   }
   return m;
+}
+
+/** v1.47.0: tenta casar a descrição comercial de um item de PROPOSTA com o catálogo de
+ *  estoque — mesma ideia de matchProdutoEstoque(), mas pelo nome comercial (proposta não
+ *  tem NCM nem nome fiscal). Casamento exato (case-insensitive, ignorando espaços extras)
+ *  por enquanto; sempre com combo pra confirmar/trocar/criar produto novo na UI. */
+function matchProdutoEstoquePorNome(descricao){
+  if(!descricao) return null;
+  const alvo = descricao.trim().toUpperCase().replace(/\s+/g,' ');
+  return (db.estoqueProdutos||[]).find(p=>p.ativo && p.nome && p.nome.trim().toUpperCase().replace(/\s+/g,' ')===alvo) || null;
 }
 
 /* ---- Modal "Lançar no Estoque" ---- */
@@ -18789,6 +19171,7 @@ async function confirmarLancarEstoque(){
       quantidade:qtd, valor_unitario:it.vUnCom||null,
       data:dataHoje,
       srm_cotacao_id:cotId, nf_item_idx:idx,
+      obra_id: card?.obraId||null,
       observacao:obsGeral||null, criado_por:criadoPor
     });
   }
