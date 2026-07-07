@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.0';
-const APP_VERSION_DATE = '06/07/2026';
+const APP_VERSION = '1.46.1';
+const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.1',
+    data: '07/07/2026',
+    itens: [
+      'Nas 3 telas de detalhe de O.S. (Execução/Obra, Projeto, Avulsa), o botão "✅ Na agenda" (sincronização com Google Calendar) ganhou um ✕ ao lado — mesma funcionalidade que já existia no cartão CRM: remove o evento do Google Calendar sem precisar apagar a O.S.',
+    ]
+  },
   {
     versao: '1.46.0',
     data: '06/07/2026',
@@ -13229,6 +13236,7 @@ function abrirVerOS(osId, cardId){
               <div style="display:flex;gap:6px;align-items:center">
                 <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
                 ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+                ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
               </div>
             </div>
             ${isProjeto ? `<div>
@@ -13581,6 +13589,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
           <div style="display:flex;gap:6px;align-items:center">
             <input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+            ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
           </div>
         </div>
         <div></div>
@@ -13882,6 +13891,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           <div style="display:flex;gap:6px;align-items:center">
             <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
+            ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
           </div>
         </div>
       </div>
@@ -15428,6 +15438,27 @@ async function excluirOS(osId, cardId){
   db.ordensServico = db.ordensServico.filter(x=>x.id!==osId);
   registrarLog('excluir', 'os', osId, `O.S. excluída: ${os.numero}`);
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
+}
+
+/** Remove o agendamento de uma O.S. do Google Calendar (e limpa o eventId local),
+ *  mesmo padrão de limparAgendaCartao — mas não mexe na data da O.S. em si,
+ *  só desvincula do Google (a data de agendamento continua editável no campo normal). */
+async function limparAgendaOS(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os || !os.googleEventId) return;
+  if(usuarioAtual?.googleRefreshToken){
+    try{
+      await chamarEdgeFn('google-calendar', {userId: usuarioAtual.id, action:'delete', eventId: os.googleEventId});
+    }catch(e){ /* ignora erro — evento pode não existir mais no Google */ }
+  }
+  os.googleEventId = null;
+  await sb.from('ordens_servico').update({google_event_id: null}).eq('id', osId);
+  // Atualiza UI sem fechar o modal
+  const btnGcal = document.getElementById(`btn-gcal-os-${osId}`);
+  if(btnGcal) btnGcal.innerHTML = '📅 Agenda';
+  const btnX = document.getElementById(`btn-limpar-agenda-os-${osId}`);
+  if(btnX) btnX.style.display = 'none';
+  renderAll();
 }
 
 /* ================= PROPOSTAS ================= */
