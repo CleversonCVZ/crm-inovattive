@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.4';
+const APP_VERSION = '1.46.5';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.5',
+    data: '07/07/2026',
+    itens: [
+      'Corrigido: as fotos da aba "Fotos" da O.S. não apareciam (ícone de imagem quebrada), mesmo tendo acabado de subir. Causa: o bucket de armazenamento dessas fotos é privado, e o link usado pra exibir a imagem só funciona em bucket público. Agora o app gera um link temporário e seguro (assinado) pra cada foto, que funciona normalmente com o bucket privado — sem precisar abrir o acesso publicamente.',
+    ]
+  },
   {
     versao: '1.46.4',
     data: '07/07/2026',
@@ -13218,7 +13225,7 @@ function abrirVerOS(osId, cardId){
     <div class="os-imagens" id="vos-imagens">
       ${(os.imagens||[]).map((img,i)=>`
         <div class="os-img-card">
-          <img src="${getOSImageUrl(img.path)}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
+          <img data-os-img-lazy data-path="${(img.path||'').replace(/"/g,'&quot;')}" data-bucket="os-imagens" style="background:#f0f0f0" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
           <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
           ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirOSImagem(${os.id},${i},${cardId})">🗑 remover</button>`:''}
         </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhuma imagem.</div>'}
@@ -13320,6 +13327,7 @@ function abrirVerOS(osId, cardId){
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
       </div>
     </div>`, 'cartao');
+  carregarImagensOSPrivadas();
 }
 /* v1.46.4: salvarDadosOS() removida — a aba Geral desta tela (O.S. Projeto)
    agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa. */
@@ -13966,7 +13974,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       <div class="os-imagens" style="margin-bottom:12px">
         ${fotos.map((img,i)=>`
           <div class="os-img-card">
-            <img src="${getOSImageUrl(img.path)}" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
+            <img data-os-img-lazy data-path="${(img.path||'').replace(/"/g,'&quot;')}" data-bucket="os-imagens" style="background:#f0f0f0" alt="${img.descricao||''}" onclick="verOSImagem('${img.path}','${(img.descricao||'').replace(/'/g,"\\'")}')">
             <div class="os-img-leg" title="${img.descricao||''}">${img.descricao||'(sem legenda)'}</div>
             ${!os.fechada?`<button class="icon-btn del" style="width:100%;padding:2px;font-size:11px;border-top:1px solid var(--border)" onclick="excluirOSImagem(${osId},${i},${cardId})">🗑 remover</button>`:''}
           </div>`).join('')||'<div style="font-size:13px;color:var(--muted)">Nenhuma foto adicionada.</div>'}
@@ -14156,6 +14164,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
       </div>
     </div>`, 'cartao');
+  if(aba==='fotos') carregarImagensOSPrivadas();
 }
 
 async function adicionarOSCusto(osId, cardId){
@@ -15361,6 +15370,37 @@ function getOSImageUrl(path, bucket='os-imagens'){
   catch(e){ return path; }
 }
 
+/* v1.46.5: o bucket 'os-imagens' (fotos da aba "Fotos" da O.S.) é PRIVADO no Supabase
+   (só leitura autenticada) — diferente do bucket 'os-diario-imagens' (esse sim público).
+   getOSImageUrl()/getPublicUrl() nunca funciona em bucket privado: sempre gera uma URL
+   que retorna erro (ícone de imagem quebrada), mesmo pra quem está logado. A correção
+   correta é gerar uma signed URL (createSignedUrl — funciona com bucket privado,
+   respeita RLS e expira sozinha) em vez de tornar o bucket público. Como isso é
+   assíncrono e o HTML das fotos é montado como string síncrona, as tags <img> são
+   inseridas sem src (data-os-img-lazy + data-path/data-bucket) e preenchidas logo
+   depois, via carregarImagensOSPrivadas(), assim que o modal entra no DOM. */
+const _signedUrlCacheOS = {};
+async function getOSImageSignedUrl(path, bucket='os-imagens'){
+  const key = bucket+'|'+path;
+  const cached = _signedUrlCacheOS[key];
+  if(cached && cached.exp > Date.now()) return cached.url;
+  try{
+    const { data, error } = await sb.storage.from(bucket).createSignedUrl(path, 3600);
+    if(error || !data?.signedUrl) return '';
+    _signedUrlCacheOS[key] = { url: data.signedUrl, exp: Date.now() + 55*60*1000 };
+    return data.signedUrl;
+  }catch(e){ return ''; }
+}
+async function carregarImagensOSPrivadas(){
+  const imgs = document.querySelectorAll('img[data-os-img-lazy]');
+  for(const img of imgs){
+    const path = img.getAttribute('data-path');
+    const bucket = img.getAttribute('data-bucket')||'os-imagens';
+    const url = await getOSImageSignedUrl(path, bucket);
+    if(url) img.src = url;
+  }
+}
+
 async function uploadOSImagens(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   const files = [...document.getElementById('vos-img-file').files];
@@ -15415,16 +15455,21 @@ async function excluirOSImagem(osId, idx, cardId){
   save(); abrirVerOS(osId, cardId);
 }
 
-function verOSImagem(path, legenda, bucket='os-imagens'){
-  const url = getOSImageUrl(path, bucket);
+async function verOSImagem(path, legenda, bucket='os-imagens'){
+  const publico = bucket === 'os-diario-imagens';
   abrirModal(`
     <div style="text-align:center">
-      <img src="${url}" style="max-width:100%;max-height:70vh;border-radius:8px">
+      <img id="os-img-viewer" src="${publico?getOSImageUrl(path,bucket):''}" style="max-width:100%;max-height:70vh;border-radius:8px;min-height:${publico?'0':'160px'};background:${publico?'transparent':'#f0f0f0'}">
       ${legenda?`<p style="margin-top:10px;font-size:13px;color:var(--muted)">${legenda}</p>`:''}
       <div class="actions" style="justify-content:center;margin-top:14px">
         <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       </div>
     </div>`);
+  if(!publico){
+    const url = await getOSImageSignedUrl(path, bucket);
+    const img = document.getElementById('os-img-viewer');
+    if(img && url) img.src = url;
+  }
 }
 
 async function excluirOS(osId, cardId){
