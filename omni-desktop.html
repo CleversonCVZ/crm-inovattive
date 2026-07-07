@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.1';
+const APP_VERSION = '1.46.2';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.2',
+    data: '07/07/2026',
+    itens: [
+      'Corrigido bug no modal "Novo Cartão": ao usar "+ Cadastrar cliente novo" e, na mesma tela, "+ Cadastrar obra nova", a obra podia acabar vinculada a outro cliente já existente (o que estava selecionado antes de trocar pra cliente novo), não ao cliente sendo criado. Agora o botão de obra nova fica bloqueado enquanto o cliente novo não é salvo — basta salvar o cartão primeiro e adicionar a obra depois, pela aba do próprio cartão, já com o vínculo correto.',
+    ]
+  },
   {
     versao: '1.46.1',
     data: '07/07/2026',
@@ -7766,7 +7773,7 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
         onclick="editarObraDoCartao(${c?c.id:'null'},${cid})"
         style="${c&&c.obraId?'':'display:none'}">✏️</button>`:''}
     </div>
-    <button class="link-btn" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
+    <button class="link-btn" id="btn-nova-obra-link" onclick="toggleNovaObra()">+ Cadastrar obra nova</button>
     <div class="novo-cliente-box" id="nova-obra-box">
       <label>Nome da nova obra</label>
       <div style="display:flex;gap:6px;align-items:center">
@@ -7997,6 +8004,24 @@ function toggleNovoCliente(){
   document.getElementById('m-cliente').disabled = aberto;
   const selO = document.getElementById('m-obra');
   if(selO) selO.innerHTML = aberto ? '<option value="">(sem obra)</option>' : optsObras(+document.getElementById('m-cliente').value, null);
+  // v1.46.2: enquanto o cliente novo ainda não existe, não dá pra saber a qual
+  // cliente vincular uma obra nova — "+ Cadastrar obra nova" usava o cliente que
+  // estava selecionado ANTES de trocar pra "cliente novo" (valor capturado só na
+  // abertura do modal), causando obra vinculada ao cliente errado. Trava o botão
+  // aqui e força salvar o cartão primeiro; a obra pode ser adicionada depois,
+  // já com o cliente certo, direto na aba do cartão.
+  const btnNovaObra = document.getElementById('btn-nova-obra-link');
+  if(btnNovaObra){
+    btnNovaObra.disabled = aberto;
+    btnNovaObra.style.opacity = aberto ? '.5' : '';
+    btnNovaObra.style.cursor = aberto ? 'not-allowed' : '';
+    btnNovaObra.title = aberto ? 'Salve o cliente novo primeiro — depois adicione a obra pela aba do cartão' : '';
+  }
+  // fecha o box de "nova obra" se estiver aberto, pra não deixar pendente com o cliente errado
+  if(aberto){
+    const boxObra = document.getElementById('nova-obra-box');
+    if(boxObra && boxObra.classList.contains('open')) toggleNovaObra();
+  }
 }
 
 async function salvarNovoCartao(){
