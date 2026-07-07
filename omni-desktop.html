@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.8';
+const APP_VERSION = '1.46.9';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.9',
+    data: '07/07/2026',
+    itens: [
+      'Corrigido bug de duplo-clique que podia criar registros duplicados: em "Novo Cartão" (com "+ Cadastrar cliente novo"), Novo Cliente, Nova Proposta, "+ Cadastrar obra nova", Novo SRM, Nova NF e Nova O.S., o botão Salvar só travava depois de uma consulta ao banco (que demora um pouco) — clicando duas vezes rápido, o sistema criava tudo em dobro (caso real: cliente e cartão "Zaido Contabilidade" duplicados). Agora o botão trava no instante do clique, antes de qualquer consulta.',
+    ]
+  },
   {
     versao: '1.46.8',
     data: '07/07/2026',
@@ -5683,6 +5690,10 @@ function abrirNovoSRM(){
 }
 
 async function salvarNovoSRM(){
+  // v1.46.9: trava o botão antes do await proximoIdSeguro — mesmo bug de duplo-clique
+  // corrigido em salvarNovoCartao/novaProposta/criarObraRapida.
+  const btn = btnModalPrimario();
+  if(btn?.disabled) return;
   const fornId = +document.getElementById('srm-m-forn').value||null;
   const faseId = +document.getElementById('srm-m-fase').value||null;
   const resp   = document.getElementById('srm-m-resp').value.trim();
@@ -5691,6 +5702,7 @@ async function salvarNovoSRM(){
   const ccId   = +document.getElementById('srm-m-cc').value||null;
   const obraId = +document.getElementById('srm-m-obra')?.value||null;
   if(!faseId){ alert('Selecione uma fase.'); return; }
+  btnSalvando(btn);
   if(!db.cardsSRM) db.cardsSRM=[];
   const novo = {
     id: await proximoIdSeguro('cards_srm', db.cardsSRM),
@@ -5706,7 +5718,6 @@ async function salvarNovoSRM(){
   if(hist) registrarSRMHist(novo, hist);
   db.cardsSRM.push(novo);
   registrarLog('criar','srm',novo.id,`Novo SRM #${novo.num} aberto`);
-  const btn = btnModalPrimario(); btnSalvando(btn);
   try{
     const {error} = await sb.from('cards_srm').upsert({
       id:novo.id, num:novo.num,
@@ -7405,6 +7416,10 @@ function abrirNovaNF(){
     </div>`);
 }
 async function salvarNovaNF(){
+  // v1.46.9: trava o botão antes do await proximoIdSeguro — mesmo bug de duplo-clique
+  // corrigido em salvarNovoCartao/novaProposta/criarObraRapida/salvarNovoSRM.
+  const btn = btnModalPrimario();
+  if(btn?.disabled) return;
   const numero = document.getElementById('nf-m-numero').value.trim();
   const obraId = +document.getElementById('nf-m-obra').value||null;
   const faseId = +document.getElementById('nf-m-fase').value||null;
@@ -7414,11 +7429,11 @@ async function salvarNovaNF(){
   const observacoes = document.getElementById('nf-m-obs').value.trim();
   if(!numero){ alert('Informe o número da NF.'); return; }
   if(!faseId){ alert('Selecione uma fase.'); return; }
+  btnSalvando(btn);
   if(!db.notasFiscais) db.notasFiscais=[];
   const novo = { id: await proximoIdSeguro('notas_fiscais', db.notasFiscais), numero, obraId, faseId, dataEmissao, valor, impostosRetidos, observacoes };
   db.notasFiscais.push(novo);
   registrarLog('criar','nota_fiscal',novo.id,`Nova NF ${novo.numero} cadastrada`);
-  const btn = btnModalPrimario(); btnSalvando(btn);
   try{
     const {error} = await sb.from('notas_fiscais').upsert({
       id:novo.id, numero:novo.numero, obra_id:novo.obraId||null, fase_id:novo.faseId||null,
@@ -7800,8 +7815,13 @@ function toggleNovaObra(){
   else document.getElementById('no-nome').value = '';
 }
 async function criarObraRapida(clienteId){
+  // v1.46.9: trava o botão "+ Cadastrar obra nova" antes do await proximoIdSeguro —
+  // mesmo bug de duplo-clique corrigido em salvarNovoCartao/novaProposta.
+  const btnObra = document.getElementById('btn-nova-obra-link');
+  if(btnObra?.disabled) return;
   const nome = (document.getElementById('no-nome').value||'').trim();
   if(!nome){ alert('Digite o nome da obra.'); document.getElementById('no-nome').focus(); return; }
+  if(btnObra) btnObra.disabled = true;
   const id = await proximoIdSeguro('obras', db.obras);
   const novaObra = {id, clienteId, nome};
   db.obras.push(novaObra);
@@ -7821,6 +7841,7 @@ async function criarObraRapida(clienteId){
   // Fecha o box
   const box = document.getElementById('nova-obra-box');
   if(box){ box.classList.remove('open'); document.getElementById('m-obra').disabled = false; document.getElementById('no-nome').value = ''; }
+  if(btnObra) btnObra.disabled = false;
 }
 async function resolverObra(clienteId){
   const box = document.getElementById('nova-obra-box');
@@ -8101,11 +8122,24 @@ function toggleNovoCliente(){
 }
 
 async function salvarNovoCartao(){
+  // v1.46.9: trava o botão ANTES de qualquer await (proximoIdSeguro faz uma ida
+  // ao banco pra gerar o próximo id, o que demora um pouco) — sem isso, um duplo
+  // clique no "Salvar" reentra na função enquanto o 1º clique ainda está no meio
+  // do caminho e cria cliente+cartão duplicados (caso real: "Zaido Contabilidade").
+  const btn = btnModalPrimario();
+  if(btn?.disabled) return;
   let clienteId;
   const box = document.getElementById('novo-cliente-box');
   if(box.classList.contains('open')){
     const nome = document.getElementById('nc-nome').value.trim();
     if(!nome){ alert('Informe o nome do novo cliente.'); return; }
+  } else {
+    clienteId = +document.getElementById('m-cliente').value;
+    if(!clienteId){ alert('Selecione um cliente ou cadastre um novo.'); return; }
+  }
+  btnSalvando(btn);
+  if(box.classList.contains('open')){
+    const nome = document.getElementById('nc-nome').value.trim();
     clienteId = await proximoIdSeguro('clientes', db.clientes);
     db.clientes.push({
       id:clienteId, nome,
@@ -8114,9 +8148,6 @@ async function salvarNovoCartao(){
       cidade:document.getElementById('nc-cidade').value,
       endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:document.getElementById('nc-cidade').value,uf:''}
     });
-  } else {
-    clienteId = +document.getElementById('m-cliente').value;
-    if(!clienteId){ alert('Selecione um cliente ou cadastre um novo.'); return; }
   }
   const novo = {
     id: await proximoIdSeguro('cards', db.cards),
@@ -8139,8 +8170,6 @@ async function salvarNovoCartao(){
     registrarLog('criar', 'cliente', clienteId, `Novo cliente criado: "${db.clientes.find(c=>c.id===clienteId).nome}" (junto com novo CRM)`);
   registrarLog('criar', 'card', novo.id, `Novo CRM #${novo.num} — ${db.clientes.find(c=>c.id===clienteId).nome}`);
 
-  const btn = btnModalPrimario();
-  btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
   try{
     if(box.classList.contains('open')){
@@ -13065,14 +13094,21 @@ function abrirNovaOS(cardId){
     <input id="nos-hist" placeholder="Ex.: O.S. criada para atender solicitação do cliente">
     <div class="actions">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
-      <button class="btn primary" style="margin-left:auto" onclick="salvarNovaOS(${cardId})">Criar O.S.</button>
+      <button class="btn primary" data-btn-salvar style="margin-left:auto" onclick="salvarNovaOS(${cardId})">Criar O.S.</button>
     </div>`, 'cartao');
 }
 
 async function salvarNovaOS(cardId){
+  // v1.46.9: trava o botão antes do await proximoIdSeguro — esta função nunca teve
+  // nenhuma proteção contra duplo-clique (mesma classe de bug corrigida em
+  // salvarNovoCartao/novaProposta/salvarNovoSRM/salvarNovaNF), permitindo criar
+  // duas O.S. duplicadas com um clique duplo.
+  const btn = btnModalPrimario();
+  if(btn?.disabled) return;
   const c = db.cards.find(x=>x.id===cardId);
   const titulo = document.getElementById('nos-titulo').value.trim();
   if(!titulo){ alert('Informe o título da O.S.'); return; }
+  btnSalvando(btn);
   const tipo  = document.getElementById('nos-tipo').value;
   const faseId = +document.getElementById('nos-fase').value;
   const respId = +document.getElementById('nos-resp').value || null;
@@ -15830,6 +15866,11 @@ function abaAprovadaHTML(c){
 async function novaProposta(cardId){
   const c=db.cards.find(x=>x.id===cardId);
   if(!propostasDoCartaoVisiveis(c)) return;
+  // v1.46.9: trava o botão antes do await proximoIdSeguro — mesmo bug de duplo-clique
+  // corrigido em salvarNovoCartao/salvarNovoCliente (await antes do disable permitia
+  // um 2º clique reentrar e criar proposta duplicada).
+  const btnNP = document.getElementById('btn-nova-proposta');
+  if(btnNP?.disabled) return;
   const numero=document.getElementById('pn-numero').value.trim();
   if(!numero){ alert('Informe o número da proposta.'); return; }
   if(db.propostas.some(p=>p.numero.toLowerCase()===numero.toLowerCase())){ alert('Já existe uma proposta com esse número.'); return; }
@@ -15838,13 +15879,12 @@ async function novaProposta(cardId){
   const grandes=files.filter(f=>f.size>15*1024*1024);
   if(grandes.length){ alert('Arquivo acima de 15MB: '+grandes[0].name); return; }
 
+  const stNP  = document.getElementById('status-nova-proposta');
+  if(btnNP){ btnNP.disabled=true; btnNP.textContent='⏳ Aguarde...'; }
   let valor=+document.getElementById('pn-valor').value||0;
   let dataEmissao=document.getElementById('pn-data').value||localDia(0);
   const propId = await proximoIdSeguro('propostas', db.propostas);
   const arquivos=[];
-  const btnNP = document.getElementById('btn-nova-proposta');
-  const stNP  = document.getElementById('status-nova-proposta');
-  if(btnNP){ btnNP.disabled=true; btnNP.textContent='⏳ Aguarde...'; }
   try {
     for(let i=0; i<files.length; i++){
       const f = files[i];
@@ -16660,8 +16700,12 @@ function abrirNovoCliente(){
     </div>`);
 }
 async function salvarNovoCliente(){
+  // v1.46.9: trava o botão antes do await (mesmo bug de duplo-clique do salvarNovoCartao)
+  const btn = btnModalPrimario();
+  if(btn?.disabled) return;
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return; }
+  btnSalvando(btn);
   const end=lerEndereco();
   const clienteId = await proximoIdSeguro('clientes', db.clientes);
   const cli = {
@@ -16675,8 +16719,6 @@ async function salvarNovoCliente(){
   db.clientes.push(cli);
   registrarLog('criar','cliente',clienteId,`Cliente criado: ${nome}`);
 
-  const btn = btnModalPrimario();
-  btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
   try{
     const {error} = await sb.from('clientes').upsert({
