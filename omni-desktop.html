@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.0';
+const APP_VERSION = '1.47.1';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.1',
+    data: '07/07/2026',
+    itens: [
+      'Na aba "Itens" da O.S. de Obra, itens marcados "Cliente Fornece" já alocados na O.S. agora mostram um aviso "🚫 não baixa do nosso estoque" — deixando claro que esse item não gera nenhuma movimentação de estoque, mesmo sendo categoria produto.',
+    ]
+  },
   {
     versao: '1.47.0',
     data: '07/07/2026',
@@ -15033,7 +15040,10 @@ function abrirSeletorItensOS(osId, cardId){
         const cf = itOrig?.clienteFornece || reg.clienteFornece;
         return `
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
-          <span style="flex:1;font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
+          <div style="flex:1">
+            <span style="font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
+            ${cf && os.tipo==='execucao' ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">🚫 não baixa do nosso estoque</div>` : ''}
+          </div>
           <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
           <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
         </div>`;}).join('')
