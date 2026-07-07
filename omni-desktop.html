@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.1';
+const APP_VERSION = '1.47.2';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.2',
+    data: '07/07/2026',
+    itens: [
+      'Removida a opção de criar produto novo direto no mini-modal "Vincular ao Catálogo de Estoque" (aba Itens da O.S. de Obra) — agora só lista produtos já cadastrados. Se não tiver o produto ainda, cadastre em Estoque → Almoxarifado → "＋ Novo Produto" (formulário completo, com NCM/categoria/nome fiscal) e volte pra vincular.',
+    ]
+  },
   {
     versao: '1.47.1',
     data: '07/07/2026',
@@ -15128,6 +15135,11 @@ async function removerItemSit(osId, key, propostaId, idx, cardId){
  *  do catálogo de estoque (ou criar um novo), antes de permitir alocá-lo numa O.S. de Obra
  *  — mesmo espírito do casamento já usado no lançamento de NF (matchProdutoEstoque), só
  *  que aqui por nome aproximado (proposta não tem NCM/nome fiscal). */
+/* v1.47.2: removida de propósito a opção de criar produto novo direto daqui — só lista
+   produtos já cadastrados no catálogo (via Estoque > Almoxarifado > "＋ Novo Produto",
+   formulário completo com NCM/categoria/nome fiscal). Motivo: criar produto só com nome
+   comercial, sem os outros dados, gerava registros incompletos no catálogo (visto nos
+   testes desse recurso). */
 function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
   const p = db.propostas.find(x=>x.id===propostaId);
   const it = p?.itens?.[idx];
@@ -15141,22 +15153,19 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
         <div style="font-size:12px;color:var(--muted)">Item da proposta</div>
         <div style="font-weight:600">${escHtml(it.descricao||it.item)}</div>
       </div>
-      <p style="font-size:12px;color:var(--muted);margin:0">Esse item baixa do estoque quando alocado numa O.S. de Obra. Confirme a qual produto do catálogo ele corresponde (ou cadastre um novo) — só é perguntado uma vez por item de proposta.</p>
+      <p style="font-size:12px;color:var(--muted);margin:0">Esse item baixa do estoque quando alocado numa O.S. de Obra. Confirme a qual produto do catálogo ele corresponde — só é perguntado uma vez por item de proposta.</p>
+      ${produtos.length ? `
       <div>
         <label>Produto do catálogo *</label>
-        <select id="vpe-sel" onchange="document.getElementById('vpe-novo').style.display=this.value?'none':''">
-          <option value="">— Criar novo produto —</option>
+        <select id="vpe-sel">
+          <option value="">— Selecione —</option>
           ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
         </select>
-      </div>
-      <div id="vpe-novo" style="${sugestao?'display:none':''}">
-        <label>Nome comercial do novo produto *</label>
-        <input id="vpe-nome" placeholder="Nome comercial" value="${escHtml(normalizarNomeProduto(it.descricao||it.item)||'')}">
-      </div>
+      </div>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra vincular.</div>`}
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="abrirSeletorItensOS(${osId},${cardId})">← Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEstoque(${osId},${cardId},${propostaId},${idx},${qtd})">Confirmar e Adicionar</button>
+      ${produtos.length ? `<button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEstoque(${osId},${cardId},${propostaId},${idx},${qtd})">Confirmar e Adicionar</button>` : ''}
     </div>`, 'cartao');
 }
 
@@ -15165,18 +15174,10 @@ async function confirmarVincularProdutoEstoque(osId, cardId, propostaId, idx, qt
   const it = p?.itens?.[idx];
   if(!it) return;
   const selVal = document.getElementById('vpe-sel')?.value;
+  const produtoId = parseInt(selVal)||null;
+  if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
   const btn = btnModalPrimario();
   btnSalvando(btn);
-  let produtoId = parseInt(selVal)||null;
-  if(!produtoId){
-    const nomeNovo = (document.getElementById('vpe-nome')?.value||'').trim();
-    if(!nomeNovo){ btnRestaurar(btn); alert('Informe o nome do novo produto.'); return; }
-    const {data, error} = await sb.from('estoque_produtos').insert({nome:nomeNovo, unidade:it.tipo||'un', descricao:'', ativo:true}).select().single();
-    if(error){ btnRestaurar(btn); alert('Erro ao criar produto: '+error.message); return; }
-    produtoId = data.id;
-    if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
-    db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:null,ncm:null,unidade:data.unidade||'un',descricao:'',ativo:true,categoriaId:null,criadoEm:data.criado_em||''});
-  }
   it.produtoEstoqueId = produtoId;
   await sincronizarItensProposta(propostaId);
   const os = db.ordensServico.find(x=>x.id===osId);
