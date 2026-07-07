@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.7';
+const APP_VERSION = '1.46.8';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.8',
+    data: '07/07/2026',
+    itens: [
+      'Corrigido: a máscara de CPF/CNPJ (v1.46.7) apagaria o registro do fornecedor "Anthropic PBC", que está cadastrado como "Estrangeiro" em vez de um número — auditoria nos fornecedores já cadastrados encontrou esse caso antes de ir pro ar. Agora, se o campo tiver qualquer letra, a máscara não mexe.',
+    ]
+  },
   {
     versao: '1.46.7',
     data: '07/07/2026',
@@ -4389,8 +4396,13 @@ function fmtTel(v){
    sozinha qual dos dois formatos aplicar pela quantidade de dígitos já digitados:
    até 11 dígitos vira CPF (000.000.000-00); a partir do 12º dígito, o texto inteiro
    é reformatado do zero como CNPJ (00.000.000/0000-00). Mesmo princípio de
-   mascaraTel()/fmtTel(), só que com a decisão extra de qual máscara usar. */
+   mascaraTel()/fmtTel(), só que com a decisão extra de qual máscara usar.
+   v1.46.8: auditoria nos fornecedores já cadastrados encontrou o registro "Anthropic PBC"
+   com cnpj_cpf = "Estrangeiro" (texto livre, fornecedor sem CPF/CNPJ brasileiro). Uma
+   máscara que só aceita dígito quebraria esse caso (apagaria o texto). Por isso, se o
+   valor tiver qualquer letra, a máscara não mexe — deixa digitar/exibir livremente. */
 function mascaraCpfCnpj(el){
+  if(/[a-zA-Z]/.test(el.value)) return;
   let v = el.value.replace(/\D/g,'').slice(0,14);
   if(v.length<=11){
     v = v.replace(/(\d{3})(\d)/,'$1.$2')
