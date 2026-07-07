@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.2';
+const APP_VERSION = '1.46.3';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.3',
+    data: '07/07/2026',
+    itens: [
+      'O.S. Avulsa: a aba Geral não depende mais do botão "Salvar alterações" — ele só existia nessa aba e sumia nas outras, e trocar de aba sem salvar perdia a edição em silêncio. Agora cada campo (fase, responsável, tipo de atendimento, agendamento, datas, descrição do chamado) salva sozinho assim que é alterado, igual todas as outras abas da O.S. já funcionavam, com um aviso rápido "✔ Salvo automaticamente".',
+    ]
+  },
   {
     versao: '1.46.2',
     data: '07/07/2026',
@@ -13889,14 +13896,15 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
 
   if(aba === 'geral'){
     tabContent = `
+      ${podeEditar && !os.fechada ? `<div id="avl-save-status" style="font-size:12px;color:#2e7d32;font-weight:600;min-height:16px;margin-bottom:6px"></div>` : ''}
       <div class="form-row">
         <div>
           <label>Fase da O.S.</label>
-          <select id="avl-fase" ${dis}>${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
+          <select id="avl-fase" ${dis} onchange="autoSalvarCampoOS(${osId},'faseId',+this.value||undefined,'avl-save-status')">${fasesOSOrdenadas().map(f=>`<option value="${f.id}" ${f.id===os.faseId?'selected':''}>${f.nome}</option>`).join('')}</select>
         </div>
         <div>
           <label>Responsável</label>
-          <select id="avl-resp" ${dis}>
+          <select id="avl-resp" ${dis} onchange="autoSalvarCampoOS(${osId},'responsavelId',+this.value||null,'avl-save-status')">
             <option value="">— Selecione —</option>
             ${db.usuarios.filter(u=>u.ativo!==false).map(u=>`<option value="${u.id}" ${u.id===os.responsavelId?'selected':''}>${u.nome}</option>`).join('')}
           </select>
@@ -13905,7 +13913,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       <div class="form-row">
         <div>
           <label>Tipo de Atendimento</label>
-          <select id="avl-tipo-atend" ${dis}>
+          <select id="avl-tipo-atend" ${dis} onchange="autoSalvarCampoOS(${osId},'tipoAtendimento',this.value||'a_definir','avl-save-status')">
             <option value="a_definir" ${tipoAtend==='a_definir'?'selected':''}>❓ A definir</option>
             <option value="garantia"  ${tipoAtend==='garantia' ?'selected':''}>🛡 Garantia</option>
             <option value="cobrado"   ${tipoAtend==='cobrado'  ?'selected':''}>💰 Cobrado</option>
@@ -13914,19 +13922,19 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         <div>
           <label>Agendamento</label>
           <div style="display:flex;gap:6px;align-items:center">
-            <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1">
+            <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'avl-save-status')">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
             ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
           </div>
         </div>
       </div>
       <div class="form-row">
-        <div><label>Início real</label><input id="avl-di" type="datetime-local" value="${os.dataInicio||''}" ${dis}></div>
-        <div><label>Término real</label><input id="avl-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis}></div>
+        <div><label>Início real</label><input id="avl-di" type="datetime-local" value="${os.dataInicio||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataInicio',this.value,'avl-save-status')"></div>
+        <div><label>Término real</label><input id="avl-dt" type="datetime-local" value="${os.dataTermino||''}" ${dis} onchange="autoSalvarCampoOS(${osId},'dataTermino',this.value,'avl-save-status')"></div>
       </div>
       <div style="margin-top:8px">
         <label>Descrição do Chamado</label>
-        <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis}>${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
+        <textarea id="avl-descricao" rows="5" placeholder="Descreva o que o cliente reportou ou solicitou..." style="resize:vertical;font-size:13px;width:100%;box-sizing:border-box" ${dis} onchange="autoSalvarCampoOS(${osId},'descricaoChamado',this.value,'avl-save-status')">${(os.descricaoChamado||'').replace(/</g,'&lt;')}</textarea>
       </div>
       `;
   }
@@ -14181,7 +14189,6 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>` : '')
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
-        ${podeEditar && !os.fechada && aba==='geral' ? `<button class="btn primary" id="btn-salvar-os-${osId}" onclick="salvarDadosOSAvulsa(${osId},${cardId})">Salvar alterações</button>` : ''}
       </div>
     </div>`, 'cartao');
 }
@@ -14516,21 +14523,27 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
   }
 }
 
-function salvarDadosOSAvulsa(osId, cardId){
-  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para editar esta O.S.'); return; }
-  const btn = document.getElementById(`btn-salvar-os-${osId}`);
-  if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
+/* v1.46.3: a aba Geral da O.S. Avulsa deixou de depender de um botão "Salvar
+   alterações" (que só aparecia nessa aba, sumindo nas outras e deixando trocar
+   de aba sem salvar como uma armadilha silenciosa de perda de edição). Agora
+   cada campo salva sozinho no onchange, igual todas as outras abas da O.S.
+   (Itens/Custos/Fotos/Equipe/Histórico) já faziam — comportamento unificado.
+   autoSalvarCampoOS() substitui a antiga salvarDadosOSAvulsa(). */
+function autoSalvarCampoOS(osId, campo, valor, statusElId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
   const os = db.ordensServico.find(x=>x.id===osId);
-  os.faseId          = +document.getElementById('avl-fase').value || os.faseId;
-  os.responsavelId   = +document.getElementById('avl-resp').value || null;
-  os.tipoAtendimento = document.getElementById('avl-tipo-atend').value || 'a_definir';
-  os.dataAgend       = document.getElementById('avl-agend').value || '';
-  os.dataInicio      = document.getElementById('avl-di').value || '';
-  os.dataTermino     = document.getElementById('avl-dt').value || '';
-  os.descricaoChamado = document.getElementById('avl-descricao').value || '';
+  if(!os || valor===undefined || os[campo]===valor) return;
+  os[campo] = valor;
   registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
   save(); renderAll();
-  setTimeout(()=>{ abrirVerOSAvulsa(osId, cardId, 'geral'); }, 400);
+  if(statusElId){
+    const el = document.getElementById(statusElId);
+    if(el){
+      el.textContent = '✔ Salvo automaticamente';
+      clearTimeout(el._clearTimer);
+      el._clearTimer = setTimeout(()=>{ el.textContent=''; }, 2500);
+    }
+  }
 }
 
 async function adicionarTecnicoAVL(osId, cardId){
