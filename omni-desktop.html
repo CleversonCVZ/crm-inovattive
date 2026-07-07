@@ -1268,11 +1268,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.46.10';
+const APP_VERSION = '1.46.11';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.46.11',
+    data: '07/07/2026',
+    itens: [
+      'A aba "Custo M.Obra" do cartão CRM (dentro de Obras) — que já existia pras O.S. de Execução/Obra e Projeto — agora aceita lançar tanto 👷 técnico interno (como já era) quanto 🏢 fornecedor contratado (ex.: ZW, Jair e outros terceirizados sem login no sistema). Lançamentos antigos continuam funcionando normalmente.',
+    ]
+  },
   {
     versao: '1.46.10',
     data: '07/07/2026',
@@ -8796,6 +8803,19 @@ function abaObraCompras(c, ob){
 }
 
 /* ================= CUSTO MÃO DE OBRA ================= */
+/* v1.46.11: cada lançamento de M.O. agora pode ser 👷 técnico interno (usuário do
+   sistema, como sempre foi) OU 🏢 fornecedor contratado (empresa/pessoa terceirizada
+   sem login, ex.: ZW, Jair) — campo `tipo` novo no item; itens antigos (sem `tipo`,
+   só com tecnicoId) continuam funcionando normalmente, tratados como 'tecnico'. */
+function nomeMOItem(t){
+  if((t.tipo||'tecnico')==='fornecedor'){
+    const f=(db.fornecedores||[]).find(x=>x.id===t.fornecedorId);
+    return '🏢 '+(f?f.nome:'Fornecedor removido');
+  }
+  const u=db.usuarios.find(x=>x.id===t.tecnicoId);
+  return '👷 '+(u?u.nome:'Usuário removido');
+}
+
 function abaObraCustoMobra(c, ob){
   const podeEditar = podeEditarRecurso(usuarioAtual,'obra-custo-mo');
   const osDoCard = db.ordensServico.filter(o=>o.cardId===c.id && o.tipo!=='avulsa');
@@ -8823,10 +8843,7 @@ function abaObraCustoMobra(c, ob){
             <span style="background:${tipoColor[os.tipo]||'#555'};color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px">${tipoLabel[os.tipo]||os.tipo}</span>
             <span style="font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${os.titulo}</span>
           </div>
-          ${tecs.length ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">${tecs.map(t=>{
-            const u=db.usuarios.find(x=>x.id===t.tecnicoId);
-            return `${u?u.nome:'?'}: ${fmtR(t.valor)}`;
-          }).join(' · ')}</div>` : ''}
+          ${tecs.length ? `<div style="font-size:12px;color:var(--muted);margin-top:3px">${tecs.map(t=>`${nomeMOItem(t)}: ${fmtR(t.valor)}`).join(' · ')}</div>` : ''}
         </div>
         <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap;flex-shrink:0">${fmtR(totalOS)}</span>
         ${podeEditar?`<button class="btn sm primary" style="flex-shrink:0;font-size:11px" onclick="abrirSeletorMOOS(${os.id},${c.id})">👷 Lançar</button>`:''}
@@ -8838,50 +8855,77 @@ function abaObraCustoMobra(c, ob){
     </div>`;
 }
 
-function abrirSeletorMOOS(osId, cardId){
+function abrirSeletorMOOS(osId, cardId, tipoSel='tecnico'){
   const os       = db.ordensServico.find(x=>x.id===osId);
   const usuarios = db.usuarios.filter(u=>u.ativo!==false);
-  const tecs     = os.custoMO?.tecnicos||[];
+  const fornecedoresAtivos = (db.fornecedores||[]).filter(f=>f.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const itens    = os.custoMO?.tecnicos||[];
   const fmtR     = v => v>0 ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-  const totalOS  = tecs.reduce((s,t)=>s+(+t.valor||0),0);
-  const disponiveis = usuarios.filter(u=>!tecs.some(t=>t.tecnicoId===u.id));
+  const totalOS  = itens.reduce((s,t)=>s+(+t.valor||0),0);
+  const tecDisponiveis  = usuarios.filter(u=>!itens.some(t=>(t.tipo||'tecnico')==='tecnico' && t.tecnicoId===u.id));
+  const fornDisponiveis = fornecedoresAtivos.filter(f=>!itens.some(t=>t.tipo==='fornecedor' && t.fornecedorId===f.id));
 
   abrirModal(`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <h3 style="margin:0">👷 M.O. da O.S.</h3>
       <span style="font-size:13px;color:var(--muted)">${os.numero} — ${os.titulo}</span>
     </div>
-    ${disponiveis.length ? `
     <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:20px">
-      <label style="font-weight:700;font-size:13px;display:block;margin-bottom:10px">Adicionar técnico</label>
-      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-        <div style="flex:1;min-width:180px">
-          <label style="font-size:11px;color:var(--muted)">Técnico</label>
-          <select id="mo-sel" style="width:100%;font-size:13px">
-            <option value="">— Selecione —</option>
-            ${disponiveis.map(u=>`<option value="${u.id}">${u.nome}</option>`).join('')}
-          </select>
-        </div>
-        <div style="width:120px;flex-shrink:0">
-          <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
-          <input type="number" id="mo-valor" min="0" step="0.01" value="0"
-            style="width:100%;text-align:right;font-size:14px;font-weight:700">
-        </div>
-        <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarMOOS(${osId},${cardId})">＋ Adicionar</button>
+      <label style="font-weight:700;font-size:13px;display:block;margin-bottom:10px">Adicionar lançamento</label>
+      <div style="display:flex;gap:16px;margin-bottom:12px">
+        <label style="font-size:13px;font-weight:${tipoSel==='tecnico'?'700':'400'};cursor:pointer">
+          <input type="radio" name="mo-tipo" value="tecnico" ${tipoSel==='tecnico'?'checked':''} onchange="abrirSeletorMOOS(${osId},${cardId},'tecnico')"> 👷 Técnico interno
+        </label>
+        <label style="font-size:13px;font-weight:${tipoSel==='fornecedor'?'700':'400'};cursor:pointer">
+          <input type="radio" name="mo-tipo" value="fornecedor" ${tipoSel==='fornecedor'?'checked':''} onchange="abrirSeletorMOOS(${osId},${cardId},'fornecedor')"> 🏢 Fornecedor contratado
+        </label>
       </div>
-    </div>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:20px">Todos os usuários já foram lançados.</div>`}
-    <label style="font-weight:700;font-size:13px">Técnicos lançados</label>
-    <div id="mo-lista" style="margin-top:8px;min-height:40px">
-      ${tecs.length ? tecs.map((t,i)=>{
-        const u=db.usuarios.find(x=>x.id===t.tecnicoId);
-        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <span style="flex:1;font-size:13px;font-weight:600">${u?u.nome:'?'}</span>
-          <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${fmtR(t.valor)}</span>
-          <button class="icon-btn del" title="Remover" onclick="removerMOOS(${osId},${i},${cardId})">✖</button>
-        </div>`;
-      }).join('') : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum técnico lançado ainda.</div>`}
+      ${tipoSel==='fornecedor' ? (
+        fornDisponiveis.length ? `
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <label style="font-size:11px;color:var(--muted)">Fornecedor</label>
+            <select id="mo-forn-sel" style="width:100%;font-size:13px">
+              <option value="">— Selecione —</option>
+              ${fornDisponiveis.map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div style="width:120px;flex-shrink:0">
+            <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+            <input type="text" inputmode="decimal" id="mo-valor" placeholder="0,00" oninput="mascaraMoeda(this)"
+              style="width:100%;text-align:right;font-size:14px;font-weight:700">
+          </div>
+          <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarMOOS(${osId},${cardId},'fornecedor')">＋ Adicionar</button>
+        </div>` : `<div style="font-size:13px;color:var(--muted)">${fornecedoresAtivos.length?'Todos os fornecedores ativos já foram lançados.':'Nenhum fornecedor cadastrado ainda.'}</div>`
+      ) : (
+        tecDisponiveis.length ? `
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:180px">
+            <label style="font-size:11px;color:var(--muted)">Técnico</label>
+            <select id="mo-sel" style="width:100%;font-size:13px">
+              <option value="">— Selecione —</option>
+              ${tecDisponiveis.map(u=>`<option value="${u.id}">${u.nome}</option>`).join('')}
+            </select>
+          </div>
+          <div style="width:120px;flex-shrink:0">
+            <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
+            <input type="text" inputmode="decimal" id="mo-valor" placeholder="0,00" oninput="mascaraMoeda(this)"
+              style="width:100%;text-align:right;font-size:14px;font-weight:700">
+          </div>
+          <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarMOOS(${osId},${cardId},'tecnico')">＋ Adicionar</button>
+        </div>` : `<div style="font-size:13px;color:var(--muted)">Todos os técnicos já foram lançados.</div>`
+      )}
     </div>
-    ${tecs.length ? `<div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--border);display:flex;justify-content:flex-end;gap:10px;align-items:center">
+    <label style="font-weight:700;font-size:13px">Lançamentos</label>
+    <div id="mo-lista" style="margin-top:8px;min-height:40px">
+      ${itens.length ? itens.map((t,i)=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span style="flex:1;font-size:13px;font-weight:600">${nomeMOItem(t)}</span>
+          <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${fmtR(t.valor)}</span>
+          <button class="icon-btn del" title="Remover" onclick="removerMOOS(${osId},${i},${cardId},'${tipoSel}')">✖</button>
+        </div>`).join('') : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum lançamento ainda.</div>`}
+    </div>
+    ${itens.length ? `<div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--border);display:flex;justify-content:flex-end;gap:10px;align-items:center">
       <span style="font-size:13px;color:var(--muted)">Total M.O. desta O.S.:</span>
       <span style="font-size:16px;font-weight:800;color:#26a69a">${fmtR(totalOS)}</span>
     </div>` : ''}
@@ -8890,23 +8934,30 @@ function abrirSeletorMOOS(osId, cardId){
     </div>`);
 }
 
-async function adicionarMOOS(osId, cardId){
-  const uid   = +document.getElementById('mo-sel')?.value;
-  const valor = +document.getElementById('mo-valor')?.value||0;
-  if(!uid){ alert('Selecione um técnico.'); return; }
+async function adicionarMOOS(osId, cardId, tipo='tecnico'){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os.custoMO) os.custoMO={tecnicos:[]};
   if(!Array.isArray(os.custoMO.tecnicos)) os.custoMO.tecnicos=[];
-  os.custoMO.tecnicos.push({tecnicoId:uid, valor});
+  let item;
+  if(tipo==='fornecedor'){
+    const fid = +document.getElementById('mo-forn-sel')?.value;
+    if(!fid){ alert('Selecione um fornecedor.'); return; }
+    item = {tipo:'fornecedor', fornecedorId:fid, tecnicoId:null, valor:lerMoeda('mo-valor')};
+  } else {
+    const uid = +document.getElementById('mo-sel')?.value;
+    if(!uid){ alert('Selecione um técnico.'); return; }
+    item = {tipo:'tecnico', tecnicoId:uid, fornecedorId:null, valor:lerMoeda('mo-valor')};
+  }
+  os.custoMO.tecnicos.push(item);
   await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
-  save(); abrirSeletorMOOS(osId, cardId);
+  save(); abrirSeletorMOOS(osId, cardId, tipo);
 }
 
-async function removerMOOS(osId, idx, cardId){
+async function removerMOOS(osId, idx, cardId, tipoSel='tecnico'){
   const os = db.ordensServico.find(x=>x.id===osId);
   os.custoMO.tecnicos.splice(idx,1);
   await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
-  save(); abrirSeletorMOOS(osId, cardId);
+  save(); abrirSeletorMOOS(osId, cardId, tipoSel);
 }
 
 /* ===== Contas Recorrentes ===== */
