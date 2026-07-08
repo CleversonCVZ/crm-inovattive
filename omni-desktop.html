@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.8';
+const APP_VERSION = '1.47.9';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.9',
+    data: '07/07/2026',
+    itens: [
+      'Corrigido: "Fase da obra" e "Status" no cadastro de Obras eram dois campos independentes — dava pra mover uma obra pra fase Concluída/Abandonada e o Status continuar "Ativa" pra sempre, fazendo a obra continuar aparecendo em Registrar Saída de Estoque, Liberar Reserva, Nova Conta a Pagar, Recorrentes e Novo Card SRM mesmo já encerrada. Agora escolher uma fase Concluída/Abandonada já sugere o Status correspondente (ainda editável antes de salvar). 3 obras que já estavam com esse desencontro (Apto Gladimir, Casa Jonathas, Casa Felipe Marochi) foram corrigidas direto no banco.',
+    ]
+  },
   {
     versao: '1.47.8',
     data: '07/07/2026',
@@ -17258,14 +17265,15 @@ function editarObraDoCartao(cardId, clienteId){
 function abrirObraModal(obraId, clienteId, returnCardId=null){
   const o = obraId ? db.obras.find(x=>x.id===obraId) : null;
   const fasesOpts = fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${o&&o.faseId===f.id?'selected':''}>${f.nome}</option>`).join('');
-  const statusOpts = [['ativa','🟢 Ativa'],['pausada','🟡 Pausada'],['concluida','✅ Concluída']].map(([v,l])=>`<option value="${v}" ${(o?o.status||'ativa':'ativa')===v?'selected':''}>${l}</option>`).join('');
+  const statusOpts = [['ativa','🟢 Ativa'],['pausada','🟡 Pausada'],['concluida','✅ Concluída'],['cancelada','🔴 Abandonada']].map(([v,l])=>`<option value="${v}" ${(o?o.status||'ativa':'ativa')===v?'selected':''}>${l}</option>`).join('');
   abrirModal(`
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div><label>Fase da obra</label><select id="o-fase" style="width:100%"><option value="">— sem fase —</option>${fasesOpts}</select></div>
+      <div><label>Fase da obra</label><select id="o-fase" style="width:100%" onchange="_sincronizarStatusPelaFaseObra(this)"><option value="">— sem fase —</option>${fasesOpts}</select></div>
       <div><label>Status</label><select id="o-status" style="width:100%">${statusOpts}</select></div>
     </div>
+    <p style="font-size:11px;color:var(--muted);margin:2px 0 0">Escolher uma fase "Concluída" ou "Abandonada" já sugere o Status correspondente — pode trocar manualmente antes de salvar.</p>
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
     <div class="actions" style="justify-content:space-between">
       <div></div>
@@ -17277,7 +17285,21 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
     </div>`);
 }
 
-
+/* v1.47.9: "Fase da obra" e "Status" eram dois campos 100% independentes nesse modal —
+   dava pra mover uma obra pra fase "Concluída"/"Abandonada" sem NUNCA atualizar o Status,
+   e a obra continuava aparecendo em todo lugar que filtra por status==='ativa' (Estoque:
+   Registrar Saída/Liberar Reserva, Nova Conta a Pagar, Recorrentes, Novo Card SRM) mesmo já
+   "concluída" na prática. Achados 3 casos reais assim em 07/07/2026 (Apto Gladimir, Casa
+   Jonathas, Casa Felipe Marochi) e corrigidos direto no banco. Isso aqui só sugere o Status
+   condizente quando a fase escolhida é do tipo concluida/cancelada — não trava, o usuário
+   ainda pode trocar o Status manualmente antes de salvar. */
+function _sincronizarStatusPelaFaseObra(selFase){
+  const faseId = parseInt(selFase.value)||null;
+  const fase = faseId ? faseObra(faseId) : null;
+  const selStatus = document.getElementById('o-status');
+  if(!selStatus || !fase || !fase.tipo) return;
+  if(fase.tipo==='concluida' || fase.tipo==='cancelada') selStatus.value = fase.tipo;
+}
 
 /* ── CRUD de Outros Contatos do Cartão CRM ──────────────────────────────── */
 async function adicionarContatoCard(cardId){
