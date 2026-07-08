@@ -914,6 +914,15 @@
         <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
         <div id="emp-endereco"></div>
       </div>
+      <div class="config-card">
+        <h3>Alíquotas de Tributos (Faturamento)</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas na tela Faturamento → Previsão de Tributos pra calcular a previsão sobre o valor faturado. Separadas porque produto (ICMS) e serviço (ISS) costumam ter alíquotas diferentes.</p>
+        <div class="form-row">
+          <div><label>Produto (%)</label><input id="emp-aliquota-produto" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+          <div><label>Serviço (%)</label><input id="emp-aliquota-servico" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+        </div>
+        <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
+      </div>
     </div>
   </div>
 
@@ -1052,13 +1061,8 @@
       <h2>Previsão de Tributos</h2>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Cálculo automático da previsão de tributos sobre o faturamento (Notas Fiscais cadastradas em Espelhos de NF), agrupado por mês de emissão.
+      Cálculo automático da previsão de tributos sobre o faturamento (Notas Fiscais cadastradas em Espelhos de NF), agrupado por mês de emissão. As alíquotas de Produto e Serviço são configuradas em Configurações do Sistema.
     </p>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-      <label style="margin:0">Alíquota de tributos (%)</label>
-      <input id="fat-aliquota" type="text" inputmode="decimal" style="width:90px" oninput="mascaraPercentual(this)">
-      <button class="btn sm" onclick="salvarAliquotaTributos()">Salvar</button>
-    </div>
     <table class="lista">
       <thead>
         <tr>
@@ -1270,11 +1274,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.20';
+const APP_VERSION = '1.47.21';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.21',
+    data: '08/07/2026',
+    itens: [
+      'A Alíquota de Tributos (Faturamento → Previsão de Tributos) saiu dessa tela e virou duas alíquotas separadas — Produto e Serviço — configuradas em Configurações do Sistema, já que produto (ICMS) e serviço (ISS) normalmente têm alíquotas diferentes. Preparação pro novo fluxo de Espelhos de Faturamento.',
+    ]
+  },
   {
     versao: '1.47.20',
     data: '08/07/2026',
@@ -2371,7 +2382,10 @@ function load(){
     db.empresa = {logo:'', razao:'', fantasia:'', cnpj:'', ie:'', tel:'', email:'', site:'',
       endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''}};
   }
-  if(!('aliquotaTributos' in db.empresa)) db.empresa.aliquotaTributos = 6;
+  // v1.47.21: alíquota única virou duas (produto/serviço) — se só existir a antiga
+  // (dado local pré-migração), usa ela como valor inicial das duas novas.
+  if(!('aliquotaTributosProduto' in db.empresa)) db.empresa.aliquotaTributosProduto = db.empresa.aliquotaTributos!=null ? db.empresa.aliquotaTributos : 6;
+  if(!('aliquotaTributosServico' in db.empresa)) db.empresa.aliquotaTributosServico = db.empresa.aliquotaTributos!=null ? db.empresa.aliquotaTributos : 6;
   // grupos de acesso (RBAC) + migração do modelo antigo papel/telas por usuário
   if(!Array.isArray(db.grupos) || !db.grupos.length){
     db.grupos = [
@@ -2671,7 +2685,8 @@ async function carregarConfigSupabase(){
         cnpj:empresa.data.cnpj||'', ie:empresa.data.ie||'', tel:empresa.data.tel||'', email:empresa.data.email||'',
         site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''},
         logRetencaoDias: empresa.data.log_retencao_dias || 90,
-        aliquotaTributos: empresa.data.aliquota_tributos!=null ? Number(empresa.data.aliquota_tributos) : 6
+        aliquotaTributosProduto: empresa.data.aliquota_tributos_produto!=null ? Number(empresa.data.aliquota_tributos_produto) : 6,
+        aliquotaTributosServico: empresa.data.aliquota_tributos_servico!=null ? Number(empresa.data.aliquota_tributos_servico) : 6
       };
     }
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
@@ -3109,7 +3124,9 @@ function syncConfigSupabase(){
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
       tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
-      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90, aliquota_tributos: e.aliquotaTributos!=null?e.aliquotaTributos:6
+      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90,
+      aliquota_tributos_produto: e.aliquotaTributosProduto!=null?e.aliquotaTributosProduto:6,
+      aliquota_tributos_servico: e.aliquotaTributosServico!=null?e.aliquotaTributosServico:6
     }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
   }, 800);
 }
@@ -4840,6 +4857,10 @@ function renderGerais(){
   document.getElementById('emp-site').value = e.site||'';
   document.getElementById('emp-endereco').innerHTML = camposEndereco(e.endereco, 'emp', 'Endereço da Empresa');
   document.getElementById('emp-msg').textContent = '';
+  const elAliqP = document.getElementById('emp-aliquota-produto');
+  const elAliqS = document.getElementById('emp-aliquota-servico');
+  if(elAliqP && document.activeElement!==elAliqP) elAliqP.value = String(e.aliquotaTributosProduto??6).replace('.',',');
+  if(elAliqS && document.activeElement!==elAliqS) elAliqS.value = String(e.aliquotaTributosServico??6).replace('.',',');
   const prev = document.getElementById('logo-preview');
   prev.innerHTML = e.logo ? `<img src="${e.logo}" alt="Logotipo">` : '<span class="sem-logo">Nenhum logotipo enviado</span>';
   document.getElementById('logo-remover').style.display = e.logo ? '' : 'none';
@@ -7711,9 +7732,15 @@ function renderFatTributos(){
   const tb=document.getElementById('fat-tributos-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-tributos')) return;
-  const aliqEl = document.getElementById('fat-aliquota');
-  const aliquota = Number((db.empresa||{}).aliquotaTributos)||0;
-  if(aliqEl && document.activeElement!==aliqEl) aliqEl.value = String(aliquota).replace('.',',');
+  // v1.47.21: alíquota virou 2 (produto/serviço), configuradas em Configurações do
+  // Sistema. Os Espelhos de NF ainda não têm a separação produto×serviço por NF
+  // (isso vem com o novo fluxo de Espelhos de Faturamento) — até lá, esse cálculo
+  // usa a MÉDIA das duas alíquotas como aproximação. Trocar por valor exato assim
+  // que cada NF tiver seu valor de produto/serviço discriminado.
+  const empresa = db.empresa||{};
+  const aliqProduto = Number(empresa.aliquotaTributosProduto)||0;
+  const aliqServico = Number(empresa.aliquotaTributosServico)||0;
+  const aliquota = (aliqProduto + aliqServico) / 2;
   const porMes = {};
   (db.notasFiscais||[]).forEach(n=>{
     if(!n.dataEmissao) return;
@@ -7743,15 +7770,20 @@ function renderFatTributos(){
     tb.appendChild(tr);
   });
 }
-function salvarAliquotaTributos(){
-  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para alterar a alíquota de tributos.'); return; }
-  const el = document.getElementById('fat-aliquota');
-  const aliquota = Math.max(0, Math.min(100, parseFloat((el.value||'0').replace(',','.'))||0));
+function salvarAliquotasTributos(){
+  if(!podeEditarTela(usuarioAtual,'gerais')){ alert('Sem permissão para alterar as alíquotas de tributos.'); return; }
+  const elP = document.getElementById('emp-aliquota-produto');
+  const elS = document.getElementById('emp-aliquota-servico');
+  const aliqProduto = Math.max(0, Math.min(100, parseFloat((elP.value||'0').replace(',','.'))||0));
+  const aliqServico = Math.max(0, Math.min(100, parseFloat((elS.value||'0').replace(',','.'))||0));
   db.empresa = db.empresa || {};
-  db.empresa.aliquotaTributos = aliquota;
+  db.empresa.aliquotaTributosProduto = aliqProduto;
+  db.empresa.aliquotaTributosServico = aliqServico;
   save();
-  registrarLog('config','config',null,`Alíquota de tributos (Faturamento) alterada para ${aliquota}%`);
+  registrarLog('config','config',null,`Alíquotas de tributos alteradas: Produto ${aliqProduto}% / Serviço ${aliqServico}%`);
   renderFatTributos();
+  const msg=document.getElementById('emp-msg');
+  if(msg){ msg.textContent='✓ Alíquotas salvas'; setTimeout(()=>{ msg.textContent=''; }, 2000); }
 }
 
 /* ================= CLIENTES ================= */
