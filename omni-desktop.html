@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.9';
+const APP_VERSION = '1.47.10';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.10',
+    data: '07/07/2026',
+    itens: [
+      'Lançamento manual em Contas Correntes: quando o tipo é "🔁 Transferência para outra conta", os campos Centro de Custo e Obra somem — transferência entre contas próprias não é um gasto/receita categorizável (o lado de entrada na conta destino já ignorava esses campos automaticamente; agora o formulário não sugere mais preenchê-los do lado de origem também).',
+    ]
+  },
   {
     versao: '1.47.9',
     data: '07/07/2026',
@@ -10277,7 +10284,7 @@ function abrirLancamentoManual(contaId){
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Descrição *</div>
         <input id="lm-descricao" type="text" placeholder="Ex: Depósito recebido, Pagamento fornecedor..." class="input">
       </div>
-      <div>
+      <div id="lm-cc-wrap">
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
         <select id="lm-cc" class="input" onchange="toggleObraCampoCp('lm-obra-row','lm-cc')">
           <option value="">— nenhum —</option>
@@ -10300,11 +10307,19 @@ function abrirLancamentoManual(contaId){
   abrirModal(html, 'cartao');
 }
 
-/** Mostra/oculta o campo de conta destino quando tipo = transferência */
+/** Mostra/oculta o campo de conta destino quando tipo = transferência.
+ *  v1.47.10: transferência entre contas próprias não é um gasto/receita categorizável —
+ *  o próprio salvarLancamentoManual já zera o centro de custo do lado de entrada (destino)
+ *  numa transferência; o campo Centro de Custo (e Obra, que só aparece dependendo dele)
+ *  também some da tela nesse caso, pra não sugerir uma categorização que não faz sentido. */
 function toggleTransfDestino(){
   const tipo = document.getElementById('lm-tipo').value;
   const wrap = document.getElementById('lm-destino-wrap');
   if(wrap) wrap.style.display = tipo==='transferencia' ? '' : 'none';
+  const ccWrap = document.getElementById('lm-cc-wrap');
+  if(ccWrap) ccWrap.style.display = tipo==='transferencia' ? 'none' : '';
+  const obraRow = document.getElementById('lm-obra-row');
+  if(tipo==='transferencia' && obraRow) obraRow.style.display = 'none';
 }
 
 /** Persiste lançamento manual */
@@ -10314,9 +10329,9 @@ async function salvarLancamentoManual(contaId){
   const valor     = parseFloat(valorStr.replace(/\./g,'').replace(',','.')) || 0;
   const data      = document.getElementById('lm-data').value;
   const descricao = (document.getElementById('lm-descricao').value||'').trim();
-  const ccId      = parseInt(document.getElementById('lm-cc').value) || null;
+  const ccId      = tipo==='transferencia' ? null : (parseInt(document.getElementById('lm-cc').value) || null);
   const ccSel     = (db.centrosCusto||[]).find(x=>x.id===ccId);
-  const obraId    = _ccVinculaObra(ccSel) ? (parseInt(document.getElementById('lm-obra').value)||null) : null;
+  const obraId    = (tipo!=='transferencia' && _ccVinculaObra(ccSel)) ? (parseInt(document.getElementById('lm-obra').value)||null) : null;
   const destinoId = tipo==='transferencia'
     ? (parseInt(document.getElementById('lm-destino').value) || null)
     : null;
