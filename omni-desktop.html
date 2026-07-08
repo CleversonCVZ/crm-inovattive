@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.3';
+const APP_VERSION = '1.47.4';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.4',
+    data: '07/07/2026',
+    itens: [
+      'Classificação de Clientes: a regra "🟢 Cliente" (sem card aberto + obra cadastrada) agora também considera cliente que já recebeu algum valor (parcela recebida ou parcial), não só proposta aprovada — cobre casos como serviço avulso já pago sem uma proposta formalmente aprovada.',
+    ]
+  },
   {
     versao: '1.47.3',
     data: '07/07/2026',
@@ -7621,7 +7628,7 @@ function salvarAliquotaTributos(){
 /* classificarCliente(clienteId):
    Determina o "selo" exibido na ficha de cada cliente. As regras de negócio são:
      🟢 Cliente Ativo  — tem card aberto + proposta aprovada + obra cadastrada
-     🟢 Cliente        — sem card aberto, mas tem obra + proposta aprovada (cliente encerrado/concluído)
+     🟢 Cliente        — sem card aberto, mas tem obra + (proposta aprovada OU já recebeu algum valor)
      🟡 Prospect       — tem card aberto mas sem proposta aprovada ainda
      🔴 Lead Frio      — só tem cards perdidos, sem obra nem proposta aprovada
      ⚪ Ex-cliente/Sem classificação — demais casos
@@ -7647,6 +7654,11 @@ function classificarCliente(clienteId){
     (db.propostas||[]).some(p=>p.cardId===card.id && p.status==='emitida')
   );
 
+  // Já recebeu algum valor (parcela recebida ou parcial) em qualquer card do cliente
+  const temRecebido = cardsCliente.some(card=>
+    (db.recebimentos||[]).some(r=>r.cardId===card.id && (r.status==='recebido'||r.status==='parcial'))
+  );
+
   // Cards com flag perdido (não concluido)
   const temPerdido = cardsCliente.some(c=>c.perdido || (fasesInativas.has(c.faseId) && db.fases.find(f=>f.id===c.faseId)?.tipo==='perdido'));
 
@@ -7654,8 +7666,8 @@ function classificarCliente(clienteId){
   if(cardsAbertos.length > 0 && temAprovada && temObra)
     return {selo:'🟢 Cliente Ativo', cor:'#1d8348'};
 
-  // Regra 2: Cliente — sem card aberto + obra cadastrada + proposta aprovada
-  if(cardsAbertos.length === 0 && temObra && temAprovada)
+  // Regra 2: Cliente — sem card aberto + obra cadastrada + (proposta aprovada ou já recebeu valor)
+  if(cardsAbertos.length === 0 && temObra && (temAprovada || temRecebido))
     return {selo:'🟢 Cliente', cor:'#1a7a4a'};
 
   // Regra 3: Prospect — card aberto + sem proposta aprovada (com ou sem emitida)
