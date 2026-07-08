@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.25';
+const APP_VERSION = '1.47.26';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.26',
+    data: '08/07/2026',
+    itens: [
+      'Itens de Produto do Espelho de Faturamento agora mostram a descrição FISCAL do produto (a mesma cadastrada em Estoque → Catálogo → "Descrição como aparece na NF"), não mais a descrição comercial da proposta — é essa a que vale pra contabilidade emitir a nota. Quando o produto ainda não tem descrição fiscal cadastrada no catálogo, aparece um aviso "⚠ sem descrição fiscal" e o nome comercial é usado como fallback, pra não travar o fluxo.',
+    ]
+  },
   {
     versao: '1.47.25',
     data: '08/07/2026',
@@ -3074,6 +3081,7 @@ async function carregarDadosSupabase(){
       db.faturamentoItens = faturamentoItensRes.data.map(x=>({
         id:x.id, notaFiscalId:x.nota_fiscal_id, tipo:x.tipo,
         osId:x.os_id||null, propostaId:x.proposta_id||null, propostaIdx:x.proposta_idx!=null?Number(x.proposta_idx):null,
+        produtoEstoqueId:x.produto_estoque_id||null,
         descricao:x.descricao||'', quantidade:x.quantidade!=null?Number(x.quantidade):null,
         valorUnitario:x.valor_unitario!=null?Number(x.valor_unitario):null, valorTotal:x.valor_total!=null?Number(x.valor_total):null
       }));
@@ -7591,6 +7599,17 @@ function excluirFatFase(id){
 }
 
 /* ================= ESPELHOS DE FATURAMENTO: itens disponíveis (v1.47.22) ================= */
+/* v1.47.26: a NF de venda precisa da descrição FISCAL do produto (a mesma que o
+ * catálogo de Estoque guarda em `nomeFiscal`, preenchida ao importar XML de NF de
+ * compra), não da descrição comercial da proposta — são coisas diferentes e só a
+ * fiscal é válida pra contabilidade emitir a nota. Retorna null se o item não tem
+ * produtoEstoqueId vinculado ou se o produto do catálogo ainda não tem nomeFiscal
+ * cadastrado (nesses casos a tela avisa e cai pro nome comercial). */
+function descricaoFiscalProduto(produtoEstoqueId){
+  if(!produtoEstoqueId) return null;
+  const p = (db.estoqueProdutos||[]).find(x=>x.id===produtoEstoqueId);
+  return p?.nomeFiscal || null;
+}
 /* Materiais: itens de O.S. de Execução (categoria produto, não clienteFornece)
  * que já têm baixa de estoque registrada em os.itensTrabalho — usa o valor de
  * VENDA (unit da proposta), não o custo de compra. Some da lista assim que
@@ -7616,6 +7635,7 @@ function itensProdutoDisponiveis(cardId){
       linhas.push({
         osId: os.id, osNumero: os.numero, propostaId: m.propostaId, propostaIdx: m.idx,
         descricao: m.descricao || it?.descricao || it?.item || '',
+        descricaoFiscal: descricaoFiscalProduto(m.produtoEstoqueId),
         quantidade: m.qtdOS, valorUnitario: unit, valorTotal: unit*m.qtdOS,
         produtoEstoqueId: m.produtoEstoqueId||null
       });
@@ -7678,10 +7698,12 @@ async function adicionarItemFaturamentoMaterial(nfId, cardId, osId, propostaId, 
     const novo = {
       id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
       notaFiscalId:nfId, tipo:'material', osId:linha.osId, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+      produtoEstoqueId:linha.produtoEstoqueId||null,
       descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
     };
     const {error} = await sb.from('faturamento_itens').insert({
       id:novo.id, nota_fiscal_id:nfId, tipo:'material', os_id:novo.osId, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
+      produto_estoque_id:novo.produtoEstoqueId,
       descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
     });
     if(error){ alert('Erro ao adicionar item: '+error.message); return; }
@@ -7957,11 +7979,15 @@ function abaEspelhoProdutosHTML(nf){
   const linhas = itens.map(i=>{
     const os = (db.ordensServico||[]).find(o=>o.id===i.osId);
     const nfsCompra = i.produtoEstoqueId ? nfsEntradaDoProduto(i.produtoEstoqueId, nf.obraId) : [];
+    const descFiscal = descricaoFiscalProduto(i.produtoEstoqueId);
     return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
-          <div style="font-weight:600">${escHtml(i.descricao)}</div>
+          <div style="font-weight:600">${escHtml(descFiscal || i.descricao)}</div>
+          ${descFiscal
+            ? `<div style="font-size:11px;color:var(--muted)">Nome comercial (proposta): ${escHtml(i.descricao)}</div>`
+            : `<div style="font-size:11px;color:#e65100">⚠ Sem descrição fiscal cadastrada no catálogo (Estoque → Catálogo) — confirme com a contabilidade antes de enviar</div>`}
           <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)} · O.S. ${os?os.numero:'—'}</div>
           ${nfsCompra.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">NF(s) de compra: ${nfsCompra.map(n=>`${escHtml(n.numero||'—')} (${n.data?fmtDia2(n.data):'—'})`).join(', ')}</div>`:''}
         </div>
@@ -7979,7 +8005,7 @@ function abaEspelhoProdutosHTML(nf){
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Disponíveis pra adicionar</div>
       ${disponiveis.map(l=>`
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (O.S. ${(db.ordensServico||[]).find(o=>o.id===l.osId)?.numero||'—'})</span></div>
+          <div style="font-size:13px">${escHtml(l.descricaoFiscal || l.descricao)}${l.descricaoFiscal?'':' <span style="color:#e65100;font-size:11px">⚠ sem descrição fiscal</span>'} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (O.S. ${(db.ordensServico||[]).find(o=>o.id===l.osId)?.numero||'—'})</span></div>
           <button class="btn-xs" onclick="adicionarItemFaturamentoMaterial(${nf.id},${nf.cardId},${l.osId},${l.propostaId},${l.propostaIdx})">+ Adicionar</button>
         </div>`).join('')}
     </div>` : '';
