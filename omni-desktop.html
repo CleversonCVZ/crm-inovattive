@@ -914,6 +914,12 @@
         <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
         <div id="emp-endereco"></div>
       </div>
+      <div class="config-card" id="config-migracao-temp">
+        <h3>Migração temporária (Fabio Amaro → SRM)</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Executar uma vez para copiar os PDFs de pedido/NF já anexados na aba Compras da obra do cartão #4 para os 7 Cards SRM criados como histórico. Depois de rodar com sucesso, este botão pode ser removido do código.</p>
+        <button id="btn-migrar-pdfs-fabio" class="btn primary" onclick="migrarPdfsComprasFabioAmaro()">🔄 Migrar PDFs Fabio Amaro → SRM (executar 1x)</button>
+        <p id="migrar-pdfs-status" style="font-size:12px;margin-top:8px"></p>
+      </div>
     </div>
   </div>
 
@@ -1269,11 +1275,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.11';
+const APP_VERSION = '1.47.12';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.12',
+    data: '08/07/2026',
+    itens: [
+      'Importados para o SRM, como histórico, os 7 pedidos de material já registrados na aba Compras da obra do Cartão CRM #4 (Fabio Amaro) — cada um virou um Card SRM já encerrado (fase "Recebido"), vinculado à obra e ao Centro de Custo "Material de Obra", com a NF correspondente. Não gerou Conta a Pagar nem lançamento em Estoque (cards vinculados a obra específica já não permitem lançar estoque). Botão temporário em Configurações para migrar também os PDFs originais.',
+    ]
+  },
   {
     versao: '1.47.11',
     data: '08/07/2026',
@@ -6732,6 +6745,63 @@ async function uploadPdfNfSRM(input, cotId, srmId){
     if(statusEl) statusEl.textContent='❌ Erro: '+(e.message||e);
     if(progEl) progEl.style.display='none';
   }
+}
+
+/* v1.47.12: função TEMPORÁRIA — roda uma única vez pra copiar os PDFs de pedido/NF
+   já anexados na aba Obra→Compras (buckets compras-pdfs/nfs-pdfs) pros 7 Cards SRM
+   criados como histórico (ids 5-11), no mesmo formato que o SRM já usa (arquivos[]
+   da cotação p/ o pedido, pdf_nf_path p/ a NF). Pode ser removida do código depois
+   de confirmado que rodou com sucesso. */
+async function migrarPdfsComprasFabioAmaro(){
+  const btn = document.getElementById('btn-migrar-pdfs-fabio');
+  const statusEl = document.getElementById('migrar-pdfs-status');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Migrando…'; }
+  if(statusEl) statusEl.textContent='';
+  const mapa = [
+    {compraId:1, srmId:5,  cotId:5,  compraPdfPath:'obra_4/compra_1_1781805172473.pdf', compraPdfNome:'Proposta de venda AAT Industria e Comercio no 2602015.pdf', nfPdfPath:'obra_4/nf_1_1781805311222.pdf', nfPdfNome:'NF 005631 - AAT.pdf'},
+    {compraId:2, srmId:6,  cotId:6,  compraPdfPath:'obra_4/compra_2_1781806368588.pdf', compraPdfNome:'Loja Ubiquiti Brasil Fabio Amaro.pdf', nfPdfPath:'obra_4/nf_2_1781808306007.pdf', nfPdfNome:'NF 243026 - Ubiquiti Unifi.pdf'},
+    {compraId:3, srmId:7,  cotId:7,  compraPdfPath:'obra_4/compra_3_1781808647936.pdf', compraPdfNome:'Proposta Comercial Modulos Fabio Amaro.pdf', nfPdfPath:'obra_4/nf_3_1781808736530.pdf', nfPdfNome:'DANFE_1_002235.pdf'},
+    {compraId:4, srmId:8,  cotId:8,  compraPdfPath:'obra_4/compra_4_1781808912812.pdf', compraPdfNome:'Proposta de venda AAT Industria e Comercio no 2602034.pdf', nfPdfPath:'obra_4/nf_4_1781809102183.pdf', nfPdfNome:'NF 005711 - AAT.pdf'},
+    {compraId:5, srmId:9,  cotId:9,  compraPdfPath:'obra_4/compra_5_1781809839153.pdf', compraPdfNome:'Orçamento Projetare_102252.pdf', nfPdfPath:'obra_4/nf_5_1781809964729.pdf', nfPdfNome:'NF Projetare (sem numero).pdf'},
+    {compraId:6, srmId:10, cotId:10, compraPdfPath:null, compraPdfNome:null, nfPdfPath:'obra_4/nf_6_1781810275368.pdf', nfPdfNome:'NF 000.017.621 - Angular Cabos.pdf'},
+    {compraId:7, srmId:11, cotId:11, compraPdfPath:'obra_4/compra_7_1781810590781.pdf', compraPdfNome:'Central RTI xp3 COMPRADA DA SMART HOUSE JUNDIAI.pdf', nfPdfPath:null, nfPdfNome:null},
+  ];
+  let ok=0; const falhas=[];
+  for(const m of mapa){
+    const cot = (db.srmCotacoes||[]).find(x=>x.id===m.cotId);
+    if(!cot){ falhas.push(`cotação #${m.cotId} não encontrada`); continue; }
+    if(m.compraPdfPath){
+      try{
+        const {data:blob, error:eDown} = await sb.storage.from('compras-pdfs').download(m.compraPdfPath);
+        if(eDown) throw eDown;
+        const path = `srm_${m.srmId}/cot_${m.cotId}_${Date.now()}.pdf`;
+        const {error:eUp} = await uploadOSArquivoXHR('srm-cotacoes', path, blob, ()=>{});
+        if(eUp) throw new Error(eUp.message||'erro no upload');
+        cot.arquivos = cot.arquivos||[];
+        cot.arquivos.push({id:'f'+Date.now(), nome:'Pedido - '+m.compraPdfNome, path});
+        await sb.from('srm_cotacoes').update({arquivos:cot.arquivos}).eq('id', m.cotId);
+        ok++;
+      }catch(e){ falhas.push(`pedido da compra #${m.compraId}: ${e.message||e}`); }
+    }
+    if(m.nfPdfPath){
+      try{
+        const {data:blob, error:eDown} = await sb.storage.from('nfs-pdfs').download(m.nfPdfPath);
+        if(eDown) throw eDown;
+        const path = `srm_${m.srmId}/nf_pdf_${m.cotId}_${Date.now()}.pdf`;
+        const {error:eUp} = await uploadOSArquivoXHR('srm-nfs', path, blob, ()=>{});
+        if(eUp) throw new Error(eUp.message||'erro no upload');
+        cot.pdfNfPath = path; cot.pdfNfNome = 'NF - '+m.nfPdfNome;
+        await sb.from('srm_cotacoes').update({pdf_nf_path:path, pdf_nf_nome:cot.pdfNfNome}).eq('id', m.cotId);
+        ok++;
+      }catch(e){ falhas.push(`NF da compra #${m.compraId}: ${e.message||e}`); }
+    }
+  }
+  save();
+  if(statusEl){
+    statusEl.style.color = falhas.length ? '#e65100' : '#2e7d32';
+    statusEl.textContent = `✔ ${ok} arquivo(s) migrado(s) com sucesso.` + (falhas.length ? ' Falha(s): '+falhas.join('; ') : ' Tudo certo — pode remover este botão do código.');
+  }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Migrar PDFs Fabio Amaro → SRM (executar 1x)'; }
 }
 
 async function baixarXmlNfSRM(path, nome){
