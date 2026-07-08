@@ -1014,7 +1014,7 @@
     <div class="bar">
       <h2>Faturamento — Acompanhamento</h2>
       <div class="spacer"></div>
-      <button class="btn primary" id="btn-nova-nf" onclick="abrirNovaNF()">+ Nova Nota Fiscal</button>
+      <button class="btn primary" id="btn-nova-nf" onclick="abrirNovoEspelhoFaturamento()">+ Novo Espelho</button>
     </div>
     <div class="kanban" id="fat-kanban"></div>
   </div>
@@ -1040,7 +1040,7 @@
     <div class="bar">
       <h2>Espelhos de NF</h2>
       <div class="spacer"></div>
-      <button class="btn primary" onclick="abrirNovaNF()">+ Nova Nota Fiscal</button>
+      <button class="btn primary" onclick="abrirNovoEspelhoFaturamento()">+ Novo Espelho</button>
     </div>
     <table class="lista">
       <thead>
@@ -1276,11 +1276,23 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.21';
+const APP_VERSION = '1.47.22';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.22',
+    data: '08/07/2026',
+    itens: [
+      'Novo fluxo completo de Espelhos de Faturamento (Faturamento → Painel/Espelhos). O sistema não emite NF-e/NFS-e — ele monta um "espelho" (PDF+XLS) com os dados que a contabilidade precisa pra emitir a nota de verdade, e depois recebe de volta o PDF/XLS real emitido.',
+      '"+ Novo Espelho": primeiro pede o Cartão CRM de origem (traz cliente e obra automaticamente), depois abre a tela grande do espelho — mesmo layout/tamanho do cartão do CRM, com 3 abas: Dados, Itens de Produto e Itens de Serviço.',
+      'Aba Itens de Produto lista os materiais já comprados e entregues na obra (via saídas de estoque vinculadas a O.S.) ainda não faturados, junto com a NF de entrada de cada material pra a contabilidade validar o estoque contábil. Aba Itens de Serviço lista os serviços de propostas/O.S. ainda não faturados. Valor usado é sempre o de venda (proposta aprovada).',
+      'Cada item adicionado ao espelho já trava (some da lista de disponíveis em qualquer outro espelho) assim que entra — mesmo em rascunho. Excluir o espelho libera os itens de volta.',
+      'Produto e serviço ganharam blocos de documento independentes (cada um com seu próprio número de NF, data, valor e upload de PDF+XLS), já que em geral são notas fiscais separadas (NF-e de produto × NFS-e de serviço).',
+      'Kanban e lista de Espelhos atualizados pro novo modelo (mostrando Cartão de origem, obra/cliente, contadores de itens e números das NFs de cada bloco).',
+    ]
+  },
   {
     versao: '1.47.21',
     data: '08/07/2026',
@@ -2455,6 +2467,7 @@ function load(){
   if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
   if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
   if(!Array.isArray(db.notasFiscais))   db.notasFiscais=[];
+  if(!Array.isArray(db.faturamentoItens)) db.faturamentoItens=[];
   if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
   if(!Array.isArray(db.estoqueMov))      db.estoqueMov=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
@@ -2708,7 +2721,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -2742,7 +2755,8 @@ async function carregarDadosSupabase(){
       // os_itens_trabalho removido: itensTrabalho é JSON embutido em ordens_servico.itens_trabalho
       sb.from('estoque_produtos').select('*').order('nome'),
       sb.from('estoque_movimentacoes').select('*').order('criado_em', {ascending:false}),
-      sb.from('notas_fiscais').select('*').order('id')
+      sb.from('notas_fiscais').select('*').order('id'),
+      sb.from('faturamento_itens').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -3020,9 +3034,22 @@ async function carregarDadosSupabase(){
       }));
     if(notasFiscaisRes.data)
       db.notasFiscais = notasFiscaisRes.data.map(n=>({
-        id:n.id, numero:n.numero||'', obraId:n.obra_id||null, faseId:n.fase_id||null,
+        id:n.id, numero:n.numero||'', obraId:n.obra_id||null, cardId:n.card_id||null, faseId:n.fase_id||null,
         valor:Number(n.valor)||0, impostosRetidos:n.impostos_retidos!=null?Number(n.impostos_retidos):0,
-        dataEmissao:n.data_emissao ? n.data_emissao.slice(0,10) : '', observacoes:n.observacoes||''
+        dataEmissao:n.data_emissao ? n.data_emissao.slice(0,10) : '', observacoes:n.observacoes||'',
+        produtoNumero:n.produto_numero||'', produtoData:n.produto_data?n.produto_data.slice(0,10):'', produtoValor:n.produto_valor!=null?Number(n.produto_valor):null,
+        produtoPdfPath:n.produto_pdf_path||null, produtoPdfNome:n.produto_pdf_nome||null,
+        produtoXlsPath:n.produto_xls_path||null, produtoXlsNome:n.produto_xls_nome||null,
+        servicoNumero:n.servico_numero||'', servicoData:n.servico_data?n.servico_data.slice(0,10):'', servicoValor:n.servico_valor!=null?Number(n.servico_valor):null,
+        servicoPdfPath:n.servico_pdf_path||null, servicoPdfNome:n.servico_pdf_nome||null,
+        servicoXlsPath:n.servico_xls_path||null, servicoXlsNome:n.servico_xls_nome||null
+      }));
+    if(faturamentoItensRes.data)
+      db.faturamentoItens = faturamentoItensRes.data.map(x=>({
+        id:x.id, notaFiscalId:x.nota_fiscal_id, tipo:x.tipo,
+        osId:x.os_id||null, propostaId:x.proposta_id||null, propostaIdx:x.proposta_idx!=null?Number(x.proposta_idx):null,
+        descricao:x.descricao||'', quantidade:x.quantidade!=null?Number(x.quantidade):null,
+        valorUnitario:x.valor_unitario!=null?Number(x.valor_unitario):null, valorTotal:x.valor_total!=null?Number(x.valor_total):null
       }));
     if(srmCotacoesRes.data)
       db.srmCotacoes = srmCotacoesRes.data.map(x=>({
@@ -7459,11 +7486,6 @@ function excluirSRMFase(id){
    cadastro próprio) que aplica um percentual configurável sobre o valor das
    NFs, agrupado por mês de emissão. */
 
-function optsObrasFat(selId){
-  return `<option value="">— selecione a obra —</option>` +
-    (db.obras||[]).slice().sort((a,b)=>a.nome.localeCompare(b.nome))
-      .map(o=>`<option value="${o.id}" ${o.id===selId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
-}
 function optsFasesFat(selId){
   return fasesFatOrdenadas()
     .map(f=>`<option value="${f.id}" ${f.id===selId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
@@ -7542,23 +7564,142 @@ function excluirFatFase(id){
   save(); renderAll();
 }
 
+/* ================= ESPELHOS DE FATURAMENTO: itens disponíveis (v1.47.22) ================= */
+/* Materiais: itens de O.S. de Execução (categoria produto, não clienteFornece)
+ * que já têm baixa de estoque registrada em os.itensTrabalho — usa o valor de
+ * VENDA (unit da proposta), não o custo de compra. Some da lista assim que
+ * entra num espelho ainda rascunho (trava já no rascunho, por decisão do
+ * cleverson) — só volta a aparecer se o espelho for cancelado/excluído. */
+function itensProdutoDisponiveis(cardId){
+  const travados = new Set(
+    (db.faturamentoItens||[]).filter(fi=>fi.tipo==='material').filter(fi=>{
+      const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
+      return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
+    }).map(fi=>`${fi.osId}_${fi.propostaId}_${fi.propostaIdx}`)
+  );
+  const osDoCard = (db.ordensServico||[]).filter(o=>o.cardId===cardId && o.tipo==='execucao');
+  const itensProp = _itensPropostasAprovadas(cardId);
+  const linhas = [];
+  osDoCard.forEach(os=>{
+    (os.itensTrabalho||[]).forEach(m=>{
+      if(m.categoria!=='produto' || !(m.qtdOS>0)) return;
+      const chave = `${os.id}_${m.propostaId}_${m.idx}`;
+      if(travados.has(chave)) return;
+      const it = itensProp.find(x=>x.propostaId===m.propostaId && x.idx===m.idx);
+      const unit = it?.unit || 0;
+      linhas.push({
+        osId: os.id, osNumero: os.numero, propostaId: m.propostaId, propostaIdx: m.idx,
+        descricao: m.descricao || it?.descricao || it?.item || '',
+        quantidade: m.qtdOS, valorUnitario: unit, valorTotal: unit*m.qtdOS,
+        produtoEstoqueId: m.produtoEstoqueId||null
+      });
+    });
+  });
+  return linhas;
+}
+
+/* NFs de entrada (compra) do produto — lista de referência pra contabilidade
+ * validar o estoque contábil. Sem rastreio por lote (o sistema não guarda qual
+ * entrada exata cobriu qual saída), então mostra todas as entradas conhecidas
+ * daquele produto/obra vindas de XML (com srmCotacaoId). */
+function nfsEntradaDoProduto(produtoEstoqueId, obraId){
+  const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===produtoEstoqueId && m.tipo==='entrada' && m.srmCotacaoId && (!obraId || m.obraId===obraId || !m.obraId));
+  const cotIds = [...new Set(movs.map(m=>m.srmCotacaoId))];
+  return cotIds.map(id=>(db.srmCotacoes||[]).find(c=>c.id===id)).filter(Boolean)
+    .map(c=>({numero:c.nfNumero, data:c.nfData, valor:c.nfValorTotal, emitente:c.nfEmitNome}));
+}
+
+/* Serviços: itens de proposta aprovada, categoria servico, não clienteFornece,
+ * ainda não presos em nenhum espelho ativo. */
+function itensServicoDisponiveis(cardId){
+  const travados = new Set(
+    (db.faturamentoItens||[]).filter(fi=>fi.tipo==='servico').filter(fi=>{
+      const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
+      return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
+    }).map(fi=>`${fi.propostaId}_${fi.propostaIdx}`)
+  );
+  return _itensPropostasAprovadas(cardId)
+    .filter(it=>it.categoria==='servico' && !it.clienteFornece)
+    .filter(it=>!travados.has(`${it.propostaId}_${it.idx}`))
+    .map(it=>({
+      propostaId: it.propostaId, propostaIdx: it.idx, propostaNum: it.propostaNum,
+      descricao: it.descricao||it.item||'', quantidade: it.qtd||1,
+      valorUnitario: it.unit||0, valorTotal: it.total!=null?it.total:(it.unit||0)*(it.qtd||1)
+    }));
+}
+
+/** Itens já travados num espelho, por tipo. */
+function itensDoEspelho(nfId, tipo){
+  return (db.faturamentoItens||[]).filter(fi=>fi.notaFiscalId===nfId && fi.tipo===tipo);
+}
+
+async function adicionarItemFaturamentoMaterial(nfId, cardId, osId, propostaId, propostaIdx){
+  const linha = itensProdutoDisponiveis(cardId).find(l=>l.osId===osId && l.propostaId===propostaId && l.propostaIdx===propostaIdx);
+  if(!linha){ alert('Este item não está mais disponível.'); return; }
+  if(!db.faturamentoItens) db.faturamentoItens=[];
+  const novo = {
+    id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
+    notaFiscalId:nfId, tipo:'material', osId:linha.osId, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+    descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
+  };
+  const {error} = await sb.from('faturamento_itens').insert({
+    id:novo.id, nota_fiscal_id:nfId, tipo:'material', os_id:novo.osId, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
+    descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
+  });
+  if(error){ alert('Erro ao adicionar item: '+error.message); return; }
+  db.faturamentoItens.push(novo);
+  save();
+  abrirEspelhoNF(nfId, 'produtos');
+}
+
+async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propostaIdx){
+  const linha = itensServicoDisponiveis(cardId).find(l=>l.propostaId===propostaId && l.propostaIdx===propostaIdx);
+  if(!linha){ alert('Este item não está mais disponível.'); return; }
+  if(!db.faturamentoItens) db.faturamentoItens=[];
+  const novo = {
+    id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
+    notaFiscalId:nfId, tipo:'servico', osId:null, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+    descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
+  };
+  const {error} = await sb.from('faturamento_itens').insert({
+    id:novo.id, nota_fiscal_id:nfId, tipo:'servico', os_id:null, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
+    descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
+  });
+  if(error){ alert('Erro ao adicionar item: '+error.message); return; }
+  db.faturamentoItens.push(novo);
+  save();
+  abrirEspelhoNF(nfId, 'servicos');
+}
+
+async function removerItemFaturamento(itemId, nfId, tipo){
+  if(!confirm('Remover este item do espelho? Ele volta a ficar disponível pra faturar depois.')) return;
+  await sb.from('faturamento_itens').delete().eq('id', itemId);
+  db.faturamentoItens = (db.faturamentoItens||[]).filter(x=>x.id!==itemId);
+  save();
+  abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
+}
+
 /* ---- Painel (kanban) ---- */
 function notaFiscalCard(n){
   const f = faseFat(n.faseId) || {cor:'#dee2e6', nome:'—'};
+  const c = (db.cards||[]).find(x=>x.id===n.cardId);
   const ob = (db.obras||[]).find(o=>o.id===n.obraId);
   const el = document.createElement('div');
   el.className='kcard';
   el.style.borderLeftColor = f.cor;
   el.draggable = podeEditarTela(usuarioAtual,'fat-painel');
   el.ondragstart = e=> e.dataTransfer.setData('text', n.id);
-  el.onclick = ()=> abrirEditarNF(n.id);
+  el.onclick = ()=> abrirEspelhoNF(n.id);
   const cli = ob ? cliente(ob.clienteId) : null;
+  const nMat = itensDoEspelho(n.id,'material').length;
+  const nServ = itensDoEspelho(n.id,'servico').length;
   el.innerHTML = `
-    <div class="top"><span class="num">NF ${escHtml(n.numero||'—')}</span></div>
+    <div class="top"><span class="num">Espelho #${n.id}${c?' — Cartão #'+c.num:''}</span></div>
     <div class="row">${ob ? '🏗 '+escHtml(ob.nome)+(cli&&cli.nome!=='—'?' · 👤 '+escHtml(cli.nome):'') : '<em style="color:var(--muted)">Sem obra vinculada</em>'}</div>
-    <div class="row"><b>Valor:</b> ${fmtMoney(n.valor)||'—'}</div>
-    ${n.impostosRetidos ? `<div class="row"><b>Retido:</b> ${fmtMoney(n.impostosRetidos)}</div>` : ''}
-    ${n.dataEmissao ? `<div class="row" style="font-size:11px;color:var(--muted)">Emitida em ${fmtDia2(n.dataEmissao)}</div>` : ''}`;
+    <div class="row valor">${fmtMoney(n.valor)||'R$ 0,00'}</div>
+    <div class="row" style="font-size:11px;color:var(--muted)">📦 ${nMat} produto(s) · 🔧 ${nServ} serviço(s)</div>
+    ${n.produtoNumero ? `<div class="row" style="font-size:11px;color:var(--muted)">NF Produto: ${escHtml(n.produtoNumero)}</div>` : ''}
+    ${n.servicoNumero ? `<div class="row" style="font-size:11px;color:var(--muted)">NF Serviço: ${escHtml(n.servicoNumero)}</div>` : ''}`;
   return el;
 }
 function renderFatPainel(){
@@ -7577,7 +7718,7 @@ function renderFatPainel(){
     }));
   });
   if(!(db.notasFiscais||[]).length){
-    k.innerHTML='<div class="empty" style="padding:60px;text-align:center">Nenhuma Nota Fiscal cadastrada. Clique em <b>+ Nova Nota Fiscal</b> para começar.</div>';
+    k.innerHTML='<div class="empty" style="padding:60px;text-align:center">Nenhum Espelho de Faturamento cadastrado. Clique em <b>+ Novo Espelho</b> para começar.</div>';
   }
 }
 
@@ -7588,21 +7729,23 @@ function renderFatEspelhos(){
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-espelhos')) return;
   const lista=(db.notasFiscais||[]).slice().sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||'') || b.id-a.id);
   if(!lista.length){
-    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Nenhuma Nota Fiscal cadastrada.</td></tr>';
+    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Nenhum Espelho de Faturamento cadastrado.</td></tr>';
     return;
   }
   lista.forEach(n=>{
     const f = faseFat(n.faseId)||{};
+    const c = (db.cards||[]).find(x=>x.id===n.cardId);
     const ob = (db.obras||[]).find(o=>o.id===n.obraId);
     const cli = ob ? cliente(ob.clienteId) : null;
+    const numeros = [n.produtoNumero, n.servicoNumero].filter(Boolean).join(' / ');
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.title='Clique para editar';
-    tr.onclick=()=>abrirEditarNF(n.id);
+    tr.onclick=()=>abrirEspelhoNF(n.id);
     tr.innerHTML=`
-      <td><b>${escHtml(n.numero||'—')}</b></td>
+      <td><b>#${n.id}</b>${c?` <small style="color:var(--muted)">Cartão #${c.num}</small>`:''}${numeros?`<br><small style="color:var(--muted)">NF ${escHtml(numeros)}</small>`:''}</td>
       <td>${ob?escHtml(ob.nome)+(cli&&cli.nome!=='—'?' <small style="color:var(--muted)">('+escHtml(cli.nome)+')</small>':''):'<em style="color:var(--muted)">—</em>'}</td>
-      <td>${n.dataEmissao?fmtDia2(n.dataEmissao):'—'}</td>
+      <td>${n.produtoData?fmtDia2(n.produtoData):(n.servicoData?fmtDia2(n.servicoData):'—')}</td>
       <td>${fmtMoney(n.valor)||'—'}</td>
       <td>${fmtMoney(n.impostosRetidos)||'—'}</td>
       <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:${f.cor||'#dee2e6'};color:${textColor(f.cor||'#dee2e6')}">${f.nome||'—'}</span></td>`;
@@ -7610,121 +7753,328 @@ function renderFatEspelhos(){
   });
 }
 
-/* ---- Novo/Editar NF ---- */
-function abrirNovaNF(){
-  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para cadastrar Notas Fiscais.'); return; }
-  const primeiraFase = fasesFatOrdenadas().filter(f=>!f.tipo)[0]||fasesFatOrdenadas()[0];
+/* ================= ESPELHOS DE FATURAMENTO: fluxo Novo + tela grande (v1.47.22) ================= */
+function optsCardsParaFaturamento(selId){
+  const lista = (db.cards||[]).filter(c=>c.obraId).map(c=>{
+    const cli = cliente(c.clienteId);
+    const ob = (db.obras||[]).find(o=>o.id===c.obraId);
+    return {id:c.id, label:`#${c.num} — ${cli?cli.nome:'—'}${ob?' ('+ob.nome+')':''}`};
+  }).sort((a,b)=>a.label.localeCompare(b.label,'pt-BR'));
+  return `<option value="">— selecione o cartão —</option>` +
+    lista.map(x=>`<option value="${x.id}" ${x.id===selId?'selected':''}>${escHtml(x.label)}</option>`).join('');
+}
+
+/* Passo 1: só pede o Cartão CRM — a Obra/Cliente vêm automaticamente do próprio
+ * cartão (card.obraId). Sem obra vinculada, não dá pra seguir. */
+function abrirNovoEspelhoFaturamento(){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para cadastrar Espelhos de Faturamento.'); return; }
   abrirModal(`
-    <h3>Nova Nota Fiscal</h3>
-    <label>Número da NF</label>
-    <input id="nf-m-numero" placeholder="Ex.: 1234">
-    <label>Obra</label>
-    <select id="nf-m-obra">${optsObrasFat(null)}</select>
-    <label>Fase</label>
-    <select id="nf-m-fase">${optsFasesFat(primeiraFase?.id)}</select>
-    <label>Data de emissão</label>
-    <input id="nf-m-data" type="date" value="${localDia(0)}">
-    <label>Valor</label>
-    <input id="nf-m-valor" type="text" inputmode="decimal" value="0,00" oninput="mascaraMoeda(this)">
-    <label>Impostos Retidos</label>
-    <input id="nf-m-retido" type="text" inputmode="decimal" value="0,00" oninput="mascaraMoeda(this)">
-    <label>Observações</label>
-    <textarea id="nf-m-obs" placeholder="Opcional"></textarea>
+    <h3>Novo Espelho de Faturamento</h3>
+    <label>Cartão CRM</label>
+    <select id="nef-card" onchange="_atualizarPreviewCardFaturamento()">${optsCardsParaFaturamento(null)}</select>
+    <div id="nef-preview" style="font-size:13px;margin-top:10px"></div>
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarNovaNF()">Salvar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarNovoEspelhoFaturamento()">Continuar</button>
     </div>`);
 }
-async function salvarNovaNF(){
-  // v1.46.9: trava o botão antes do await proximoIdSeguro — mesmo bug de duplo-clique
-  // corrigido em salvarNovoCartao/novaProposta/criarObraRapida/salvarNovoSRM.
+function _atualizarPreviewCardFaturamento(){
+  const cardId = +document.getElementById('nef-card')?.value||null;
+  const el = document.getElementById('nef-preview');
+  if(!el) return;
+  if(!cardId){ el.innerHTML=''; return; }
+  const c = (db.cards||[]).find(x=>x.id===cardId);
+  const ob = c ? (db.obras||[]).find(o=>o.id===c.obraId) : null;
+  const cli = c ? cliente(c.clienteId) : null;
+  el.innerHTML = ob
+    ? `🏗 Obra: <b>${escHtml(ob.nome)}</b> · 👤 ${escHtml(cli?cli.nome:'—')}`
+    : `<span style="color:#e65100">⚠ Este cartão ainda não tem obra vinculada.</span>`;
+}
+async function confirmarNovoEspelhoFaturamento(){
   const btn = btnModalPrimario();
   if(btn?.disabled) return;
-  const numero = document.getElementById('nf-m-numero').value.trim();
-  const obraId = +document.getElementById('nf-m-obra').value||null;
-  const faseId = +document.getElementById('nf-m-fase').value||null;
-  const dataEmissao = document.getElementById('nf-m-data').value||localDia(0);
-  const valor = lerMoeda('nf-m-valor');
-  const impostosRetidos = lerMoeda('nf-m-retido');
-  const observacoes = document.getElementById('nf-m-obs').value.trim();
-  if(!numero){ alert('Informe o número da NF.'); return; }
-  if(!faseId){ alert('Selecione uma fase.'); return; }
+  const cardId = +document.getElementById('nef-card')?.value||null;
+  if(!cardId){ alert('Selecione o Cartão CRM.'); return; }
+  const c = (db.cards||[]).find(x=>x.id===cardId);
+  const obraId = c?.obraId||null;
+  if(!obraId){ alert('Este cartão ainda não tem obra vinculada — vincule uma obra antes de criar o espelho.'); return; }
   btnSalvando(btn);
+  const primeiraFase = fasesFatOrdenadas().filter(f=>!f.tipo)[0]||fasesFatOrdenadas()[0];
   if(!db.notasFiscais) db.notasFiscais=[];
-  const novo = { id: await proximoIdSeguro('notas_fiscais', db.notasFiscais), numero, obraId, faseId, dataEmissao, valor, impostosRetidos, observacoes };
-  db.notasFiscais.push(novo);
-  registrarLog('criar','nota_fiscal',novo.id,`Nova NF ${novo.numero} cadastrada`);
+  const novo = {
+    id: await proximoIdSeguro('notas_fiscais', db.notasFiscais),
+    numero:'', obraId, cardId, faseId:primeiraFase?.id||null,
+    valor:0, impostosRetidos:0, dataEmissao:'', observacoes:'',
+    produtoNumero:'', produtoData:'', produtoValor:null, produtoPdfPath:null, produtoPdfNome:null, produtoXlsPath:null, produtoXlsNome:null,
+    servicoNumero:'', servicoData:'', servicoValor:null, servicoPdfPath:null, servicoPdfNome:null, servicoXlsPath:null, servicoXlsNome:null
+  };
   try{
     const {error} = await sb.from('notas_fiscais').upsert({
-      id:novo.id, numero:novo.numero, obra_id:novo.obraId||null, fase_id:novo.faseId||null,
-      valor:novo.valor||0, impostos_retidos:novo.impostosRetidos||0,
-      data_emissao:novo.dataEmissao||null, observacoes:novo.observacoes||''
+      id:novo.id, numero:'', obra_id:obraId, card_id:cardId, fase_id:novo.faseId,
+      valor:0, impostos_retidos:0, data_emissao:null, observacoes:''
     });
     if(error) throw error;
-  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  }catch(e){ btnRestaurar(btn); alert('Erro ao criar espelho: '+(e.message||e)); return; }
+  db.notasFiscais.push(novo);
+  registrarLog('criar','nota_fiscal',novo.id,`Novo Espelho de Faturamento criado (Cartão #${c.num})`);
   saveLocal(); syncDadosSupabase();
-  fecharModal(); renderAll();
+  abrirEspelhoNF(novo.id, 'dados');
 }
-function abrirEditarNF(id){
-  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
+
+/* Tela grande do espelho — mesmo padrão visual do cartão CRM (.modal.cartao,
+ * .abas/.aba-corpo, rodapé Excluir/Fechar/Salvar). 3 abas: Dados, Itens de
+ * Produto, Itens de Serviço. */
+function abrirEspelhoNF(id, aba='dados'){
+  const nf = (db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
   const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
   const podeExcluir = podeExcluirTela(usuarioAtual,'fat-painel');
+  const c = (db.cards||[]).find(x=>x.id===nf.cardId);
+  const ob = (db.obras||[]).find(o=>o.id===nf.obraId);
+  const cli = ob ? cliente(ob.clienteId) : null;
+  const nMat = itensDoEspelho(nf.id,'material').length;
+  const nServ = itensDoEspelho(nf.id,'servico').length;
+  let corpo='';
+  if(aba==='produtos') corpo = abaEspelhoProdutosHTML(nf);
+  else if(aba==='servicos') corpo = abaEspelhoServicosHTML(nf);
+  else corpo = abaEspelhoDadosHTML(nf, c, ob, cli);
   abrirModal(`
-    <h3>Nota Fiscal ${escHtml(n.numero||'')}</h3>
-    <div${podeEditar?'':' style="pointer-events:none;opacity:.65"'}>
-      <label>Número da NF</label>
-      <input id="nf-m-numero" value="${escHtml(n.numero||'')}">
-      <label>Obra</label>
-      <select id="nf-m-obra">${optsObrasFat(n.obraId)}</select>
-      <label>Fase</label>
-      <select id="nf-m-fase">${optsFasesFat(n.faseId)}</select>
-      <label>Data de emissão</label>
-      <input id="nf-m-data" type="date" value="${n.dataEmissao||''}">
-      <label>Valor</label>
-      <input id="nf-m-valor" type="text" inputmode="decimal" value="${(n.valor||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
-      <label>Impostos Retidos</label>
-      <input id="nf-m-retido" type="text" inputmode="decimal" value="${(n.impostosRetidos||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
-      <label>Observações</label>
-      <textarea id="nf-m-obs">${escHtml(n.observacoes||'')}</textarea>
+    <h3>Espelho de Faturamento #${nf.id}${cli?' — '+escHtml(cli.nome):''}</h3>
+    <div class="abas">
+      <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEspelhoNF(${id},'dados')">Dados</button>
+      <button class="aba ${aba==='produtos'?'ativa':''}" onclick="abrirEspelhoNF(${id},'produtos')">📦 Itens de Produto${nMat?' ('+nMat+')':''}</button>
+      <button class="aba ${aba==='servicos'?'ativa':''}" onclick="abrirEspelhoNF(${id},'servicos')">🔧 Itens de Serviço${nServ?' ('+nServ+')':''}</button>
     </div>
-    <div class="actions">
-      ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirNF(${n.id})">Excluir</button>`:''}
+    <div class="aba-corpo">${corpo}</div>
+    <div class="actions rodape-cartao">
+      ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirEspelhoNF(${nf.id})">Excluir</button>`:''}
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      ${podeEditar?`<button class="btn primary" data-btn-salvar onclick="salvarEdicaoNF(${n.id})">Salvar</button>`:''}
-    </div>`);
+      ${(aba==='dados' && podeEditar)?`<button class="btn primary" data-btn-salvar onclick="salvarDadosEspelhoNF(${nf.id})">Salvar</button>`:''}
+    </div>`, 'cartao');
 }
-async function salvarEdicaoNF(id){
-  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar esta NF.'); return; }
-  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
-  const numero = document.getElementById('nf-m-numero').value.trim();
-  if(!numero){ alert('Informe o número da NF.'); return; }
-  n.numero = numero;
-  n.obraId = +document.getElementById('nf-m-obra').value||null;
-  n.faseId = +document.getElementById('nf-m-fase').value||null;
-  n.dataEmissao = document.getElementById('nf-m-data').value||n.dataEmissao;
-  n.valor = lerMoeda('nf-m-valor');
-  n.impostosRetidos = lerMoeda('nf-m-retido');
-  n.observacoes = document.getElementById('nf-m-obs').value.trim();
-  registrarLog('editar','nota_fiscal',n.id,`NF ${n.numero} editada`);
+
+function abaEspelhoDadosHTML(nf, c, ob, cli){
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
+  const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  return `
+    <div class="form-row">
+      <div><label>Cartão CRM</label><input value="${c?'#'+c.num:'—'}" disabled></div>
+      <div><label>Cliente</label><input value="${cli?escHtml(cli.nome):'—'}" disabled></div>
+    </div>
+    <label>Obra</label><input value="${ob?escHtml(ob.nome):'—'}" disabled>
+    <div style="${podeEditar?'':'pointer-events:none;opacity:.65'}">
+      <label>Fase</label>
+      <select id="fe-fase">${optsFasesFat(nf.faseId)}</select>
+      <label>Impostos Retidos</label>
+      <input id="fe-retido" type="text" inputmode="decimal" value="${(nf.impostosRetidos||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
+      <label>Observações</label>
+      <textarea id="fe-obs" placeholder="Opcional">${escHtml(nf.observacoes||'')}</textarea>
+    </div>
+    <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;gap:24px;flex-wrap:wrap">
+      <div style="font-size:13px"><span style="color:var(--muted)">Total Produto:</span> <b>${fmtMoney(totalProduto)}</b></div>
+      <div style="font-size:13px"><span style="color:var(--muted)">Total Serviço:</span> <b>${fmtMoney(totalServico)}</b></div>
+      <div style="font-size:13px"><span style="color:var(--muted)">Total Geral:</span> <b>${fmtMoney(totalProduto+totalServico)}</b></div>
+    </div>`;
+}
+async function salvarDadosEspelhoNF(id){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
+  const nf = (db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
+  nf.faseId = +document.getElementById('fe-fase').value||nf.faseId;
+  nf.impostosRetidos = lerMoeda('fe-retido');
+  nf.observacoes = document.getElementById('fe-obs').value.trim();
+  nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
+           + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
   const btn=btnModalPrimario(); btnSalvando(btn);
   try{
-    const {error}=await sb.from('notas_fiscais').upsert({
-      id:n.id, numero:n.numero, obra_id:n.obraId||null, fase_id:n.faseId||null,
-      valor:n.valor||0, impostos_retidos:n.impostosRetidos||0,
-      data_emissao:n.dataEmissao||null, observacoes:n.observacoes||''
-    });
+    const {error}=await sb.from('notas_fiscais').update({
+      fase_id:nf.faseId, impostos_retidos:nf.impostosRetidos, observacoes:nf.observacoes, valor:nf.valor
+    }).eq('id', nf.id);
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  registrarLog('editar','nota_fiscal',nf.id,`Espelho de Faturamento #${nf.id} atualizado`);
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
 }
-async function excluirNF(id){
-  if(!podeExcluirTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para excluir esta NF.'); return; }
-  const n=(db.notasFiscais||[]).find(x=>x.id===id); if(!n) return;
-  if(!confirm(`Excluir a NF ${n.numero}? Esta ação não pode ser desfeita.`)) return;
-  registrarLog('excluir','nota_fiscal',n.id,`NF ${n.numero} excluída`);
-  db.notasFiscais=db.notasFiscais.filter(x=>x.id!==id);
-  await excluirDoSupabase('notas_fiscais', id);
+
+function abaEspelhoProdutosHTML(nf){
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
+  const itens = itensDoEspelho(nf.id,'material');
+  const total = itens.reduce((s,i)=>s+(i.valorTotal||0),0);
+  const linhas = itens.map(i=>{
+    const os = (db.ordensServico||[]).find(o=>o.id===i.osId);
+    const nfsCompra = i.produtoEstoqueId ? nfsEntradaDoProduto(i.produtoEstoqueId, nf.obraId) : [];
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <div style="font-weight:600">${escHtml(i.descricao)}</div>
+          <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)} · O.S. ${os?os.numero:'—'}</div>
+          ${nfsCompra.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">NF(s) de compra: ${nfsCompra.map(n=>`${escHtml(n.numero||'—')} (${n.data?fmtDia2(n.data):'—'})`).join(', ')}</div>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <b>${fmtMoney(i.valorTotal)}</b>
+          ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'material')">🗑</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty" style="padding:16px;text-align:center">Nenhum item de produto adicionado ainda.</div>`;
+
+  const disponiveis = podeEditar ? itensProdutoDisponiveis(nf.cardId) : [];
+  const listaDisponiveis = disponiveis.length ? `
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Disponíveis pra adicionar</div>
+      ${disponiveis.map(l=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (O.S. ${(db.ordensServico||[]).find(o=>o.id===l.osId)?.numero||'—'})</span></div>
+          <button class="btn-xs" onclick="adicionarItemFaturamentoMaterial(${nf.id},${nf.cardId},${l.osId},${l.propostaId},${l.propostaIdx})">+ Adicionar</button>
+        </div>`).join('')}
+    </div>` : '';
+
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Itens de Produto</div>
+    ${linhas}
+    ${listaDisponiveis}
+    <div style="text-align:right;margin:10px 0;font-size:14px"><b>Total: ${fmtMoney(total)}</b></div>
+    <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Documento (NF de Produto)</div>
+      <div class="form-row">
+        <div><label>Número da NF</label><input id="fe-prod-numero" value="${escHtml(nf.produtoNumero||'')}" ${podeEditar?'':'disabled'}></div>
+        <div><label>Data de Emissão</label><input id="fe-prod-data" type="date" value="${nf.produtoData||''}" ${podeEditar?'':'disabled'}></div>
+      </div>
+      <label>Valor</label>
+      <input id="fe-prod-valor" type="text" inputmode="decimal" value="${nf.produtoValor!=null?nf.produtoValor.toFixed(2).replace('.',','):''}" oninput="mascaraMoeda(this)" placeholder="${total.toFixed(2).replace('.',',')}" ${podeEditar?'':'disabled'}>
+      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'produto')">Salvar dados da NF</button>`:''}
+      ${_blocoAnexosHTML(nf,'produto',podeEditar)}
+    </div>`;
+}
+
+function abaEspelhoServicosHTML(nf){
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
+  const itens = itensDoEspelho(nf.id,'servico');
+  const total = itens.reduce((s,i)=>s+(i.valorTotal||0),0);
+  const linhas = itens.map(i=>`
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <div style="font-weight:600">${escHtml(i.descricao)}</div>
+          <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <b>${fmtMoney(i.valorTotal)}</b>
+          ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'servico')">🗑</button>`:''}
+        </div>
+      </div>
+    </div>`).join('') || `<div class="empty" style="padding:16px;text-align:center">Nenhum item de serviço adicionado ainda.</div>`;
+
+  const disponiveis = podeEditar ? itensServicoDisponiveis(nf.cardId) : [];
+  const listaDisponiveis = disponiveis.length ? `
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Disponíveis pra adicionar</div>
+      ${disponiveis.map(l=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (Proposta #${l.propostaNum||l.propostaId})</span></div>
+          <button class="btn-xs" onclick="adicionarItemFaturamentoServico(${nf.id},${nf.cardId},${l.propostaId},${l.propostaIdx})">+ Adicionar</button>
+        </div>`).join('')}
+    </div>` : '';
+
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Itens de Serviço</div>
+    ${linhas}
+    ${listaDisponiveis}
+    <div style="text-align:right;margin:10px 0;font-size:14px"><b>Total: ${fmtMoney(total)}</b></div>
+    <div style="border-top:2px solid var(--border);margin-top:8px;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Documento (NF de Serviço)</div>
+      <div class="form-row">
+        <div><label>Número da NF</label><input id="fe-serv-numero" value="${escHtml(nf.servicoNumero||'')}" ${podeEditar?'':'disabled'}></div>
+        <div><label>Data de Emissão</label><input id="fe-serv-data" type="date" value="${nf.servicoData||''}" ${podeEditar?'':'disabled'}></div>
+      </div>
+      <label>Valor</label>
+      <input id="fe-serv-valor" type="text" inputmode="decimal" value="${nf.servicoValor!=null?nf.servicoValor.toFixed(2).replace('.',','):''}" oninput="mascaraMoeda(this)" placeholder="${total.toFixed(2).replace('.',',')}" ${podeEditar?'':'disabled'}>
+      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'servico')">Salvar dados da NF</button>`:''}
+      ${_blocoAnexosHTML(nf,'servico',podeEditar)}
+    </div>`;
+}
+
+function _blocoAnexosHTML(nf, bloco, podeEditar){
+  const pdfPath = nf[bloco+'PdfPath'], pdfNome = nf[bloco+'PdfNome'];
+  const xlsPath = nf[bloco+'XlsPath'], xlsNome = nf[bloco+'XlsNome'];
+  return `
+    <div style="display:flex;gap:20px;margin-top:12px;flex-wrap:wrap">
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">PDF da NF</label>
+        ${pdfPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${pdfPath}','${(pdfNome||'nf.pdf').replace(/'/g,"\\'")}')">📄 ${escHtml(pdfNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        ${podeEditar?`<input type="file" accept="application/pdf" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','pdf')">`:''}
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">XLS/XLSX da NF</label>
+        ${xlsPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${xlsPath}','${(xlsNome||'nf.xlsx').replace(/'/g,"\\'")}')">📊 ${escHtml(xlsNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        ${podeEditar?`<input type="file" accept=".xls,.xlsx,.csv" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','xls')">`:''}
+      </div>
+    </div>`;
+}
+
+async function salvarBlocoEspelhoNF(id, bloco){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
+  const nf=(db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
+  const pref = bloco==='produto'?'prod':'serv';
+  const numero = document.getElementById(`fe-${pref}-numero`).value.trim();
+  const data = document.getElementById(`fe-${pref}-data`).value||'';
+  const valorRaw = document.getElementById(`fe-${pref}-valor`).value.trim();
+  const valor = valorRaw ? lerMoeda(`fe-${pref}-valor`) : null;
+  nf[bloco+'Numero']=numero; nf[bloco+'Data']=data; nf[bloco+'Valor']=valor;
+  nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
+           + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
+  try{
+    const {error} = await sb.from('notas_fiscais').update({
+      [`${bloco}_numero`]:numero||null, [`${bloco}_data`]:data||null, [`${bloco}_valor`]:valor, valor:nf.valor
+    }).eq('id', nf.id);
+    if(error) throw error;
+  }catch(e){ alert('Erro ao salvar: '+(e.message||e)); return; }
+  registrarLog('editar','nota_fiscal',nf.id,`Dados da NF de ${bloco} atualizados no Espelho #${nf.id}`);
+  save();
+  abrirEspelhoNF(id, bloco==='produto'?'produtos':'servicos');
+}
+
+async function uploadArquivoFaturamento(input, nfId, bloco, tipoArq){
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const file = input && input.files && input.files[0]; if(!file) return;
+  const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
+  const ext = tipoArq==='xls' ? (file.name.split('.').pop()||'xlsx') : 'pdf';
+  const path = `nf_${nfId}/${tipoArq}_${Date.now()}.${ext}`;
+  try{
+    const {error} = await uploadOSArquivoXHR(bucket, path, file, ()=>{});
+    if(error) throw new Error(error.message||'Erro no upload');
+    const pathField = `${bloco}${tipoArq==='pdf'?'Pdf':'Xls'}Path`;
+    const nomeField = `${bloco}${tipoArq==='pdf'?'Pdf':'Xls'}Nome`;
+    const antigoPath = nf[pathField];
+    if(antigoPath) await sb.storage.from(bucket).remove([antigoPath]);
+    nf[pathField] = path; nf[nomeField] = file.name;
+    const colPath = `${bloco}_${tipoArq}_path`, colNome = `${bloco}_${tipoArq}_nome`;
+    await sb.from('notas_fiscais').update({[colPath]:path, [colNome]:file.name}).eq('id', nfId);
+    registrarLog('editar','nota_fiscal',nfId,`Anexo ${tipoArq.toUpperCase()} de ${bloco} enviado (${escHtml(file.name)})`);
+    save();
+    abrirEspelhoNF(nfId, bloco==='produto'?'produtos':'servicos');
+  }catch(e){
+    alert('Erro no upload: '+(e.message||e));
+  }
+}
+async function baixarArquivoFaturamento(bloco, path, nome){
+  const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
+  await _baixarArquivoBucket(bucket, path, nome);
+}
+
+async function excluirEspelhoNF(id){
+  if(!podeExcluirTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para excluir este espelho.'); return; }
+  const nf=(db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
+  if(!confirm('Excluir este Espelho de Faturamento? Os itens de produto/serviço vinculados voltam a ficar disponíveis pra faturar depois. Esta ação não pode ser desfeita.')) return;
+  if(nf.produtoPdfPath) await sb.storage.from('faturamento-produtos').remove([nf.produtoPdfPath]);
+  if(nf.produtoXlsPath) await sb.storage.from('faturamento-produtos').remove([nf.produtoXlsPath]);
+  if(nf.servicoPdfPath) await sb.storage.from('faturamento-servicos').remove([nf.servicoPdfPath]);
+  if(nf.servicoXlsPath) await sb.storage.from('faturamento-servicos').remove([nf.servicoXlsPath]);
+  registrarLog('excluir','nota_fiscal',nf.id,`Espelho de Faturamento #${nf.id} excluído`);
+  await sb.from('notas_fiscais').delete().eq('id', id); // cascade apaga faturamento_itens
+  db.notasFiscais=(db.notasFiscais||[]).filter(x=>x.id!==id);
+  db.faturamentoItens=(db.faturamentoItens||[]).filter(x=>x.notaFiscalId!==id);
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
 }
