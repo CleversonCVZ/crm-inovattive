@@ -1275,11 +1275,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.15';
+const APP_VERSION = '1.47.16';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.16',
+    data: '08/07/2026',
+    itens: [
+      'Corrigido na aba Compras (SRM) e no Resultado Aparente da Obra: Cards SRM marcados como "Cliente paga direto" (o cliente paga o fornecedor por fora, sem passar pela empresa) agora ficam de fora do total de Compras e do resultado — continuam aparecendo na lista, com um selo "💳 Cliente paga direto" deixando claro que aquele valor não é custo da empresa.',
+    ]
+  },
   {
     versao: '1.47.15',
     data: '08/07/2026',
@@ -8790,29 +8797,34 @@ function abaObraSenhas(c, ob){
     </div>`:''}`;
 }
 
-/** v1.47.15: dados vindos dos Cards SRM vinculados a esta obra (fornecedor_id/
+/** v1.47.15/16: dados vindos dos Cards SRM vinculados a esta obra (fornecedor_id/
  *  centro_custo_id "Material de Obra" + obra_id = ob.id). Usado tanto pela aba
  *  Compras (visualização) quanto pelo Resultado Aparente (total). cotSel é a
- *  cotação com status 'selecionada' — a única cujo valor conta como custo
- *  decidido; cards ainda sem cotação vencedora entram na lista mas NÃO entram
- *  no total (ver comprasObraSRM abaixo). */
+ *  cotação com status 'selecionada' — a única cujo valor PODE contar como custo
+ *  decidido. Só conta de fato se, além disso, `pagamentoResponsavel==='empresa'`
+ *  — quando é 'cliente' (cliente paga o fornecedor direto), a empresa nunca
+ *  desembolsa esse valor, então ele não é custo dela: entra na lista da aba
+ *  Compras (visualização), mas fica fora do total do Resultado Aparente — mesma
+ *  lógica já usada pros itens `clienteFornece` das Propostas. */
 function cardsSRMDaObra(obraId){
   return (db.cardsSRM||[]).filter(x=>x.obraId===obraId).sort((a,b)=>(a.num||0)-(b.num||0));
 }
 function cotacaoSelecionadaSRM(cardId){
   return (db.srmCotacoes||[]).find(x=>x.cardSrmId===cardId && x.status==='selecionada') || null;
 }
-/** Retorna {cards, totalDecidido, emCotacao} — usado pelo Resultado Aparente. */
+/** Retorna {cards, totalDecidido, emCotacao, pagoCliente} — usado pelo Resultado Aparente. */
 function comprasObraSRM(obraId){
   const cards = cardsSRMDaObra(obraId);
   let totalDecidido = 0;
   const emCotacao = [];
+  const pagoCliente = [];
   cards.forEach(card=>{
+    if(card.pagamentoResponsavel==='cliente'){ pagoCliente.push(card); return; }
     const sel = cotacaoSelecionadaSRM(card.id);
     if(sel && sel.valor) totalDecidido += sel.valor;
     else emCotacao.push(card);
   });
-  return {cards, totalDecidido, emCotacao};
+  return {cards, totalDecidido, emCotacao, pagoCliente};
 }
 
 function abaObraCompras(c, ob){
@@ -8832,11 +8844,18 @@ function abaObraCompras(c, ob){
     const f = faseSRM(card.faseId) || {cor:'#dee2e6', nome:'—'};
     const forn = (db.fornecedores||[]).find(x=>x.id===card.fornecedorId);
     const sel = cotacaoSelecionadaSRM(card.id);
-    if(sel && sel.valor) totalDecidido += sel.valor;
+    const pagoCliente = card.pagamentoResponsavel==='cliente';
+    if(!pagoCliente && sel && sel.valor) totalDecidido += sel.valor;
 
-    const valorHTML = (sel && sel.valor)
-      ? `<span style="font-weight:700;color:var(--primary)">${fmtR(sel.valor)}</span>`
-      : `<span style="color:#f59e0b;font-size:12px;font-weight:600">🕓 em cotação</span>`;
+    const valorHTML = pagoCliente
+      ? `<span style="color:var(--muted);font-size:12px">${sel && sel.valor ? fmtR(sel.valor) : ''}</span>`
+      : (sel && sel.valor)
+        ? `<span style="font-weight:700;color:var(--primary)">${fmtR(sel.valor)}</span>`
+        : `<span style="color:#f59e0b;font-size:12px;font-weight:600">🕓 em cotação</span>`;
+
+    const clientePagaBadge = pagoCliente
+      ? `<span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700" title="Cliente paga o fornecedor direto — não entra no Resultado Aparente da empresa">💳 Cliente paga direto</span>`
+      : '';
 
     const statusBadge = card.encerrado
       ? `<span style="background:#22c55e22;color:#16a34a;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">✔ Encerrado</span>`
@@ -8858,6 +8877,7 @@ function abaObraCompras(c, ob){
           <span style="font-weight:700;color:var(--muted)">#${card.num}</span>
           <span style="flex:1;min-width:140px;font-weight:600">${forn ? escHtml(forn.nomeFantasia||forn.nome) : '<em style="color:var(--muted);font-weight:400">Sem fornecedor</em>'}</span>
           ${statusBadge}
+          ${clientePagaBadge}
           ${valorHTML}
         </div>
         ${card.descricao ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${escHtml(card.descricao)}</div>` : ''}
@@ -8868,14 +8888,17 @@ function abaObraCompras(c, ob){
       </div>`;
   }).join('');
 
+  const temPagoCliente = cards.some(card=>card.pagamentoResponsavel==='cliente');
+
   return `
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
       <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Compras (SRM)</span>
       <span style="font-size:11px;color:var(--muted)">Somente visualização — para registrar uma nova compra, abra um processo no módulo SRM</span>
     </div>
     ${rows}
-    <div style="border-top:2px solid var(--border);padding-top:12px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap">
-      <div style="font-size:12px"><span style="color:var(--muted)">Total Compras (decidido):</span> <b>${fmtR(totalDecidido)}</b></div>
+    <div style="border-top:2px solid var(--border);padding-top:12px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+      <div style="font-size:12px"><span style="color:var(--muted)">Total Compras (custo da empresa):</span> <b>${fmtR(totalDecidido)}</b></div>
+      ${temPagoCliente ? `<div style="font-size:11px;color:#0369a1">💳 Cards marcados como "Cliente paga direto" não entram nesse total nem no Resultado Aparente.</div>` : ''}
     </div>`;
 }
 
@@ -11784,10 +11807,11 @@ function abaObraResultadoAparente(c, ob){
   //     Só entra no total o card que já tem uma cotação vencedora escolhida;
   //     os que ainda estão "em cotação" aparecem na aba Compras mas ficam de
   //     fora da soma, pra não inflar o resultado com valor ainda não decidido.) ─
-  const comprasSRM      = comprasObraSRM(ob.id);
-  const compras         = comprasSRM.cards;
-  const comprasSemValor = comprasSRM.emCotacao;
-  const totalCompras    = comprasSRM.totalDecidido;
+  const comprasSRM        = comprasObraSRM(ob.id);
+  const compras           = comprasSRM.cards;
+  const comprasSemValor   = comprasSRM.emCotacao;
+  const comprasPagoCliente= comprasSRM.pagoCliente;
+  const totalCompras      = comprasSRM.totalDecidido;
 
   // ── 3. Mão de Obra (todas OS vinculadas à obra) ────────────────────────────
   const osObra         = (db.ordensServico||[]).filter(o => o.obraId === ob.id);
@@ -11831,17 +11855,18 @@ function abaObraResultadoAparente(c, ob){
       <span style="color:${corVal}">${fmtR(valor)}</span>
     </div>`;
 
-  // ── render compras (v1.47.15: cards são do SRM, não mais obra_compras) ────
+  // ── render compras (v1.47.15/16: cards são do SRM, não mais obra_compras) ──
   const linhasCompras = compras.length
     ? compras.map(cp => {
         const forn = (db.fornecedores||[]).find(x=>x.id===cp.fornecedorId);
         const sel  = cotacaoSelecionadaSRM(cp.id);
-        const label = `#${cp.num} ${forn ? (forn.nomeFantasia||forn.nome) : (cp.descricao || 'Sem fornecedor')}`;
-        return linha(
-          label,
-          (sel && sel.valor) ? fmtR(sel.valor) : '<span style="color:#f59e0b">🕓 em cotação</span>',
-          {}
-        );
+        const pagoCliente = cp.pagamentoResponsavel==='cliente';
+        const label = `#${cp.num} ${forn ? (forn.nomeFantasia||forn.nome) : (cp.descricao || 'Sem fornecedor')}` +
+          (pagoCliente ? ' <span style="font-size:10px;background:#e0f2fe;color:#0369a1;border-radius:4px;padding:1px 5px">💳 cliente paga</span>' : '');
+        const valorTxt = pagoCliente
+          ? `<span style="color:var(--muted)">${sel && sel.valor ? fmtR(sel.valor) : '—'} (fora do total)</span>`
+          : (sel && sel.valor) ? fmtR(sel.valor) : '<span style="color:#f59e0b">🕓 em cotação</span>';
+        return linha(label, valorTxt, pagoCliente ? {muted:true} : {});
       }).join('')
     : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma compra registrada</div>`;
 
@@ -11883,6 +11908,9 @@ function abaObraResultadoAparente(c, ob){
     </div>` : '',
     comprasSemValor.length ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#9a3412;margin-bottom:12px">
       🕓 ${comprasSemValor.length} card(s) de compra ainda em cotação (sem proposta vencedora escolhida) — não entram no total até serem decididos.
+    </div>` : '',
+    comprasPagoCliente.length ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#0369a1;margin-bottom:12px">
+      💳 ${comprasPagoCliente.length} card(s) de compra marcado(s) como "Cliente paga direto" — o cliente paga o fornecedor por fora, então esse valor não é custo da empresa e não entra no total de Compras.
     </div>` : '',
     propostasComClienteFornece.length ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e40af;margin-bottom:12px">
       ℹ️ ${propostasComClienteFornece.length === 1
