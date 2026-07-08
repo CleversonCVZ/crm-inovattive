@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.26';
+const APP_VERSION = '1.47.27';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.27',
+    data: '08/07/2026',
+    itens: [
+      'Botões "Salvar dados da NF" (blocos Produto/Serviço do Espelho de Faturamento) ganharam o mesmo comportamento padrão de "Salvando…" usado no resto do sistema — o botão fica desabilitado e muda de texto durante o salvamento, pra dar certeza visual de que o clique foi registrado.',
+    ]
+  },
   {
     versao: '1.47.26',
     data: '08/07/2026',
@@ -8023,7 +8030,7 @@ function abaEspelhoProdutosHTML(nf){
       </div>
       <label>Valor</label>
       <input id="fe-prod-valor" type="text" inputmode="decimal" value="${nf.produtoValor!=null?nf.produtoValor.toFixed(2).replace('.',','):''}" oninput="mascaraMoeda(this)" placeholder="${total.toFixed(2).replace('.',',')}" ${podeEditar?'':'disabled'}>
-      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'produto')">Salvar dados da NF</button>`:''}
+      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'produto',this)">Salvar dados da NF</button>`:''}
       ${_blocoAnexosHTML(nf,'produto',podeEditar)}
     </div>`;
 }
@@ -8070,7 +8077,7 @@ function abaEspelhoServicosHTML(nf){
       </div>
       <label>Valor</label>
       <input id="fe-serv-valor" type="text" inputmode="decimal" value="${nf.servicoValor!=null?nf.servicoValor.toFixed(2).replace('.',','):''}" oninput="mascaraMoeda(this)" placeholder="${total.toFixed(2).replace('.',',')}" ${podeEditar?'':'disabled'}>
-      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'servico')">Salvar dados da NF</button>`:''}
+      ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'servico',this)">Salvar dados da NF</button>`:''}
       ${_blocoAnexosHTML(nf,'servico',podeEditar)}
     </div>`;
 }
@@ -8093,8 +8100,9 @@ function _blocoAnexosHTML(nf, bloco, podeEditar){
     </div>`;
 }
 
-async function salvarBlocoEspelhoNF(id, bloco){
+async function salvarBlocoEspelhoNF(id, bloco, btn){
   if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
+  if(btn?.disabled) return;
   const nf=(db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
   const pref = bloco==='produto'?'prod':'serv';
   const numero = document.getElementById(`fe-${pref}-numero`).value.trim();
@@ -8104,12 +8112,13 @@ async function salvarBlocoEspelhoNF(id, bloco){
   nf[bloco+'Numero']=numero; nf[bloco+'Data']=data; nf[bloco+'Valor']=valor;
   nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
            + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
+  btnSalvando(btn);
   try{
     const {error} = await sb.from('notas_fiscais').update({
       [`${bloco}_numero`]:numero||null, [`${bloco}_data`]:data||null, [`${bloco}_valor`]:valor, valor:nf.valor
     }).eq('id', nf.id);
     if(error) throw error;
-  }catch(e){ alert('Erro ao salvar: '+(e.message||e)); return; }
+  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   registrarLog('editar','nota_fiscal',nf.id,`Dados da NF de ${bloco} atualizados no Espelho #${nf.id}`);
   save();
   abrirEspelhoNF(id, bloco==='produto'?'produtos':'servicos');
