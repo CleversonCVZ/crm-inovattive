@@ -1083,11 +1083,12 @@
   <div class="view" id="view-estoque-painel">
     <div class="bar">
       <h2>Estoque — Acompanhamento</h2>
+      <select class="vista-sel" id="estoque-painel-vista" onchange="mudarVistaEstoquePainel(this.value)">
+        <option value="andamento">Visualização: obras em andamento</option>
+        <option value="concluidas" disabled>Visualização: obras concluídas (em breve)</option>
+      </select>
     </div>
-    <div class="empty" style="padding:80px;text-align:center;color:var(--muted)">
-      📦 <b>Painel de Estoque</b><br>
-      <small style="display:block;margin-top:10px;font-size:13px">Em desenvolvimento. Visão geral do estoque com alertas de reposição e indicadores de consumo.</small>
-    </div>
+    <div id="estoque-painel-corpo"></div>
   </div>
 
   <!-- ESTOQUE: CATEGORIAS -->
@@ -1275,11 +1276,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.16';
+const APP_VERSION = '1.47.17';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.17',
+    data: '08/07/2026',
+    itens: [
+      'Nova tela: Estoque → Painel (Acompanhamento) ganhou sua primeira visualização — kanban de obras em andamento, com colunas por fase da obra (mesmo padrão visual do Painel de Obras/CRM). Cada cartão mostra o resumo de compras da obra (custo da empresa, quantas são pagas pelo cliente, quantas ainda em cotação) e, ao clicar, abre o detalhamento por produto — separado em "Comprado pela empresa" e "Comprado pelo cliente" — com o cruzamento de em quais O.S. cada material foi usado, quando já catalogado e com movimentação registrada. Barra de busca do topo já filtra essa tela também. Segunda visualização (obras concluídas) fica pra depois.',
+    ]
+  },
   {
     versao: '1.47.16',
     data: '08/07/2026',
@@ -5253,7 +5261,7 @@ function ativarView(viewId){
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-fornecedores')    renderFornecedores();
-  if(viewId==='estoque-painel')        { /* em desenvolvimento */ }
+  if(viewId==='estoque-painel')        renderEstoquePainel();
   if(viewId==='estoque-categorias')    renderEstoqueCategorias();
   if(viewId==='estoque-almoxarifado')  renderEstoqueAlmoxarifado();
   if(viewId==='estoque-movimentacoes') renderEstoqueMovimentacoes();
@@ -8825,6 +8833,166 @@ function comprasObraSRM(obraId){
     else emCotacao.push(card);
   });
   return {cards, totalDecidido, emCotacao, pagoCliente};
+}
+
+/* ================= ESTOQUE: PAINEL (kanban por obra) ================= */
+/* v1.47.17: primeira visualização do Painel de Estoque — kanban de obras em
+ * andamento (status='ativa' + tem Cartão CRM não concluído/não perdido),
+ * colunas = fases de Obra (mesmo padrão de _renderObrasPainelFases), cartão =
+ * resumo de compras da obra (via cardsSRMDaObra/comprasObraSRM, já usados na
+ * aba Compras/Resultado Aparente). Clique abre o detalhamento por produto,
+ * separado empresa×cliente, cruzando com uso em O.S. (db.estoqueMov). Segunda
+ * visualização (obras concluídas) fica pra depois — combinado com cleverson. */
+let estoquePainelVista = localStorage.getItem('estoquePainelVista') || 'andamento';
+function mudarVistaEstoquePainel(v){ estoquePainelVista = v; localStorage.setItem('estoquePainelVista', v); renderEstoquePainel(); }
+
+function _obraTemCardAtivo(obraId){
+  return (db.cards||[]).some(c=>c.obraId===obraId && !c.concluido && !c.perdido);
+}
+
+function renderEstoquePainel(){
+  const corpo = document.getElementById('estoque-painel-corpo'); if(!corpo) return;
+  const selV = document.getElementById('estoque-painel-vista');
+  if(selV && selV.value !== estoquePainelVista) selV.value = estoquePainelVista;
+  const t = termoBusca();
+
+  const lista = (db.obras||[]).filter(o=>{
+    if((o.status||'ativa')!=='ativa') return false;
+    if(!_obraTemCardAtivo(o.id)) return false;
+    if(t){
+      const cli = cliente(o.clienteId)?.nome||'';
+      if(!(o.nome+' '+cli).toLowerCase().includes(t)) return false;
+    }
+    return true;
+  });
+
+  corpo.innerHTML = '';
+  const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida' && f.tipo!=='cancelada');
+  const kanban = document.createElement('div');
+  kanban.className = 'kanban';
+  let apareceu = false;
+  fases.forEach(f=>{
+    const itens = lista.filter(o=>o.faseId===f.id);
+    if(!itens.length) return;
+    apareceu = true;
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:${f.cor};color:${textColor(f.cor)}">
+      <span class="col-title">${escHtml(f.nome)}</span>
+      <span class="col-count">${itens.length}</span>
+    </div>
+    <div class="col-body">${itens.map(_estoqueObraCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  });
+  const semFase = lista.filter(o=>!o.faseId);
+  if(semFase.length){
+    apareceu = true;
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div class="col-head" style="background:#adb5bd;color:#fff">
+      <span class="col-title">Sem fase</span>
+      <span class="col-count">${semFase.length}</span>
+    </div>
+    <div class="col-body">${semFase.map(_estoqueObraCardHTML).join('')}</div>`;
+    kanban.appendChild(col);
+  }
+  if(!apareceu) corpo.innerHTML = '<div class="empty">Nenhuma obra em andamento encontrada.</div>';
+  else corpo.appendChild(kanban);
+}
+
+function _estoqueObraCardHTML(o){
+  const cli = cliente(o.clienteId)?.nome || '—';
+  const {cards, totalDecidido, emCotacao, pagoCliente} = comprasObraSRM(o.id);
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const resumo = !cards.length
+    ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">Nenhuma compra no SRM ainda</div>`
+    : `<div style="font-size:12px;margin-top:4px">
+        <div><b style="color:var(--primary)">${fmtR(totalDecidido)}</b> <span style="color:var(--muted)">custo empresa</span></div>
+        ${pagoCliente.length ? `<div style="color:#0369a1">💳 ${pagoCliente.length} compra(s) do cliente</div>` : ''}
+        ${emCotacao.length ? `<div style="color:#f59e0b">🕓 ${emCotacao.length} em cotação</div>` : ''}
+      </div>`;
+  return `<div class="kcard" onclick="abrirEstoqueObraModal(${o.id})">
+    <div class="top">${escHtml(o.nome)}</div>
+    <div class="row">👤 ${escHtml(cli)}</div>
+    ${resumo}
+  </div>`;
+}
+
+/** Detalhamento por produto de uma obra: separa compras "empresa" × "cliente",
+ *  mostra os itens da NF (quando há) e cruza com uso em O.S. via db.estoqueMov
+ *  (produtoId + obraId, tipo='saida'). Como a maioria dos itens ainda não foi
+ *  catalogada (matchProdutoEstoque não acha correspondência) e a tabela de
+ *  movimentações pode estar zerada, é normal aparecer "ainda não usado" pra
+ *  praticamente tudo até a operação real começar a girar. */
+function abrirEstoqueObraModal(obraId){
+  const ob = (db.obras||[]).find(o=>o.id===obraId); if(!ob) return;
+  const cli = cliente(ob.clienteId)?.nome || '—';
+  const card = (db.cards||[]).find(c=>c.obraId===obraId && !c.concluido && !c.perdido) || (db.cards||[]).find(c=>c.obraId===obraId);
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const {cards: todosCards} = comprasObraSRM(obraId);
+  const grupoEmpresa = todosCards.filter(c=>c.pagamentoResponsavel!=='cliente');
+  const grupoCliente = todosCards.filter(c=>c.pagamentoResponsavel==='cliente');
+
+  const usoDoItem = (it) => {
+    const prod = matchProdutoEstoque(it);
+    if(!prod) return '<span style="color:var(--muted);font-size:11px">não catalogado ainda</span>';
+    const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===prod.id && m.obraId===obraId && m.tipo==='saida' && m.osId);
+    if(!movs.length) return '<span style="color:var(--muted);font-size:11px">ainda não usado</span>';
+    const porOS = {};
+    movs.forEach(m=>{ porOS[m.osId]=(porOS[m.osId]||0)+(m.quantidade||0); });
+    return Object.entries(porOS).map(([osId,qtd])=>{
+      const os = (db.ordensServico||[]).find(x=>x.id===+osId);
+      return `${os?escHtml(os.numero):'O.S. #'+osId} (${fmtNum(qtd)})`;
+    }).join(', ');
+  };
+
+  const blocoGrupo = (lista) => {
+    if(!lista.length) return `<div style="font-size:12px;color:var(--muted);padding:8px 0 14px">Nenhuma compra nesse grupo.</div>`;
+    return lista.map(card=>{
+      const sel = cotacaoSelecionadaSRM(card.id);
+      const forn = (db.fornecedores||[]).find(f=>f.id===card.fornecedorId);
+      const itens = (sel && Array.isArray(sel.nfItens)) ? sel.nfItens : null;
+      const itensHTML = (itens && itens.length)
+        ? `<table style="width:100%;border-collapse:collapse;margin-top:8px">
+            <thead><tr style="font-size:11px;color:var(--muted)">
+              <th style="text-align:left;padding:3px 6px">Produto</th>
+              <th style="text-align:right;padding:3px 6px">Qtd</th>
+              <th style="text-align:right;padding:3px 6px">Valor</th>
+              <th style="text-align:left;padding:3px 6px">Usado em</th>
+            </tr></thead>
+            <tbody>${itens.map(it=>`
+              <tr style="font-size:12px;border-top:1px solid var(--border)">
+                <td style="padding:4px 6px">${escHtml(it.xProd)}</td>
+                <td style="padding:4px 6px;text-align:right;white-space:nowrap">${fmtNum(it.qCom)} ${escHtml(it.uCom||'')}</td>
+                <td style="padding:4px 6px;text-align:right;white-space:nowrap">${fmtR(it.vProd)}</td>
+                <td style="padding:4px 6px">${usoDoItem(it)}</td>
+              </tr>`).join('')}</tbody>
+          </table>`
+        : `<div style="font-size:12px;color:var(--muted);margin-top:6px">${sel && sel.valor ? fmtR(sel.valor) : ''} ${sel && sel.descricao ? '— '+escHtml(sel.descricao) : (card.descricao?'— '+escHtml(card.descricao):'')} <i>(sem itens detalhados na NF)</i></div>`;
+      return `<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;font-size:13px">
+          <span>#${card.num} ${forn?escHtml(forn.nomeFantasia||forn.nome):'Sem fornecedor'}</span>
+          <button class="btn-xs" onclick="fecharModal();abrirEditarSRM(${card.id})">Ver no SRM →</button>
+        </div>
+        ${itensHTML}
+      </div>`;
+    }).join('');
+  };
+
+  abrirModal(`
+    <h3>📦 Estoque — ${escHtml(ob.nome)}</h3>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      👤 ${escHtml(cli)}${card ? ` · <a href="#" onclick="fecharModal();abrirEditarCartao(${card.id});return false">Abrir Cartão CRM #${card.num} →</a>` : ''}
+    </div>
+
+    <div style="font-size:11px;font-weight:700;color:#16a34a;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">🏢 Comprado pela empresa</div>
+    ${blocoGrupo(grupoEmpresa)}
+
+    <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 6px">💳 Comprado pelo cliente</div>
+    ${blocoGrupo(grupoCliente)}
+
+    <div class="actions"><button class="btn neutral" onclick="fecharModal()">Fechar</button></div>
+  `, 'wide');
 }
 
 function abaObraCompras(c, ob){
@@ -18757,13 +18925,6 @@ function renderEstoqueCatalogo(){
   _renderEstoqueCatalogo(corpoEl);
 }
 
-/* Compat: chamadas legadas de renderEstoquePainel() redirecionam para a tela ativa */
-function renderEstoquePainel(){
-  renderEstoqueAlmoxarifado();
-  renderEstoqueMovimentacoes();
-  renderEstoqueCatalogo();
-}
-
 function fmtNum(v){ return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:3}); }
 
 function _renderEstoqueSaldo(el){
@@ -19509,7 +19670,7 @@ async function confirmarCadastrarCatalogo(){
 }
 
 /* ================= INIT ================= */
-function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoqueCategorias(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); renderFatFases(); renderFatPainel(); renderFatEspelhos(); renderFatTributos(); }
+function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoquePainel(); renderEstoqueCategorias(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); renderFatFases(); renderFatPainel(); renderFatEspelhos(); renderFatTributos(); }
 load();
 atualizarMarca();
 (async function(){
