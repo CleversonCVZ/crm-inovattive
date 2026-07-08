@@ -1085,7 +1085,7 @@
       <h2>Estoque — Acompanhamento</h2>
       <select class="vista-sel" id="estoque-painel-vista" onchange="mudarVistaEstoquePainel(this.value)">
         <option value="andamento">Visualização: obras em andamento</option>
-        <option value="concluidas" disabled>Visualização: obras concluídas (em breve)</option>
+        <option value="concluidas">Visualização: obras concluídas e abandonadas</option>
       </select>
     </div>
     <div id="estoque-painel-corpo"></div>
@@ -1276,11 +1276,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.17';
+const APP_VERSION = '1.47.18';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.18',
+    data: '08/07/2026',
+    itens: [
+      'Painel de Estoque ganhou a segunda visualização: obras concluídas e abandonadas, no mesmo formato de kanban por fase (colunas "Concluída"/"Obra abandonada") e com o mesmo detalhamento por produto ao clicar no cartão. Basta trocar no seletor "Visualização" no topo da tela.',
+    ]
+  },
   {
     versao: '1.47.17',
     data: '08/07/2026',
@@ -8836,13 +8843,13 @@ function comprasObraSRM(obraId){
 }
 
 /* ================= ESTOQUE: PAINEL (kanban por obra) ================= */
-/* v1.47.17: primeira visualização do Painel de Estoque — kanban de obras em
- * andamento (status='ativa' + tem Cartão CRM não concluído/não perdido),
- * colunas = fases de Obra (mesmo padrão de _renderObrasPainelFases), cartão =
- * resumo de compras da obra (via cardsSRMDaObra/comprasObraSRM, já usados na
- * aba Compras/Resultado Aparente). Clique abre o detalhamento por produto,
- * separado empresa×cliente, cruzando com uso em O.S. (db.estoqueMov). Segunda
- * visualização (obras concluídas) fica pra depois — combinado com cleverson. */
+/* v1.47.17/18: Painel de Estoque com 2 visualizações — kanban de obras em
+ * andamento (status='ativa' + tem Cartão CRM não concluído/não perdido) e
+ * kanban de obras concluídas/abandonadas, ambas com colunas = fases de Obra
+ * (mesmo padrão de _renderObrasPainelFases/_renderObrasPainelArquivadas).
+ * Cartão = resumo de compras da obra (via cardsSRMDaObra/comprasObraSRM, já
+ * usados na aba Compras/Resultado Aparente). Clique abre o detalhamento por
+ * produto, separado empresa×cliente, cruzando com uso em O.S. (db.estoqueMov). */
 let estoquePainelVista = localStorage.getItem('estoquePainelVista') || 'andamento';
 function mudarVistaEstoquePainel(v){ estoquePainelVista = v; localStorage.setItem('estoquePainelVista', v); renderEstoquePainel(); }
 
@@ -8850,27 +8857,15 @@ function _obraTemCardAtivo(obraId){
   return (db.cards||[]).some(c=>c.obraId===obraId && !c.concluido && !c.perdido);
 }
 
-function renderEstoquePainel(){
-  const corpo = document.getElementById('estoque-painel-corpo'); if(!corpo) return;
-  const selV = document.getElementById('estoque-painel-vista');
-  if(selV && selV.value !== estoquePainelVista) selV.value = estoquePainelVista;
-  const t = termoBusca();
-
-  const lista = (db.obras||[]).filter(o=>{
-    if((o.status||'ativa')!=='ativa') return false;
-    if(!_obraTemCardAtivo(o.id)) return false;
-    if(t){
-      const cli = cliente(o.clienteId)?.nome||'';
-      if(!(o.nome+' '+cli).toLowerCase().includes(t)) return false;
-    }
-    return true;
-  });
-
+/** Monta um kanban de obras agrupado pelas fases informadas (na ordem dada),
+ *  mais uma coluna "Sem fase" pras que não batem em nenhuma — mesmo padrão
+ *  visual (.kanban/.col/.col-head/.col-body) usado em todos os outros painéis. */
+function _montarKanbanObras(corpo, lista, fases, msgVazio){
   corpo.innerHTML = '';
-  const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida' && f.tipo!=='cancelada');
   const kanban = document.createElement('div');
   kanban.className = 'kanban';
   let apareceu = false;
+  const idsFases = new Set(fases.map(f=>f.id));
   fases.forEach(f=>{
     const itens = lista.filter(o=>o.faseId===f.id);
     if(!itens.length) return;
@@ -8884,7 +8879,7 @@ function renderEstoquePainel(){
     <div class="col-body">${itens.map(_estoqueObraCardHTML).join('')}</div>`;
     kanban.appendChild(col);
   });
-  const semFase = lista.filter(o=>!o.faseId);
+  const semFase = lista.filter(o=>!idsFases.has(o.faseId));
   if(semFase.length){
     apareceu = true;
     const col = document.createElement('div');
@@ -8896,8 +8891,34 @@ function renderEstoquePainel(){
     <div class="col-body">${semFase.map(_estoqueObraCardHTML).join('')}</div>`;
     kanban.appendChild(col);
   }
-  if(!apareceu) corpo.innerHTML = '<div class="empty">Nenhuma obra em andamento encontrada.</div>';
+  if(!apareceu) corpo.innerHTML = `<div class="empty">${msgVazio}</div>`;
   else corpo.appendChild(kanban);
+}
+
+function renderEstoquePainel(){
+  const corpo = document.getElementById('estoque-painel-corpo'); if(!corpo) return;
+  const selV = document.getElementById('estoque-painel-vista');
+  if(selV && selV.value !== estoquePainelVista) selV.value = estoquePainelVista;
+  const t = termoBusca();
+  const matchBusca = o=>{
+    if(!t) return true;
+    const cli = cliente(o.clienteId)?.nome||'';
+    return (o.nome+' '+cli).toLowerCase().includes(t);
+  };
+
+  if(estoquePainelVista==='concluidas'){
+    const lista = (db.obras||[]).filter(o=>
+      ['concluida','cancelada'].includes(o.status||'ativa') && matchBusca(o)
+    );
+    const fases = fasesObraOrdenadas().filter(f=>f.tipo==='concluida' || f.tipo==='cancelada');
+    _montarKanbanObras(corpo, lista, fases, 'Nenhuma obra concluída ou abandonada encontrada.');
+  } else {
+    const lista = (db.obras||[]).filter(o=>
+      (o.status||'ativa')==='ativa' && _obraTemCardAtivo(o.id) && matchBusca(o)
+    );
+    const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida' && f.tipo!=='cancelada');
+    _montarKanbanObras(corpo, lista, fases, 'Nenhuma obra em andamento encontrada.');
+  }
 }
 
 function _estoqueObraCardHTML(o){
