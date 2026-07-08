@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.6';
+const APP_VERSION = '1.47.7';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.7',
+    data: '07/07/2026',
+    itens: [
+      'Resultado Aparente da O.S. Avulsa agora desconta também o custo estimado dos produtos lançados na aba Itens — usa o custo médio de compra de cada produto (mesmo cálculo já usado no Almoxarifado) × quantidade baixada. É só pra esse cálculo de visualização: não gera lançamento no Contas a Pagar. Produtos sem nenhuma compra com preço registrada aparecem com um aviso "sem custo médio".',
+    ]
+  },
   {
     versao: '1.47.6',
     data: '07/07/2026',
@@ -14375,7 +14382,20 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     const custos = (db.osCustos||[]).filter(c=>Number(c.osId)===osId);
     const totalReceita = (os.produtos||[]).reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
     const totalCustos  = custos.reduce((s,c)=>s+(c.valor||0),0);
-    const resultado    = totalReceita - totalCustos;
+
+    // Custo estimado dos produtos (só pra este cálculo de Resultado Aparente — nunca vai
+    // pro Contas a Pagar): custo médio ponderado de compra de cada produto (valorMedioProduto,
+    // já usado no Almoxarifado) × qtd baixada nessa O.S. Produtos sem nenhuma entrada com
+    // preço registrado não têm custo médio ainda — entram como "sem custo médio".
+    const produtosOS = (os.produtos||[]).filter(it=>it.produtoEstoqueId);
+    let custoProdutos = 0; const produtosSemCusto = [];
+    produtosOS.forEach(it=>{
+      const vm = valorMedioProduto(it.produtoEstoqueId);
+      if(vm==null){ produtosSemCusto.push(it.descricao||'?'); return; }
+      custoProdutos += vm * (it.qtd||1);
+    });
+
+    const resultado    = totalReceita - totalCustos - custoProdutos;
     const resCor       = resultado >= 0 ? '#1b5e20' : '#b71c1c';
 
     tabContent = `
@@ -14450,6 +14470,11 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             <span>💸 Custos lançados</span>
             <span style="font-weight:600;color:#b71c1c">${fmtMoney(totalCustos)}</span>
           </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
+            <span>🏭 Custo estimado dos produtos <span style="font-weight:400;color:var(--muted);font-size:11px">(custo médio, não vai pro C.P.)</span></span>
+            <span style="font-weight:600;color:#b71c1c">${fmtMoney(custoProdutos)}</span>
+          </div>
+          ${produtosSemCusto.length?`<div style="font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:6px 8px">Sem custo médio cadastrado ainda: ${produtosSemCusto.map(escHtml).join(', ')} (nenhuma entrada de compra com preço registrada pra esse produto no estoque).</div>`:''}
           <div style="display:flex;justify-content:space-between;padding:8px 0;margin-top:2px">
             <span style="font-weight:700;font-size:14px">Resultado</span>
             <span style="font-weight:800;font-size:15px;color:${resCor}">${resultado>=0?'+':''}${fmtMoney(resultado)}</span>
