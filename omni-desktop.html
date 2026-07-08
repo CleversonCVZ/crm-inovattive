@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.2';
+const APP_VERSION = '1.47.3';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.3',
+    data: '07/07/2026',
+    itens: [
+      'Na aba "Itens" da O.S. Avulsa, cada item novo pode ser marcado como "🏢 Baixar do nosso estoque" — vincula ao catálogo (sem opção de criar produto novo, mesma regra da O.S. de Obra) e já baixa a quantidade. Diferente da O.S. de Obra, essa baixa sempre sai do estoque geral, nunca reserva ou consome de uma obra específica. Remover o item devolve a quantidade.',
+    ]
+  },
   {
     versao: '1.47.2',
     data: '07/07/2026',
@@ -14227,7 +14234,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             const exibir = it.exibirValorPDF !== false;
             return `
             <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 8px">${it.descricao||'—'}</td>
+              <td style="padding:7px 8px">${it.descricao||'—'}${it.produtoEstoqueId?` <span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 4px" title="Baixa do estoque geral">📦 estoque</span>`:''}</td>
               <td style="text-align:center;padding:7px 8px">${it.qtd||1}</td>
               <td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
@@ -14258,6 +14265,10 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           <div><label>Qtd</label><input id="avl-item-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
           <div><label>Un</label><input id="avl-item-unit" placeholder="un" style="width:55px"></div>
           <div><label>Vl. Unit. (R$)</label><input id="avl-item-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:8px">
+          <input type="checkbox" id="avl-item-estoque" style="width:15px;height:15px">
+          <label for="avl-item-estoque" style="font-size:12px;margin:0;cursor:pointer">🏢 Baixar do nosso estoque (material próprio)</label>
         </div>
         <button class="btn sm primary" style="margin-top:8px" onclick="adicionarItemAVL(${osId},${cardId})">＋ Adicionar item</button>
       </div>`:''}`;
@@ -14846,6 +14857,13 @@ async function removerTecnicoAVL(osId, tecId, cardId){
   save(); abrirVerOSAvulsa(osId, cardId, 'equipe');
 }
 
+/* v1.47.3: item de O.S. Avulsa pode opcionalmente baixar do estoque (checkbox "Baixar do
+   nosso estoque"). Diferente da Execução, aqui não existe proposta por trás — é sempre uma
+   decisão explícita do usuário por item — e a baixa SEMPRE sai do estoque geral (obra_id
+   null), nunca reserva/consome de uma obra específica (Avulsa normalmente atende obra já
+   concluída; mesma regra já usada no Contas a Pagar da Avulsa). */
+let _avlItemPendente = null; // {osId, cardId, desc, qtd, unit, valor}
+
 function adicionarItemAVL(osId, cardId){
   const os   = db.ordensServico.find(x=>x.id===osId);
   const desc = document.getElementById('avl-item-desc').value.trim();
@@ -14853,15 +14871,75 @@ function adicionarItemAVL(osId, cardId){
   const qtd   = parseFloat(document.getElementById('avl-item-qtd').value)   || 1;
   const unit  = document.getElementById('avl-item-unit').value.trim()        || 'un';
   const valor = parseFloat(document.getElementById('avl-item-valor').value)  || null;
+  const baixarEstoque = document.getElementById('avl-item-estoque')?.checked;
+
+  if(baixarEstoque){
+    _avlItemPendente = {osId, cardId, desc, qtd, unit, valor};
+    abrirVincularProdutoEstoqueAVL();
+    return;
+  }
   if(!os.produtos) os.produtos = [];
-  os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso'});
+  os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso', produtoEstoqueId:null, estoqueMovIds:[]});
   registrarLog('criar','os',osId,`Item adicionado à O.S. ${os.numero}: ${desc}`);
   save(); abrirVerOSAvulsa(osId, cardId, 'itens');
 }
 
-function removerItemAVL(osId, idx, cardId){
+/* mini-modal pra vincular o item avulso a um produto do catálogo — mesma regra do v1.47.2:
+   só lista produtos já cadastrados, sem opção de criar novo aqui. */
+function abrirVincularProdutoEstoqueAVL(){
+  const ctx = _avlItemPendente;
+  if(!ctx) return;
+  const sugestao = matchProdutoEstoquePorNome(ctx.desc);
+  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  abrirModal(`
+    <h3>📦 Vincular ao Catálogo de Estoque</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:12px;color:var(--muted)">Item da O.S.</div>
+        <div style="font-weight:600">${escHtml(ctx.desc)}</div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0">Essa saída sempre sai do estoque geral (não reserva/consome de nenhuma obra específica).</p>
+      ${produtos.length ? `
+      <div>
+        <label>Produto do catálogo *</label>
+        <select id="vpe-avl-sel">
+          <option value="">— Selecione —</option>
+          ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
+        </select>
+      </div>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra vincular.</div>`}
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="_avlItemPendente=null; abrirVerOSAvulsa(${ctx.osId},${ctx.cardId},'itens')">← Cancelar</button>
+      ${produtos.length ? `<button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEstoqueAVL()">Confirmar e Adicionar</button>` : ''}
+    </div>`, 'cartao');
+}
+
+async function confirmarVincularProdutoEstoqueAVL(){
+  const ctx = _avlItemPendente;
+  if(!ctx) return;
+  const selVal = document.getElementById('vpe-avl-sel')?.value;
+  const produtoId = parseInt(selVal)||null;
+  if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
+  if(!_confirmaSaldoEstoqueSuficiente(produtoId, null, ctx.qtd)) return;
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const os = db.ordensServico.find(x=>x.id===ctx.osId);
+  const movIds = await debitarEstoque(produtoId, null, ctx.qtd, {osId:ctx.osId, observacao:`Consumo O.S. ${os.numero} — ${ctx.desc}`});
+  if(!os.produtos) os.produtos = [];
+  os.produtos.push({descricao:ctx.desc, qtd:ctx.qtd, unit:ctx.unit, valorUnit:ctx.valor, tipo:'avulso', produtoEstoqueId:produtoId, estoqueMovIds:movIds});
+  registrarLog('criar','os',ctx.osId,`Item adicionado à O.S. ${os.numero}: ${ctx.desc} (baixa de estoque)`);
+  save();
+  _avlItemPendente = null;
+  abrirVerOSAvulsa(ctx.osId, ctx.cardId, 'itens');
+}
+
+async function removerItemAVL(osId, idx, cardId){
   const os   = db.ordensServico.find(x=>x.id===osId);
   const item = os.produtos[idx];
+  if(item?.estoqueMovIds?.length){
+    await estornarEstoque(item.estoqueMovIds, `Remoção de item — O.S. ${os.numero}`);
+  }
   os.produtos.splice(idx,1);
   registrarLog('excluir','os',osId,`Item removido da O.S. ${os.numero}: ${item?.descricao||'?'}`);
   save(); abrirVerOSAvulsa(osId, cardId, 'itens');
