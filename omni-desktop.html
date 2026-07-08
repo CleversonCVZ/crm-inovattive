@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.5';
+const APP_VERSION = '1.47.6';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.6',
+    data: '07/07/2026',
+    itens: [
+      'Aba "Itens" da O.S. Avulsa: o checkbox "👁 R$" (mostrar valor no PDF) agora começa desmarcado por padrão em itens novos — precisa marcar explicitamente pra aparecer no PDF do cliente.',
+    ]
+  },
   {
     versao: '1.47.5',
     data: '07/07/2026',
@@ -14237,13 +14244,13 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     todos.forEach((it,i)=>{ (it.produtoEstoqueId ? produtosLista : servicos).push({it,i}); });
     const totalGeral = todos.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
 
-    const tabelaItens = (lista, tituloVazio) => lista.length ? `
+    const tabelaItens = (lista, tituloVazio, mostrarUn=true) => lista.length ? `
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px">
         <thead>
           <tr style="background:var(--surface)">
             <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Descrição</th>
             <th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:60px">Qtd</th>
-            <th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:55px">Un</th>
+            ${mostrarUn?`<th style="text-align:center;padding:6px 8px;border-bottom:2px solid var(--border);width:55px">Un</th>`:''}
             <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Vl. Unit.</th>
             <th style="text-align:right;padding:6px 8px;border-bottom:2px solid var(--border);width:90px">Total</th>
             <th style="text-align:center;padding:6px 4px;border-bottom:2px solid var(--border);width:46px;font-size:11px;color:var(--muted)" title="Mostrar valor no PDF">👁 R$</th>
@@ -14252,12 +14259,12 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
         </thead>
         <tbody>
           ${lista.map(({it,i})=>{
-            const exibir = it.exibirValorPDF !== false;
+            const exibir = it.exibirValorPDF === true;
             return `
             <tr style="border-bottom:1px solid var(--border)">
               <td style="padding:7px 8px">${it.descricao||'—'}</td>
               <td style="text-align:center;padding:7px 8px">${it.qtd||1}</td>
-              <td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>
+              ${mostrarUn?`<td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>`:''}
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney((it.valorUnit||0)*(it.qtd||1)):'—'}</td>
               <td style="text-align:center;padding:7px 4px">
@@ -14774,13 +14781,13 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
     doc.text('ITENS / MATERIAIS', M, y);
     y += 3;
     const total = itens.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
-    const mostrarTotal = itens.some(it=>it.exibirValorPDF!==false && it.valorUnit!=null);
+    const mostrarTotal = itens.some(it=>it.exibirValorPDF===true && it.valorUnit!=null);
     doc.autoTable({
       startY: y,
       margin:{left:M,right:M},
       head:[['Descrição','Qtd','Un','Vl. Unit.','Total']],
       body: itens.map(it=>{
-        const exibir = it.exibirValorPDF !== false;
+        const exibir = it.exibirValorPDF === true;
         return [
           it.descricao||'—',
           String(it.qtd||1),
@@ -14909,7 +14916,7 @@ function adicionarServicoAVL(osId, cardId){
   const valor = parseFloat(document.getElementById('avl-serv-valor').value)  || null;
 
   if(!os.produtos) os.produtos = [];
-  os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso', produtoEstoqueId:null, estoqueMovIds:[]});
+  os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso', produtoEstoqueId:null, estoqueMovIds:[], exibirValorPDF:false});
   registrarLog('criar','os',osId,`Serviço adicionado à O.S. ${os.numero}: ${desc}`);
   save(); abrirVerOSAvulsa(osId, cardId, 'itens');
 }
@@ -14931,7 +14938,7 @@ async function adicionarProdutoAVL(osId, cardId){
   if(btn) btnSalvando(btn);
   const movIds = await debitarEstoque(produtoId, null, qtd, {osId, observacao:`Consumo O.S. ${os.numero} — ${produto?.nome||''}`});
   if(!os.produtos) os.produtos = [];
-  os.produtos.push({descricao:produto?.nome||'Produto', qtd, unit:produto?.unidade||'un', valorUnit:valor, tipo:'avulso', produtoEstoqueId:produtoId, estoqueMovIds:movIds});
+  os.produtos.push({descricao:produto?.nome||'Produto', qtd, unit:produto?.unidade||'un', valorUnit:valor, tipo:'avulso', produtoEstoqueId:produtoId, estoqueMovIds:movIds, exibirValorPDF:false});
   registrarLog('criar','os',osId,`Produto adicionado à O.S. ${os.numero}: ${produto?.nome||''} (baixa de estoque)`);
   save();
   abrirVerOSAvulsa(osId, cardId, 'itens');
