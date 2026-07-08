@@ -8797,6 +8797,9 @@ function comprasObraSRM(obraId){
 let estoquePainelVista = localStorage.getItem('estoquePainelVista') || 'andamento';
 function mudarVistaEstoquePainel(v){ estoquePainelVista = v; localStorage.setItem('estoquePainelVista', v); renderEstoquePainel(); }
 
+/* Existem obras com 2 Cartões CRM apontando pra elas (edge case levantado antes
+   de implementar) — em vez de escolher 1 card por obra, a visualização "em
+   andamento" simplesmente exige que AO MENOS 1 card ativo exista pra obra entrar. */
 function _obraTemCardAtivo(obraId){
   return (db.cards||[]).some(c=>c.obraId===obraId && !c.concluido && !c.perdido);
 }
@@ -8839,6 +8842,10 @@ function _montarKanbanObras(corpo, lista, fases, msgVazio){
   else corpo.appendChild(kanban);
 }
 
+/* Alterna entre as 2 visualizações (select #estoque-painel-vista, valor
+   persistido em estoquePainelVista) e já respeita a busca global (#busca) —
+   chamada também de dentro de renderAll() pra ficar coerente com os outros
+   painéis quando o usuário digita na barra de pesquisa do topo. */
 function renderEstoquePainel(){
   const corpo = document.getElementById('estoque-painel-corpo'); if(!corpo) return;
   const selV = document.getElementById('estoque-painel-vista');
@@ -8960,6 +8967,12 @@ function abrirEstoqueObraModal(obraId){
   `, 'wide');
 }
 
+/** v1.47.15/16: aba Obra→Compras é hoje só uma VISUALIZAÇÃO — lista os Cards SRM
+ *  vinculados a esta obra (cardsSRMDaObra), sem cadastro/edição própria (isso é
+ *  feito só pelo módulo SRM). Cards com pagamentoResponsavel==='cliente' aparecem
+ *  aqui mas ficam de fora do "Total Compras" (badge "💳 Cliente paga direto") —
+ *  mesmo total usado em abaObraResultadoAparente, via comprasObraSRM. As tabelas
+ *  antigas obra_compras/obra_nfs continuam no banco, só não são mais lidas aqui. */
 function abaObraCompras(c, ob){
   const fmtR = v => v!=null ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
   const cards = cardsSRMDaObra(ob.id);
