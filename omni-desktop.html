@@ -1275,11 +1275,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.12';
+const APP_VERSION = '1.47.13';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.13',
+    data: '08/07/2026',
+    itens: [
+      'Corrigido: reativar uma Conta Recorrente que estava pausada podia recriar uma Conta a Pagar "fantasma" pro mês corrente, já vencida, mesmo quando esse mês já tinha sido pago por fora (motivo comum de pausar uma recorrente). Agora, se o dia de vencimento do mês já passou quando a recorrente é reativada, ela só volta a gerar Conta a Pagar a partir do próximo mês.',
+    ]
+  },
   {
     versao: '1.47.12',
     data: '08/07/2026',
@@ -2932,7 +2939,8 @@ async function carregarDadosSupabase(){
         periodicidade:r.periodicidade||'mensal',
         mesVencimento:r.mes_vencimento||null,
         ativa:r.ativa!==false,
-        criadoEm:r.criado_em||''
+        criadoEm:r.criado_em||'',
+        ativadaEm:r.ativada_em||null
       }));
     if(cardsSRMRes.data)
       db.cardsSRM = cardsSRMRes.data.map(c=>({
@@ -9480,10 +9488,11 @@ async function salvarNovaRecorrente(btn){
   const contaId = parseInt(document.getElementById('rec-conta').value)||null;
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
+  const agora = new Date().toISOString();
   const {data, error} = await sb.from('contas_recorrentes').insert({
     nome, fornecedor_id:fornId, centro_custo_id:ccId, obra_id:obraId,
     conta_id:contaId, valor, dia_vencimento:Math.min(Math.max(dia,1),31), ativa:true,
-    periodicidade, mes_vencimento:mesVencimento
+    periodicidade, mes_vencimento:mesVencimento, ativada_em:agora
   }).select().single();
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
   db.contasRecorrentes = db.contasRecorrentes||[];
@@ -9493,7 +9502,7 @@ async function salvarNovaRecorrente(btn){
     contaId:data.conta_id||null,
     valor:Number(data.valor)||0, diaVencimento:data.dia_vencimento||10,
     periodicidade:data.periodicidade||'mensal', mesVencimento:data.mes_vencimento||null,
-    ativa:true, criadoEm:data.criado_em||''
+    ativa:true, criadoEm:data.criado_em||'', ativadaEm:data.ativada_em||agora
   });
   await _delay;
   fecharModal();
@@ -9618,7 +9627,13 @@ async function toggleRecorrente(id){
   const r = (db.contasRecorrentes||[]).find(x=>x.id===id);
   if(!r) return;
   r.ativa = !r.ativa;
-  await sb.from('contas_recorrentes').update({ativa:r.ativa}).eq('id',id);
+  const update = {ativa:r.ativa};
+  // v1.47.13: registra quando a recorrente foi (re)ativada — usado por
+  // gerar_recorrentes_pendentes() pra não gerar CP do mês corrente se o dia de
+  // vencimento já passou (evita recriar "CP fantasma" de um mês já resolvido
+  // por fora, motivo pelo qual a recorrente tinha sido pausada).
+  if(r.ativa){ r.ativadaEm = new Date().toISOString(); update.ativada_em = r.ativadaEm; }
+  await sb.from('contas_recorrentes').update(update).eq('id',id);
   save();
   fecharModal();
   renderRecorrentes();
