@@ -1275,11 +1275,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.14';
+const APP_VERSION = '1.47.15';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.15',
+    data: '08/07/2026',
+    itens: [
+      'A aba Obra → Compras virou uma visualização dos Cards SRM vinculados àquela obra (Centro de Custo "Material de Obra"), em vez do cadastro manual antigo: mostra fornecedor, fase, valor da cotação vencedora, PDF do pedido e da NF (abre direto no navegador) e um link "Ver no SRM →". Novas compras passam a ser criadas direto no módulo SRM. O Resultado Aparente da Obra também passou a somar o valor dessas cotações vencedoras (cards ainda em cotação não entram no total).',
+    ]
+  },
   {
     versao: '1.47.14',
     data: '08/07/2026',
@@ -8783,232 +8790,93 @@ function abaObraSenhas(c, ob){
     </div>`:''}`;
 }
 
+/** v1.47.15: dados vindos dos Cards SRM vinculados a esta obra (fornecedor_id/
+ *  centro_custo_id "Material de Obra" + obra_id = ob.id). Usado tanto pela aba
+ *  Compras (visualização) quanto pelo Resultado Aparente (total). cotSel é a
+ *  cotação com status 'selecionada' — a única cujo valor conta como custo
+ *  decidido; cards ainda sem cotação vencedora entram na lista mas NÃO entram
+ *  no total (ver comprasObraSRM abaixo). */
+function cardsSRMDaObra(obraId){
+  return (db.cardsSRM||[]).filter(x=>x.obraId===obraId).sort((a,b)=>(a.num||0)-(b.num||0));
+}
+function cotacaoSelecionadaSRM(cardId){
+  return (db.srmCotacoes||[]).find(x=>x.cardSrmId===cardId && x.status==='selecionada') || null;
+}
+/** Retorna {cards, totalDecidido, emCotacao} — usado pelo Resultado Aparente. */
+function comprasObraSRM(obraId){
+  const cards = cardsSRMDaObra(obraId);
+  let totalDecidido = 0;
+  const emCotacao = [];
+  cards.forEach(card=>{
+    const sel = cotacaoSelecionadaSRM(card.id);
+    if(sel && sel.valor) totalDecidido += sel.valor;
+    else emCotacao.push(card);
+  });
+  return {cards, totalDecidido, emCotacao};
+}
+
 function abaObraCompras(c, ob){
-  const podeEditar = podeEditarRecurso(usuarioAtual,'obra-compras');
-  const compras = (db.obraCompras||[]).filter(x=>x.obraId===ob.id);
-  const nfs     = db.obraNfs||[];
-
   const fmtR = v => v!=null ? 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
-  const fmtD = d => d ? d.split('-').reverse().join('/') : '—';
+  const cards = cardsSRMDaObra(ob.id);
 
-  const statusBadge = s => {
-    const map = {pendente:'#f59e0b',entregue:'#22c55e',parcial:'#3b82f6',cancelado:'#ef4444'};
-    const label = {pendente:'Pendente',entregue:'Entregue',parcial:'Parcial',cancelado:'Cancelado'};
-    return `<span style="background:${map[s]||'#6b7280'}22;color:${map[s]||'#6b7280'};border:1px solid ${map[s]||'#6b7280'}44;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">${label[s]||s}</span>`;
-  };
-
-  // totalizadores
-  const totalPedidos = compras.reduce((s,x)=>s+(x.valorPedido||0),0);
-  const totalNfs     = nfs.filter(n=>compras.some(c=>c.id===n.compraId)).reduce((s,n)=>s+(n.valorNf||0),0);
-  const dif          = totalPedidos - totalNfs;
-
-  let rows = '';
-  if(!compras.length){
-    rows = `<div class="empty" style="margin-top:12px">Nenhum pedido de compra cadastrado para esta obra.</div>`;
-  } else {
-    rows = compras.map(cp=>{
-      const cpNfs = nfs.filter(n=>n.compraId===cp.id);
-      const somaНФ = cpNfs.reduce((s,n)=>s+(n.valorNf||0),0);
-      const difCP  = (cp.valorPedido||0) - somaНФ;
-      const indicador = cp.valorPedido!=null
-        ? (somaНФ===0 ? '' : somaНФ < (cp.valorPedido||0) ? `<span style="color:#f59e0b;font-size:11px" title="NFs parciais">⚠ parcial</span>` : somaНФ > (cp.valorPedido||0) ? `<span style="color:#ef4444;font-size:11px" title="NFs superam o pedido">⛔ divergência</span>` : `<span style="color:#22c55e;font-size:11px" title="NFs batem com o pedido">✅ ok</span>`)
-        : '';
-
-      const nfRows = cpNfs.map(n=>`
-        <tr style="font-size:12px;background:var(--surface)">
-          <td style="padding:5px 8px;color:var(--muted)">NF</td>
-          <td style="padding:5px 8px">${n.numeroNf||'—'}</td>
-          <td style="padding:5px 8px">${fmtD(n.dataNf)}</td>
-          <td style="padding:5px 8px;font-weight:600">${fmtR(n.valorNf)}</td>
-          <td style="padding:5px 8px">${n.fornecedor||'—'}</td>
-          <td style="padding:5px 8px">
-            ${n.pdfPath ? `<button class="btn-xs" onclick="baixarNfPDF('${n.pdfPath}','${n.pdfNome||'nf.pdf'}')">📄 Abrir NF</button>` : ''}
-            ${podeEditar?`<button class="btn-xs" onclick="abrirEditarNf(${n.id})">✏️</button>
-            <button class="btn-xs btn-danger" onclick="excluirNf(${n.id},${cp.id},${c.id})">✕</button>`:''}
-          </td>
-        </tr>
-        <tr id="form-editar-nf-${n.id}" style="display:none;background:var(--bg)">
-          <td colspan="6" style="padding:12px 14px">
-            <div style="font-size:12px;font-weight:700;margin-bottom:10px">Editar Nota Fiscal</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-              <div>
-                <label style="font-size:11px;color:var(--muted)">Nº da NF</label>
-                <input id="edit-nf-numero-${n.id}" type="text" class="input-field" value="${(n.numeroNf||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
-              </div>
-              <div>
-                <label style="font-size:11px;color:var(--muted)">Fornecedor</label>
-                <input id="edit-nf-forn-${n.id}" type="text" class="input-field" value="${(n.fornecedor||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
-              </div>
-              <div>
-                <label style="font-size:11px;color:var(--muted)">Data da NF</label>
-                <input id="edit-nf-data-${n.id}" type="date" class="input-field" value="${n.dataNf||''}" style="margin-top:3px">
-              </div>
-              <div>
-                <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
-                <input id="edit-nf-valor-${n.id}" type="text" inputmode="decimal" class="input-field" value="${n.valorNf!=null?String(n.valorNf).replace('.',','):''}" placeholder="Ex: 1.500,00" style="margin-top:3px">
-              </div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn-primary" onclick="salvarEdicaoNf(${n.id},${cp.id},${c.id})">Salvar</button>
-              <button class="btn-sm" onclick="fecharEditarNf(${n.id})">Cancelar</button>
-            </div>
-          </td>
-        </tr>`).join('');
-
-      return `
-      <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden">
-        <div style="padding:10px 14px;background:var(--surface);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          ${statusBadge(cp.status)}
-          <span style="font-weight:700;flex:1;min-width:120px">${cp.fornecedor||'Sem fornecedor'}</span>
-          <span style="font-size:12px;color:var(--muted)">${cp.numeroPedido ? 'Pedido #'+cp.numeroPedido : ''}</span>
-          <span style="font-size:12px;color:var(--muted)">${fmtD(cp.dataPedido)}</span>
-          <span style="font-weight:700;color:var(--primary)">${fmtR(cp.valorPedido)}</span>
-          ${indicador}
-          <div style="display:flex;gap:6px;margin-left:auto">
-            ${podeEditar?`<select style="font-size:11px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg)"
-              onchange="atualizarStatusCompra(${cp.id},${c.id},this.value)">
-              ${['pendente','parcial','entregue','cancelado'].map(s=>`<option value="${s}"${cp.status===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('')}
-            </select>`:''}
-            ${cp.pdfPath ? `<button class="btn-xs" onclick="baixarCompraPDF('${cp.pdfPath}','${cp.pdfNome||'pedido.pdf'}')">📄 Abrir Pedido</button>` : ''}
-            ${podeEditar?`<button class="btn-xs" onclick="abrirEditarCompra(${cp.id},${c.id})">✏️</button>
-            <button class="btn-xs btn-danger" onclick="excluirCompra(${cp.id},${c.id})">✕</button>`:''}
-          </div>
-        </div>
-        <div id="form-editar-compra-${cp.id}" style="display:none;padding:14px;border-bottom:1px solid var(--border);background:var(--bg)">
-          <div style="font-size:12px;font-weight:700;margin-bottom:10px">Editar Pedido</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-            <div>
-              <label style="font-size:11px;color:var(--muted)">Fornecedor *</label>
-              <input id="edit-compra-forn-${cp.id}" type="text" class="input-field" value="${(cp.fornecedor||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--muted)">Nº do Pedido</label>
-              <input id="edit-compra-num-${cp.id}" type="text" class="input-field" value="${(cp.numeroPedido||'').replace(/"/g,'&quot;')}" style="margin-top:3px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--muted)">Data</label>
-              <input id="edit-compra-data-${cp.id}" type="date" class="input-field" value="${cp.dataPedido||''}" style="margin-top:3px">
-            </div>
-            <div>
-              <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
-              <input id="edit-compra-valor-${cp.id}" type="text" inputmode="decimal" class="input-field" value="${cp.valorPedido!=null?String(cp.valorPedido).replace('.',','):''}" placeholder="Ex: 1.500,00" style="margin-top:3px">
-            </div>
-          </div>
-          <div style="margin-bottom:10px">
-            <label style="font-size:11px;color:var(--muted)">Descrição / Observação</label>
-            <textarea id="edit-compra-desc-${cp.id}" class="input-field" rows="2" style="margin-top:3px;resize:vertical">${cp.descricao||''}</textarea>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-primary" onclick="salvarEdicaoCompra(${cp.id},${c.id})">Salvar</button>
-            <button class="btn-sm" onclick="fecharEditarCompra(${cp.id})">Cancelar</button>
-          </div>
-        </div>
-        ${cp.descricao ? `<div style="padding:6px 14px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border)">${cp.descricao}</div>` : ''}
-        <table style="width:100%;border-collapse:collapse">
-          ${nfRows}
-          <tr>
-            <td colspan="6" style="padding:6px 10px">
-              ${podeEditar?`<button class="btn-xs" onclick="abrirFormNovaNf(${cp.id},${c.id},${ob.id})">+ Nota Fiscal</button>`:''}
-              ${cpNfs.length && cp.valorPedido!=null ? `<span style="float:right;font-size:11px;color:var(--muted);line-height:22px">Saldo: <b style="color:${difCP>0?'#f59e0b':difCP<0?'#ef4444':'#22c55e'}">${fmtR(difCP)}</b></span>` : ''}
-            </td>
-          </tr>
-        </table>
-      </div>`;
-    }).join('');
+  if(!cards.length){
+    return `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Compras (SRM)</span>
+      </div>
+      <div class="empty" style="margin-top:12px">Nenhum Card SRM vinculado a esta obra ainda. Pra registrar uma compra de material pra esta obra, abra um novo processo no módulo SRM com Centro de Custo "Material de Obra" vinculado a esta obra — ele aparece aqui automaticamente.</div>`;
   }
 
+  let totalDecidido = 0;
+  const rows = cards.map(card=>{
+    const f = faseSRM(card.faseId) || {cor:'#dee2e6', nome:'—'};
+    const forn = (db.fornecedores||[]).find(x=>x.id===card.fornecedorId);
+    const sel = cotacaoSelecionadaSRM(card.id);
+    if(sel && sel.valor) totalDecidido += sel.valor;
+
+    const valorHTML = (sel && sel.valor)
+      ? `<span style="font-weight:700;color:var(--primary)">${fmtR(sel.valor)}</span>`
+      : `<span style="color:#f59e0b;font-size:12px;font-weight:600">🕓 em cotação</span>`;
+
+    const statusBadge = card.encerrado
+      ? `<span style="background:#22c55e22;color:#16a34a;border:1px solid #16a34a44;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">✔ Encerrado</span>`
+      : card.cancelado
+        ? `<span style="background:#ef444422;color:#dc2626;border:1px solid #dc262644;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">✕ Cancelado</span>`
+        : `<span style="background:${f.cor}22;color:${f.cor};border:1px solid ${f.cor}44;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700">● ${escHtml(f.nome)}</span>`;
+
+    const arquivosPedido = sel ? (sel.arquivos||[]) : [];
+    const btnPedido = arquivosPedido.map(a=>
+      `<button class="btn-xs" onclick="baixarPDFCotacaoSRM('${a.path.replace(/'/g,"\\'")}','${(a.nome||'pedido.pdf').replace(/'/g,"\\'")}')">📄 Abrir Pedido</button>`
+    ).join('');
+    const btnNf = (sel && sel.pdfNfPath)
+      ? `<button class="btn-xs" onclick="baixarPdfNfSRM('${sel.pdfNfPath.replace(/'/g,"\\'")}','${(sel.pdfNfNome||'nf.pdf').replace(/'/g,"\\'")}')">📄 Abrir NF</button>`
+      : '';
+
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-weight:700;color:var(--muted)">#${card.num}</span>
+          <span style="flex:1;min-width:140px;font-weight:600">${forn ? escHtml(forn.nomeFantasia||forn.nome) : '<em style="color:var(--muted);font-weight:400">Sem fornecedor</em>'}</span>
+          ${statusBadge}
+          ${valorHTML}
+        </div>
+        ${card.descricao ? `<div style="font-size:12px;color:var(--muted);margin-bottom:8px">${escHtml(card.descricao)}</div>` : ''}
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          ${btnPedido}${btnNf}
+          <button class="btn-xs" style="margin-left:auto" onclick="abrirEditarSRM(${card.id})">Ver no SRM →</button>
+        </div>
+      </div>`;
+  }).join('');
+
   return `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Pedidos de Compra</span>
-      ${podeEditar?`<button class="btn-sm" style="margin-left:auto" onclick="abrirFormNovaCompra(${c.id},${ob.id})">+ Novo Pedido</button>`:''}
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase">Compras (SRM)</span>
+      <span style="font-size:11px;color:var(--muted)">Somente visualização — para registrar uma nova compra, abra um processo no módulo SRM</span>
     </div>
-
-    ${podeEditar?`<div id="form-nova-compra-${c.id}" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--surface)">
-      <div style="font-size:12px;font-weight:700;margin-bottom:10px">Novo Pedido de Compra</div>
-
-      <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--muted)">PDF do Pedido (opcional)</label>
-        <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-          <input type="file" id="compra-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1" onchange="previewArquivoCompra(this,${c.id})">
-          <button class="btn-sm" onclick="processarPdfCompra(${c.id},${ob.id})">🔍 Ler PDF</button>
-        </div>
-        <div id="compra-pdf-preview-${c.id}" style="display:none;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px"></div>
-        <div id="compra-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Fornecedor *</label>
-          <input id="compra-forn-${c.id}" type="text" class="input-field" placeholder="Nome do fornecedor" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Nº do Pedido</label>
-          <input id="compra-num-${c.id}" type="text" class="input-field" placeholder="Ex: PC-001" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Data</label>
-          <input id="compra-data-${c.id}" type="date" class="input-field" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Valor (R$)</label>
-          <input id="compra-valor-${c.id}" type="text" inputmode="decimal" class="input-field" placeholder="Ex: 1.500,00" style="margin-top:3px">
-        </div>
-      </div>
-      <div style="margin-bottom:10px">
-        <label style="font-size:11px;color:var(--muted)">Descrição / Observação</label>
-        <textarea id="compra-desc-${c.id}" class="input-field" rows="2" placeholder="Itens do pedido, materiais, etc." style="margin-top:3px;resize:vertical"></textarea>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn-primary" onclick="salvarNovaCompra(${c.id},${ob.id})">Salvar Pedido</button>
-        <button class="btn-sm" onclick="fecharFormNovaCompra(${c.id})">Cancelar</button>
-      </div>
-    </div>
-
-    <!-- form nova NF (oculto, aparece via JS) -->
-    <div id="form-nova-nf-${c.id}" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;background:var(--surface)">
-      <div style="font-size:12px;font-weight:700;margin-bottom:10px">Adicionar Nota Fiscal</div>
-      <input type="hidden" id="nf-compra-id-${c.id}">
-      <div style="margin-bottom:8px">
-        <label style="font-size:11px;color:var(--muted)">PDF da NF (opcional)</label>
-        <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-          <input type="file" id="nf-pdf-${c.id}" accept=".pdf" style="font-size:12px;flex:1" onchange="previewArquivoNf(this,${c.id})">
-          <button class="btn-sm" onclick="processarPdfNf(${c.id},${ob.id})">🔍 Ler PDF</button>
-        </div>
-        <div id="nf-pdf-preview-${c.id}" style="display:none;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px"></div>
-        <div id="nf-pdf-status-${c.id}" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Nº da NF</label>
-          <input id="nf-numero-${c.id}" type="text" class="input-field" placeholder="Ex: 000123" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Fornecedor</label>
-          <input id="nf-forn-${c.id}" type="text" class="input-field" placeholder="Nome do emitente" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Data da NF</label>
-          <input id="nf-data-${c.id}" type="date" class="input-field" style="margin-top:3px">
-        </div>
-        <div>
-          <label style="font-size:11px;color:var(--muted)">Valor da NF (R$)</label>
-          <input id="nf-valor-${c.id}" type="text" inputmode="decimal" class="input-field" placeholder="Ex: 1.500,00" style="margin-top:3px">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn-primary" onclick="salvarNovaNf(${c.id},${ob.id})">Salvar NF</button>
-        <button class="btn-sm" onclick="fecharFormNovaNf(${c.id})">Cancelar</button>
-      </div>
-    </div>`:''}
-
     ${rows}
-
-    ${compras.length ? `
     <div style="border-top:2px solid var(--border);padding-top:12px;margin-top:4px;display:flex;gap:24px;flex-wrap:wrap">
-      <div style="font-size:12px"><span style="color:var(--muted)">Total Pedidos:</span> <b>${fmtR(totalPedidos)}</b></div>
-      <div style="font-size:12px"><span style="color:var(--muted)">Total NFs Recebidas:</span> <b>${fmtR(totalNfs)}</b></div>
-      <div style="font-size:12px"><span style="color:var(--muted)">Diferença entre Pedido e NF:</span> <b style="color:${dif>0?'#f59e0b':dif<0?'#ef4444':'#22c55e'}">${fmtR(dif)}</b></div>
-    </div>` : ''}`;
+      <div style="font-size:12px"><span style="color:var(--muted)">Total Compras (decidido):</span> <b>${fmtR(totalDecidido)}</b></div>
+    </div>`;
 }
 
 /* ================= CUSTO MÃO DE OBRA ================= */
@@ -11911,10 +11779,15 @@ function abaObraResultadoAparente(c, ob){
     (p.itens||[]).some(it => it.clienteFornece)
   );
 
-  // ── 2. Compras ─────────────────────────────────────────────────────────────
-  const compras        = (db.obraCompras||[]).filter(x => x.obraId === ob.id);
-  const comprasSemValor= compras.filter(x => x.valorPedido == null);
-  const totalCompras   = compras.reduce((s,x) => s + (x.valorPedido||0), 0);
+  // ── 2. Compras (v1.47.15: fonte passou a ser os Cards SRM vinculados à obra,
+  //     não mais a tabela obra_compras — ver [[project-omni-obras-compras-srm-sinergia]].
+  //     Só entra no total o card que já tem uma cotação vencedora escolhida;
+  //     os que ainda estão "em cotação" aparecem na aba Compras mas ficam de
+  //     fora da soma, pra não inflar o resultado com valor ainda não decidido.) ─
+  const comprasSRM      = comprasObraSRM(ob.id);
+  const compras         = comprasSRM.cards;
+  const comprasSemValor = comprasSRM.emCotacao;
+  const totalCompras    = comprasSRM.totalDecidido;
 
   // ── 3. Mão de Obra (todas OS vinculadas à obra) ────────────────────────────
   const osObra         = (db.ordensServico||[]).filter(o => o.obraId === ob.id);
@@ -11958,13 +11831,18 @@ function abaObraResultadoAparente(c, ob){
       <span style="color:${corVal}">${fmtR(valor)}</span>
     </div>`;
 
-  // ── render compras ─────────────────────────────────────────────────────────
+  // ── render compras (v1.47.15: cards são do SRM, não mais obra_compras) ────
   const linhasCompras = compras.length
-    ? compras.map(cp => linha(
-        cp.nomeFornecedor || cp.descricao || `Pedido #${cp.num||'?'}`,
-        cp.valorPedido != null ? fmtR(cp.valorPedido) : '<span style="color:#f59e0b">⚠ sem valor</span>',
-        {}
-      )).join('')
+    ? compras.map(cp => {
+        const forn = (db.fornecedores||[]).find(x=>x.id===cp.fornecedorId);
+        const sel  = cotacaoSelecionadaSRM(cp.id);
+        const label = `#${cp.num} ${forn ? (forn.nomeFantasia||forn.nome) : (cp.descricao || 'Sem fornecedor')}`;
+        return linha(
+          label,
+          (sel && sel.valor) ? fmtR(sel.valor) : '<span style="color:#f59e0b">🕓 em cotação</span>',
+          {}
+        );
+      }).join('')
     : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma compra registrada</div>`;
 
   // ── render MO por OS ───────────────────────────────────────────────────────
@@ -12004,7 +11882,7 @@ function abaObraResultadoAparente(c, ob){
       ⚠ Nenhuma proposta aprovada encontrada — o valor de venda é R$ 0,00.
     </div>` : '',
     comprasSemValor.length ? `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:10px 14px;font-size:12px;color:#9a3412;margin-bottom:12px">
-      ⚠ ${comprasSemValor.length} compra(s) sem valor preenchido — o total de compras pode estar subestimado.
+      🕓 ${comprasSemValor.length} card(s) de compra ainda em cotação (sem proposta vencedora escolhida) — não entram no total até serem decididos.
     </div>` : '',
     propostasComClienteFornece.length ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:12px;color:#1e40af;margin-bottom:12px">
       ℹ️ ${propostasComClienteFornece.length === 1
