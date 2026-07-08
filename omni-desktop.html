@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.10';
-const APP_VERSION_DATE = '07/07/2026';
+const APP_VERSION = '1.47.11';
+const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.11',
+    data: '08/07/2026',
+    itens: [
+      'Corrigido: editar um Fornecedor e trocar de aba (Dados/Contatos/Pgtos) antes de clicar em Salvar descartava tudo que tinha sido digitado. A aba Dados agora salva campo a campo sozinha (mesmo padrão já usado na O.S. Avulsa), sem precisar de botão Salvar.',
+    ]
+  },
   {
     versao: '1.47.10',
     data: '07/07/2026',
@@ -10765,75 +10772,103 @@ function renderFornecedores(){
 }
 
 /** HTML do formulário de fornecedor (reutilizado em novo e editar) */
+/* v1.47.11: quando f.id já existe (editando fornecedor existente, não cadastrando novo),
+   cada campo salva sozinho ao perder o foco (onchange chama autoSalvarCampoFornecedor) —
+   corrige bug real: trocar de aba (Dados/Contatos/Pgtos) antes de clicar em "Salvar"
+   reabre o modal a partir do fornecedor ainda não atualizado e descarta tudo que foi
+   digitado. Mesmo padrão já usado na O.S. Avulsa (autoSalvarCampoOS). Cadastro de fornecedor
+   NOVO (f.id undefined) continua com botão Salvar normal, já que não existe registro ainda
+   pra autosave apontar. */
 function _fornFormHTML(f={}){
   const UFs = ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'];
   const ufOpts = UFs.map(u=>`<option value="${u}" ${(f.estado||'')==u?'selected':''}>${u}</option>`).join('');
+  const edit = f.id!==undefined;
+  const auto = (campo, transform='this.value') => edit ? `onchange="autoSalvarCampoFornecedor(${f.id},'${campo}',${transform})"` : '';
   return `
+    ${edit?`<div id="ff-save-status" style="font-size:11px;color:#2e7d32;min-height:16px;margin-bottom:4px"></div>`:''}
     <!-- Linha 1: Nome e Nome Fantasia -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>Razão Social / Nome *
-        <input id="ff-nome" type="text" value="${escHtml(f.nome||'')}" class="input" style="margin-top:4px" placeholder="Razão social ou nome">
+        <input id="ff-nome" type="text" value="${escHtml(f.nome||'')}" class="input" style="margin-top:4px" placeholder="Razão social ou nome" ${auto('nome')}>
       </label>
       <label>Nome Fantasia
-        <input id="ff-fantasia" type="text" value="${escHtml(f.nomeFantasia||'')}" class="input" style="margin-top:4px" placeholder="Nome comercial (opcional)">
+        <input id="ff-fantasia" type="text" value="${escHtml(f.nomeFantasia||'')}" class="input" style="margin-top:4px" placeholder="Nome comercial (opcional)" ${auto('nomeFantasia')}>
       </label>
     </div>
     <!-- Linha 1b: CNPJ/CPF -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>CNPJ / CPF
-        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
+        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this)" ${auto('cnpjCpf')}>
       </label>
       <div></div>
     </div>
     <!-- Linha 2: Telefone e E-mail -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>Telefone
-        <input id="ff-tel" type="text" value="${escHtml(fmtTel(f.telefone||''))}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)">
+        <input id="ff-tel" type="text" value="${escHtml(fmtTel(f.telefone||''))}" class="input" style="margin-top:4px" placeholder="(00) 00000-0000" maxlength="15" oninput="mascaraTel(this)" ${auto('telefone')}>
       </label>
       <label>E-mail
-        <input id="ff-email" type="email" value="${escHtml(f.email||'')}" class="input" style="margin-top:4px" placeholder="contato@fornecedor.com">
+        <input id="ff-email" type="email" value="${escHtml(f.email||'')}" class="input" style="margin-top:4px" placeholder="contato@fornecedor.com" ${auto('email')}>
       </label>
     </div>
     <!-- Linha 3: CEP e Logradouro -->
     <div style="display:grid;grid-template-columns:120px 1fr;gap:12px">
       <label>CEP
         <input id="ff-cep" type="text" value="${escHtml(f.cep||'')}" class="input" style="margin-top:4px" placeholder="00000-000"
-          oninput="buscarCepFornecedor(this.value)">
+          oninput="buscarCepFornecedor(this.value${edit?','+f.id:''})" ${auto('cep')}>
       </label>
       <label>Logradouro
-        <input id="ff-logr" type="text" value="${escHtml(f.logradouro||'')}" class="input" style="margin-top:4px" placeholder="Rua, Avenida…">
+        <input id="ff-logr" type="text" value="${escHtml(f.logradouro||'')}" class="input" style="margin-top:4px" placeholder="Rua, Avenida…" ${auto('logradouro')}>
       </label>
     </div>
     <!-- Linha 4: Número, Complemento, Bairro -->
     <div style="display:grid;grid-template-columns:100px 1fr 1fr;gap:12px">
       <label>Número
-        <input id="ff-num" type="text" value="${escHtml(f.numero||'')}" class="input" style="margin-top:4px">
+        <input id="ff-num" type="text" value="${escHtml(f.numero||'')}" class="input" style="margin-top:4px" ${auto('numero')}>
       </label>
       <label>Complemento
-        <input id="ff-comp" type="text" value="${escHtml(f.complemento||'')}" class="input" style="margin-top:4px" placeholder="Sala, apto…">
+        <input id="ff-comp" type="text" value="${escHtml(f.complemento||'')}" class="input" style="margin-top:4px" placeholder="Sala, apto…" ${auto('complemento')}>
       </label>
       <label>Bairro
-        <input id="ff-bairro" type="text" value="${escHtml(f.bairro||'')}" class="input" style="margin-top:4px">
+        <input id="ff-bairro" type="text" value="${escHtml(f.bairro||'')}" class="input" style="margin-top:4px" ${auto('bairro')}>
       </label>
     </div>
     <!-- Linha 5: Cidade e UF -->
     <div style="display:grid;grid-template-columns:1fr 100px;gap:12px">
       <label>Cidade
-        <input id="ff-cidade" type="text" value="${escHtml(f.cidade||'')}" class="input" style="margin-top:4px">
+        <input id="ff-cidade" type="text" value="${escHtml(f.cidade||'')}" class="input" style="margin-top:4px" ${auto('cidade')}>
       </label>
       <label>UF
-        <select id="ff-uf" class="input" style="margin-top:4px">
+        <select id="ff-uf" class="input" style="margin-top:4px" ${auto('estado')}>
           <option value="">—</option>${ufOpts}
         </select>
       </label>
     </div>
     <!-- Observação e ativo -->
     <label>Observação
-      <input id="ff-obs" type="text" value="${escHtml(f.observacao||'')}" class="input" style="margin-top:4px" placeholder="Condições, prazo de pagamento, contato…">
+      <input id="ff-obs" type="text" value="${escHtml(f.observacao||'')}" class="input" style="margin-top:4px" placeholder="Condições, prazo de pagamento, contato…" ${auto('observacao')}>
     </label>
     ${f.id!==undefined?`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-      <input type="checkbox" id="ff-ativo" ${f.ativo!==false?'checked':''}> Fornecedor ativo
+      <input type="checkbox" id="ff-ativo" ${f.ativo!==false?'checked':''} onchange="autoSalvarCampoFornecedor(${f.id},'ativo',this.checked)"> Fornecedor ativo
     </label>`:''}`;
+}
+
+/** Autosave campo a campo do fornecedor (aba Dados) — mesmo padrão de autoSalvarCampoOS.
+ *  Corrige bug real: trocar de aba antes de clicar em Salvar descartava o que foi digitado. */
+function autoSalvarCampoFornecedor(fornId, campo, valor){
+  if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')) return;
+  const f = (db.fornecedores||[]).find(x=>x.id===fornId);
+  if(!f || valor===undefined || f[campo]===valor) return;
+  f[campo] = valor;
+  registrarLog('editar','fornecedor',fornId,`Fornecedor atualizado: ${f.nome}`);
+  save();
+  renderFornecedores();
+  const el = document.getElementById('ff-save-status');
+  if(el){
+    el.textContent = '✔ Salvo automaticamente';
+    clearTimeout(el._clearTimer);
+    el._clearTimer = setTimeout(()=>{ el.textContent=''; }, 2500);
+  }
 }
 
 /** Lê os campos do formulário de fornecedor */
@@ -10856,8 +10891,11 @@ function _fornFormLer(){
   };
 }
 
-/** Consulta ViaCEP e preenche campos de endereço */
-async function buscarCepFornecedor(cep){
+/** Consulta ViaCEP e preenche campos de endereço. fornId (opcional): quando editando um
+ *  fornecedor existente, já salva os campos preenchidos automaticamente — senão o preenchimento
+ *  via CEP fica só visual e some se o usuário trocar de aba sem tocar em cada campo (mesmo
+ *  bug corrigido em autoSalvarCampoFornecedor). */
+async function buscarCepFornecedor(cep, fornId=null){
   const c = cep.replace(/\D/g,'');
   if(c.length!==8) return;
   try{
@@ -10868,6 +10906,12 @@ async function buscarCepFornecedor(cep){
     if(document.getElementById('ff-bairro'))document.getElementById('ff-bairro').value= d.bairro||'';
     if(document.getElementById('ff-cidade'))document.getElementById('ff-cidade').value= d.localidade||'';
     if(document.getElementById('ff-uf'))    document.getElementById('ff-uf').value     = d.uf||'';
+    if(fornId){
+      autoSalvarCampoFornecedor(fornId,'logradouro',d.logradouro||'');
+      autoSalvarCampoFornecedor(fornId,'bairro',d.bairro||'');
+      autoSalvarCampoFornecedor(fornId,'cidade',d.localidade||'');
+      autoSalvarCampoFornecedor(fornId,'estado',d.uf||'');
+    }
   }catch(e){}
 }
 
@@ -11132,38 +11176,13 @@ function abrirEditarFornecedor(id, aba='dados'){
     <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      ${aba==='dados'
-        ? `<button class="btn primary" data-btn-salvar onclick="salvarEdicaoFornecedor(${id})">Salvar</button>`
-        : aba==='contatos'
-          ? `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">Salvar Dados</button>`
-          : ''}
+      ${aba!=='dados' ? `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">← Dados</button>` : ''}
     </div>`, 'cartao');
 }
 
-/** Persiste edição de fornecedor */
-async function salvarEdicaoFornecedor(id){
-  const f = (db.fornecedores||[]).find(x=>x.id===id);
-  if(!f) return;
-  const d = _fornFormLer();
-  if(!d.nome){ alert('Informe o nome do fornecedor.'); return; }
-  const btn = btnModalPrimario();
-  btnSalvando(btn);
-  const _delay = new Promise(r=>setTimeout(r,800));
-  const {error} = await sb.from('fornecedores').update({
-    nome:d.nome, nome_fantasia:d.nomeFantasia||null,
-    cnpj_cpf:d.cnpjCpf||null, telefone:d.telefone||null,
-    email:d.email||null, logradouro:d.logradouro||null, numero:d.numero||null,
-    complemento:d.complemento||null, bairro:d.bairro||null,
-    cidade:d.cidade||null, estado:d.estado||null, cep:d.cep||null,
-    observacao:d.observacao||null, ativo:!!d.ativo
-  }).eq('id', id);
-  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
-  Object.assign(f, d);
-  save();
-  await _delay;
-  fecharModal();
-  renderFornecedores();
-}
+/* v1.47.11: salvarEdicaoFornecedor() removida — a aba Dados agora salva sozinha campo a
+   campo (autoSalvarCampoFornecedor), corrigindo o bug de perder o que foi digitado ao
+   trocar de aba antes de clicar em Salvar. Ver _fornFormHTML. */
 
 /** Exclui fornecedor (só se não tiver contas a pagar vinculadas) */
 async function excluirFornecedor(id){
