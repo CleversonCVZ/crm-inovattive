@@ -1275,11 +1275,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.13';
+const APP_VERSION = '1.47.14';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.14',
+    data: '08/07/2026',
+    itens: [
+      'Cards do SRM (painel de fases e Encerrados) agora sempre mostram o valor, mesmo antes de ter Conta a Pagar ou NF: usa a cotação selecionada quando existe; se ainda não tem uma vencedora, mostra o valor da única cotação recebida ou "A partir de" o menor valor entre as cotações em análise.',
+    ]
+  },
   {
     versao: '1.47.13',
     data: '08/07/2026',
@@ -5653,6 +5660,20 @@ function excluirEstoqueCategoria(id){
 
 function srmCardAtivo(c){ return !c.encerrado && !c.cancelado; }
 
+/** v1.47.14: valor a exibir no card do SRM (kanban/encerrados), mesmo antes de
+ *  ter Conta a Pagar ou NF lançada. Prioridade: cotação selecionada > cotação
+ *  única recebida > menor valor entre as cotações recebidas (com prefixo "A
+ *  partir de", já que ainda não foi decidido qual delas vence). Retorna null
+ *  se não há nenhuma cotação com valor lançado ainda. */
+function valorExibirSRM(cardId){
+  const cots = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===cardId && x.valor>0);
+  if(!cots.length) return null;
+  const sel = cots.find(x=>x.status==='selecionada');
+  if(sel) return {valor:sel.valor, prefixo:''};
+  if(cots.length===1) return {valor:cots[0].valor, prefixo:''};
+  return {valor:Math.min(...cots.map(x=>x.valor)), prefixo:'A partir de '};
+}
+
 function srmCard(c, showFase){
   const f = faseSRM(c.faseId) || {cor:'#dee2e6', nome:'—'};
   const forn = (db.fornecedores||[]).find(x=>x.id===c.fornecedorId);
@@ -5665,10 +5686,12 @@ function srmCard(c, showFase){
   const ult = c.historico && c.historico.length ? c.historico[c.historico.length-1] : null;
   const cc   = (db.centrosCusto||[]).find(x=>x.id===c.centroCustoId);
   const obra = (db.obras||[]).find(o=>o.id===c.obraId);
+  const val  = valorExibirSRM(c.id);
   el.innerHTML = `
     <div class="top"><span class="num">#${c.num}</span> ${forn ? escHtml(forn.nomeFantasia||forn.nome) : '<em style="color:var(--muted)">Sem fornecedor</em>'}</div>
     ${c.descricao ? `<div class="row">${escHtml(c.descricao)}</div>` : ''}
     ${showFase ? `<div class="row"><b>Fase:</b> <span style="color:${f.cor}">●</span> ${f.nome}</div>` : ''}
+    ${val ? `<div class="row valor">${escHtml(val.prefixo)}${fmtMoney(val.valor)}</div>` : ''}
     ${cc ? `<div class="row"><b>CC:</b> ${escHtml(cc.nome)}${obra ? ' · <b>Obra:</b> '+escHtml(obra.nome) : ''}</div>` : ''}
     <div class="row"><b>Resp.:</b> ${escHtml(c.responsavel||'—')}</div>
     ${ult ? `<div class="row"><b>Último registro:</b> ${fmtData(ult.data)}</div>` : ''}
