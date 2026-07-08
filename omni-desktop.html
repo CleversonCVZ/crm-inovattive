@@ -1013,6 +1013,10 @@
   <div class="view" id="view-fat-painel">
     <div class="bar">
       <h2>Faturamento — Acompanhamento</h2>
+      <select class="vista-sel" id="fat-painel-vista" onchange="mudarVistaFatPainel(this.value)">
+        <option value="fases">Visualização: por fase</option>
+        <option value="concluidas">Visualização: concluídas e canceladas</option>
+      </select>
       <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-nf" onclick="abrirNovoEspelhoFaturamento()">+ Novo Espelho</button>
     </div>
@@ -1276,11 +1280,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.23';
+const APP_VERSION = '1.47.24';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.24',
+    data: '08/07/2026',
+    itens: [
+      'Painel de Faturamento (Acompanhamento) ganhou 2 visualizações, mesmo padrão do Painel de Estoque: "por fase" (padrão, esconde as fases finais) e "concluídas e canceladas" — seletor posicionado logo após o título, igual ao Painel do CRM.',
+      'A fase "Paga" foi renomeada para "Concluída" na tabela de Fases do Faturamento (mesmo sentido, nome mais claro já que cobre o encerramento do espelho).',
+    ]
+  },
   {
     versao: '1.47.23',
     data: '08/07/2026',
@@ -2541,7 +2553,7 @@ function load(){
       {id:1,nome:'A Emitir',cor:'#78909c',ordem:1},
       {id:2,nome:'Emitida',cor:'#0288d1',ordem:2},
       {id:3,nome:'Enviada ao Cliente',cor:'#f57c00',ordem:3},
-      {id:4,nome:'Paga',cor:'#2e7d32',ordem:4,tipo:'paga'},
+      {id:4,nome:'Concluída',cor:'#2e7d32',ordem:4,tipo:'concluida'},
       {id:5,nome:'Cancelada',cor:'#c62828',ordem:5,tipo:'cancelada'}
     ];
   }
@@ -2549,7 +2561,7 @@ function load(){
   db.fasesOS.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   db.fasesObra.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')) f.tipo='concluida'; else if(n.includes('cancel')||n.includes('abandon')) f.tipo='cancelada'; } });
   db.fasesSRM.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('recebid')) f.tipo='recebido'; else if(n.includes('cancel')) f.tipo='cancelado'; } });
-  db.fasesFaturamento.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('paga')) f.tipo='paga'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
+  db.fasesFaturamento.forEach(f=>{ if(!f.tipo){ const n=f.nome.toLowerCase(); if(n.includes('conclu')||n.includes('paga')) f.tipo='concluida'; else if(n.includes('cancel')) f.tipo='cancelada'; } });
   db.notasFiscais.forEach(n=>{ if(!('faseId' in n)) n.faseId = db.fasesFaturamento[0].id; });
   if(!Array.isArray(db.ordensServico)) db.ordensServico = [];
   if(!Array.isArray(db.downloadCategorias)) db.downloadCategorias = [];
@@ -7709,11 +7721,22 @@ function notaFiscalCard(n){
     ${n.servicoNumero ? `<div class="row" style="font-size:11px;color:var(--muted)">NF Serviço: ${escHtml(n.servicoNumero)}</div>` : ''}`;
   return el;
 }
+/* v1.47.24: Painel de Faturamento ganhou 2 visualizações, mesmo padrão já usado
+ * no Painel de Estoque (mudarVistaEstoquePainel/estoquePainelVista) — "por fase"
+ * mostra as fases em andamento (exclui as de tipo concluida/cancelada) e
+ * "concluídas e canceladas" mostra só essas duas colunas. */
+let fatPainelVista = localStorage.getItem('fatPainelVista') || 'fases';
+function mudarVistaFatPainel(v){ fatPainelVista = v; localStorage.setItem('fatPainelVista', v); renderFatPainel(); }
 function renderFatPainel(){
   const k = document.getElementById('fat-kanban'); if(!k) return;
   k.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-painel')) return;
-  fasesFatOrdenadas().forEach(f=>{
+  const selV = document.getElementById('fat-painel-vista');
+  if(selV && selV.value !== fatPainelVista) selV.value = fatPainelVista;
+  const fases = fasesFatOrdenadas().filter(f=>
+    fatPainelVista==='concluidas' ? (f.tipo==='concluida' || f.tipo==='cancelada') : (f.tipo!=='concluida' && f.tipo!=='cancelada')
+  );
+  fases.forEach(f=>{
     const itens = (db.notasFiscais||[]).filter(n=>n.faseId===f.id);
     k.appendChild(colEl(f.nome, f.cor, itens, {
       render: notaFiscalCard,
