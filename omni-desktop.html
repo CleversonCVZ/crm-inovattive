@@ -899,6 +899,15 @@
         <p style="font-size:12px;color:var(--muted);margin-top:10px">PNG ou JPG. A imagem é redimensionada e exibida no topo do sistema e na tela de login.</p>
       </div>
       <div class="config-card">
+        <h3>Alíquotas de Tributos (Faturamento)</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas na tela Faturamento → Previsão de Tributos pra calcular a previsão sobre o valor faturado. Separadas porque produto (ICMS) e serviço (ISS) costumam ter alíquotas diferentes.</p>
+        <div class="form-row">
+          <div><label>Produto (%)</label><input id="emp-aliquota-produto" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+          <div><label>Serviço (%)</label><input id="emp-aliquota-servico" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+        </div>
+        <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
+      </div>
+      <div class="config-card">
         <h3>Dados da Empresa</h3>
         <label>Razão social</label><input id="emp-razao">
         <label>Nome fantasia <small>(exibido no sistema)</small></label><input id="emp-fantasia">
@@ -913,15 +922,6 @@
         </div>
         <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
         <div id="emp-endereco"></div>
-      </div>
-      <div class="config-card">
-        <h3>Alíquotas de Tributos (Faturamento)</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas na tela Faturamento → Previsão de Tributos pra calcular a previsão sobre o valor faturado. Separadas porque produto (ICMS) e serviço (ISS) costumam ter alíquotas diferentes.</p>
-        <div class="form-row">
-          <div><label>Produto (%)</label><input id="emp-aliquota-produto" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
-          <div><label>Serviço (%)</label><input id="emp-aliquota-servico" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
-        </div>
-        <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
       </div>
     </div>
   </div>
