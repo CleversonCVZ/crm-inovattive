@@ -888,24 +888,26 @@
       <button id="btn-salvar-empresa" class="btn primary" onclick="salvarEmpresa()">Salvar Configurações</button>
     </div>
     <div class="config-grid">
-      <div class="config-card">
-        <h3>Logotipo da Empresa</h3>
-        <div id="logo-preview" class="logo-preview"></div>
-        <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="carregarLogo(this)" style="display:none">
-        <div style="display:flex;gap:8px;margin-top:10px">
-          <button class="btn" onclick="document.getElementById('logo-file').click()">📁 Enviar logotipo</button>
-          <button class="btn neutral" id="logo-remover" onclick="removerLogo()">Remover</button>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="config-card">
+          <h3>Logotipo da Empresa</h3>
+          <div id="logo-preview" class="logo-preview"></div>
+          <input type="file" id="logo-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onchange="carregarLogo(this)" style="display:none">
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn" onclick="document.getElementById('logo-file').click()">📁 Enviar logotipo</button>
+            <button class="btn neutral" id="logo-remover" onclick="removerLogo()">Remover</button>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin-top:10px">PNG ou JPG. A imagem é redimensionada e exibida no topo do sistema e na tela de login.</p>
         </div>
-        <p style="font-size:12px;color:var(--muted);margin-top:10px">PNG ou JPG. A imagem é redimensionada e exibida no topo do sistema e na tela de login.</p>
-      </div>
-      <div class="config-card">
-        <h3>Alíquotas de Tributos (Faturamento)</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas na tela Faturamento → Previsão de Tributos pra calcular a previsão sobre o valor faturado. Separadas porque produto (ICMS) e serviço (ISS) costumam ter alíquotas diferentes.</p>
-        <div class="form-row">
-          <div><label>Produto (%)</label><input id="emp-aliquota-produto" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
-          <div><label>Serviço (%)</label><input id="emp-aliquota-servico" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+        <div class="config-card">
+          <h3>Alíquotas de Tributos (Faturamento)</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas na tela Faturamento → Previsão de Tributos pra calcular a previsão sobre o valor faturado. Separadas porque produto (ICMS) e serviço (ISS) costumam ter alíquotas diferentes.</p>
+          <div class="form-row">
+            <div><label>Produto (%)</label><input id="emp-aliquota-produto" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+            <div><label>Serviço (%)</label><input id="emp-aliquota-servico" type="text" inputmode="decimal" oninput="mascaraPercentual(this)"></div>
+          </div>
+          <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
         </div>
-        <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
       </div>
       <div class="config-card">
         <h3>Dados da Empresa</h3>
