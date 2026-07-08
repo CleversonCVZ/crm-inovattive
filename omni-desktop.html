@@ -1279,6 +1279,7 @@ const CHANGELOG = [
     data: '07/07/2026',
     itens: [
       'Aba "Itens" da O.S. Avulsa: o checkbox "👁 R$" (mostrar valor no PDF) agora começa desmarcado por padrão em itens novos — precisa marcar explicitamente pra aparecer no PDF do cliente.',
+      'Corrigido: os campos "Vl. Unit. (R$)" de Serviços e Produtos (aba Itens da O.S. Avulsa) eram input numérico nativo e não aceitavam vírgula — trocados pra máscara de moeda padrão do sistema.',
     ]
   },
   {
@@ -14290,7 +14291,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           <div style="flex:2"><label>Descrição</label><input id="avl-serv-desc" placeholder="Ex: Troca de tomada..."></div>
           <div><label>Qtd</label><input id="avl-serv-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
           <div><label>Un</label><input id="avl-serv-unit" placeholder="un" style="width:55px"></div>
-          <div><label>Vl. Unit. (R$)</label><input id="avl-serv-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+          <div><label>Vl. Unit. (R$)</label><input id="avl-serv-valor" type="text" inputmode="decimal" oninput="mascaraMoeda(this)" placeholder="0,00" style="width:100px"></div>
         </div>
         <button class="btn sm primary" style="margin-top:8px" onclick="adicionarServicoAVL(${osId},${cardId})">＋ Adicionar serviço</button>
       </div>` : '<div style="margin-bottom:20px"></div>'}
@@ -14309,7 +14310,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             </select>
           </div>
           <div><label>Qtd</label><input id="avl-prod-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
-          <div><label>Vl. Unit. (R$)</label><input id="avl-prod-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+          <div><label>Vl. Unit. (R$)</label><input id="avl-prod-valor" type="text" inputmode="decimal" oninput="mascaraMoeda(this)" placeholder="0,00" style="width:100px"></div>
         </div>
         <p style="font-size:11px;color:var(--muted);margin:6px 0 0">Sempre baixa do estoque geral (não reserva/consome de nenhuma obra específica).</p>
         <button class="btn sm primary" style="margin-top:8px" onclick="adicionarProdutoAVL(${osId},${cardId})">＋ Adicionar produto</button>
@@ -14913,7 +14914,8 @@ function adicionarServicoAVL(osId, cardId){
   if(!desc){ alert('Informe a descrição do serviço.'); return; }
   const qtd   = parseFloat(document.getElementById('avl-serv-qtd').value)   || 1;
   const unit  = document.getElementById('avl-serv-unit').value.trim()        || 'un';
-  const valor = parseFloat(document.getElementById('avl-serv-valor').value)  || null;
+  const valorRaw = document.getElementById('avl-serv-valor').value.trim();
+  const valor = valorRaw ? lerMoeda('avl-serv-valor') : null;
 
   if(!os.produtos) os.produtos = [];
   os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso', produtoEstoqueId:null, estoqueMovIds:[], exibirValorPDF:false});
@@ -14930,7 +14932,8 @@ async function adicionarProdutoAVL(osId, cardId){
   if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
   const produto = (db.estoqueProdutos||[]).find(p=>p.id===produtoId);
   const qtd   = parseFloat(document.getElementById('avl-prod-qtd').value)   || 1;
-  const valor = parseFloat(document.getElementById('avl-prod-valor').value) || null;
+  const valorRaw = document.getElementById('avl-prod-valor').value.trim();
+  const valor = valorRaw ? lerMoeda('avl-prod-valor') : null;
 
   if(!_confirmaSaldoEstoqueSuficiente(produtoId, null, qtd)) return;
 
