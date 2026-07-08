@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.24';
+const APP_VERSION = '1.47.25';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.25',
+    data: '08/07/2026',
+    itens: [
+      'Corrigido erro "duplicate key value violates unique constraint" ao clicar 2x rápido em "+ Adicionar" nos Itens de Produto/Serviço do Espelho de Faturamento — o item já salvava certinho, só aparecia esse erro extra da 2ª tentativa concorrente. Agora as duas chamadas ficam travadas (só processa uma por vez).',
+    ]
+  },
   {
     versao: '1.47.24',
     data: '08/07/2026',
@@ -7652,42 +7659,59 @@ function itensDoEspelho(nfId, tipo){
   return (db.faturamentoItens||[]).filter(fi=>fi.notaFiscalId===nfId && fi.tipo===tipo);
 }
 
+/* v1.47.25: trava contra duplo-clique/clique duplo nos botões "+ Adicionar" das
+ * listas de disponíveis — sem essa trava, dois cliques quase simultâneos disparam
+ * 2 chamadas concorrentes de proximoIdSeguro() que podem calcular o MESMO próximo
+ * id (a 2ª consulta lê o banco antes do INSERT da 1ª commitar), e a 2ª tentativa
+ * de INSERT falha com "duplicate key value violates unique constraint" — erro só
+ * visual/de concorrência, sem corrupção de dado (o item da 1ª chamada é salvo
+ * normalmente). Um lock simples serializa as duas funções (compartilham a mesma
+ * tabela faturamento_itens). */
+let _fatItemLock = false;
 async function adicionarItemFaturamentoMaterial(nfId, cardId, osId, propostaId, propostaIdx){
-  const linha = itensProdutoDisponiveis(cardId).find(l=>l.osId===osId && l.propostaId===propostaId && l.propostaIdx===propostaIdx);
-  if(!linha){ alert('Este item não está mais disponível.'); return; }
-  if(!db.faturamentoItens) db.faturamentoItens=[];
-  const novo = {
-    id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
-    notaFiscalId:nfId, tipo:'material', osId:linha.osId, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
-    descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
-  };
-  const {error} = await sb.from('faturamento_itens').insert({
-    id:novo.id, nota_fiscal_id:nfId, tipo:'material', os_id:novo.osId, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
-    descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
-  });
-  if(error){ alert('Erro ao adicionar item: '+error.message); return; }
-  db.faturamentoItens.push(novo);
-  save();
-  abrirEspelhoNF(nfId, 'produtos');
+  if(_fatItemLock) return;
+  _fatItemLock = true;
+  try{
+    const linha = itensProdutoDisponiveis(cardId).find(l=>l.osId===osId && l.propostaId===propostaId && l.propostaIdx===propostaIdx);
+    if(!linha){ alert('Este item não está mais disponível.'); return; }
+    if(!db.faturamentoItens) db.faturamentoItens=[];
+    const novo = {
+      id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
+      notaFiscalId:nfId, tipo:'material', osId:linha.osId, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+      descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
+    };
+    const {error} = await sb.from('faturamento_itens').insert({
+      id:novo.id, nota_fiscal_id:nfId, tipo:'material', os_id:novo.osId, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
+      descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
+    });
+    if(error){ alert('Erro ao adicionar item: '+error.message); return; }
+    db.faturamentoItens.push(novo);
+    save();
+    abrirEspelhoNF(nfId, 'produtos');
+  } finally { _fatItemLock = false; }
 }
 
 async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propostaIdx){
-  const linha = itensServicoDisponiveis(cardId).find(l=>l.propostaId===propostaId && l.propostaIdx===propostaIdx);
-  if(!linha){ alert('Este item não está mais disponível.'); return; }
-  if(!db.faturamentoItens) db.faturamentoItens=[];
-  const novo = {
-    id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
-    notaFiscalId:nfId, tipo:'servico', osId:null, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
-    descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
-  };
-  const {error} = await sb.from('faturamento_itens').insert({
-    id:novo.id, nota_fiscal_id:nfId, tipo:'servico', os_id:null, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
-    descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
-  });
-  if(error){ alert('Erro ao adicionar item: '+error.message); return; }
-  db.faturamentoItens.push(novo);
-  save();
-  abrirEspelhoNF(nfId, 'servicos');
+  if(_fatItemLock) return;
+  _fatItemLock = true;
+  try{
+    const linha = itensServicoDisponiveis(cardId).find(l=>l.propostaId===propostaId && l.propostaIdx===propostaIdx);
+    if(!linha){ alert('Este item não está mais disponível.'); return; }
+    if(!db.faturamentoItens) db.faturamentoItens=[];
+    const novo = {
+      id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
+      notaFiscalId:nfId, tipo:'servico', osId:null, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+      descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
+    };
+    const {error} = await sb.from('faturamento_itens').insert({
+      id:novo.id, nota_fiscal_id:nfId, tipo:'servico', os_id:null, proposta_id:novo.propostaId, proposta_idx:novo.propostaIdx,
+      descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
+    });
+    if(error){ alert('Erro ao adicionar item: '+error.message); return; }
+    db.faturamentoItens.push(novo);
+    save();
+    abrirEspelhoNF(nfId, 'servicos');
+  } finally { _fatItemLock = false; }
 }
 
 async function removerItemFaturamento(itemId, nfId, tipo){
