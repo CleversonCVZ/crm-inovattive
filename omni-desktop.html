@@ -1269,11 +1269,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.4';
+const APP_VERSION = '1.47.5';
 const APP_VERSION_DATE = '07/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.5',
+    data: '07/07/2026',
+    itens: [
+      'Aba "Itens" da O.S. Avulsa reorganizada em duas seções: 🛠️ Serviços (texto livre, sem estoque) em cima e 📦 Produtos (do estoque) embaixo, com combo de seleção direta do catálogo — sem mais checkbox nem modal de vincular. Selecionar um produto na combo já baixa do estoque geral automaticamente.',
+    ]
+  },
   {
     versao: '1.47.4',
     data: '07/07/2026',
@@ -14225,11 +14232,13 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       `;
   }
   else if(aba === 'itens'){
-    const itens = os.produtos||[];
-    const total = itens.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
-    tabContent = `
-      ${itens.length ? `
-      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+    const todos = os.produtos||[];
+    const servicos = []; const produtosLista = [];
+    todos.forEach((it,i)=>{ (it.produtoEstoqueId ? produtosLista : servicos).push({it,i}); });
+    const totalGeral = todos.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+
+    const tabelaItens = (lista, tituloVazio) => lista.length ? `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px">
         <thead>
           <tr style="background:var(--surface)">
             <th style="text-align:left;padding:6px 8px;border-bottom:2px solid var(--border)">Descrição</th>
@@ -14242,11 +14251,11 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           </tr>
         </thead>
         <tbody>
-          ${itens.map((it,i)=>{
+          ${lista.map(({it,i})=>{
             const exibir = it.exibirValorPDF !== false;
             return `
             <tr style="border-bottom:1px solid var(--border)">
-              <td style="padding:7px 8px">${it.descricao||'—'}${it.produtoEstoqueId?` <span style="font-size:10px;background:#e8f5e9;color:#2e7d32;border-radius:3px;padding:1px 4px" title="Baixa do estoque geral">📦 estoque</span>`:''}</td>
+              <td style="padding:7px 8px">${it.descricao||'—'}</td>
               <td style="text-align:center;padding:7px 8px">${it.qtd||1}</td>
               <td style="text-align:center;padding:7px 8px">${it.unit||'un'}</td>
               <td style="text-align:right;padding:7px 8px">${it.valorUnit!=null?fmtMoney(it.valorUnit):'—'}</td>
@@ -14261,29 +14270,46 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             </tr>`;
           }).join('')}
         </tbody>
-        <tfoot>
-          <tr style="background:var(--surface)">
-            <td colspan="${os.fechada?5:6}" style="text-align:right;padding:8px;font-weight:700">Total:</td>
-            <td style="text-align:right;padding:8px;font-weight:700;color:var(--primary)">${fmtMoney(total)}</td>
-            ${!os.fechada?'<td></td>':''}
-          </tr>
-        </tfoot>
-      </table>` : '<div style="font-size:13px;color:var(--muted);margin-bottom:16px">Nenhum item adicionado.</div>'}
+      </table>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:10px">${tituloVazio}</div>`;
+
+    const produtosAtivos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+
+    tabContent = `
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">🛠️ Serviços</div>
+      ${tabelaItens(servicos, 'Nenhum serviço adicionado.')}
+      ${!os.fechada?`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:20px">
+        <div class="form-row">
+          <div style="flex:2"><label>Descrição</label><input id="avl-serv-desc" placeholder="Ex: Troca de tomada..."></div>
+          <div><label>Qtd</label><input id="avl-serv-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
+          <div><label>Un</label><input id="avl-serv-unit" placeholder="un" style="width:55px"></div>
+          <div><label>Vl. Unit. (R$)</label><input id="avl-serv-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+        </div>
+        <button class="btn sm primary" style="margin-top:8px" onclick="adicionarServicoAVL(${osId},${cardId})">＋ Adicionar serviço</button>
+      </div>` : '<div style="margin-bottom:20px"></div>'}
+
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">📦 Produtos (do estoque)</div>
+      ${tabelaItens(produtosLista, 'Nenhum produto adicionado.')}
       ${!os.fechada?`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
-        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Adicionar item</div>
+        ${produtosAtivos.length ? `
         <div class="form-row">
-          <div style="flex:2"><label>Descrição</label><input id="avl-item-desc" placeholder="Ex: Troca de tomada..."></div>
-          <div><label>Qtd</label><input id="avl-item-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
-          <div><label>Un</label><input id="avl-item-unit" placeholder="un" style="width:55px"></div>
-          <div><label>Vl. Unit. (R$)</label><input id="avl-item-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
+          <div style="flex:2">
+            <label>Produto do catálogo</label>
+            <select id="avl-prod-sel">
+              <option value="">— Selecione —</option>
+              ${produtosAtivos.map(pr=>`<option value="${pr.id}">${escHtml(pr.nome)}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>Qtd</label><input id="avl-prod-qtd" type="number" value="1" min="0.01" step="any" style="width:70px"></div>
+          <div><label>Vl. Unit. (R$)</label><input id="avl-prod-valor" type="number" min="0" step="0.01" placeholder="0,00" style="width:100px"></div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:8px">
-          <input type="checkbox" id="avl-item-estoque" style="width:15px;height:15px">
-          <label for="avl-item-estoque" style="font-size:12px;margin:0;cursor:pointer">🏢 Baixar do nosso estoque (material próprio)</label>
-        </div>
-        <button class="btn sm primary" style="margin-top:8px" onclick="adicionarItemAVL(${osId},${cardId})">＋ Adicionar item</button>
-      </div>`:''}`;
+        <p style="font-size:11px;color:var(--muted);margin:6px 0 0">Sempre baixa do estoque geral (não reserva/consome de nenhuma obra específica).</p>
+        <button class="btn sm primary" style="margin-top:8px" onclick="adicionarProdutoAVL(${osId},${cardId})">＋ Adicionar produto</button>
+        ` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra lançar.</div>`}
+      </div>`:''}
+
+      <div style="text-align:right;padding:10px 8px;font-weight:700;font-size:14px;margin-top:12px;border-top:2px solid var(--border)">Total geral: <span style="color:var(--primary)">${fmtMoney(totalGeral)}</span></div>`;
   }
   else if(aba === 'fotos'){
     const fotos = os.imagens||[];
@@ -14874,76 +14900,41 @@ async function removerTecnicoAVL(osId, tecId, cardId){
    decisão explícita do usuário por item — e a baixa SEMPRE sai do estoque geral (obra_id
    null), nunca reserva/consome de uma obra específica (Avulsa normalmente atende obra já
    concluída; mesma regra já usada no Contas a Pagar da Avulsa). */
-let _avlItemPendente = null; // {osId, cardId, desc, qtd, unit, valor}
-
-function adicionarItemAVL(osId, cardId){
+function adicionarServicoAVL(osId, cardId){
   const os   = db.ordensServico.find(x=>x.id===osId);
-  const desc = document.getElementById('avl-item-desc').value.trim();
-  if(!desc){ alert('Informe a descrição do item.'); return; }
-  const qtd   = parseFloat(document.getElementById('avl-item-qtd').value)   || 1;
-  const unit  = document.getElementById('avl-item-unit').value.trim()        || 'un';
-  const valor = parseFloat(document.getElementById('avl-item-valor').value)  || null;
-  const baixarEstoque = document.getElementById('avl-item-estoque')?.checked;
+  const desc = document.getElementById('avl-serv-desc').value.trim();
+  if(!desc){ alert('Informe a descrição do serviço.'); return; }
+  const qtd   = parseFloat(document.getElementById('avl-serv-qtd').value)   || 1;
+  const unit  = document.getElementById('avl-serv-unit').value.trim()        || 'un';
+  const valor = parseFloat(document.getElementById('avl-serv-valor').value)  || null;
 
-  if(baixarEstoque){
-    _avlItemPendente = {osId, cardId, desc, qtd, unit, valor};
-    abrirVincularProdutoEstoqueAVL();
-    return;
-  }
   if(!os.produtos) os.produtos = [];
   os.produtos.push({descricao:desc, qtd, unit, valorUnit:valor, tipo:'avulso', produtoEstoqueId:null, estoqueMovIds:[]});
-  registrarLog('criar','os',osId,`Item adicionado à O.S. ${os.numero}: ${desc}`);
+  registrarLog('criar','os',osId,`Serviço adicionado à O.S. ${os.numero}: ${desc}`);
   save(); abrirVerOSAvulsa(osId, cardId, 'itens');
 }
 
-/* mini-modal pra vincular o item avulso a um produto do catálogo — mesma regra do v1.47.2:
-   só lista produtos já cadastrados, sem opção de criar novo aqui. */
-function abrirVincularProdutoEstoqueAVL(){
-  const ctx = _avlItemPendente;
-  if(!ctx) return;
-  const sugestao = matchProdutoEstoquePorNome(ctx.desc);
-  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
-  abrirModal(`
-    <h3>📦 Vincular ao Catálogo de Estoque</h3>
-    <div class="aba-corpo" style="display:grid;gap:12px">
-      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
-        <div style="font-size:12px;color:var(--muted)">Item da O.S.</div>
-        <div style="font-weight:600">${escHtml(ctx.desc)}</div>
-      </div>
-      <p style="font-size:12px;color:var(--muted);margin:0">Essa saída sempre sai do estoque geral (não reserva/consome de nenhuma obra específica).</p>
-      ${produtos.length ? `
-      <div>
-        <label>Produto do catálogo *</label>
-        <select id="vpe-avl-sel">
-          <option value="">— Selecione —</option>
-          ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
-        </select>
-      </div>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra vincular.</div>`}
-    </div>
-    <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="_avlItemPendente=null; abrirVerOSAvulsa(${ctx.osId},${ctx.cardId},'itens')">← Cancelar</button>
-      ${produtos.length ? `<button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEstoqueAVL()">Confirmar e Adicionar</button>` : ''}
-    </div>`, 'cartao');
-}
-
-async function confirmarVincularProdutoEstoqueAVL(){
-  const ctx = _avlItemPendente;
-  if(!ctx) return;
-  const selVal = document.getElementById('vpe-avl-sel')?.value;
-  const produtoId = parseInt(selVal)||null;
+/* Produto do catálogo lançado direto pela combo — sempre baixa do estoque geral
+   (Avulsa nunca reserva/consome de uma obra específica, mesma regra já usada no
+   Contas a Pagar da Avulsa), sem passo extra de vincular/confirmar. */
+async function adicionarProdutoAVL(osId, cardId){
+  const os = db.ordensServico.find(x=>x.id===osId);
+  const produtoId = parseInt(document.getElementById('avl-prod-sel')?.value)||null;
   if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
-  if(!_confirmaSaldoEstoqueSuficiente(produtoId, null, ctx.qtd)) return;
+  const produto = (db.estoqueProdutos||[]).find(p=>p.id===produtoId);
+  const qtd   = parseFloat(document.getElementById('avl-prod-qtd').value)   || 1;
+  const valor = parseFloat(document.getElementById('avl-prod-valor').value) || null;
 
-  const btn = btnModalPrimario();
-  btnSalvando(btn);
-  const os = db.ordensServico.find(x=>x.id===ctx.osId);
-  const movIds = await debitarEstoque(produtoId, null, ctx.qtd, {osId:ctx.osId, observacao:`Consumo O.S. ${os.numero} — ${ctx.desc}`});
+  if(!_confirmaSaldoEstoqueSuficiente(produtoId, null, qtd)) return;
+
+  const btn = document.querySelector('[onclick*="adicionarProdutoAVL"]');
+  if(btn) btnSalvando(btn);
+  const movIds = await debitarEstoque(produtoId, null, qtd, {osId, observacao:`Consumo O.S. ${os.numero} — ${produto?.nome||''}`});
   if(!os.produtos) os.produtos = [];
-  os.produtos.push({descricao:ctx.desc, qtd:ctx.qtd, unit:ctx.unit, valorUnit:ctx.valor, tipo:'avulso', produtoEstoqueId:produtoId, estoqueMovIds:movIds});
-  registrarLog('criar','os',ctx.osId,`Item adicionado à O.S. ${os.numero}: ${ctx.desc} (baixa de estoque)`);
+  os.produtos.push({descricao:produto?.nome||'Produto', qtd, unit:produto?.unidade||'un', valorUnit:valor, tipo:'avulso', produtoEstoqueId:produtoId, estoqueMovIds:movIds});
+  registrarLog('criar','os',osId,`Produto adicionado à O.S. ${os.numero}: ${produto?.nome||''} (baixa de estoque)`);
   save();
-  _avlItemPendente = null;
-  abrirVerOSAvulsa(ctx.osId, ctx.cardId, 'itens');
+  abrirVerOSAvulsa(osId, cardId, 'itens');
 }
 
 async function removerItemAVL(osId, idx, cardId){
