@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.30';
+const APP_VERSION = '1.47.31';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.31',
+    data: '10/07/2026',
+    itens: [
+      'Corrigido bug: o Card SRM da compra do Switch para o Ivo Auto Posto Safra tinha perdido o vínculo com a obra (obra_id zerado) e sumiu de qualquer visualização por obra. Causa: o combo "Obra" de Card SRM/Conta a Pagar (SRM)/Conta Recorrente só listava obras não concluídas — quando a obra vinculada era marcada como concluída depois, a opção selecionada deixava de existir na lista, o combo caía sozinho pro campo em branco, e o próximo "Salvar" zerava o vínculo. Corrigido nos 3 lugares: a obra já vinculada agora sempre aparece na lista (marcada como "(concluída)"), mesmo que não possa mais ser escolhida do zero pra um card novo. Vínculo do Card SRM #1 restaurado.',
+    ]
+  },
   {
     versao: '1.47.30',
     data: '09/07/2026',
@@ -5936,10 +5943,14 @@ function optsCCSRM(selId){
     (db.centrosCusto||[]).filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
       .map(c=>`<option value="${c.id}" ${c.id===selId?'selected':''}>${escHtml(c.nome)}</option>`).join('');
 }
+/* v1.47.31: manter na lista a obra já vinculada (selId) mesmo que ela tenha virado
+ * "concluída" depois — sem isso, o <option> do valor selecionado nem existe no DOM,
+ * o <select> cai sozinho pro primeiro item (em branco) e o próximo save zera o
+ * obra_id silenciosamente (foi o que sumiu o vínculo do Card SRM #1/Posto Safra). */
 function optsObrasSRM(selId){
   return `<option value="">— selecione a obra —</option>` +
-    (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
-      .map(o=>`<option value="${o.id}" ${o.id===selId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+    (db.obras||[]).filter(o=>o.status!=='concluida' || o.id===selId).sort((a,b)=>a.nome.localeCompare(b.nome))
+      .map(o=>`<option value="${o.id}" ${o.id===selId?'selected':''}>${escHtml(o.nome)}${o.status==='concluida'?' (concluída)':''}</option>`).join('');
 }
 /** Mostra/oculta o campo Obra no card SRM — só aparece quando CC tem slug material_obra */
 function toggleObraSRM(rowId, ccSelId){
@@ -7181,8 +7192,8 @@ function abrirNovaCPSRM(srmId){
   const ccAtualSlug = srm.centroCustoId ? ((db.centrosCusto||[]).find(x=>x.id===srm.centroCustoId)||{}).slug : null;
   const ccOpts   = (db.centrosCusto||[]).filter(c=>c.ativo).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(c=>`<option value="${c.id}" ${c.id===srm.centroCustoId?'selected':''}>${escHtml(c.nome)}</option>`).join('');
-  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
-    .map(o=>`<option value="${o.id}" ${o.id===srm.obraId?'selected':''}>${escHtml(o.nome)}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida' || o.id===srm.obraId).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(o=>`<option value="${o.id}" ${o.id===srm.obraId?'selected':''}>${escHtml(o.nome)}${o.status==='concluida'?' (concluída)':''}</option>`).join('');
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(f=>`<option value="${f.id}" ${f.id===srm.fornecedorId?'selected':''}>${escHtml(f.nome)}</option>`).join('');
   const hoje = localDia(0);
@@ -10086,8 +10097,8 @@ function abrirEditarRecorrente(id){
     .map(f=>`<option value="${f.id}" ${f.id===r.fornecedorId?'selected':''}>${f.nome}</option>`).join('');
   const ccOpts = (db.centrosCusto||[]).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(c=>`<option value="${c.id}" ${c.id===r.centroCustoId?'selected':''}>${c.nome}</option>`).join('');
-  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida').sort((a,b)=>a.nome.localeCompare(b.nome))
-    .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}</option>`).join('');
+  const obraOpts = (db.obras||[]).filter(o=>o.status!=='concluida' || o.id===r.obraId).sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(o=>`<option value="${o.id}" ${o.id===r.obraId?'selected':''}>${o.nome}${o.status==='concluida'?' (concluída)':''}</option>`).join('');
   const contaOpts = (db.contasCorrente||[]).filter(c=>c.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome))
     .map(c=>`<option value="${c.id}" ${c.id===r.contaId?'selected':''}>${c.tipo==='cartao'?'💳 ':''}${c.nome}</option>`).join('');
   abrirModal(`
