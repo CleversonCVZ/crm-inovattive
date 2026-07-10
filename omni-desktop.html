@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.36';
+const APP_VERSION = '1.47.37';
 const APP_VERSION_DATE = '10/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.37',
+    data: '10/07/2026',
+    itens: [
+      'Cartão CRM → aba Financeiro → Parcelas a Receber: o botão de ação de uma parcela pendente dizia "✔ Recebido" (confuso — parecia que já tinha sido recebida). Agora mostra "A Receber" enquanto pendente; só depois de clicar e confirmar o recebimento é que vira "✔ Recebido" (some o botão e aparece a data). Parcela "parcial" continua mostrando "✔ Receber restante".',
+    ]
+  },
   {
     versao: '1.47.36',
     data: '10/07/2026',
@@ -13501,7 +13508,7 @@ function parcelaReceberItemHTML(r, cardId){
           ${historicoLabel}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-          ${r.status!=='recebido'&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Registrar recebimento">${r.status==='parcial'?'✔ Receber restante':'✔ Recebido'}</button>`:''}
+          ${r.status!=='recebido'&&podeUsar(usuarioAtual,'fin-contas-receber-receber')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="marcarParcelaRecebida(${r.id},${cardId})" title="Registrar recebimento">${r.status==='parcial'?'✔ Receber restante':'A Receber'}</button>`:''}
           ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn" onclick="editarParcelaReceber(${r.id},${cardId})" title="Editar">✏️</button>`:''}
           ${podeUsar(usuarioAtual,'fin-contas-receber-gerenciar')?`<button class="icon-btn del" onclick="excluirParcelaReceber(${r.id},${cardId})" title="Excluir">🗑</button>`:''}
         </div>
