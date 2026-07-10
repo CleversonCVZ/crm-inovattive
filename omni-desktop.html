@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.31';
+const APP_VERSION = '1.47.32';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.32',
+    data: '10/07/2026',
+    itens: [
+      'Corrigido segundo bug relacionado ao sumiço do Card SRM #1 (Ivo Auto Posto Safra): mesmo depois de restaurar o vínculo com a obra (v1.47.31), o card continuava invisível em qualquer visualização do Painel SRM. Causa: a visualização "por fase" pulava por completo qualquer fase de sistema (tipo "Recebido"/"Cancelado" — essas normalmente só aparecem na visualização "Encerrados/Cancelados"), mas o card estava com a fase "Recebido" e a flag de encerrado ainda como não marcada (dessincronizado — só acontece quando o card é editado pela aba Dados em vez de arrastado no kanban, que é quem cuida dessa sincronização). Resultado: o card não se encaixava em nenhuma das duas visualizações. Corrigido: a visualização "por fase" agora mostra a coluna de uma fase de sistema se houver algum card ativo preso nela, mesmo estando dessincronizado. Card SRM #1 marcado como encerrado (compatível com a fase "Recebido" em que já estava).',
+    ]
+  },
   {
     versao: '1.47.31',
     data: '10/07/2026',
@@ -5892,8 +5899,15 @@ function _srmMatchBusca(c){
 
 function _srmVistaFases(k){
   fasesSRMOrdenadas().forEach(f=>{
-    if(f.tipo) return;
-    if(!(db.cardsSRM||[]).some(c=>c.faseId===f.id && srmCardAtivo(c))) return;
+    const temAtivos = (db.cardsSRM||[]).some(c=>c.faseId===f.id && srmCardAtivo(c));
+    // v1.47.32: fases de sistema (tipo 'recebido'/'cancelado') normalmente ficam fora
+    // deste painel — elas só aparecem na visualização "Encerrados/Cancelados". MAS se
+    // sobrar algum card com faseId apontando pra uma dessas fases e ainda assim
+    // srmCardAtivo (encerrado/cancelado dessincronizado do faseId — ex.: editado pela
+    // aba Dados sem passar pelo drag-and-drop, que é quem normalmente sincroniza os
+    // dois), mostra mesmo assim — sem essa exceção o card ficava invisível em QUALQUER
+    // visualização do SRM (caso real: Card SRM #1, "Recebido" com encerrado=false).
+    if(!temAtivos) return;
     const itens = (db.cardsSRM||[]).filter(c=>c.faseId===f.id && srmCardAtivo(c) && _srmMatchBusca(c));
     k.appendChild(colEl(f.nome, f.cor, itens, {
       render: srmCard,
