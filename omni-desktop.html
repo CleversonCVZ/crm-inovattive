@@ -1291,11 +1291,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.35';
+const APP_VERSION = '1.47.36';
 const APP_VERSION_DATE = '10/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.36',
+    data: '10/07/2026',
+    itens: [
+      'O botão "Salvar" (Cartão CRM, SRM, Espelho de Faturamento, Cliente, Conta Corrente, Movimentação, Conta a Pagar, Parcela a Receber, Conta Recorrente, Usuário, Produto do Catálogo — nas telas de edição) parou de fechar a tela: agora ele só salva, mostra "✔ Salvo" por instantes e a tela continua aberta, pra dar certeza de que salvou sem precisar reabrir tudo de novo pra trocar de aba ou continuar editando. Telas de cadastro NOVO e botões de ação de "um passo só" (confirmar pagamento, lançar C.Pagar, registrar saída de estoque etc.) continuam fechando normalmente, sem mudança.',
+      'Nas 4 telas que já tinham autosave campo a campo (O.S. Avulsa, O.S. Execução, O.S. Projeto — aba Geral — e Fornecedor — aba Dados), o botão "Salvar" voltou a aparecer, agora convivendo com o autosave: o autosave continua salvando cada campo sozinho ao editar, e o botão serve de confirmação extra pra quem quer ter certeza que salvou tudo de uma vez.',
+    ]
+  },
   {
     versao: '1.47.35',
     data: '10/07/2026',
@@ -2746,6 +2754,22 @@ function btnRestaurar(btn){
   if(!btn) return;
   btn.disabled = false;
   if(btn._textoOrig !== undefined) btn.textContent = btn._textoOrig;
+}
+/* v1.47.36: feedback de sucesso pra telas de EDIÇÃO que não fecham mais o modal
+   ao salvar (cleverson pediu — clicar Salvar deve só confirmar que salvou, sem
+   te tirar da tela/aba que você estava vendo; quem fecha é o botão Fechar/Cancelar).
+   Uso: chamar no lugar de fecharModal() depois que o save() já terminou com sucesso.
+   Mostra "✔ Salvo" por um instante e volta pro texto original (guardado em
+   btn._textoOrig por btnSalvando) — não usar em telas de CRIAÇÃO (essas continuam
+   fechando normalmente) nem em ações de "um passo só" (confirmar pagamento, etc.). */
+function btnSalvo(btn, texto='✔ Salvo'){
+  if(!btn) return;
+  btn.textContent = texto;
+  setTimeout(()=>{
+    if(!btn.isConnected) return; // modal foi fechado/trocado de tela nesse meio tempo
+    btn.disabled = false;
+    if(btn._textoOrig !== undefined) btn.textContent = btn._textoOrig;
+  }, 1400);
 }
 /* Atalhos para encontrar o botão principal dentro do modal aberto */
 function btnModalPrimario(){ return document.querySelector('.modal [data-btn-salvar]'); }
@@ -5124,7 +5148,7 @@ async function salvarMeuUsuario(){
   if(senha) mudancas.push('senha alterada');
   registrarLog('editar','usuario',u.id,`Próprios dados atualizados${mudancas.length?': '+mudancas.join('; '):''}`);
   saveLocal();
-  fecharModal(); iniciarApp(u);
+  iniciarApp(u); btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   if(senha) alert('Senha atualizada com sucesso.');
 }
 
@@ -6243,7 +6267,7 @@ async function salvarEdicaoSRM(id){
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   saveLocal(); syncDadosSupabase();
-  fecharModal(); renderAll();
+  btnSalvo(btn); renderAll(); // v1.47.36: não fecha mais — só confirma que salvou
 }
 
 async function registrarRapidoSRM(id){
@@ -8065,7 +8089,7 @@ async function salvarDadosEspelhoNF(id){
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   registrarLog('editar','nota_fiscal',nf.id,`Espelho de Faturamento #${nf.id} atualizado`);
   saveLocal(); syncDadosSupabase();
-  fecharModal(); renderAll();
+  btnSalvo(btn); renderAll(); // v1.47.36: não fecha mais — só confirma que salvou
 }
 
 function abaEspelhoProdutosHTML(nf){
@@ -10372,7 +10396,7 @@ async function salvarEdicaoRecorrente(id, btn){
     }).eq('id',id);
     if(error) throw error;
     await Promise.all([save(), _delay]);
-    fecharModal();
+    btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
     renderRecorrentes();
     registrarLog('editar','recorrente',id,`Recorrente editada: "${nome}"`);
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); }
@@ -11023,7 +11047,7 @@ async function salvarEdicaoContaCorrente(id){
   Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
   save();
   await _delay;
-  fecharModal();
+  btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   renderContasCorrente();
 }
 
@@ -11495,8 +11519,7 @@ async function salvarEdicaoMovimentacao(id, contaId){
   save();
   await _delay;
   renderContasCorrente(); // atualiza saldo na tela principal
-  fecharModal();
-  abrirMovimentacoesContaCorrente(contaId);
+  btnSalvo(btn); // v1.47.36: não fecha/navega mais — só confirma que salvou
 }
 
 /** Exclui uma movimentação individual */
@@ -12017,13 +12040,31 @@ function abrirEditarFornecedor(id, aba='dados'){
     <div class="actions rodape-cartao">
       <button class="btn danger" onclick="excluirFornecedor(${id})">Excluir</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
-      ${aba!=='dados' ? `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">← Dados</button>` : ''}
+      ${aba!=='dados' ? `<button class="btn neutral" onclick="abrirEditarFornecedor(${id},'dados')">← Dados</button>` : `<button class="btn primary" onclick="salvarTudoFornecedor(${id},this)">Salvar</button>`}
     </div>`, 'cartao');
 }
 
 /* v1.47.11: salvarEdicaoFornecedor() removida — a aba Dados agora salva sozinha campo a
    campo (autoSalvarCampoFornecedor), corrigindo o bug de perder o que foi digitado ao
-   trocar de aba antes de clicar em Salvar. Ver _fornFormHTML. */
+   trocar de aba antes de clicar em Salvar. Ver _fornFormHTML.
+   v1.47.36: botão "Salvar" manual de volta, mesmo espírito do salvarTudoOSAvulsa —
+   convive com o autosave por campo, servindo de confirmação pro usuário. */
+function salvarTudoFornecedor(id, btn){
+  if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')) return;
+  const f = (db.fornecedores||[]).find(x=>x.id===id);
+  if(!f) return;
+  if(btn) btnSalvando(btn);
+  const campos = [['ff-nome','nome'],['ff-fantasia','nomeFantasia'],['ff-cnpj','cnpjCpf'],['ff-tel','telefone'],
+    ['ff-email','email'],['ff-cep','cep'],['ff-logr','logradouro'],['ff-num','numero'],['ff-comp','complemento'],
+    ['ff-bairro','bairro'],['ff-cidade','cidade'],['ff-uf','estado'],['ff-obs','observacao']];
+  campos.forEach(([elId,campo])=>{ const el=document.getElementById(elId); if(el) f[campo]=el.value; });
+  const ativoEl = document.getElementById('ff-ativo'); if(ativoEl) f.ativo = ativoEl.checked;
+  registrarLog('editar','fornecedor',id,`Fornecedor atualizado: ${f.nome}`);
+  save(); renderFornecedores();
+  const st = document.getElementById('ff-save-status');
+  if(st){ clearTimeout(st._clearTimer); st.textContent=''; }
+  if(btn) btnSalvo(btn);
+}
 
 /** Exclui fornecedor (só se não tiver contas a pagar vinculadas) */
 async function excluirFornecedor(id){
@@ -12423,7 +12464,7 @@ async function salvarEdicaoContaPagar(id){
   p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
   save();
   await _delay;
-  fecharModal();
+  btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   renderContasPagar();
 }
 
@@ -13708,8 +13749,7 @@ async function salvarEdicaoParcelaReceber(id, cardId){
     r.dataVencimento = tipo==='fixo' ? (document.getElementById('er-data').value||null) : null;
     r.condicao       = tipo==='condicional' ? (document.getElementById('er-cond').value.trim()||null) : null;
     await Promise.all([save(), _delay]);
-    fecharModal();
-    abrirEditarCartao(cardId,'financeiro');
+    btnSalvo(btn); // v1.47.36: não fecha/navega mais — só confirma que salvou
   } catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); }
 }
 
@@ -14266,6 +14306,7 @@ function abrirVerOS(osId, cardId){
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
       <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'os')">← Voltar</button>
       <div style="display:flex;gap:8px;margin-left:auto">
+        ${podeEditar && !os.fechada ? `<button class="btn primary" onclick="salvarTudoOSProjeto(${os.id},this)">Salvar</button>` : ''}
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>` : '')
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
@@ -14274,7 +14315,25 @@ function abrirVerOS(osId, cardId){
   carregarImagensOSPrivadas();
 }
 /* v1.46.4: salvarDadosOS() removida — a aba Geral desta tela (O.S. Projeto)
-   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa. */
+   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa.
+   v1.47.36: botão "Salvar" manual de volta, mesmo espírito do salvarTudoOSAvulsa. */
+function salvarTudoOSProjeto(osId, btn){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os) return;
+  if(btn) btnSalvando(btn);
+  const fase = document.getElementById('vos-fase'); if(fase) os.faseId = +fase.value||os.faseId;
+  const resp = document.getElementById('vos-resp'); if(resp) os.responsavelId = +resp.value||null;
+  const agend = document.getElementById('vos-ai'); if(agend) os.dataAgend = agend.value;
+  const faseObra = document.getElementById('vos-fase-obra'); if(faseObra){ os.faseObraId = +faseObra.value||null; if(os.faseObraId && os.obraId){ const obraVinc = db.obras.find(x=>x.id===os.obraId); if(obraVinc) obraVinc.faseId = os.faseObraId; } }
+  const di = document.getElementById('vos-di'); if(di) os.dataInicio = di.value;
+  const dt = document.getElementById('vos-dt'); if(dt) os.dataTermino = dt.value;
+  registrarLog('editar','os',osId,`O.S. atualizada: ${os.numero}`);
+  save(); renderAll();
+  const st = document.getElementById('vos-save-status');
+  if(st){ clearTimeout(st._clearTimer); st.textContent=''; }
+  if(btn) btnSalvo(btn);
+}
 
 /* =============== OS EXECUÇÃO — modal com abas =============== */
 function _itensPropostasAprovadas(cardId){
@@ -14781,6 +14840,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
       <div style="display:flex;gap:8px;margin-left:auto">
         <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSExecucao(${osId},'visualizar')">👁 Visualizar PDF</button>
         <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSExecucao(${osId},'download')">⬇ Exportar PDF</button>
+        ${aba==='geral' && podeEditar && !os.fechada ? `<button class="btn primary" onclick="salvarTudoOSExecucao(${osId},this)">Salvar</button>` : ''}
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${os.id},${cardId})">↩ Reabrir O.S.</button>` : '')
           : `<button class="btn danger" onclick="fecharOS(${os.id},${cardId})">🔒 Fechar O.S.</button>`}
@@ -14788,7 +14848,26 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
     </div>`, 'cartao');
 }
 /* v1.46.4: salvarDadosOSExec() removida — a aba Geral desta tela (O.S. Execução)
-   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa. */
+   agora salva campo a campo via autoSalvarCampoOS(), igual a O.S. Avulsa.
+   v1.47.36: botão "Salvar" manual de volta, mesmo espírito do salvarTudoOSAvulsa. */
+function salvarTudoOSExecucao(osId, btn){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os) return;
+  if(btn) btnSalvando(btn);
+  const fase = document.getElementById('exec-fase'); if(fase) os.faseId = +fase.value||os.faseId;
+  const faseObra = document.getElementById('exec-fase-obra'); if(faseObra){ os.faseObraId = +faseObra.value||null; if(os.faseObraId && os.obraId){ const obraVinc = db.obras.find(x=>x.id===os.obraId); if(obraVinc) obraVinc.faseId = os.faseObraId; } }
+  const resp = document.getElementById('exec-resp'); if(resp) os.responsavelId = +resp.value||null;
+  const agend = document.getElementById('exec-agend'); if(agend) os.dataAgend = agend.value;
+  const di = document.getElementById('exec-di'); if(di) os.dataInicio = di.value;
+  const dt = document.getElementById('exec-dt'); if(dt) os.dataTermino = dt.value;
+  const instr = document.getElementById('exec-instrucoes'); if(instr) os.instrucoes = instr.value;
+  registrarLog('editar','os',osId,`O.S. Execução atualizada: ${os.numero}`);
+  save(); renderAll();
+  const st = document.getElementById('exec-save-status');
+  if(st){ clearTimeout(st._clearTimer); st.textContent=''; }
+  if(btn) btnSalvo(btn);
+}
 
 /* =============== OS AVULSA — modal com abas =============== */
 function abrirVerOSAvulsa(osId, cardId, aba='geral'){
@@ -15144,6 +15223,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       <div style="display:flex;gap:8px;margin-left:auto">
         <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFOSAvulsa(${osId},'visualizar')">👁 Visualizar PDF</button>
         <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFOSAvulsa(${osId},'download')">⬇ Exportar PDF</button>
+        ${aba==='geral' && podeEditar && !os.fechada ? `<button class="btn primary" onclick="salvarTudoOSAvulsa(${osId},this)">Salvar</button>` : ''}
         ${!podeEditar ? '' : os.fechada
           ? (podeReabrirOS(usuarioAtual) ? `<button class="btn neutral" style="border-color:#1e88e5;color:#1e88e5" onclick="reabrirOS(${osId},${cardId})">↩ Reabrir O.S.</button>` : '')
           : `<button class="btn danger" onclick="fecharOS(${osId},${cardId})">🔒 Fechar O.S.</button>`}
@@ -15512,6 +15592,29 @@ function autoSalvarCampoOS(osId, campo, valor, statusElId){
       el._clearTimer = setTimeout(()=>{ el.textContent=''; }, 2500);
     }
   }
+}
+
+/* v1.47.36: botão "Salvar" manual da aba Geral da O.S. Avulsa — convive com o
+   autosave por campo (autoSalvarCampoOS) já existente, só que salva tudo de uma
+   vez e dá uma confirmação única no botão, pro usuário que clica em Salvar pra
+   "ter certeza" sem precisar tocar em cada campo de novo. */
+function salvarTudoOSAvulsa(osId, btn){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')) return;
+  const os = db.ordensServico.find(x=>x.id===osId);
+  if(!os) return;
+  if(btn) btnSalvando(btn);
+  const fase = document.getElementById('avl-fase'); if(fase) os.faseId = +fase.value||os.faseId;
+  const resp = document.getElementById('avl-resp'); if(resp) os.responsavelId = +resp.value||null;
+  const tipoAtend = document.getElementById('avl-tipo-atend'); if(tipoAtend) os.tipoAtendimento = tipoAtend.value||'a_definir';
+  const agend = document.getElementById('avl-agend'); if(agend) os.dataAgend = agend.value;
+  const di = document.getElementById('avl-di'); if(di) os.dataInicio = di.value;
+  const dt = document.getElementById('avl-dt'); if(dt) os.dataTermino = dt.value;
+  const desc = document.getElementById('avl-descricao'); if(desc) os.descricaoChamado = desc.value;
+  registrarLog('editar','os',osId,`O.S. Avulsa atualizada: ${os.numero}`);
+  save(); renderAll();
+  const st = document.getElementById('avl-save-status');
+  if(st){ clearTimeout(st._clearTimer); st.textContent=''; }
+  if(btn) btnSalvo(btn);
 }
 
 async function adicionarTecnicoAVL(osId, cardId){
@@ -17609,7 +17712,15 @@ async function salvarEdicaoCartao(id){
     return;
   }
   saveLocal(); syncDadosSupabase();
-  fecharModal(); renderAll();
+  // v1.47.36: não fecha mais — só confirma que salvou. Como o textarea "Novo
+  // contato/observação" alimenta o histórico a cada Salvar (registrarHist acima),
+  // sem fechar o modal ela precisa ser limpa manualmente aqui — senão o mesmo
+  // texto entraria de novo no histórico a cada clique extra em Salvar.
+  const taContato = document.getElementById('m-contato');
+  if(taContato) taContato.value = '';
+  const histWrap = document.getElementById('hist-wrap');
+  if(histWrap) histWrap.innerHTML = histHTML(c);
+  btnSalvo(btn); renderAll();
 }
 
 async function excluirCartao(id){
@@ -17799,7 +17910,7 @@ function abrirEditarCliente(id){
     <div class="actions">
       ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirCliente(${c.id})">Excluir</button>`:''}
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
-      ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoCliente(${c.id})">Salvar</button>`:''}
+      ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoCliente(${c.id},this)">Salvar</button>`:''}
     </div>`);
 }
 
@@ -17816,11 +17927,12 @@ function salvarClienteCampos(id){
   c.cidade=c.endereco.cidade;
   save(); return true;
 }
-function salvarEdicaoCliente(id){
-  if(!salvarClienteCampos(id)) return;
+function salvarEdicaoCliente(id, btn){
+  btnSalvando(btn);
+  if(!salvarClienteCampos(id)){ btnRestaurar(btn); return; }
   const c=db.clientes.find(x=>x.id===id);
   registrarLog('editar', 'cliente', id, `Cliente editado: "${c?c.nome:'?'}"`);
-  fecharModal(); renderAll();
+  btnSalvo(btn); renderAll(); // v1.47.36: não fecha mais — só confirma que salvou
 }
 
 /* Edição de cliente a partir do cartão CRM — retorna ao cartão ao salvar/voltar */
@@ -18303,8 +18415,16 @@ async function salvarUsuario(id){
   }
   registrarLog(id?'editar':'criar', 'usuario', id||db.usuarios.find(x=>x.login===login)?.id, id ? `Usuário editado: "${nome}" (login: ${login})` : `Novo usuário criado: "${nome}" (login: ${login})`);
   await _delay;
-  saveLocal(); fecharModal(); renderAll();
-  if(!id) alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
+  saveLocal(); renderAll();
+  // v1.47.36: editar um usuário existente não fecha mais (só confirma que salvou);
+  // criar um novo continua fechando — ainda precisa do aviso de convite por e-mail.
+  if(id){
+    btn.disabled=false; btn.textContent='✔ Salvo';
+    setTimeout(()=>{ if(btn.isConnected){ btn.textContent='Salvar'; } }, 1400);
+  } else {
+    fecharModal();
+    alert(`Convite enviado para ${email}. O usuário deve verificar o e-mail para definir a senha.`);
+  }
 }
 
 async function excluirUsuario(id){
@@ -19734,8 +19854,14 @@ async function salvarProdutoEstoque(){
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,categoriaId:data.categoria_id||null,criadoEm:data.criado_em||''});
   }
-  fecharModal();
   renderEstoquePainel();
+  // v1.47.36: editar um produto existente não fecha mais (só confirma que salvou);
+  // cadastrar um produto novo continua fechando.
+  if(isEdit){
+    if(btn){ btn.disabled=false; btn.textContent='✔ Salvo'; setTimeout(()=>{ if(btn.isConnected) btn.textContent='Salvar'; }, 1400); }
+  } else {
+    fecharModal();
+  }
 }
 
 /** Converte um texto normalmente em CAIXA ALTA (como vem de NF-e de fornecedor) para
