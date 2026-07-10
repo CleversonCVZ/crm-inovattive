@@ -134,6 +134,17 @@
   .modal input[type=checkbox],.modal input[type=radio]{width:auto;padding:0;border:none;border-radius:0;min-width:0}
   .modal textarea{resize:vertical;min-height:60px}
   .modal .actions{display:flex;gap:10px;margin-top:18px;justify-content:flex-end}
+  /* v1.47.34: combo buscável — select nativo escondido + input de texto com dropdown
+     filtrável por cima, pra listas longas (Cliente/Obra/Fornecedor) que só crescem */
+  .combo-busca-wrap{position:relative}
+  .combo-busca-input{box-sizing:border-box;background:#fff}
+  .combo-busca-input:disabled{background:#f1f3f5;color:var(--muted);cursor:not-allowed}
+  .combo-busca-lista{display:none;position:fixed;z-index:400;max-height:230px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:7px;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+  .combo-busca-lista.aberta{display:block}
+  .combo-busca-item{padding:7px 10px;font-size:13.5px;cursor:pointer}
+  .combo-busca-item:hover,.combo-busca-item.ativo{background:#e8f5e9;color:var(--green)}
+  .combo-busca-item.vazio{color:var(--muted);cursor:default}
+  .combo-busca-item.vazio:hover{background:none;color:var(--muted)}
   .hist{height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#f8f9fa;padding:8px}
   .hist-item{background:#fff;border-radius:7px;padding:8px 10px;margin-bottom:6px;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.07)}
   .hist-item:last-child{margin-bottom:0}
@@ -1280,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.33';
-const APP_VERSION_DATE = '08/07/2026';
+const APP_VERSION = '1.47.34';
+const APP_VERSION_DATE = '10/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.34',
+    data: '10/07/2026',
+    itens: [
+      'Combo com busca: os campos de seleção de Cliente, Obra, Fornecedor (e mais alguns: Produto do Catálogo, Cartão CRM p/ Faturamento) agora permitem digitar um trecho do nome pra filtrar a lista, em vez de só rolar ou pular por letra inicial — útil pra listas que só crescem com o tempo. Continua funcionando normalmente no mouse (clique abre a lista completa igual antes). Aplicado em: Novo/Editar Cartão CRM, Novo/Editar SRM, Custo M.Obra (fornecedor), Nova/Editar Conta a Pagar, Nova/Editar Conta Recorrente, Lançamento Manual e Editar Movimentação (Contas Correntes), Novo Espelho de Faturamento, Saída de Estoque e Liberar Reserva (Almoxarifado).',
+    ]
+  },
   {
     versao: '1.47.33',
     data: '10/07/2026',
@@ -4180,7 +4198,7 @@ async function confirmarUploadDl(catId){
   btnCancelar.disabled = true;
   progWrap.style.display = ''; erroEl.style.display = 'none';
   const arqId = 'dl'+Date.now()+Math.random().toString(36).slice(2,7);
-  const safeName = file.name.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g,'');
+  const safeName = file.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9._-]/g,'');
   const path  = `${catId}/${arqId}_${safeName}`;
   const {error:errUp} = await uploadOSArquivoXHR('downloads', path, file, (loaded, total)=>{
     const pct = Math.round(loaded/total*100);
@@ -4562,7 +4580,7 @@ function parseValorBR(s){
 function analisarPDFProposta(texto, numeroEsperado){
   // O pdf.js insere espaços extras no meio de números e rótulos.
   // Por isso TODA a análise roda numa versão compactada: sem acentos e sem nenhum espaço.
-  const compactar = t => (t||'').normalize('NFKD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,'');
+  const compactar = t => (t||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'');
   const comp = compactar(texto);
   const compUp = comp.toUpperCase();
   window._pdfTextoDebug = comp; // diagnóstico: inspecionável no console
@@ -6014,7 +6032,7 @@ function abrirNovoSRM(){
   abrirModal(`
     <h3>Novo SRM</h3>
     <label>Fornecedor</label>
-    <select id="srm-m-forn">${optsFornecedores(null)}</select>
+    <select id="srm-m-forn" class="combo-busca" data-placeholder="Buscar fornecedor…">${optsFornecedores(null)}</select>
     <button type="button" class="link-btn" style="margin-top:2px"
       onclick="abrirNovoFornecedor({callbackId:'srm-m-forn'})">＋ Cadastrar novo fornecedor</button>
     <label>Fase</label>
@@ -6027,7 +6045,7 @@ function abrirNovoSRM(){
     <select id="srm-m-cc" onchange="toggleObraSRM('srm-n-obra-row','srm-m-cc')">${optsCCSRM(null)}</select>
     <div id="srm-n-obra-row" style="display:none">
       <label>Obra <small style="color:var(--muted)">(Material de Obra)</small></label>
-      <select id="srm-m-obra">${optsObrasSRM(null)}</select>
+      <select id="srm-m-obra" class="combo-busca" data-placeholder="Buscar obra…">${optsObrasSRM(null)}</select>
     </div>
     <label>Primeiro registro / observação</label>
     <textarea id="srm-m-hist" placeholder="Ex.: Processo iniciado para aquisição de materiais"></textarea>
@@ -6098,7 +6116,7 @@ function abrirEditarSRM(id, aba='dados'){
     <div class="dados-grid"${podeEditar?'':' style="pointer-events:none;opacity:.65"'}>
       <div>
         <label>Fornecedor</label>
-        <select id="srm-m-forn">${optsFornecedores(c.fornecedorId)}</select>
+        <select id="srm-m-forn" class="combo-busca" data-placeholder="Buscar fornecedor…">${optsFornecedores(c.fornecedorId)}</select>
         <label>Fase</label>
         <select id="srm-m-fase">${optsFasesSRM(c.faseId)}</select>
         <label>Responsável</label>
@@ -6109,7 +6127,7 @@ function abrirEditarSRM(id, aba='dados'){
         <select id="srm-m-cc" onchange="toggleObraSRM('srm-e-obra-row','srm-m-cc')">${optsCCSRM(c.centroCustoId)}</select>
         <div id="srm-e-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
           <label>Obra <small style="color:var(--muted)">(Material de Obra)</small></label>
-          <select id="srm-m-obra">${optsObrasSRM(c.obraId)}</select>
+          <select id="srm-m-obra" class="combo-busca" data-placeholder="Buscar obra…">${optsObrasSRM(c.obraId)}</select>
         </div>
         <label>Data de abertura</label>
         <input id="srm-m-data" type="date" value="${c.dataAbertura||''}">
@@ -7240,7 +7258,7 @@ function abrirNovaCPSRM(srmId){
     <div class="form-row">
       <div>
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Fornecedor</label>
-        <select id="nsrm-forn" style="margin-top:4px">
+        <select id="nsrm-forn" class="combo-busca" data-placeholder="Buscar fornecedor…" style="margin-top:4px">
           <option value="">— nenhum —</option>
           ${fornOpts}
         </select>
@@ -7271,7 +7289,7 @@ function abrirNovaCPSRM(srmId){
       </div>
       <div id="nsrm-obra-row" style="display:${ccAtualSlug==='material_obra'?'':'none'}">
         <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Obra</label>
-        <select id="nsrm-obra" style="margin-top:4px">
+        <select id="nsrm-obra" class="combo-busca" data-placeholder="Buscar obra…" style="margin-top:4px">
           <option value="">— selecione a obra —</option>
           ${obraOpts}
         </select>
@@ -7426,7 +7444,7 @@ function editarCPdoSRM(cpId, srmId){
     <div class="form-row">
       <div>
         <label>Fornecedor</label>
-        <select id="ecp-forn"><option value="">— sem fornecedor —</option>${fornOpts}</select>
+        <select id="ecp-forn" class="combo-busca" data-placeholder="Buscar fornecedor…"><option value="">— sem fornecedor —</option>${fornOpts}</select>
       </div>
       <div>
         <label>Tipo de vencimento</label>
@@ -7451,7 +7469,7 @@ function editarCPdoSRM(cpId, srmId){
       </div>
       <div id="ecp-obra-wrap" style="${mostrarObra?'':'display:none'}">
         <label>Obra</label>
-        <select id="ecp-obra"><option value="">— selecione —</option>${obraOpts}</select>
+        <select id="ecp-obra" class="combo-busca" data-placeholder="Buscar obra…"><option value="">— selecione —</option>${obraOpts}</select>
       </div>
     </div>
     <div style="margin-top:8px">
@@ -7913,7 +7931,7 @@ function abrirNovoEspelhoFaturamento(){
   abrirModal(`
     <h3>Novo Espelho de Faturamento</h3>
     <label>Cartão CRM</label>
-    <select id="nef-card" onchange="_atualizarPreviewCardFaturamento()">${optsCardsParaFaturamento(null)}</select>
+    <select id="nef-card" class="combo-busca" data-placeholder="Buscar cartão…" onchange="_atualizarPreviewCardFaturamento()">${optsCardsParaFaturamento(null)}</select>
     <div id="nef-preview" style="font-size:13px;margin-top:10px"></div>
     <div class="actions">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
@@ -8421,6 +8439,129 @@ function abrirModal(html, classe){
   modal.className = 'modal' + (classe ? ' ' + classe : '');
   modal.innerHTML = html;
   overlay.classList.add('open');
+  enhanceCombosBuscaveis(modal); // v1.47.34: liga a busca nos <select class="combo-busca"> deste modal
+}
+
+/* ================= COMBO BUSCÁVEL (v1.47.34) =================
+   Problema: listas que só crescem (Cliente, Obra, Fornecedor) num <select> nativo
+   só têm "pular pra opção" digitando 1 letra de cada vez — não dá pra digitar um
+   trecho do nome e filtrar. Solução: qualquer <select class="combo-busca"> vira,
+   na hora que o modal abre, um campo de texto com dropdown filtrável por cima —
+   mas o <select> original CONTINUA no DOM (só escondido), guardando o valor real.
+   Isso significa que todo o código espalhado pelo sistema que já lê
+   document.getElementById('xxx').value ou escuta o onchange do select continua
+   funcionando sem nenhuma mudança — só a aparência/interação muda. */
+function _comboNormalizar(s){
+  return (s==null?'':String(s)).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+}
+let _comboAberto = null; // wrap do dropdown aberto no momento (só um por vez)
+function _comboFechar(){
+  if(_comboAberto){
+    const lista = _comboAberto.querySelector('.combo-busca-lista');
+    if(lista) lista.classList.remove('aberta');
+    _comboAberto = null;
+  }
+}
+document.addEventListener('mousedown', e=>{
+  if(_comboAberto && !_comboAberto.contains(e.target)){
+    _comboSincronizarEstado(_comboAberto);
+    _comboFechar();
+  }
+});
+// A lista do dropdown é position:fixed (pra não ficar cortada pelo overflow do
+// modal/aba-corpo, que são scrolláveis) — como fixed não acompanha o scroll de um
+// container interno, mais simples e seguro é só fechar o dropdown se rolar algo,
+// em vez de tentar reposicionar em tempo real.
+window.addEventListener('scroll', ()=>_comboFechar(), true);
+window.addEventListener('resize', ()=>_comboFechar());
+function _comboSincronizarEstado(wrap){
+  const sel = wrap.querySelector('select');
+  const input = wrap.querySelector('.combo-busca-input');
+  if(!sel || !input) return;
+  const opt = sel.options[sel.selectedIndex];
+  input.value = (opt && opt.value!=='') ? opt.textContent : '';
+  input.disabled = sel.disabled;
+}
+/** Chamar depois de qualquer código que troque .innerHTML ou .value/.disabled
+    de um <select class="combo-busca"> na marra (fora do fluxo normal de abrir modal),
+    pra manter o campo de texto visível sincronizado com o valor real do select. */
+function sincronizarComboBuscavel(id){
+  const sel = document.getElementById(id);
+  const wrap = sel && sel.closest('.combo-busca-wrap');
+  if(wrap) _comboSincronizarEstado(wrap);
+}
+function enhanceCombosBuscaveis(root){
+  (root||document).querySelectorAll('select.combo-busca').forEach(sel=>{
+    if(sel.dataset.comboWired) return; // já tem o wrap — só o conteúdo do modal muda a cada abertura
+    sel.dataset.comboWired = '1';
+    const wrap = document.createElement('div');
+    wrap.className = 'combo-busca-wrap';
+    sel.parentNode.insertBefore(wrap, sel);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'combo-busca-input';
+    input.autocomplete = 'off';
+    input.placeholder = sel.dataset.placeholder || 'Digite para buscar…';
+    wrap.appendChild(input);
+    wrap.appendChild(sel);
+    sel.style.display = 'none';
+    const lista = document.createElement('div');
+    lista.className = 'combo-busca-lista';
+    wrap.appendChild(lista);
+    let ativoIdx = -1;
+    _comboSincronizarEstado(wrap);
+    function opcoes(){
+      return Array.from(sel.options).map((o,i)=>({idx:i, value:o.value, label:o.textContent, disabled:o.disabled}));
+    }
+    function render(filtro){
+      const q = _comboNormalizar(filtro);
+      const todas = opcoes();
+      const filtradas = q ? todas.filter(o=>_comboNormalizar(o.label).includes(q)) : todas;
+      lista.innerHTML = filtradas.length
+        ? filtradas.map((o,i)=>`<div class="combo-busca-item${o.disabled?' vazio':''}" data-i="${i}">${escHtml(o.label)||'&nbsp;'}</div>`).join('')
+        : `<div class="combo-busca-item vazio">Nenhum resultado</div>`;
+      lista._itens = filtradas;
+      ativoIdx = -1;
+      const r = input.getBoundingClientRect();
+      lista.style.left = r.left+'px';
+      lista.style.top = (r.bottom+3)+'px';
+      lista.style.width = r.width+'px';
+      lista.classList.add('aberta');
+      _comboAberto = wrap;
+    }
+    function marcarAtivo(){
+      const els = lista.querySelectorAll('.combo-busca-item');
+      els.forEach((el,i)=>el.classList.toggle('ativo', i===ativoIdx));
+      if(els[ativoIdx]) els[ativoIdx].scrollIntoView({block:'nearest'});
+    }
+    function escolher(o){
+      sel.value = o.value;
+      sel.dispatchEvent(new Event('change'));
+      input.value = o.value!=='' ? o.label : '';
+      _comboFechar();
+    }
+    input.addEventListener('focus', ()=>{ input.select(); render(''); });
+    input.addEventListener('input', ()=>render(input.value));
+    // Tab pra sair do campo (sem clicar num item da lista, que já tem seu próprio
+    // preventDefault no mousedown pra não disparar isso) — reverte o texto digitado
+    // sem confirmar pra o valor real selecionado, igual o Escape.
+    input.addEventListener('blur', ()=>{ _comboSincronizarEstado(wrap); _comboFechar(); });
+    input.addEventListener('keydown', e=>{
+      const itens = lista._itens||[];
+      if(e.key==='ArrowDown'){ e.preventDefault(); if(!lista.classList.contains('aberta')){ render(''); return; } ativoIdx=Math.min(ativoIdx+1, itens.length-1); marcarAtivo(); }
+      else if(e.key==='ArrowUp'){ e.preventDefault(); ativoIdx=Math.max(ativoIdx-1,0); marcarAtivo(); }
+      else if(e.key==='Enter'){ e.preventDefault(); if(ativoIdx>=0 && itens[ativoIdx] && !itens[ativoIdx].disabled) escolher(itens[ativoIdx]); }
+      else if(e.key==='Escape'){ _comboSincronizarEstado(wrap); _comboFechar(); input.blur(); }
+    });
+    lista.addEventListener('mousedown', e=>{
+      const item = e.target.closest('.combo-busca-item');
+      if(!item) return;
+      e.preventDefault();
+      const idx = +item.dataset.i;
+      const o = (lista._itens||[])[idx];
+      if(o && !o.disabled) escolher(o);
+    });
+  });
 }
 
 /** Confirmação reforçada pra exclusões de alto impacto (cascata/irreversível).
@@ -8540,11 +8681,13 @@ function atualizarObras(){
   if(!selO) return;
   const cid = +document.getElementById('m-cliente').value;
   selO.innerHTML = optsObras(cid, null);
+  sincronizarComboBuscavel('m-obra'); // v1.47.34: reflete a troca de opções no campo de busca visível
 }
 function toggleNovaObra(){
   const box = document.getElementById('nova-obra-box');
   box.classList.toggle('open');
   document.getElementById('m-obra').disabled = box.classList.contains('open');
+  sincronizarComboBuscavel('m-obra');
   if(box.classList.contains('open')) document.getElementById('no-nome').focus();
   else document.getElementById('no-nome').value = '';
 }
@@ -8568,13 +8711,14 @@ async function criarObraRapida(clienteId){
     opt.value = id; opt.textContent = nome; opt.selected = true;
     sel.appendChild(opt);
     sel.value = id;
+    sincronizarComboBuscavel('m-obra');
   }
   // Mostra botão editar
   const btnEd = document.getElementById('btn-editar-obra');
   if(btnEd) btnEd.style.display = '';
   // Fecha o box
   const box = document.getElementById('nova-obra-box');
-  if(box){ box.classList.remove('open'); document.getElementById('m-obra').disabled = false; document.getElementById('no-nome').value = ''; }
+  if(box){ box.classList.remove('open'); document.getElementById('m-obra').disabled = false; document.getElementById('no-nome').value = ''; sincronizarComboBuscavel('m-obra'); }
   if(btnObra) btnObra.disabled = false;
 }
 async function resolverObra(clienteId){
@@ -8599,7 +8743,7 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
   return `
     <label>Nome da obra</label>
     <div style="display:flex;gap:6px;align-items:center">
-      <select id="m-obra" style="flex:1" onchange="toggleBtnEditarObra()">${optsObras(cid, c?c.obraId:null)}</select>
+      <select id="m-obra" class="combo-busca" data-placeholder="Buscar obra…" style="flex:1" onchange="toggleBtnEditarObra()">${optsObras(cid, c?c.obraId:null)}</select>
       ${podeEditarRecurso(usuarioAtual,'obra-informacoes')?`<button type="button" id="btn-editar-obra" class="icon-btn" title="Editar dados desta obra"
         onclick="editarObraDoCartao(${c?c.id:'null'},${cid})"
         style="${c&&c.obraId?'':'display:none'}">✏️</button>`:''}
@@ -8812,7 +8956,7 @@ function abrirNovoCartao(faseIdInicial){
   abrirModal(`
     <h3>Novo Cartão</h3>
     <label>Cliente</label>
-    <select id="m-cliente" onchange="atualizarObras()">${optsClientes()}</select>
+    <select id="m-cliente" class="combo-busca" data-placeholder="Buscar cliente…" onchange="atualizarObras()">${optsClientes()}</select>
     <button class="link-btn" onclick="toggleNovoCliente()">+ Cadastrar cliente novo</button>
     <div class="novo-cliente-box" id="novo-cliente-box">
       <label>Nome do novo cliente</label><input id="nc-nome" placeholder="Nome completo">
@@ -8833,8 +8977,10 @@ function toggleNovoCliente(){
   box.classList.toggle('open');
   const aberto = box.classList.contains('open');
   document.getElementById('m-cliente').disabled = aberto;
+  sincronizarComboBuscavel('m-cliente');
   const selO = document.getElementById('m-obra');
   if(selO) selO.innerHTML = aberto ? '<option value="">(sem obra)</option>' : optsObras(+document.getElementById('m-cliente').value, null);
+  sincronizarComboBuscavel('m-obra');
   // v1.46.2: enquanto o cliente novo ainda não existe, não dá pra saber a qual
   // cliente vincular uma obra nova — "+ Cadastrar obra nova" usava o cliente que
   // estava selecionado ANTES de trocar pra "cliente novo" (valor capturado só na
@@ -8962,7 +9108,7 @@ function abrirEditarCartao(id, aba='dados'){
       <div>
         <label>Cliente</label>
         <div style="display:flex;gap:6px;align-items:center">
-          <select id="m-cliente" style="flex:1" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
+          <select id="m-cliente" class="combo-busca" data-placeholder="Buscar cliente…" style="flex:1" onchange="atualizarObras()">${optsClientes(c.clienteId)}</select>
           ${podeEditarTela(usuarioAtual,'clientes')?`<button type="button" class="icon-btn" title="Editar dados deste cliente" onclick="abrirEditarClienteDoCartao(+document.getElementById('m-cliente').value,${c.id})" style="pointer-events:auto">✏️</button>`:''}
         </div>
         ${camposCartaoForm(c)}
@@ -10032,7 +10178,7 @@ function abrirNovaRecorrente(){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Fornecedor
-          <select id="rec-fornecedor" class="input" style="margin-top:4px">
+          <select id="rec-fornecedor" class="input combo-busca" data-placeholder="Buscar fornecedor…" style="margin-top:4px">
             <option value="">— nenhum —</option>${fornOpts}
           </select>
           <button type="button" class="link-btn" style="margin-top:2px"
@@ -10052,7 +10198,7 @@ function abrirNovaRecorrente(){
           <input id="rec-dia" class="input" type="number" min="1" max="31" value="10" style="margin-top:4px">
         </label>
         <label>Obra (opcional)
-          <select id="rec-obra" class="input" style="margin-top:4px">
+          <select id="rec-obra" class="input combo-busca" data-placeholder="Buscar obra…" style="margin-top:4px">
             <option value="">— nenhuma —</option>${obraOpts}
           </select>
         </label>
@@ -10141,7 +10287,7 @@ function abrirEditarRecorrente(id){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Fornecedor
-          <select id="rec-fornecedor" class="input" style="margin-top:4px" ${ro}>
+          <select id="rec-fornecedor" class="input combo-busca" data-placeholder="Buscar fornecedor…" style="margin-top:4px" ${ro}>
             <option value="">— nenhum —</option>${fornOpts}
           </select>
           ${podeEditar?`<button type="button" class="link-btn" style="margin-top:2px"
@@ -10161,7 +10307,7 @@ function abrirEditarRecorrente(id){
           <input id="rec-dia" class="input" type="number" min="1" max="31" value="${r.diaVencimento||10}" style="margin-top:4px" ${ro}>
         </label>
         <label>Obra (opcional)
-          <select id="rec-obra" class="input" style="margin-top:4px" ${ro}>
+          <select id="rec-obra" class="input combo-busca" data-placeholder="Buscar obra…" style="margin-top:4px" ${ro}>
             <option value="">— nenhuma —</option>${obraOpts}
           </select>
         </label>
@@ -10983,7 +11129,7 @@ function abrirLancamentoManual(contaId){
       </div>
       <div id="lm-obra-row" style="display:none">
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Obra</div>
-        <select id="lm-obra" class="input">
+        <select id="lm-obra" class="input combo-busca" data-placeholder="Buscar obra…">
           <option value="">— selecione a obra —</option>
           ${obraOpts}
         </select>
@@ -11292,7 +11438,7 @@ function editarMovimentacao(id, contaId){
       </div>
       <div id="em-obra-row" style="display:${mostrarObra?'block':'none'}">
         <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Obra</label>
-        <select id="em-obra" class="input" style="margin-top:6px;width:100%">
+        <select id="em-obra" class="input combo-busca" data-placeholder="Buscar obra…" style="margin-top:6px;width:100%">
           <option value="">— selecione a obra —</option>
           ${obraOpts}
         </select>
@@ -12032,7 +12178,7 @@ function abrirNovaContaPagar(){
           <input id="ncp-desc" type="text" placeholder="Ex: Aluguel, Fornecedor XYZ…" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <select id="ncp-forn" class="input" style="margin-top:4px">
+          <select id="ncp-forn" class="input combo-busca" data-placeholder="Buscar fornecedor…" style="margin-top:4px">
             <option value="">— nenhum —</option>
             ${(db.fornecedores||[]).filter(f=>f.ativo).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}">${escHtml(f.nome)}</option>`).join('')}
           </select>
@@ -12073,7 +12219,7 @@ function abrirNovaContaPagar(){
         </label>
         <div id="ncp-obra-row" style="display:none">
           <label>Obra
-            <select id="ncp-obra" class="input" style="margin-top:4px">
+            <select id="ncp-obra" class="input combo-busca" data-placeholder="Buscar obra…" style="margin-top:4px">
               <option value="">— selecione a obra —</option>
               ${obraOpts}
             </select>
@@ -12159,7 +12305,7 @@ function abrirEditarContaPagar(id){
           <input id="ecp-desc" type="text" value="${escHtml(p.descricao)}" class="input" style="margin-top:4px">
         </label>
         <label>Fornecedor
-          <select id="ecp-forn" class="input" style="margin-top:4px">
+          <select id="ecp-forn" class="input combo-busca" data-placeholder="Buscar fornecedor…" style="margin-top:4px">
             <option value="">— nenhum —</option>
             ${(db.fornecedores||[]).filter(f=>f.ativo||f.id===p.fornecedorId).sort((a,b)=>a.nome.localeCompare(b.nome)).map(f=>`<option value="${f.id}" ${p.fornecedorId===f.id?'selected':''}>${escHtml(f.nome)}</option>`).join('')}
           </select>
@@ -12199,7 +12345,7 @@ function abrirEditarContaPagar(id){
         </label>
         <div id="ecp-obra-row" style="display:${(ccAtualSlug==='material_obra'||ccAtualSlug==='mao_de_obra')?'block':'none'}">
           <label>Obra
-            <select id="ecp-obra" class="input" style="margin-top:4px">
+            <select id="ecp-obra" class="input combo-busca" data-placeholder="Buscar obra…" style="margin-top:4px">
               <option value="">— selecione a obra —</option>
               ${obraOpts}
             </select>
@@ -15046,7 +15192,7 @@ function abrirLancarCustoComoCP(custoId, osId, cardId){
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Fornecedor *</div>
-        <select id="lcp-forn" class="input">
+        <select id="lcp-forn" class="input combo-busca" data-placeholder="Buscar fornecedor…">
           <option value="">— selecione —</option>
           ${fornOpts||'<option disabled>Nenhum fornecedor cadastrado</option>'}
         </select>
@@ -19407,7 +19553,7 @@ function abrirSaidaEstoque(){
     <div class="aba-corpo" style="display:grid;gap:12px">
       <div>
         <label>Produto *</label>
-        <select id="se-produto" onchange="_atualizaSaldoSaidaEstoque()">
+        <select id="se-produto" class="combo-busca" data-placeholder="Buscar produto…" onchange="_atualizaSaldoSaidaEstoque()">
           <option value="">— Selecione —</option>
           ${produtos.map(p=>`<option value="${p.id}">${escHtml(p.nome)}</option>`).join('')}
         </select>
@@ -19424,7 +19570,7 @@ function abrirSaidaEstoque(){
       </div>
       <div>
         <label>Obra (opcional)</label>
-        <select id="se-obra" onchange="_atualizaSaldoSaidaEstoque()">
+        <select id="se-obra" class="combo-busca" data-placeholder="Buscar obra…" onchange="_atualizaSaldoSaidaEstoque()">
           <option value="">— Estoque geral (sem obra específica) —</option>
           ${obraOpts}
         </select>
@@ -19501,7 +19647,7 @@ function abrirLiberarReservaEstoque(produtoId, obraOrigemId){
       </div>
       <div>
         <label>Destino *</label>
-        <select id="lr-destino">
+        <select id="lr-destino" class="combo-busca" data-placeholder="Buscar obra…">
           <option value="">— Estoque geral (sem obra específica) —</option>
           ${obraOpts}
         </select>
