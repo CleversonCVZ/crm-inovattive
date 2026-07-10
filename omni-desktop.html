@@ -1280,11 +1280,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.32';
+const APP_VERSION = '1.47.33';
 const APP_VERSION_DATE = '08/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.33',
+    data: '10/07/2026',
+    itens: [
+      'Renomeado o texto da fase protegida do SRM de "Recebido" para "Concluído" (Fases do SRM). Só mudou o rótulo exibido — o campo interno que a lógica do sistema usa para identificar essa fase (tipo "recebido") continua o mesmo, então nenhum comportamento foi afetado.',
+    ]
+  },
   {
     versao: '1.47.32',
     data: '10/07/2026',
@@ -2271,7 +2278,7 @@ const SEED = {
     {id:4, nome:'Negociação',         cor:'#f57c00', ordem:4},
     {id:5, nome:'Pedido Emitido',     cor:'#7b1fa2', ordem:5},
     {id:6, nome:'Aguardando Entrega', cor:'#1565c0', ordem:6},
-    {id:7, nome:'Recebido',           cor:'#2e7d32', ordem:7, tipo:'recebido'},
+    {id:7, nome:'Concluído',          cor:'#2e7d32', ordem:7, tipo:'recebido'},
     {id:8, nome:'Cancelado',          cor:'#c62828', ordem:8, tipo:'cancelado'}
   ],
   ordensServico: [],
@@ -2600,7 +2607,7 @@ function load(){
       {id:4,nome:'Negociação',cor:'#f57c00',ordem:4},
       {id:5,nome:'Pedido Emitido',cor:'#7b1fa2',ordem:5},
       {id:6,nome:'Aguardando Entrega',cor:'#1565c0',ordem:6},
-      {id:7,nome:'Recebido',cor:'#2e7d32',ordem:7,tipo:'recebido'},
+      {id:7,nome:'Concluído',cor:'#2e7d32',ordem:7,tipo:'recebido'},
       {id:8,nome:'Cancelado',cor:'#c62828',ordem:8,tipo:'cancelado'}
     ];
   }
