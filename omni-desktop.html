@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.34';
+const APP_VERSION = '1.47.35';
 const APP_VERSION_DATE = '10/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.35',
+    data: '10/07/2026',
+    itens: [
+      'Corrigido: nas 3 telas de O.S. (Avulsa, Execução, Projeto), depois de clicar em "📅 Agenda" pra enviar o agendamento pro Google Calendar, o botão "✕ Remover do Google Calendar" só aparecia depois de fechar e reabrir a O.S. — precisava de um recarregamento completo da tela pra aparecer. Causa: o botão só existia no HTML quando a O.S. já tinha um evento do Google vinculado; agora ele já nasce na tela (escondido) e só fica visível na hora, sem precisar reabrir — igual já funcionava no Cartão CRM.',
+    ]
+  },
   {
     versao: '1.47.34',
     data: '10/07/2026',
@@ -2157,6 +2164,11 @@ async function enviarParaAgendaGoogle(tipo, id){
     const os = db.ordensServico.find(x=>x.id===id);
     os.googleEventId = res.eventId;
     await sb.from('ordens_servico').update({google_event_id: res.eventId}).eq('id', id);
+    // v1.47.35: o botão "✕ remover" da O.S. já existe no DOM (escondido via
+    // display:none quando não há googleEventId) — só revelar aqui, sem precisar
+    // fechar/reabrir a tela pra um re-render completo mostrar o botão.
+    const btnXOs = document.getElementById(`btn-limpar-agenda-os-${id}`);
+    if(btnXOs) btnXOs.style.display = '';
   }
   if(btn) btn.innerHTML = '✅ Na agenda';
 }
@@ -14215,7 +14227,7 @@ function abrirVerOS(osId, cardId){
               <div style="display:flex;gap:6px;align-items:center">
                 <input id="vos-ai" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'vos-save-status')">
                 ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
-                ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
+                <button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px;display:${os.googleEventId?'':'none'}" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>
               </div>
             </div>
             ${isProjeto ? `<div>
@@ -14546,7 +14558,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
           <div style="display:flex;gap:6px;align-items:center">
             <input id="exec-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'exec-save-status')">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
-            ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
+            <button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px;display:${os.googleEventId?'':'none'}" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>
           </div>
         </div>
         <div></div>
@@ -14829,7 +14841,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
           <div style="display:flex;gap:6px;align-items:center">
             <input id="avl-agend" type="date" value="${os.dataAgend||''}" ${dis} style="flex:1" onchange="autoSalvarCampoOS(${osId},'dataAgend',this.value,'avl-save-status')">
             ${os.dataAgend && usuarioAtual?.googleRefreshToken ? `<button type="button" id="btn-gcal-os-${os.id}" class="btn sm" style="background:#4285f4;color:#fff;border:none;white-space:nowrap" onclick="enviarParaAgendaGoogle('os',${os.id})">${os.googleEventId?'✅ Na agenda':'📅 Agenda'}</button>` : ''}
-            ${os.googleEventId?`<button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>`:''}
+            <button type="button" id="btn-limpar-agenda-os-${os.id}" title="Remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px;display:${os.googleEventId?'':'none'}" onclick="limparAgendaOS(${os.id},${cardId})">✕</button>
           </div>
         </div>
       </div>
