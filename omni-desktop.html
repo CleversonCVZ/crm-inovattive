@@ -1064,7 +1064,7 @@
           <th>Obra / Cliente</th>
           <th style="width:110px">Data</th>
           <th style="width:130px">Valor</th>
-          <th style="width:130px">Impostos Retidos</th>
+          <th style="width:130px">Previsão de Impostos</th>
           <th style="width:150px">Fase</th>
         </tr>
       </thead>
@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.43';
+const APP_VERSION = '1.47.44';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.44',
+    data: '13/07/2026',
+    itens: [
+      'Espelho de Faturamento: o campo "Impostos Retidos" (digitado manualmente) virou "Previsão de Impostos", calculado automaticamente com base no valor de Produto e de Serviço daquele Espelho e nas alíquotas configuradas em Configurações do Sistema. Atualizado na aba Dados do Espelho, na lista de Espelhos de NF, no PDF e no Excel de Instrução para Emissão de NF.',
+    ]
+  },
   {
     versao: '1.47.43',
     data: '13/07/2026',
@@ -8053,7 +8060,7 @@ function renderFatEspelhos(){
       <td>${ob?escHtml(ob.nome)+(cli&&cli.nome!=='—'?' <small style="color:var(--muted)">('+escHtml(cli.nome)+')</small>':''):'<em style="color:var(--muted)">—</em>'}</td>
       <td>${n.produtoData?fmtDia2(n.produtoData):(n.servicoData?fmtDia2(n.servicoData):'—')}</td>
       <td>${fmtMoney(n.valor)||'—'}</td>
-      <td>${fmtMoney(n.impostosRetidos)||'—'}</td>
+      <td>${fmtMoney(previsaoImpostosEspelho(n))||'—'}</td>
       <td><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;background:${f.cor||'#dee2e6'};color:${textColor(f.cor||'#dee2e6')}">${f.nome||'—'}</span></td>`;
     tb.appendChild(tr);
   });
@@ -8167,10 +8174,25 @@ function abrirEspelhoNF(id, aba='dados'){
   if(aba==='xmlservico') carregarXmlFaturaTab(nf.id,'servico');
 }
 
+/* v1.47.44: Previsão de Impostos — deixou de ser um valor digitado manualmente
+ * ("Impostos Retidos") e passou a ser calculada automaticamente a partir do valor
+ * de produto/serviço do próprio Espelho e das alíquotas de Produto/Serviço
+ * configuradas em Configurações do Sistema. Sempre recalculada na hora (não fica
+ * "congelada" com a alíquota de quando foi salva). */
+function previsaoImpostosEspelho(nf){
+  const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const empresa = db.empresa||{};
+  const aliqProduto = Number(empresa.aliquotaTributosProduto)||0;
+  const aliqServico = Number(empresa.aliquotaTributosServico)||0;
+  return totalProduto*aliqProduto/100 + totalServico*aliqServico/100;
+}
+
 function abaEspelhoDadosHTML(nf, c, ob, cli){
   const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
   const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
   const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const previsaoImpostos = previsaoImpostosEspelho(nf);
   return `
     <div class="form-row">
       <div><label>Cartão CRM</label><input value="${c?'#'+c.num:'—'}" disabled></div>
@@ -8180,11 +8202,11 @@ function abaEspelhoDadosHTML(nf, c, ob, cli){
     <div style="${podeEditar?'':'pointer-events:none;opacity:.65'}">
       <label>Fase</label>
       <select id="fe-fase">${optsFasesFat(nf.faseId)}</select>
-      <label>Impostos Retidos</label>
-      <input id="fe-retido" type="text" inputmode="decimal" value="${(nf.impostosRetidos||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
       <label>Observações</label>
       <textarea id="fe-obs" placeholder="Opcional">${escHtml(nf.observacoes||'')}</textarea>
     </div>
+    <label>Previsão de Impostos</label>
+    <input type="text" value="${fmtMoney(previsaoImpostos)}" disabled>
     <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;gap:24px;flex-wrap:wrap">
       <div style="font-size:13px"><span style="color:var(--muted)">Total Produto:</span> <b>${fmtMoney(totalProduto)}</b></div>
       <div style="font-size:13px"><span style="color:var(--muted)">Total Serviço:</span> <b>${fmtMoney(totalServico)}</b></div>
@@ -8195,7 +8217,7 @@ async function salvarDadosEspelhoNF(id){
   if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
   const nf = (db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
   nf.faseId = +document.getElementById('fe-fase').value||nf.faseId;
-  nf.impostosRetidos = lerMoeda('fe-retido');
+  nf.impostosRetidos = previsaoImpostosEspelho(nf);
   nf.observacoes = document.getElementById('fe-obs').value.trim();
   nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
            + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
@@ -8758,8 +8780,9 @@ async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
   doc.setFontSize(9); doc.setTextColor(30,30,30); doc.setFont(undefined,'normal');
   doc.text(`Total Produto: ${fmtMoney(totalProduto)}   |   Total Serviço: ${fmtMoney(totalServico)}   |   Total Geral: ${fmtMoney(totalProduto+totalServico)}`, M, y);
   y += 7;
-  if(nf.impostosRetidos){
-    doc.text(`Impostos Retidos: ${fmtMoney(nf.impostosRetidos)}`, M, y);
+  const previsaoImpostosPdf = previsaoImpostosEspelho(nf);
+  if(previsaoImpostosPdf){
+    doc.text(`Previsão de Impostos: ${fmtMoney(previsaoImpostosPdf)}`, M, y);
     y += 7;
   }
   if(nf.observacoes?.trim()){
@@ -8809,7 +8832,7 @@ async function exportarExcelInstrucaoFaturamento(nfId){
     ['Total Produto', totalProduto],
     ['Total Serviço', totalServico],
     ['Total Geral', totalProduto+totalServico],
-    ['Impostos Retidos', nf.impostosRetidos||0],
+    ['Previsão de Impostos', previsaoImpostosEspelho(nf)],
     [],
     ['Observações', nf.observacoes||'']
   ];
