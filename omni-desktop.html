@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.41';
+const APP_VERSION = '1.47.42';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.42',
+    data: '13/07/2026',
+    itens: [
+      'Corrigido: 5 telas do Estoque (Novo/Editar Produto no Catálogo, Lançar Itens da NF no Estoque, Cadastrar no Catálogo sem lançar, Saída Manual e Liberar Reserva no Almoxarifado) atualizavam a tela errada depois de salvar — chamavam o refresh do Painel de Acompanhamento de Obras (uma tela completamente diferente) em vez do Catálogo/Almoxarifado/Movimentações. Resultado: produtos novos ou alterados só apareciam depois de sair da tela e voltar. Agora cada ação atualiza a(s) tela(s) certa(s) na hora.',
+    ]
+  },
   {
     versao: '1.47.41',
     data: '13/07/2026',
@@ -20310,7 +20317,7 @@ async function confirmarSaidaEstoque(){
   const ids = await debitarEstoque(produtoId, obraId, qtd, {osId:null, observacao:obs||null, data});
   if(!ids.length){ btnRestaurar(btn); return; }
   fecharModal();
-  renderEstoquePainel();
+  renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes();
 }
 
 /* ===== v1.47.0: Liberar/transferir reserva entre obras ===== */
@@ -20372,7 +20379,7 @@ async function confirmarLiberarReserva(produtoId, obraOrigemId){
   if(error){ btnRestaurar(btn); alert('Erro ao liberar reserva: '+error.message); return; }
   (data||[]).forEach(_pushMovLocal);
   fecharModal();
-  renderEstoquePainel();
+  renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes();
 }
 
 function editarProdutoEstoque(id){
@@ -20410,7 +20417,7 @@ async function salvarProdutoEstoque(){
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,categoriaId:data.categoria_id||null,criadoEm:data.criado_em||''});
   }
-  renderEstoquePainel();
+  renderEstoqueCatalogo(); renderEstoqueAlmoxarifado();
   // v1.47.36: editar um produto existente não fecha mais (só confirma que salvou);
   // cadastrar um produto novo continua fechando.
   if(isEdit){
@@ -20638,7 +20645,7 @@ async function confirmarLancarEstoque(){
   cot.estoqueLancado=true; cot.estoqueLancadoEm=agora;
 
   fecharLancarEstoque();
-  renderEstoquePainel();
+  renderEstoqueAlmoxarifado(); renderEstoqueCatalogo(); renderEstoqueMovimentacoes();
   /* Re-renderizar a aba Pedido Aprovado do SRM para mostrar badge "✅ Lançado" */
   abrirEditarSRM(srmId,'pedidos');
 }
@@ -20733,7 +20740,7 @@ async function confirmarCadastrarCatalogo(){
   if(cotErr){ console.error('Erro ao salvar nf_itens:',cotErr.message); }
 
   fecharCadastrarCatalogo();
-  renderEstoquePainel();
+  renderEstoqueCatalogo();
   abrirEditarSRM(srmId,'pedidos');
 }
 
