@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.40';
+const APP_VERSION = '1.47.41';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.41',
+    data: '13/07/2026',
+    itens: [
+      'Faturamento → Espelho de NF → Itens de Produto: itens sem descrição fiscal (nunca vinculados a um produto do catálogo de Estoque) ganharam um link "🔗 Vincular produto" pra corrigir isso na hora, sem precisar de ajuste manual no banco. A lista de produtos do catálogo já sugere primeiro (com ⭐) os que têm saldo reservado especificamente para a obra desse Espelho — os candidatos mais prováveis. Ao vincular, o item da O.S. de origem também é atualizado, mantendo o Resultado Aparente consistente.',
+    ]
+  },
   {
     versao: '1.47.40',
     data: '13/07/2026',
@@ -7892,6 +7899,67 @@ async function removerItemFaturamento(itemId, nfId, tipo){
   abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
 }
 
+/* v1.47.41: itens de produto travados num Espelho SEM descrição fiscal (produto
+   nunca vinculado ao catálogo — comum em itens antigos, anteriores ao controle
+   que hoje já obriga vincular na hora de dar saída na O.S.) ganham um jeito de
+   corrigir isso direto aqui, sem precisar de SQL manual. Sugere primeiro os
+   produtos com saldo reservado pra essa obra (saldoProdutoObra()), que são os
+   candidatos mais prováveis por já estarem aguardando saída dessa mesma obra. */
+function abrirVincularProdutoEspelho(itemId, nfId){
+  const item = (db.faturamentoItens||[]).find(x=>x.id===itemId); if(!item) return;
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const produtos = (db.estoqueProdutos||[]).filter(p=>p.ativo);
+  const comSaldoObra = produtos.filter(p=>saldoProdutoObra(p.id, nf.obraId)>0).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const idsComSaldo = new Set(comSaldoObra.map(p=>p.id));
+  const resto = produtos.filter(p=>!idsComSaldo.has(p.id)).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const opts = [
+    ...comSaldoObra.map(p=>`<option value="${p.id}">⭐ ${escHtml(p.nome)}</option>`),
+    ...resto.map(p=>`<option value="${p.id}">${escHtml(p.nome)}</option>`)
+  ].join('');
+
+  abrirModal(`
+    <h3>🔗 Vincular ao Catálogo de Estoque</h3>
+    <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:12px;color:var(--muted)">Item comercial (proposta)</div>
+      <div style="font-weight:600">${escHtml(item.descricao)}</div>
+    </div>
+    ${produtos.length ? `
+    <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Produtos com ⭐ têm saldo reservado especificamente para esta obra (aguardando saída) — são os candidatos mais prováveis.</p>
+    <label>Produto do catálogo *</label>
+    <select id="vpe2-sel" class="combo-busca" data-placeholder="Digite pra buscar o produto...">
+      <option value="">— Selecione —</option>
+      ${opts}
+    </select>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra vincular.</div>`}
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEspelhoNF(${nfId},'produtos')">← Cancelar</button>
+      ${produtos.length ? `<button class="btn primary" data-btn-salvar onclick="confirmarVincularProdutoEspelho(${itemId},${nfId})">Vincular</button>` : ''}
+    </div>`, 'cartao');
+}
+
+async function confirmarVincularProdutoEspelho(itemId, nfId){
+  const item = (db.faturamentoItens||[]).find(x=>x.id===itemId); if(!item) return;
+  const selVal = document.getElementById('vpe2-sel')?.value;
+  const produtoId = parseInt(selVal)||null;
+  if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  try{
+    const {error} = await sb.from('faturamento_itens').update({produto_estoque_id:produtoId}).eq('id', itemId);
+    if(error) throw error;
+  }catch(e){ btnRestaurar(btn); alert('Erro ao vincular: '+(e.message||e)); return; }
+  item.produtoEstoqueId = produtoId;
+  // Propaga também pro item de origem na O.S. (Itens de Obra), quando existir,
+  // pra manter o Resultado Aparente e futuras consultas consistentes.
+  if(item.osId!=null){
+    const os = (db.ordensServico||[]).find(x=>x.id===item.osId);
+    const mOS = os?.itensTrabalho?.find(m=>m.propostaId===item.propostaId && m.idx===item.propostaIdx);
+    if(mOS) mOS.produtoEstoqueId = produtoId;
+  }
+  registrarLog('editar','nota_fiscal',nfId,`Item de produto vinculado ao catálogo no Espelho #${nfId}`);
+  saveLocal(); syncDadosSupabase();
+  abrirEspelhoNF(nfId, 'produtos');
+}
+
 /* ---- Painel (kanban) ---- */
 function notaFiscalCard(n){
   const f = faseFat(n.faseId) || {cor:'#dee2e6', nome:'—'};
@@ -8144,7 +8212,9 @@ function abaEspelhoProdutosHTML(nf){
           <div style="font-weight:600">${escHtml(descFiscal || i.descricao)}</div>
           ${descFiscal
             ? `<div style="font-size:11px;color:var(--muted)">Nome comercial (proposta): ${escHtml(i.descricao)}</div>`
-            : `<div style="font-size:11px;color:#e65100">⚠ Sem descrição fiscal cadastrada no catálogo (Estoque → Catálogo) — confirme com a contabilidade antes de enviar</div>`}
+            : `<div style="font-size:11px;color:#e65100">⚠ Sem descrição fiscal cadastrada no catálogo — confirme com a contabilidade antes de enviar
+                ${podeEditar?` · <a href="javascript:void(0)" onclick="abrirVincularProdutoEspelho(${i.id},${nf.id})" style="color:#1565c0;text-decoration:underline">🔗 Vincular produto</a>`:''}
+               </div>`}
           <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)} · O.S. ${os?os.numero:'—'}</div>
           ${nfsCompra.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">NF(s) de compra: ${nfsCompra.map(n=>`${escHtml(n.numero||'—')} (${n.data?fmtDia2(n.data):'—'})`).join(', ')}</div>`:''}
         </div>
