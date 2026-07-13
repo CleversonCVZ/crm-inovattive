@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.44';
+const APP_VERSION = '1.47.45';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.45',
+    data: '13/07/2026',
+    itens: [
+      'Espelho de Faturamento (aba Itens de Produto) e PDF de Instrução para Emissão de NF: invertida a hierarquia visual de cada item — agora aparece em destaque o nome comercial (o mesmo usado na proposta) e, menor/abaixo, a Descrição Fiscal do catálogo (a informação que a contabilidade realmente precisa). Antes era o contrário, o que dava a impressão de nome duplicado quando o produto do catálogo ainda não tinha uma descrição fiscal bem diferenciada do nome comercial.',
+    ]
+  },
   {
     versao: '1.47.44',
     data: '13/07/2026',
@@ -8245,9 +8252,9 @@ function abaEspelhoProdutosHTML(nf){
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
-          <div style="font-weight:600">${escHtml(descFiscal || i.descricao)}</div>
+          <div style="font-weight:600">${escHtml(i.descricao)}</div>
           ${descFiscal
-            ? `<div style="font-size:11px;color:var(--muted)">Nome comercial (proposta): ${escHtml(i.descricao)}</div>`
+            ? `<div style="font-size:11px;color:var(--muted)">Descrição Fiscal (p/ contabilidade): ${escHtml(descFiscal)}</div>`
             : `<div style="font-size:11px;color:#e65100">⚠ Sem descrição fiscal cadastrada no catálogo — confirme com a contabilidade antes de enviar
                 ${podeEditar?` · <a href="javascript:void(0)" onclick="abrirVincularProdutoEspelho(${i.id},${nf.id})" style="color:#1565c0;text-decoration:underline">🔗 Vincular produto</a>`:''}
                </div>`}
@@ -8737,9 +8744,9 @@ async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
     y += 3;
     doc.autoTable({
       startY:y, margin:{left:M,right:M},
-      head:[['Descrição Fiscal','Qtd','Vl. Unit.','Total','NF(s) de Entrada']],
+      head:[['Descrição (Comercial / Fiscal)','Qtd','Vl. Unit.','Total','NF(s) de Entrada']],
       body: itensProd.map(i=>[
-        i.descricao + (i.temFiscal?'':' ⚠ sem descrição fiscal'),
+        i.descricaoComercial + '\n' + (i.temFiscal ? `Descrição Fiscal: ${i.descricao}` : '⚠ sem descrição fiscal cadastrada'),
         String(i.quantidade),
         fmtMoney(i.valorUnitario),
         fmtMoney(i.valorTotal),
