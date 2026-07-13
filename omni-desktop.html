@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.42';
+const APP_VERSION = '1.47.43';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.43',
+    data: '13/07/2026',
+    itens: [
+      'Corrigido: em várias telas de edição, o botão que fecha a tela ainda dizia "Cancelar" mesmo depois que o botão Salvar parou de fechar a tela sozinho (v1.47.36) — ficava parecendo que fechar sem clicar em Cancelar descartaria alterações já salvas. Ajustado para "Fechar" em: Editar Produto (Catálogo de Estoque), Editar Usuário, Meu Perfil, Editar Conta Recorrente, Editar Movimentação de Conta Corrente, Editar Cliente e Editar Parcela a Receber. Telas de cadastro (criação), onde Salvar continua fechando, mantêm "Cancelar" sem alteração.',
+    ]
+  },
   {
     versao: '1.47.42',
     data: '13/07/2026',
@@ -5158,7 +5165,7 @@ function abrirMeuUsuario(){
     <input id="mu-senha" type="password" autocomplete="new-password">
     <p style="font-size:12.5px;color:var(--muted);margin-top:10px">Grupo: ${grupoDe(u).nome} · Função: ${u.funcao||'—'}<br>Para alterar grupo, função ou permissões, fale com um administrador.</p>
     <div class="actions">
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarMeuUsuario()">Salvar</button>
     </div>`);
 }
@@ -10923,7 +10930,7 @@ function abrirEditarRecorrente(id){
         ${podeEditar?`<button class="btn neutral" onclick="toggleRecorrente(${r.id})">${r.ativa?'⏸ Pausar':'▶ Ativar'}</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
         ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoRecorrente(${r.id},this)">Salvar</button>`:''}
       </div>
     </div>
@@ -12046,7 +12053,7 @@ function editarMovimentacao(id, contaId){
       ${m.origemTipo!=='manual'?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</div>':''}
     </div>
     <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">← Cancelar</button>
+      <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">← Fechar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarEdicaoMovimentacao(${id},${contaId})">Salvar</button>
     </div>`, 'cartao');
 }
@@ -14275,7 +14282,7 @@ function editarParcelaReceber(id, cardId){
       </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn" onclick="fecharModal()">Fechar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarEdicaoParcelaReceber(${id},${cardId})">Salvar</button>
     </div>`);
 }
@@ -18472,7 +18479,7 @@ function abrirEditarCliente(id){
     ${obrasDoClienteHTML(c)}
     <div class="actions">
       ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirCliente(${c.id})">Excluir</button>`:''}
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       ${podeEditar?`<button class="btn primary" onclick="salvarEdicaoCliente(${c.id},this)">Salvar</button>`:''}
     </div>`);
 }
@@ -18933,7 +18940,7 @@ function abrirEditarUsuario(id){
     </div>
     <div class="actions">
       <button class="btn danger" data-btn-perigo onclick="excluirUsuario(${u.id})">Excluir</button>
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       <button class="btn primary" data-btn-salvar id="u-btn-salvar" onclick="salvarUsuario(${u.id})">Salvar</button>
     </div>`);
 }
@@ -20226,7 +20233,7 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
       </div>
     </div>
     <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn neutral" onclick="fecharModal()">${id?'Fechar':'Cancelar'}</button>
       ${podeEditar?`<button class="btn primary" id="btn-salvar-produto" onclick="salvarProdutoEstoque()">Salvar</button>`:''}
     </div>`;
 }
