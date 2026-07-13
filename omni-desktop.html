@@ -1291,11 +1291,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.38';
+const APP_VERSION = '1.47.40';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.40',
+    data: '13/07/2026',
+    itens: [
+      'Faturamento → Espelhos de NF: 2 abas novas, "🧾 XML Produto" e "🧾 XML Serviço", que leem o próprio arquivo XML anexado (devolvido pela contabilidade após emitir a NF) e mostram os dados da nota efetivamente emitida — número, chave de acesso, emitente, destinatário, itens e totais/impostos, no caso da NF-e de produto (layout nacional padronizado). Para a NFS-e de serviço, que não tem um padrão nacional único (cada prefeitura define o seu), o sistema tenta reconhecer os campos mais comuns e sempre mostra também uma listagem completa de tudo que foi encontrado no arquivo, garantindo que nada fique escondido mesmo em municípios com layout diferente.',
+    ]
+  },
+  {
+    versao: '1.47.39',
+    data: '13/07/2026',
+    itens: [
+      'Faturamento → Espelhos de NF (Itens de Produto/Serviço): o campo de anexo que recebe o arquivo devolvido pela contabilidade depois de emitida a NF mudou o rótulo de "XLS/XLSX da NF" pra "XML da NF" e passou a aceitar também .xml (mantendo .xls/.xlsx/.csv por compatibilidade com o que já foi anexado antes) — antes só aceitava planilha, mas o que a contabilidade sempre manda de volta é o XML da nota.',
+    ]
+  },
   {
     versao: '1.47.38',
     data: '13/07/2026',
@@ -8046,6 +8060,8 @@ function abrirEspelhoNF(id, aba='dados'){
   let corpo='';
   if(aba==='produtos') corpo = abaEspelhoProdutosHTML(nf);
   else if(aba==='servicos') corpo = abaEspelhoServicosHTML(nf);
+  else if(aba==='xmlproduto') corpo = abaEspelhoXmlHTML(nf,'produto');
+  else if(aba==='xmlservico') corpo = abaEspelhoXmlHTML(nf,'servico');
   else corpo = abaEspelhoDadosHTML(nf, c, ob, cli);
   abrirModal(`
     <h3>Espelho de Faturamento #${nf.id}${cli?' — '+escHtml(cli.nome):''}</h3>
@@ -8053,6 +8069,8 @@ function abrirEspelhoNF(id, aba='dados'){
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEspelhoNF(${id},'dados')">Dados</button>
       <button class="aba ${aba==='produtos'?'ativa':''}" onclick="abrirEspelhoNF(${id},'produtos')">📦 Itens de Produto${nMat?' ('+nMat+')':''}</button>
       <button class="aba ${aba==='servicos'?'ativa':''}" onclick="abrirEspelhoNF(${id},'servicos')">🔧 Itens de Serviço${nServ?' ('+nServ+')':''}</button>
+      <button class="aba ${aba==='xmlproduto'?'ativa':''}" onclick="abrirEspelhoNF(${id},'xmlproduto')">🧾 XML Produto${nf.produtoXlsPath?' ✓':''}</button>
+      <button class="aba ${aba==='xmlservico'?'ativa':''}" onclick="abrirEspelhoNF(${id},'xmlservico')">🧾 XML Serviço${nf.servicoXlsPath?' ✓':''}</button>
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -8063,6 +8081,8 @@ function abrirEspelhoNF(id, aba='dados'){
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       ${(aba==='dados' && podeEditar)?`<button class="btn primary" data-btn-salvar onclick="salvarDadosEspelhoNF(${nf.id})">Salvar</button>`:''}
     </div>`, 'cartao');
+  if(aba==='xmlproduto') carregarXmlFaturaTab(nf.id,'produto');
+  if(aba==='xmlservico') carregarXmlFaturaTab(nf.id,'servico');
 }
 
 function abaEspelhoDadosHTML(nf, c, ob, cli){
@@ -8210,6 +8230,214 @@ function abaEspelhoServicosHTML(nf){
       ${podeEditar?`<button class="btn sm" style="margin-top:8px" onclick="salvarBlocoEspelhoNF(${nf.id},'servico',this)">Salvar dados da NF</button>`:''}
       ${_blocoAnexosHTML(nf,'servico',podeEditar)}
     </div>`;
+}
+
+/* v1.47.40: abas "XML Produto"/"XML Serviço" — leem o próprio arquivo XML que a
+   contabilidade devolveu (anexado em _blocoAnexosHTML) e mostram os dados que
+   vieram na nota efetivamente emitida, pra conferência. NF-e (produto) tem
+   layout nacional padronizado (SEFAZ) — parser real, com campos nomeados.
+   NFS-e (serviço) NÃO tem padrão nacional único (cada prefeitura tem o seu) —
+   tentamos reconhecer os campos mais comuns (padrão ABRASF) e SEMPRE mostramos
+   também uma listagem bruta de tudo que foi encontrado no arquivo, pra nunca
+   ficar sem nada útil na tela mesmo com um layout de município desconhecido. */
+function abaEspelhoXmlHTML(nf, bloco){
+  const path = nf[bloco+'XlsPath'];
+  const nome = nf[bloco+'XlsNome'];
+  if(!path){
+    return `<div class="empty" style="padding:24px;text-align:center">Nenhum XML anexado ainda em <b>${bloco==='produto'?'Itens de Produto':'Itens de Serviço'}</b>.<br>Anexe o XML devolvido pela contabilidade na aba correspondente pra ver os dados aqui.</div>`;
+  }
+  return `
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Dados extraídos automaticamente de <b>${escHtml(nome||'XML')}</b>.</div>
+    <div id="fe-xml-${bloco}-corpo"><div style="padding:24px;text-align:center;color:var(--muted)">⏳ Lendo o XML...</div></div>`;
+}
+
+async function carregarXmlFaturaTab(nfId, bloco){
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const path = nf[bloco+'XlsPath']; if(!path) return;
+  const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
+  const el = document.getElementById(`fe-xml-${bloco}-corpo`); if(!el) return;
+  try{
+    const {data, error} = await sb.storage.from(bucket).download(path);
+    if(error || !data) throw new Error(error?.message||'Falha ao baixar o arquivo');
+    const texto = await data.text();
+    if(!/^\s*(<\?xml|<)/i.test(texto)){
+      el.innerHTML = `<div class="empty" style="padding:16px;text-align:center;color:#c62828">O arquivo anexado não parece ser um XML (pode ser um .xls/.xlsx antigo — anexe o XML pra ver os dados aqui).</div>`;
+      return;
+    }
+    const doc = new DOMParser().parseFromString(texto, 'application/xml');
+    if(doc.getElementsByTagName('parsererror').length){
+      el.innerHTML = `<div class="empty" style="padding:16px;text-align:center;color:#c62828">Não consegui interpretar este XML (arquivo inválido ou corrompido).</div>`;
+      return;
+    }
+    el.innerHTML = bloco==='produto' ? _htmlXmlNFeProduto(doc) : _htmlXmlNFSeServico(doc);
+  }catch(e){
+    el.innerHTML = `<div class="empty" style="padding:16px;text-align:center;color:#c62828">Erro ao ler o XML: ${escHtml(e.message||String(e))}</div>`;
+  }
+}
+
+/* NF-e de produto — layout nacional (SEFAZ), sempre a mesma estrutura de tags
+   independente do estado/emissor: infNFe > ide/emit/dest/det/total. */
+function _htmlXmlNFeProduto(doc){
+  const infNFe = doc.getElementsByTagName('infNFe')[0];
+  if(!infNFe){
+    return _htmlXmlGenericoFallback(doc, 'Não reconheci a estrutura padrão de NF-e neste arquivo — segue tudo que encontrei nele:');
+  }
+  const _t = (el, tag) => el ? ((el.getElementsByTagName(tag)[0]||{}).textContent||'').trim() : '';
+  const ide   = infNFe.getElementsByTagName('ide')[0];
+  const emit  = infNFe.getElementsByTagName('emit')[0];
+  const dest  = infNFe.getElementsByTagName('dest')[0];
+  const total = infNFe.getElementsByTagName('ICMSTot')[0];
+  const infProt = doc.getElementsByTagName('infProt')[0];
+
+  const nNF = _t(ide,'nNF'), serie = _t(ide,'serie'), dhEmi = _t(ide,'dhEmi')||_t(ide,'dEmi');
+  const natOp = _t(ide,'natOp');
+  const chave = infProt ? _t(infProt,'chNFe') : (infNFe.getAttribute('Id')||'').replace(/^NFe/,'');
+  const emitNome = _t(emit,'xNome'), emitCnpj = _t(emit,'CNPJ');
+  const destNome = _t(dest,'xNome'), destDoc = _t(dest,'CNPJ')||_t(dest,'CPF');
+  const enderEmit = emit ? emit.getElementsByTagName('enderEmit')[0] : null;
+  const enderDest = dest ? dest.getElementsByTagName('enderDest')[0] : null;
+  const _end = el => el ? [
+    [_t(el,'xLgr'), _t(el,'nro')].filter(Boolean).join(', '),
+    [_t(el,'xBairro'), _t(el,'xMun')&&(_t(el,'xMun')+(_t(el,'UF')?'/'+_t(el,'UF'):''))].filter(Boolean).join(' — '),
+    _t(el,'CEP')?'CEP '+_t(el,'CEP'):''
+  ].filter(Boolean).join(' — ') : '—';
+
+  const dets = [...infNFe.getElementsByTagName('det')];
+  const itensRows = dets.map(det=>{
+    const prod = det.getElementsByTagName('prod')[0];
+    return `<tr>
+      <td style="padding:4px 6px">${escHtml(_t(prod,'xProd'))}</td>
+      <td style="padding:4px 6px;text-align:center">${escHtml(_t(prod,'cProd'))}</td>
+      <td style="padding:4px 6px;text-align:center">${escHtml(_t(prod,'NCM'))}</td>
+      <td style="padding:4px 6px;text-align:center">${escHtml(_t(prod,'CFOP'))}</td>
+      <td style="padding:4px 6px;text-align:right">${escHtml(_t(prod,'qCom'))} ${escHtml(_t(prod,'uCom'))}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtMoney(parseFloat(_t(prod,'vUnCom'))||0)}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtMoney(parseFloat(_t(prod,'vProd'))||0)}</td>
+    </tr>`;
+  }).join('');
+
+  const vNF=_t(total,'vNF'), vProd=_t(total,'vProd'), vICMS=_t(total,'vICMS'), vIPI=_t(total,'vIPI'), vPIS=_t(total,'vPIS'), vCOFINS=_t(total,'vCOFINS');
+
+  return `
+    <div class="form-row">
+      <div><label>Número / Série</label><input value="${escHtml(nNF)}${serie?' / Série '+escHtml(serie):''}" disabled></div>
+      <div><label>Emissão</label><input value="${dhEmi?fmtDia2(dhEmi.slice(0,10)):'—'}" disabled></div>
+    </div>
+    ${chave?`<label>Chave de Acesso</label><input value="${escHtml(chave)}" disabled style="font-family:monospace;font-size:12px">`:''}
+    ${natOp?`<label>Natureza da Operação</label><input value="${escHtml(natOp)}" disabled>`:''}
+    <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:10px">
+      <div class="form-row">
+        <div><label>Emitente</label><input value="${escHtml(emitNome)}" disabled></div>
+        <div><label>CNPJ Emitente</label><input value="${escHtml(fmtCpfCnpj(emitCnpj))}" disabled></div>
+      </div>
+      <label>Endereço do Emitente</label><input value="${escHtml(_end(enderEmit))}" disabled>
+    </div>
+    <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:10px">
+      <div class="form-row">
+        <div><label>Destinatário</label><input value="${escHtml(destNome)}" disabled></div>
+        <div><label>CNPJ/CPF Destinatário</label><input value="${escHtml(fmtCpfCnpj(destDoc))}" disabled></div>
+      </div>
+      <label>Endereço do Destinatário</label><input value="${escHtml(_end(enderDest))}" disabled>
+    </div>
+    ${dets.length?`
+    <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:10px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Itens (conforme XML)</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:#f5f5f5;text-align:left">
+          <th style="padding:4px 6px">Descrição</th><th style="padding:4px 6px">Cód.</th><th style="padding:4px 6px">NCM</th>
+          <th style="padding:4px 6px">CFOP</th><th style="padding:4px 6px;text-align:right">Qtd</th>
+          <th style="padding:4px 6px;text-align:right">Vl. Unit.</th><th style="padding:4px 6px;text-align:right">Vl. Total</th>
+        </tr></thead>
+        <tbody>${itensRows}</tbody>
+      </table></div>
+    </div>`:''}
+    <div style="border-top:1px solid var(--border);margin:14px 0;padding-top:10px;display:flex;gap:20px;flex-wrap:wrap;font-size:13px">
+      <div><span style="color:var(--muted)">Total Produtos:</span> <b>${fmtMoney(parseFloat(vProd)||0)}</b></div>
+      <div><span style="color:var(--muted)">ICMS:</span> <b>${fmtMoney(parseFloat(vICMS)||0)}</b></div>
+      <div><span style="color:var(--muted)">IPI:</span> <b>${fmtMoney(parseFloat(vIPI)||0)}</b></div>
+      <div><span style="color:var(--muted)">PIS:</span> <b>${fmtMoney(parseFloat(vPIS)||0)}</b></div>
+      <div><span style="color:var(--muted)">COFINS:</span> <b>${fmtMoney(parseFloat(vCOFINS)||0)}</b></div>
+      <div><span style="color:var(--muted)">Total da NF:</span> <b>${fmtMoney(parseFloat(vNF)||0)}</b></div>
+    </div>`;
+}
+
+/* NFS-e de serviço — NÃO existe layout nacional único (cada prefeitura define o
+   seu, geralmente uma variação do padrão ABRASF). Tenta reconhecer os campos
+   mais comuns entre prefeituras; sempre soma a listagem bruta de tudo que foi
+   encontrado, já que não dá pra garantir cobertura de 100% dos municípios. */
+function _htmlXmlNFSeServico(doc){
+  const _t = tag => ((doc.getElementsByTagName(tag)[0]||{}).textContent||'').trim();
+  const _tDentro = (container, tag) => {
+    if(!container) return '';
+    return ((container.getElementsByTagName(tag)[0]||{}).textContent||'').trim();
+  };
+  const numero = _t('Numero')||_t('numero');
+  const dataEmissao = _t('DataEmissao')||_t('DataHoraEmissao')||_t('Competencia');
+  const discriminacao = _t('Discriminacao')||_t('discriminacao');
+  const valorServicos = _t('ValorServicos');
+  const valorIss = _t('ValorIss');
+  const aliquota = _t('Aliquota');
+  const valorLiquido = _t('ValorLiquidoNfse')||_t('ValorLiquido');
+  const issRetido = _t('IssRetido')||_t('IssRetencao');
+
+  const prestadorEl = doc.getElementsByTagName('PrestadorServico')[0] || doc.getElementsByTagName('Prestador')[0];
+  const prestadorNome = _tDentro(prestadorEl,'RazaoSocial') || _t('RazaoSocialPrestador');
+  const prestadorCnpj = _tDentro(prestadorEl,'Cnpj') || _t('CnpjPrestador');
+
+  const tomadorEl = doc.getElementsByTagName('TomadorServico')[0] || doc.getElementsByTagName('Tomador')[0];
+  const tomadorNome = _tDentro(tomadorEl,'RazaoSocial');
+  const tomadorDoc = _tDentro(tomadorEl,'Cnpj') || _tDentro(tomadorEl,'CpfCnpj');
+
+  const reconhecidos = [
+    ['Número da NFS-e', numero], ['Data de Emissão', dataEmissao],
+    ['Prestador', prestadorNome], ['CNPJ Prestador', prestadorCnpj?fmtCpfCnpj(prestadorCnpj):''],
+    ['Tomador', tomadorNome], ['CNPJ/CPF Tomador', tomadorDoc?fmtCpfCnpj(tomadorDoc):''],
+    ['Discriminação dos Serviços', discriminacao],
+    ['Valor dos Serviços', valorServicos?fmtMoney(parseFloat(valorServicos)):''],
+    ['Alíquota ISS', aliquota?aliquota+'%':''],
+    ['Valor ISS', valorIss?fmtMoney(parseFloat(valorIss)):''],
+    ['ISS Retido', issRetido==='1'?'Sim':issRetido==='2'?'Não':issRetido],
+    ['Valor Líquido', valorLiquido?fmtMoney(parseFloat(valorLiquido)):'']
+  ].filter(([,v])=>v);
+
+  const reconhecidosHTML = reconhecidos.length ? `
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Campos reconhecidos</div>
+    <div class="form-row" style="flex-wrap:wrap">
+      ${reconhecidos.map(([l,v])=>`<div style="min-width:220px;margin-bottom:8px"><label>${escHtml(l)}</label><input value="${escHtml(String(v))}" disabled></div>`).join('')}
+    </div>` : `<div class="empty" style="padding:12px;text-align:center;color:var(--muted)">Não reconheci nenhum campo no padrão ABRASF comum — a prefeitura deste município pode usar um layout próprio de NFS-e. Veja abaixo todos os campos que encontrei no arquivo.</div>`;
+
+  return reconhecidosHTML + _htmlXmlGenericoFallback(doc, 'Todos os campos encontrados no XML (bruto)');
+}
+
+/* Fallback genérico: percorre a árvore do XML e lista todo par caminho/valor
+   encontrado (folhas com texto) — garante que algo útil sempre aparece na tela,
+   mesmo pra um layout de XML que o parser específico não reconheceu. */
+function _htmlXmlGenericoFallback(doc, titulo){
+  const linhas = [];
+  const walk = (el, caminho) => {
+    const filhos = [...el.children];
+    if(!filhos.length){
+      const texto = (el.textContent||'').trim();
+      if(texto) linhas.push([caminho, texto]);
+      return;
+    }
+    filhos.forEach(f=>walk(f, caminho ? caminho+' › '+f.tagName : f.tagName));
+  };
+  const root = doc.documentElement;
+  if(root) walk(root, root.tagName);
+
+  if(!linhas.length) return '<div class="empty" style="padding:12px;text-align:center;color:var(--muted)">Nenhum dado legível encontrado no XML.</div>';
+
+  const tabela = `<div style="overflow-x:auto;max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <tbody>${linhas.map(([c,v])=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 8px;color:var(--muted);white-space:nowrap">${escHtml(c)}</td><td style="padding:4px 8px">${escHtml(v)}</td></tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+
+  return `<div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px">
+    <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">${escHtml(titulo)}</div>
+    ${tabela}
+  </div>`;
 }
 
 function _blocoAnexosHTML(nf, bloco, podeEditar){
