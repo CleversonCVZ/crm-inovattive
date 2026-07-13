@@ -250,6 +250,22 @@
   .gear-menu button:hover{background:#f1f3f5}
   .gear-menu hr{border:none;border-top:1px solid var(--border);margin:5px 8px}
 
+  /* ===== Ajuda contextual (v1.47.48) ===== */
+  .ajuda-wrap{position:relative}
+  .ajuda-btn{border:none;background:none;font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px}
+  .ajuda-btn:hover{background:#e9ecef}
+  .ajuda-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.15);z-index:200}
+  .ajuda-overlay.open{display:block}
+  .ajuda-painel{display:none;position:fixed;top:0;right:0;height:100vh;width:400px;max-width:92vw;background:#fff;box-shadow:-8px 0 28px rgba(0,0,0,.20);z-index:201;overflow-y:auto;padding:22px}
+  .ajuda-painel.open{display:block}
+  .ajuda-painel h4{margin:0 0 4px;font-size:15px;color:var(--primary)}
+  .ajuda-painel .ajuda-corpo{font-size:13px;line-height:1.65;color:var(--text)}
+  .ajuda-painel .ajuda-corpo h5{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin:16px 0 6px}
+  .ajuda-painel .ajuda-corpo h5:first-child{margin-top:0}
+  .ajuda-painel .ajuda-corpo ul{margin:4px 0;padding-left:18px}
+  .ajuda-painel .ajuda-corpo li{margin-bottom:5px}
+  .ajuda-painel .ajuda-corpo p{margin:0 0 8px}
+
   /* ===== Notificações (recorrentes geradas automaticamente) ===== */
   .notif-wrap{position:relative}
   .notif-btn{border:none;background:none;font-size:19px;cursor:pointer;padding:4px 8px;border-radius:8px;position:relative}
@@ -383,6 +399,9 @@
       <hr>
       <button id="gm-auditoria" onclick="irParaView('auditoria')">🔍 Auditoria & Logs</button>
     </div>
+  </div>
+  <div class="ajuda-wrap" id="ajuda-wrap" style="display:none">
+    <button class="ajuda-btn" title="Ajuda" onclick="toggleAjudaPainel()">❓</button>
   </div>
   <div class="notif-wrap" id="notif-wrap" style="display:none">
     <button class="notif-btn" title="Notificações" onclick="toggleNotifMenu(event)">🔔<span class="notif-badge" id="notif-badge"></span></button>
@@ -1287,15 +1306,24 @@
 </div>
 
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+<div class="ajuda-overlay" id="ajuda-overlay" onclick="fecharAjudaPainel()"></div>
+<div class="ajuda-painel" id="ajuda-painel"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.47';
+const APP_VERSION = '1.47.48';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.48',
+    data: '13/07/2026',
+    itens: [
+      'Novo botão "❓ Ajuda" no topo (entre engrenagem e sino) — abre um painel lateral explicando a tela em que você está: conceitos, abas, travas/proteções e fluxos. Piloto com conteúdo escrito pra SRM (Painel + Card, todas as abas), Faturamento (Painel/Espelhos de NF + Card do Espelho, todas as abas) e Estoque (Catálogo/Almoxarifado/Movimentações/Painel). Nas demais telas o painel avisa que a ajuda ainda não foi escrita — vai sendo expandido aos poucos.',
+    ]
+  },
   {
     versao: '1.47.47',
     data: '13/07/2026',
@@ -4962,6 +4990,7 @@ async function logout(){
   document.getElementById('gear-wrap').style.display='none';
   document.getElementById('user-wrap').style.display='none';
   document.getElementById('notif-wrap').style.display='none';
+  document.getElementById('ajuda-wrap').style.display='none';
   document.getElementById('user-info').textContent='';
   document.getElementById('lg-senha').value='';
   document.getElementById('lg-erro').textContent='';
@@ -4972,6 +5001,7 @@ function iniciarApp(u){
   document.getElementById('login-bg').style.display='none';
   document.getElementById('gear-wrap').style.display='';
   document.getElementById('user-wrap').style.display='';
+  document.getElementById('ajuda-wrap').style.display='';
   document.getElementById('user-info').textContent = `${u.nome} · ${u.funcao||''}${ehAdmin(u)?' (Admin)':''}`;
   // Versão: exibe no rodapé do menu e badge se há versão nova desde o último acesso
   const versaoFooter = document.getElementById('versao-footer');
@@ -5538,6 +5568,10 @@ function ativarView(viewId){
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   const v=document.getElementById('view-'+viewId);
   if(v) v.classList.add('active');
+  // v1.47.48: trocar de tela principal reseta o contexto de ajuda (modal/aba
+  // só fazem sentido dentro da tela onde foram abertos)
+  contextoAjuda = {tela:viewId, modal:null, aba:null};
+  _refreshAjudaSeAberta();
   if(viewId==='gerais') renderGerais();
   if(viewId==='auditoria') carregarLogs();
   if(viewId==='downloads') renderDownloads();
@@ -6229,6 +6263,7 @@ async function salvarNovoSRM(){
 /* ---- Editar SRM ---- */
 function abrirEditarSRM(id, aba='dados'){
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
+  contextoAjuda.modal='srm-card'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.48
   const forn=(db.fornecedores||[]).find(f=>f.id===c.fornecedorId);
   const podeEditar = podeEditarTela(usuarioAtual,'srm-painel');
   const podeExcluir = podeExcluirTela(usuarioAtual,'srm-painel');
@@ -8199,6 +8234,7 @@ async function confirmarNovoEspelhoFaturamento(){
  * Produto, Itens de Serviço. */
 function abrirEspelhoNF(id, aba='dados'){
   const nf = (db.notasFiscais||[]).find(x=>x.id===id); if(!nf) return;
+  contextoAjuda.modal='espelho-nf'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.48
   const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
   const podeExcluir = podeExcluirTela(usuarioAtual,'fat-painel');
   const c = (db.cards||[]).find(x=>x.id===nf.cardId);
@@ -9123,12 +9159,200 @@ function renderClientes(){
 /* ================= MODAIS ================= */
 const overlay=document.getElementById('overlay'), modal=document.getElementById('modal');
 overlay.onclick=e=>{ if(e.target===overlay) fecharModal(); };
-function fecharModal(){ overlay.classList.remove('open'); if(typeof propEditandoId!=='undefined') propEditandoId=null; }
+function fecharModal(){
+  overlay.classList.remove('open');
+  if(typeof propEditandoId!=='undefined') propEditandoId=null;
+  // v1.47.48: ao fechar um modal marcado (SRM/Espelho de Faturamento), a ajuda
+  // contextual volta a olhar só pra tela principal por trás dele.
+  contextoAjuda.modal=null; contextoAjuda.aba=null;
+  _refreshAjudaSeAberta();
+}
 function abrirModal(html, classe){
   modal.className = 'modal' + (classe ? ' ' + classe : '');
   modal.innerHTML = html;
   overlay.classList.add('open');
   enhanceCombosBuscaveis(modal); // v1.47.34: liga a busca nos <select class="combo-busca"> deste modal
+}
+
+/* Conteúdo de ajuda — piloto v1.47.48 (SRM, Faturamento, Estoque). Ver comentário
+ * da seção "AJUDA CONTEXTUAL" logo abaixo pra entender como a chave é resolvida. */
+const AJUDA_CONTEUDO = {
+  'srm-painel': {
+    titulo: 'SRM — Painel',
+    html: `
+      <h5>O que é</h5>
+      <p>SRM (Supplier Relationship Management) é o processo de compra completo: da cotação com o fornecedor até a Nota Fiscal chegar e o pagamento acontecer. Cada card representa UM processo de compra.</p>
+      <h5>Fases do kanban</h5>
+      <p>Arraste o card entre as fases conforme o processo avança (cotando, aguardando N.F., etc.). A fase "Concluído" e a fase "Cancelado" são fases de sistema — todo card cai nelas automaticamente ao ser marcado como concluído/cancelado na aba Dados, não precisa arrastar.</p>
+      <h5>Centro de Custo "Material de Obra"</h5>
+      <p>Quando o Centro de Custo do card é "Material de Obra", aparece um campo Obra — isso vincula a compra a uma obra específica, e ela passa a aparecer na aba Obra→Compras do Cartão CRM daquela obra, além de somar no Resultado Aparente dela.</p>`
+  },
+  'srm-card': {
+    titulo: 'Card SRM',
+    abas: {
+      dados: {
+        titulo: 'Aba Dados',
+        html: `
+          <h5>Responsável pelo pagamento</h5>
+          <p><b>🏢 Nós pagamos:</b> gera Conta a Pagar normalmente (aba Financeiro), o custo entra no Resultado Aparente da obra.</p>
+          <p><b>👤 Cliente paga diretamente:</b> o dinheiro nunca passa pela empresa — nenhuma Conta a Pagar é criada, o material NÃO entra em estoque (fica só o histórico/ficha do produto), e o valor não conta no Resultado Aparente. Aparece com o selo "💳 Cliente paga direto".</p>
+          <h5>🧾 Fornecedor emite a NF de venda direto ao cliente final</h5>
+          <p>Só aparece quando o card tem obra vinculada. Marque quando: nós pagamos o fornecedor normalmente, colocamos o material em estoque e controlamos o uso via O.S. — mas quem fatura a VENDA desse material pro cliente final é o próprio fornecedor, direto, a preço de custo (sem markup nosso). Efeito prático: libera o botão "Lançar no Estoque" mesmo com obra vinculada (normalmente travado nesse caso), e os itens desse produto, nessa obra, somem da lista de "disponíveis pra adicionar" no Espelho de Faturamento — porque a NF fiscal deles não é nossa.</p>
+          <h5>Concluído / Cancelado</h5>
+          <p>Marcar "Concluído" valida antes: precisa ter uma cotação selecionada com N.F. importada (XML ou PDF), e — se formos nós que pagamos — nenhuma Conta a Pagar pendente na aba Financeiro.</p>`
+      },
+      propostas: {
+        titulo: 'Aba Propostas / Cotações',
+        html: `
+          <p>Cadastre aqui as cotações recebidas de diferentes fornecedores pro mesmo processo de compra. Marque uma como "✔ Selecionar" quando decidir a vencedora — só a cotação selecionada aparece na aba Pedido Aprovado e conta valor no Resultado Aparente/Obra→Compras.</p>
+          <p>Cotações não selecionadas ficam só de histórico (pra justificar por que aquele fornecedor foi escolhido).</p>`
+      },
+      pedidos: {
+        titulo: 'Aba Pedido Aprovado',
+        html: `
+          <p>É aqui que a Nota Fiscal da cotação vencedora é anexada — em XML (o sistema lê e quebra em itens automaticamente) ou só PDF (fica um registro só de valor total, sem itens discriminados).</p>
+          <h5>Lançar no Estoque</h5>
+          <p>Só aparece quando: veio XML com itens, nós somos quem paga (🏢 empresa), e — o card NÃO tem obra vinculada, OU tem obra vinculada com "🧾 Fatura direta" marcado. Cria entrada real em <code>estoque_movimentacoes</code>, reservando saldo pra essa obra se houver uma vinculada.</p>
+          <h5>Cadastrar no Catálogo</h5>
+          <p>Aparece quando o material NÃO vai passar por estoque de verdade (obra vinculada sem "Fatura direta", ou cliente paga direto) — cadastra só a ficha do produto (nome/NCM/unidade), sem quantidade nem movimentação, só pra ajudar o catálogo a crescer e futuros matches automáticos funcionarem melhor.</p>`
+      },
+      financeiro: {
+        titulo: 'Aba Financeiro',
+        html: `
+          <p>Se o card está marcado "👤 Cliente paga diretamente", esta aba só mostra um aviso informativo — nenhuma Conta a Pagar é criada aqui, o pagamento acontece fora do sistema.</p>
+          <p>Se somos nós que pagamos, lance aqui as Contas a Pagar desse fornecedor (pode ser em mais de uma parcela). O bloco "📋 Referência" mostra o valor total da cotação vencedora, comparado com o que já foi lançado, pra ajudar a não esquecer nem duplicar.</p>`
+      }
+    }
+  },
+  'fat-painel': {
+    titulo: 'Faturamento — Painel',
+    html: `
+      <p>Kanban dos Espelhos de Faturamento (Notas Fiscais de venda), arrastando entre fases (A Emitir → Emitida → Enviada ao Cliente → Paga → Cancelada). Cada card é um Espelho — a mesma entidade que aparece na lista "Espelhos de NF", só que em outra visualização.</p>`
+  },
+  'fat-espelhos': {
+    titulo: 'Faturamento — Espelhos de NF',
+    html: `
+      <h5>O que é um Espelho de Faturamento</h5>
+      <p>É o documento que centraliza os dados de UMA Nota Fiscal de venda: qual obra/cliente, quais itens de produto e de serviço entram nela, e os arquivos trocados com a contabilidade. Assim que um item entra num Espelho (mesmo rascunho), ele fica travado — some da lista de "disponíveis" em qualquer outro Espelho, pra não faturar a mesma coisa duas vezes.</p>
+      <h5>Coluna "Previsão de Impostos"</h5>
+      <p>Calculada automaticamente (valor de Produto × alíquota de Produto + valor de Serviço × alíquota de Serviço, configuradas em Configurações do Sistema) — não é mais digitada à mão.</p>
+      <h5>Itens que nunca aparecem aqui</h5>
+      <p>Materiais comprados no regime "🧾 Fatura direta" (SRM) não entram na lista de disponíveis pra nenhum Espelho — a NF de venda deles é do fornecedor, não nossa.</p>`
+  },
+  'espelho-nf': {
+    titulo: 'Espelho de Faturamento',
+    abas: {
+      dados: {
+        titulo: 'Aba Dados',
+        html: `
+          <p>Fase do Espelho, Previsão de Impostos (calculada, só-leitura) e observações. Cartão/Cliente/Obra vêm da origem do Espelho e não são editáveis aqui.</p>
+          <h5>Botões do rodapé</h5>
+          <p>"Visualizar/Exportar PDF" e "Exportar Excel" geram a <b>Instrução para Emissão de NF</b> — o documento que você manda pra contabilidade ANTES de emitir a nota, com endereços, CNPJ/CPF, itens de produto (descrição fiscal) e de serviço. É diferente dos arquivos que a contabilidade te devolve DEPOIS de emitida (esses são só anexados nas abas Itens de Produto/Serviço).</p>`
+      },
+      produtos: {
+        titulo: 'Aba Itens de Produto',
+        html: `
+          <p>Lista os materiais já entregues (baixados em O.S.) ainda não faturados. Nome comercial (o mesmo da proposta) em destaque; Descrição Fiscal do catálogo, menor, embaixo — é essa descrição fiscal que precisa constar na NF de verdade.</p>
+          <h5>⚠ Sem descrição fiscal cadastrada</h5>
+          <p>Aparece quando o produto vinculado no catálogo ainda não tem o campo "Descrição Fiscal (xProd)" preenchido. Use o link "🔗 Vincular produto" pra corrigir o vínculo direto por aqui, sem precisar sair da tela.</p>`
+      },
+      servicos: {
+        titulo: 'Aba Itens de Serviço',
+        html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>`
+      },
+      xmlproduto: {
+        titulo: 'Aba XML Produto',
+        html: `<p>Lê o XML da NF-e (de produto) que a contabilidade devolveu depois de emitida — mostra chave de acesso, itens, ICMS/IPI/PIS/COFINS. Parser confiável, já que NF-e de produto tem layout nacional único (SEFAZ).</p>`
+      },
+      xmlservico: {
+        titulo: 'Aba XML Serviço',
+        html: `<p>Lê o XML da NFS-e (de serviço) devolvida pela contabilidade. Como cada prefeitura define seu próprio layout de XML (sem padrão nacional), a leitura é melhor-esforço — sempre soma uma listagem bruta completa embaixo, pra garantir que nada fique escondido mesmo se o formato não for reconhecido.</p>`
+      }
+    }
+  },
+  'estoque-catalogo': {
+    titulo: 'Estoque — Catálogo',
+    html: `
+      <p>Cadastro dos produtos que passam pelo estoque: nome comercial (como você reconhece o item no dia a dia), Descrição Fiscal — o texto que deve aparecer na Nota Fiscal, geralmente igual ao <code>xProd</code> do XML de compra — NCM e unidade.</p>
+      <p>A Descrição Fiscal é o que alimenta o Espelho de Faturamento e a Instrução pra contabilidade — sem ela preenchida, o item aparece com aviso "sem descrição fiscal" lá na hora de faturar.</p>`
+  },
+  'estoque-almoxarifado': {
+    titulo: 'Estoque — Almoxarifado',
+    html: `
+      <h5>Saldo geral × saldo por obra</h5>
+      <p>O saldo de cada produto pode estar "reservado" pra uma obra específica (entrou vinculado a ela) ou no estoque geral (sem obra, disponível pra qualquer uma). Uma saída de estoque de uma obra sempre consome primeiro o saldo reservado dela, e só usa o saldo geral se faltar.</p>
+      <h5>Liberar Reserva</h5>
+      <p>Transfere saldo reservado de uma obra de volta pro estoque geral (ou pra outra obra) — use quando sobrar material de uma obra que não vai mais ser usado ali.</p>
+      <h5>Saída Manual</h5>
+      <p>Pra baixas que não vieram de uma O.S. (perda, ajuste, etc.) — a baixa "normal" por uso em obra acontece automaticamente ao lançar itens de produto na O.S. de Execução.</p>`
+  },
+  'estoque-movimentacoes': {
+    titulo: 'Estoque — Movimentações',
+    html: `<p>Histórico de tudo que entrou e saiu do estoque: entradas vêm de "Lançar no Estoque" (compras SRM), saídas vêm de O.S. ou de Saída Manual/Liberar Reserva no Almoxarifado. Cada linha mostra a obra (se houver) e a O.S. de origem (se for saída por uso).</p>`
+  },
+  'estoque-painel': {
+    titulo: 'Estoque — Painel (Acompanhamento)',
+    html: `<p>Kanban por obra cruzando compras (SRM) com uso em O.S. — mostra o que foi comprado pra cada obra e em quais Ordens de Serviço já foi consumido. Puramente informativo, sem cadastro próprio.</p>`
+  }
+};
+
+/* ================= AJUDA CONTEXTUAL (v1.47.48 — piloto) =================
+   Botão "❓" no topo abre um painel lateral com o texto de ajuda da tela/modal/aba
+   em que o usuário está agora. `contextoAjuda` é atualizado em 2 níveis:
+   - `tela`: toda vez que uma view principal é ativada (ativarView), reseta modal/aba.
+   - `modal`/`aba`: só nos modais do piloto (Card SRM, Espelho de Faturamento) —
+     essas funções escrevem em contextoAjuda antes de chamar abrirModal(). Ao
+     fechar o modal (fecharModal), modal/aba voltam pra null.
+   `AJUDA_CONTEUDO` é a fonte do texto: chave = mesmo id de tela (TELAS) ou o nome
+   do modal (ex.: 'srm-card'); cada entrada tem `titulo`+`html`, e opcionalmente
+   `abas: {idDaAba: {titulo, html}}` pra conteúdo mais específico por aba. Escopo
+   inicial (piloto): SRM, Faturamento (Espelhos de NF) e Estoque — as demais telas
+   caem no aviso "ainda não escrevi a ajuda desta tela". */
+let contextoAjuda = {tela:null, modal:null, aba:null};
+
+function _refreshAjudaSeAberta(){
+  const painel = document.getElementById('ajuda-painel');
+  if(painel && painel.classList.contains('open')) renderAjudaPainel();
+}
+
+function _conteudoAjudaAtual(){
+  const ctx = contextoAjuda||{};
+  if(ctx.modal && AJUDA_CONTEUDO[ctx.modal]){
+    const def = AJUDA_CONTEUDO[ctx.modal];
+    if(ctx.aba && def.abas && def.abas[ctx.aba]){
+      return {titulo:`${def.titulo} — ${def.abas[ctx.aba].titulo}`, html:def.abas[ctx.aba].html};
+    }
+    if(def.html) return {titulo:def.titulo, html:def.html};
+  }
+  if(ctx.tela && AJUDA_CONTEUDO[ctx.tela]){
+    return {titulo:AJUDA_CONTEUDO[ctx.tela].titulo, html:AJUDA_CONTEUDO[ctx.tela].html};
+  }
+  return null;
+}
+
+function renderAjudaPainel(){
+  const painel = document.getElementById('ajuda-painel');
+  if(!painel) return;
+  const c = _conteudoAjudaAtual();
+  painel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:16px">
+      <h4>❓ ${c?escHtml(c.titulo):'Ajuda'}</h4>
+      <button class="icon-btn" onclick="fecharAjudaPainel()" title="Fechar" style="font-size:20px;flex-shrink:0">✕</button>
+    </div>
+    <div class="ajuda-corpo">${c ? c.html : `<div class="empty" style="padding:30px 10px;text-align:center">Ainda não escrevi a ajuda desta tela — em breve.</div>`}</div>`;
+}
+
+function toggleAjudaPainel(){
+  const painel = document.getElementById('ajuda-painel');
+  if(!painel) return;
+  if(painel.classList.contains('open')){ fecharAjudaPainel(); return; }
+  renderAjudaPainel();
+  painel.classList.add('open');
+  document.getElementById('ajuda-overlay').classList.add('open');
+}
+function fecharAjudaPainel(){
+  document.getElementById('ajuda-painel')?.classList.remove('open');
+  document.getElementById('ajuda-overlay')?.classList.remove('open');
 }
 
 /* ================= COMBO BUSCÁVEL (v1.47.34) =================
@@ -20861,6 +21085,7 @@ sb.auth.onAuthStateChange((evento)=>{
     document.getElementById('login-bg').style.display='flex';
     document.getElementById('gear-wrap').style.display='none';
     document.getElementById('user-wrap').style.display='none';
+    document.getElementById('ajuda-wrap').style.display='none';
     document.getElementById('user-info').textContent='';
   }
 });
