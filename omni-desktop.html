@@ -1312,11 +1312,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.50';
+const APP_VERSION = '1.47.51';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.51',
+    data: '13/07/2026',
+    itens: [
+      'Ajuda contextual expandida: telas "Fases do SRM" e "Fornecedores", e o card de Fornecedor (Dados/Contatos/Pgtos) ganharam conteúdo de ajuda.',
+      'Card de Fornecedor (Novo/Editar) ganhou o mesmo botão "❓" embutido no canto do modal já usado no Card SRM e no Espelho de Faturamento.',
+    ]
+  },
   {
     versao: '1.47.50',
     data: '13/07/2026',
@@ -9245,6 +9253,39 @@ const AJUDA_CONTEUDO = {
       }
     }
   },
+  'srm-fases': {
+    titulo: 'SRM — Fases',
+    html: `
+      <p>Cadastro das etapas do kanban do SRM (Painel) — edite nome, cor e ordem direto na tabela, sem precisar de um modal separado.</p>
+      <h5>Fases de sistema 🔒</h5>
+      <p>"Concluído" e "Cancelado" são criadas automaticamente e não podem ser renomeadas nem excluídas — todo card cai nelas sozinho quando marcado como concluído/cancelado na aba Dados do Card SRM, não é preciso arrastar manualmente.</p>
+      <p>Sempre precisa sobrar ao menos 1 fase — a última não pode ser excluída.</p>`
+  },
+  'fin-fornecedores': {
+    titulo: 'Fornecedores',
+    html: `
+      <p>Cadastro central de fornecedores, usado tanto pelo SRM (cotações/pedidos) quanto por Contas a Pagar e Custo M.Obra. Filtro no topo mostra só Ativos por padrão — fornecedores sem uso podem ser marcados Inativo (aba Dados do card) em vez de excluídos.</p>
+      <p>Clique numa linha pra abrir o card do fornecedor (Dados/Contatos/Pgtos).</p>`
+  },
+  'fornecedor-card': {
+    titulo: 'Fornecedor',
+    abas: {
+      dados: {
+        titulo: 'Aba Dados',
+        html: `
+          <p>Cada campo salva sozinho ao sair dele (autosave) quando o fornecedor já existe — não precisa clicar em Salvar pra não perder o que foi digitado ao trocar de aba. No cadastro de um fornecedor novo, o botão "Salvar" grava tudo de uma vez e libera as demais abas.</p>
+          <p>CEP preenchido busca endereço automaticamente. CNPJ/CPF aceita os dois formatos (detecta pela quantidade de dígitos).</p>`
+      },
+      contatos: {
+        titulo: 'Aba Contatos',
+        html: `<p>Lista de pessoas de contato desse fornecedor (nome, cargo, telefone, e-mail) — só pra referência rápida, não afeta nenhum cálculo ou fluxo financeiro.</p>`
+      },
+      pedidos: {
+        titulo: 'Aba Pgtos',
+        html: `<p>Lista somente-leitura de todas as Contas a Pagar já lançadas pra esse fornecedor (venham do SRM, de Custo M.Obra ou de um lançamento manual), com totais de Pago e A Pagar/Vencido no topo. Pra dar baixa ou editar um lançamento, use a tela normal de Contas a Pagar.</p>`
+      }
+    }
+  },
   'fat-painel': {
     titulo: 'Faturamento — Painel',
     html: `
@@ -12803,8 +12844,12 @@ function abrirNovoFornecedor(opts={}){
   if(!cbId && !podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para gerenciar Fornecedores.'); return; }
   // Modo standalone: layout com abas igual ao cartão CRM
   if(!cbId){
+    contextoAjuda.modal='fornecedor-card'; contextoAjuda.aba='dados'; _refreshAjudaSeAberta(); // v1.47.51
     abrirModal(`
-      <h3>Novo Fornecedor</h3>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <h3 style="margin:0">Novo Fornecedor</h3>
+        ${ajudaBtnModalHTML()}
+      </div>
       <div class="abas">
         <button class="aba ativa">Dados</button>
         <button class="aba" style="opacity:.4;pointer-events:none;cursor:default" title="Salve os dados primeiro">Contatos</button>
@@ -12933,13 +12978,17 @@ function abrirEditarFornecedor(id, aba='dados'){
   if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')){ alert('Sem permissão para editar Fornecedores.'); return; }
   const f = (db.fornecedores||[]).find(x=>x.id===id);
   if(!f) return;
+  contextoAjuda.modal='fornecedor-card'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.51
   const nCt  = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===id).length;
   const nPed = (db.contasPagar||[]).filter(p=>p.fornecedorId===id).length;
   const corpo = aba==='dados' ? _fornFormHTML(f)
               : aba==='contatos' ? _abaContatosFornecedor(id)
               : _abaFornecedorPedidos(id);
   abrirModal(`
-    <h3>${escHtml(f.nome||'Fornecedor')}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">${escHtml(f.nome||'Fornecedor')}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'dados')">Dados</button>
       <button class="aba ${aba==='contatos'?'ativa':''}" onclick="abrirEditarFornecedor(${id},'contatos')">Contatos${nCt?' ('+nCt+')':''}</button>
