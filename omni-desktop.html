@@ -1312,11 +1312,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.51';
+const APP_VERSION = '1.47.52';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.52',
+    data: '13/07/2026',
+    itens: [
+      'Ajuda contextual expandida pro módulo CRM inteiro: telas Painel/Fases/Origem do Lead/Clientes, o Cartão CRM (todas as abas: Dados, Propostas Emitidas, Proposta Aprovada, Obra, O.S., Financeiro, Garantias) e o card de Cliente.',
+      'Cartão CRM (Novo e Editar) e card de Cliente ganharam o botão "❓" embutido no canto do modal, mesmo padrão do SRM/Faturamento/Fornecedor.',
+    ]
+  },
   {
     versao: '1.47.51',
     data: '13/07/2026',
@@ -9206,6 +9214,91 @@ function abrirModal(html, classe){
 /* Conteúdo de ajuda — piloto v1.47.48 (SRM, Faturamento, Estoque). Ver comentário
  * da seção "AJUDA CONTEXTUAL" logo abaixo pra entender como a chave é resolvida. */
 const AJUDA_CONTEUDO = {
+  'painel': {
+    titulo: 'CRM — Acompanhamento',
+    html: `
+      <h5>O que é um Cartão</h5>
+      <p>Cada cartão representa um lead/negociação com um cliente — da primeira conversa até a proposta aprovada e a obra em si. Arraste entre as fases conforme o negócio avança.</p>
+      <h5>Fases "Perdido" e "Concluído"</h5>
+      <p>São fases de sistema: mover um cartão pra uma delas marca automaticamente as flags ✖ Perdido / ✔ Concluído (com confirmação), e o cartão sai do kanban — vai pra visualização "perdidos & concluídos". Não precisa marcar a flag manualmente, só arrastar (ou marcar a flag na aba Dados, que move a fase sozinho).</p>
+      <h5>Visualizações</h5>
+      <p>"Por fase" é o kanban normal. "Perdidos & concluídos" mostra o arquivo morto. "Por data da agenda" reorganiza os cartões pela próxima ação agendada, útil pra planejar o dia.</p>`
+  },
+  'fases': {
+    titulo: 'CRM — Fases',
+    html: `
+      <p>Cadastro das colunas do kanban do Painel CRM — edite nome, cor e ordem direto na tabela.</p>
+      <h5>Fases de sistema 🔒</h5>
+      <p>"Perdido" e "Concluído" são criadas automaticamente e não podem ser renomeadas nem excluídas — são elas que recebem os cartões arquivados (ver ajuda do Painel). Sempre precisa sobrar ao menos 1 fase normal.</p>`
+  },
+  'origens': {
+    titulo: 'CRM — Origem do Lead',
+    html: `<p>Cadastro simples de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio.</p>`
+  },
+  'clientes': {
+    titulo: 'CRM — Clientes / Prospects',
+    html: `
+      <p>Cadastro central de clientes (pessoa física ou jurídica) — cada cliente pode ter vários Cartões CRM (negociações) e várias Obras ao longo do tempo.</p>
+      <h5>Selo de classificação</h5>
+      <p><b>🟢 Cliente Ativo:</b> tem cartão aberto (não perdido/concluído) + proposta aprovada + obra cadastrada.</p>
+      <p><b>🟢 Cliente:</b> não tem cartão aberto no momento, mas já tem obra cadastrada e (teve proposta aprovada OU já recebeu algum valor — inclui recebimento parcial).</p>
+      <p><b>🟡 Prospect:</b> tem cartão aberto, mas ainda sem proposta aprovada.</p>
+      <p><b>🔴 Lead Frio:</b> só tem cartões perdidos, sem obra nem proposta aprovada.</p>
+      <p><b>⚪ Sem classificação:</b> os demais casos (ex.: cadastro novo sem nenhum cartão ainda).</p>
+      <p>Abrir um cliente mostra as Obras dele — cada obra tem endereço próprio (o cliente pode ter mais de uma obra).</p>`
+  },
+  'cartao-crm': {
+    titulo: 'Cartão CRM',
+    abas: {
+      dados: {
+        titulo: 'Aba Dados',
+        html: `
+          <p>Cliente, obra vinculada, origem do lead, fase, responsável, agenda (próxima ação) e valor estimado. "+ Cadastrar obra nova" cria a obra já vinculada a este cliente sem sair do cartão.</p>
+          <h5>Perdido / Concluído</h5>
+          <p>Marcar "✖ Perdido" pede o motivo (janela própria) e move o cartão pra fase de sistema "Perdido". Marcar "✔ Concluído" move pra fase "Concluído". As duas coisas também acontecem sozinhas se você arrastar o cartão direto pra uma dessas fases no Painel — é a mesma trava, dos dois lados.</p>
+          <h5>Histórico</h5>
+          <p>Registre observações/contatos ao longo do tempo sem precisar clicar em Salvar — cada registro entra na régua de histórico na hora (Ctrl+Enter também funciona).</p>`
+      },
+      emitidas: {
+        titulo: 'Aba Propostas Emitidas',
+        html: `
+          <p>Lista as propostas em PDF emitidas pro cliente (antes de qualquer aprovação). O número é gerado pelo sistema (cliente + cartão + data) — copie ele pra célula da planilha Excel ANTES de gerar o PDF, pois a subida confere se o número está no arquivo.</p>
+          <p>Se o cartão já tem uma proposta aprovada, uma nova proposta emitida aqui nasce automaticamente como "Aditivo".</p>
+          <p style="font-size:12px;color:var(--muted)">Só aparece pra quem tem permissão "aba-propostas"; se a permissão "só ver próprias propostas" estiver ativa pro seu grupo, só cartões em que você é o responsável mostram esta aba.</p>`
+      },
+      aprovada: {
+        titulo: 'Aba Proposta Aprovada',
+        html: `
+          <p>A aprovação é confirmada subindo o Excel (memória de cálculo) correspondente a uma das propostas emitidas. Depois de aprovada, esta aba mostra a proposta principal + todos os aditivos já aprovados, com o total contratado somado.</p>
+          <p>Pra criar um aditivo, emita-o primeiro na aba "Propostas Emitidas" (nasce como ADT automaticamente) — depois volte aqui pra aprovar esse aditivo do mesmo jeito.</p>`
+      },
+      obras: {
+        titulo: 'Aba Obra',
+        html: `
+          <p>Só aparece com conteúdo se o cartão já tem uma obra vinculada (campo "Nome da obra" na aba Dados). Reúne, num menu lateral: Informações da obra, Contatos, Equipamentos & Senhas, Compras (visualização do que foi comprado via SRM pra essa obra, incluindo os itens em regime "🧾 Fatura direta"), Custo M.Obra (lançamento de mão de obra própria ou de fornecedor), Outros Custos e Resultado Aparente (o resumo financeiro da obra: contratado − custos ≈ resultado).</p>`
+      },
+      os: {
+        titulo: 'Aba O.S.',
+        html: `<p>Lista as Ordens de Serviço (Projeto, Execução/Obra ou Avulsa) abertas para este cartão. Precisa de uma obra vinculada (aba Dados) pra criar uma O.S. de Projeto ou Execução — a Avulsa também usa essa obra como referência.</p>`
+      },
+      financeiro: {
+        titulo: 'Aba Financeiro',
+        html: `
+          <p>Contas a Receber deste cartão — parcelas ligadas à proposta aprovada e/ou a O.S. Avulsas. O bloco "📋 Referência" mostra o valor total aprovado (excluindo itens marcados "Cliente fornece") comparado com o que já foi parcelado, pra não esquecer nem duplicar parcela.</p>
+          <p>Cada parcela pode ser fixa (data de vencimento) ou condicional (texto livre, ex.: "na entrega"), e aceita recebimento total ou parcial (com histórico).</p>`
+      },
+      garantias: {
+        titulo: 'Aba Garantias',
+        html: `<p>Reservada para o controle de garantias pós-obra — ainda sem funcionalidade implementada.</p>`
+      }
+    }
+  },
+  'cliente-card': {
+    titulo: 'Cliente',
+    html: `
+      <p>Dados cadastrais do cliente (nome, CPF/CNPJ, contato, endereço) e a lista das Obras vinculadas a ele — cada obra com endereço próprio, já que um mesmo cliente pode ter mais de uma obra ao longo do tempo. "+ Cadastrar nova obra" abre o cadastro de obra já vinculado a este cliente.</p>
+      <p>O selo de classificação (🟢 Cliente Ativo / 🟢 Cliente / 🟡 Prospect / 🔴 Lead Frio) é calculado automaticamente a partir dos cartões e obras do cliente — ver ajuda da tela "Clientes / Prospects" pra regra completa.</p>`
+  },
   'srm-painel': {
     titulo: 'SRM — Painel',
     html: `
@@ -9935,8 +10028,12 @@ function abrirNovoCartao(faseIdInicial){
   const f = faseIdInicial || fasesOrdenadas()[0].id;
   const clientesOrd = db.clientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
   const primeiroCliente = clientesOrd.length ? clientesOrd[0].id : null;
+  contextoAjuda.modal='cartao-crm'; contextoAjuda.aba='dados'; _refreshAjudaSeAberta(); // v1.47.52
   abrirModal(`
-    <h3>Novo Cartão</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Novo Cartão</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <label>Cliente</label>
     <select id="m-cliente" class="combo-busca" data-placeholder="Buscar cliente…" onchange="atualizarObras()">${optsClientes()}</select>
     <button class="link-btn" onclick="toggleNovoCliente()">+ Cadastrar cliente novo</button>
@@ -10071,6 +10168,7 @@ function abrirEditarCartao(id, aba='dados'){
   const podeEditarPainel = podeEditarTela(usuarioAtual,'painel');
   const podeExcluirPainel = podeExcluirTela(usuarioAtual,'painel');
   if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS) || (aba==='financeiro' && !verFinanceiro) || (aba==='garantias' && !verGarantias)) aba='dados';
+  contextoAjuda.modal='cartao-crm'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.52
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
   if(c && !podeVerFase(c.faseId)){ alert('Sem permissão para acessar cartões nesta fase.'); return; }
@@ -10106,7 +10204,10 @@ function abrirEditarCartao(id, aba='dados'){
   else if(aba==='garantias') corpo=abaGarantiasCartaoHTML(c);
   else corpo=abaOSCartaoHTML(c);
   abrirModal(`
-    <h3>Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Cartão #${c.num} — ${cliente(c.clienteId).nome}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarCartao(${id},'dados')">Dados</button>
       ${verPropostas?`
@@ -18789,8 +18890,12 @@ function enderecoResumo(c){ return resumoEnd(c.endereco) || c.cidade || ''; }
 
 function abrirNovoCliente(){
   if(!podeEditarTela(usuarioAtual,'clientes')){ alert('Sem permissão para cadastrar clientes.'); return; }
+  contextoAjuda.modal='cliente-card'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.52
   abrirModal(`
-    <h3>Novo Cliente</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Novo Cliente</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <label>Nome</label><input id="m-nome">
     <label>CPF/CNPJ</label><input id="m-cnpj" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
     <label>Telefone</label><input id="m-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
@@ -18857,8 +18962,12 @@ function abrirEditarCliente(id){
   const podeEditar = podeEditarTela(usuarioAtual,'clientes');
   const podeExcluir = podeExcluirTela(usuarioAtual,'clientes');
   const ro = podeEditar?'':'disabled';
+  contextoAjuda.modal='cliente-card'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.52
   abrirModal(`
-    <h3>Cliente — ${c.nome}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Cliente — ${c.nome}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}" ${ro}>
     <label>CPF/CNPJ</label><input id="m-cnpj" value="${fmtCpfCnpj(c.cnpjCpf||'')}" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)" ${ro}>
     <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)" ${ro}>
@@ -18898,8 +19007,12 @@ function abrirEditarClienteDoCartao(clienteId, cardId){
   if(!podeEditarTela(usuarioAtual,'clientes')){ alert('Sem permissão para editar clientes.'); return; }
   const c=db.clientes.find(x=>x.id===clienteId);
   if(!c){ alert('Cliente não encontrado.'); return; }
+  contextoAjuda.modal='cliente-card'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.52
   abrirModal(`
-    <h3>Cliente — ${c.nome}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Cliente — ${c.nome}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <label>Nome</label><input id="m-nome" value="${c.nome.replace(/"/g,'&quot;')}">
     <label>CPF/CNPJ</label><input id="m-cnpj" value="${fmtCpfCnpj(c.cnpjCpf||'')}" placeholder="000.000.000-00 ou 00.000.000/0001-00" maxlength="18" oninput="mascaraCpfCnpj(this)">
     <label>Telefone</label><input id="m-tel" value="${fmtTel(c.tel||'')}" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)">
