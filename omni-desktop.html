@@ -15,7 +15,7 @@
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
   body{background:var(--bg);color:var(--text);height:100vh;display:flex;flex-direction:column;overflow:hidden}
 
-  header{background:#fff;border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;position:relative}
+  header{background:#fff;border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:16px;flex-shrink:0;position:relative;z-index:60}
   .logo{font-weight:800;font-size:18px;color:var(--blue-dark)}
   .logo span{color:var(--green)}
   .search{flex:1;max-width:480px;position:relative}
@@ -1312,11 +1312,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.49';
+const APP_VERSION = '1.47.50';
 const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.50',
+    data: '13/07/2026',
+    itens: [
+      'Corrigido: com um card/modal aberto (ex.: SRM), clicar no botão "❓ Ajuda" do topo fechava o card em vez de abrir a ajuda — o cabeçalho ficava "atrás" do fundo escurecido do modal e o clique acabava caindo nele. Botão do topo agora funciona normalmente mesmo com modal aberto.',
+      'Card SRM e Espelho de Faturamento ganharam um botão "❓" próprio no canto do modal, pra acessar a ajuda daquela tela específica sem precisar ir até o topo.',
+    ]
+  },
   {
     versao: '1.47.49',
     data: '13/07/2026',
@@ -6321,7 +6329,10 @@ function abrirEditarSRM(id, aba='dados'){
   else if(aba==='pedidos') corpo=abaPedidoAprovadoSRMHTML(c);
   else if(aba==='financeiro') corpo=abaFinanceiroSRMHTML(c);
   abrirModal(`
-    <h3>SRM #${c.num}${forn?' — '+escHtml(forn.nomeFantasia||forn.nome):''}${c.faturaDireta?' <span style="font-size:12px;font-weight:700;color:#e65100;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:2px 7px;vertical-align:middle" title="Fornecedor emite a NF de venda direto ao cliente final, a preço de custo">🧾 Fatura direta</span>':''}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">SRM #${c.num}${forn?' — '+escHtml(forn.nomeFantasia||forn.nome):''}${c.faturaDireta?' <span style="font-size:12px;font-weight:700;color:#e65100;background:#fff3e0;border:1px solid #ffcc80;border-radius:4px;padding:2px 7px;vertical-align:middle" title="Fornecedor emite a NF de venda direto ao cliente final, a preço de custo">🧾 Fatura direta</span>':''}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEditarSRM(${id},'dados')">Dados</button>
       <button class="aba ${aba==='propostas'?'ativa':''}" onclick="abrirEditarSRM(${id},'propostas')">Propostas / Cotações${((db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length)?` (${(db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id).length})`:''}</button>
@@ -8256,7 +8267,10 @@ function abrirEspelhoNF(id, aba='dados'){
   else if(aba==='xmlservico') corpo = abaEspelhoXmlHTML(nf,'servico');
   else corpo = abaEspelhoDadosHTML(nf, c, ob, cli);
   abrirModal(`
-    <h3>Espelho de Faturamento #${nf.id}${cli?' — '+escHtml(cli.nome):''}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Espelho de Faturamento #${nf.id}${cli?' — '+escHtml(cli.nome):''}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="abas">
       <button class="aba ${aba==='dados'?'ativa':''}" onclick="abrirEspelhoNF(${id},'dados')">Dados</button>
       <button class="aba ${aba==='produtos'?'ativa':''}" onclick="abrirEspelhoNF(${id},'produtos')">📦 Itens de Produto${nMat?' ('+nMat+')':''}</button>
@@ -9349,6 +9363,13 @@ function renderAjudaPainel(){
     <div class="ajuda-corpo">${c ? c.html : `<div class="empty" style="padding:30px 10px;text-align:center">Ainda não escrevi a ajuda desta tela — em breve.</div>`}</div>`;
 }
 
+// v1.47.50: botão de ajuda embutido no canto do próprio modal, pros modais que
+// já têm conteúdo em AJUDA_CONTEUDO (srm-card, espelho-nf) — cleverson notou que
+// o botão do topo ficava inacessível com o modal aberto (bug de z-index, corrigido
+// acima no <header>) e sugeriu também um atalho direto no modal, mais descobrível.
+function ajudaBtnModalHTML(){
+  return `<button class="ajuda-btn" title="Ajuda" onclick="toggleAjudaPainel()" style="flex-shrink:0">❓</button>`;
+}
 function toggleAjudaPainel(){
   const painel = document.getElementById('ajuda-painel');
   if(!painel) return;
