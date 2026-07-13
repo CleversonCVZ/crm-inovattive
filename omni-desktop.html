@@ -1291,11 +1291,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.37';
-const APP_VERSION_DATE = '10/07/2026';
+const APP_VERSION = '1.47.38';
+const APP_VERSION_DATE = '13/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.38',
+    data: '13/07/2026',
+    itens: [
+      'Faturamento → Espelhos de NF: novos botões no rodapé da tela do Espelho ("👁 Visualizar PDF", "⬇ Exportar PDF" e "📊 Exportar Excel"), no mesmo estilo/posição já usado nas telas de O.S. Geram na hora um documento de "Instrução para Emissão de NF" com tudo que a contabilidade precisa pra emitir a nota: dados e endereço completo do cliente, CNPJ/CPF, endereço da obra, itens de produto (com a descrição fiscal do catálogo e as NFs de entrada/compra de cada item) e itens de serviço, além dos totais e impostos retidos. Esse documento é diferente dos arquivos PDF/XML que a contabilidade devolve depois de emitir a NF — esses continuam sendo anexados normalmente dentro de cada aba (Itens de Produto/Serviço).',
+    ]
+  },
   {
     versao: '1.47.37',
     data: '10/07/2026',
@@ -8050,6 +8057,9 @@ function abrirEspelhoNF(id, aba='dados'){
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
       ${podeExcluir?`<button class="btn danger" data-btn-perigo onclick="excluirEspelhoNF(${nf.id})">Excluir</button>`:''}
+      <button class="btn neutral" style="border-color:#1565c0;color:#1565c0" onclick="exportarPDFInstrucaoFaturamento(${nf.id},'visualizar')">👁 Visualizar PDF</button>
+      <button class="btn neutral" style="border-color:#2e7d32;color:#2e7d32" onclick="exportarPDFInstrucaoFaturamento(${nf.id},'download')">⬇ Exportar PDF</button>
+      <button class="btn neutral" style="border-color:#e65100;color:#e65100" onclick="exportarExcelInstrucaoFaturamento(${nf.id})">📊 Exportar Excel</button>
       <button class="btn neutral" onclick="fecharModal()">Fechar</button>
       ${(aba==='dados' && podeEditar)?`<button class="btn primary" data-btn-salvar onclick="salvarDadosEspelhoNF(${nf.id})">Salvar</button>`:''}
     </div>`, 'cartao');
@@ -8213,9 +8223,9 @@ function _blocoAnexosHTML(nf, bloco, podeEditar){
         ${podeEditar?`<input type="file" accept="application/pdf" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','pdf')">`:''}
       </div>
       <div>
-        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">XLS/XLSX da NF</label>
-        ${xlsPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${xlsPath}','${(xlsNome||'nf.xlsx').replace(/'/g,"\\'")}')">📊 ${escHtml(xlsNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
-        ${podeEditar?`<input type="file" accept=".xls,.xlsx,.csv" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','xls')">`:''}
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">XML da NF</label>
+        ${xlsPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${xlsPath}','${(xlsNome||'nf.xml').replace(/'/g,"\\'")}')">🧾 ${escHtml(xlsNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        ${podeEditar?`<input type="file" accept=".xml,.xls,.xlsx,.csv" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','xls')">`:''}
       </div>
     </div>`;
 }
@@ -8270,6 +8280,247 @@ async function uploadArquivoFaturamento(input, nfId, bloco, tipoArq){
 async function baixarArquivoFaturamento(bloco, path, nome){
   const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
   await _baixarArquivoBucket(bucket, path, nome);
+}
+
+/* v1.47.38: "Instrução para Emissão de NF" — PDF/Excel gerados a partir dos dados
+   do próprio Espelho (cliente, endereços, itens travados), NÃO os arquivos que a
+   contabilidade devolve depois de emitir a NF (esses continuam sendo anexados via
+   _blocoAnexosHTML, em PDF/XML). Esse documento novo é o que o cleverson manda
+   PRA contabilidade instruir a emissão: endereço completo do cliente e da obra,
+   CNPJ/CPF, itens de produto (descrição fiscal + NF(s) de entrada) e de serviço. */
+function _endCompletoStr(e){
+  e = e||{};
+  const linha1 = [e.rua, e.numero].filter(Boolean).join(', ') + (e.complemento?' - '+e.complemento:'');
+  const linha2 = [e.bairro, e.cidade&&(e.cidade+(e.uf?'/'+e.uf:''))].filter(Boolean).join(' — ');
+  const cep = e.cep ? 'CEP '+e.cep : '';
+  return [linha1, linha2, cep].filter(Boolean).join(' — ') || '—';
+}
+function _dadosInstrucaoFaturamento(nf){
+  const card = (db.cards||[]).find(x=>x.id===nf.cardId);
+  const obra = (db.obras||[]).find(o=>o.id===nf.obraId);
+  const cli  = obra ? cliente(obra.clienteId) : null;
+  const itensProd = itensDoEspelho(nf.id,'material').map(i=>{
+    const os = (db.ordensServico||[]).find(o=>o.id===i.osId);
+    const descFiscal = descricaoFiscalProduto(i.produtoEstoqueId);
+    const nfsCompra = i.produtoEstoqueId ? nfsEntradaDoProduto(i.produtoEstoqueId, nf.obraId) : [];
+    return {
+      descricao: descFiscal || i.descricao, descricaoComercial: i.descricao, temFiscal: !!descFiscal,
+      quantidade: i.quantidade, valorUnitario: i.valorUnitario, valorTotal: i.valorTotal,
+      os: os?os.numero:'—', nfsCompra
+    };
+  });
+  const itensServ = itensDoEspelho(nf.id,'servico').map(i=>({
+    descricao: i.descricao, quantidade: i.quantidade, valorUnitario: i.valorUnitario, valorTotal: i.valorTotal
+  }));
+  const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensProd.reduce((s,i)=>s+(i.valorTotal||0),0);
+  const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensServ.reduce((s,i)=>s+(i.valorTotal||0),0);
+  return { card, obra, cliente:cli, itensProd, itensServ, totalProduto, totalServico };
+}
+
+async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
+  if(!window.jspdf){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+  if(typeof window.jspdf?.jsPDF?.prototype?.autoTable === 'undefined'){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+      s.onload=res; s.onerror=rej; document.head.appendChild(s);
+    });
+  }
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const { card, obra, cliente:cli, itensProd, itensServ, totalProduto, totalServico } = _dadosInstrucaoFaturamento(nf);
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+  const empresa = db.empresa||{};
+  const W = 210; const M = 15; const lineW = W - M*2;
+  const labelColor = [120,120,120];
+  let y = M;
+
+  doc.setFillColor(42,42,40);
+  doc.rect(0,0,W,30,'F');
+  if(empresa.logo){
+    try{ doc.addImage(empresa.logo,'JPEG',M,5,18,18); } catch(e){}
+    doc.setFontSize(14); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M+22, 14);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M+22, 21);
+  } else {
+    doc.setFontSize(15); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+    doc.text(empresa.fantasia||empresa.razao||'Inovattive Home', M, 15);
+    doc.setFontSize(8); doc.setFont(undefined,'normal');
+    const sub=[empresa.cnpj?'CNPJ: '+empresa.cnpj:'',empresa.tel?'Tel: '+empresa.tel:''].filter(Boolean).join('  |  ');
+    if(sub) doc.text(sub, M, 22);
+  }
+  doc.setFontSize(12); doc.setTextColor(255,255,255); doc.setFont(undefined,'bold');
+  doc.text(`Espelho #${nf.id}`, W-M, 14, {align:'right'});
+  doc.setFontSize(8); doc.setFont(undefined,'normal');
+  doc.text('Instrução para Emissão de NF', W-M, 21, {align:'right'});
+
+  y = 38;
+  doc.setFontSize(14); doc.setTextColor(30,30,30); doc.setFont(undefined,'bold');
+  doc.text(cli?cli.nome:'(sem cliente)', M, y);
+  y += 8;
+  doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+  doc.line(M, y, W-M, y);
+  y += 7;
+
+  const col1=M, col2=W/2+4;
+  const drawField = (label, value, x, yy, maxW) => {
+    doc.setFontSize(7); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor);
+    doc.text(label.toUpperCase(), x, yy);
+    doc.setFontSize(9.5); doc.setFont(undefined,'bold'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(value||'—', maxW||((W/2)-M-4));
+    doc.text(lines, x, yy+5);
+    return lines.length;
+  };
+
+  const r1 = drawField('CNPJ/CPF do Cliente', fmtCpfCnpj(cli?.cnpjCpf||'')||'—', col1, y);
+  const r2 = drawField('Cartão CRM', card?'#'+card.num:'—', col2, y);
+  y += Math.max(r1,r2)*5 + 6;
+
+  const r3 = drawField('Endereço do Cliente', _endCompletoStr(cli?.endereco), col1, y, lineW-4);
+  y += r3*5 + 8;
+
+  const r4 = drawField('Obra', obra?obra.nome:'—', col1, y);
+  y += r4*5 + 6;
+  const r5 = drawField('Endereço da Obra', _endCompletoStr(obra?.endereco), col1, y, lineW-4);
+  y += r5*5 + 8;
+
+  doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
+  y += 7;
+
+  if(itensProd.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('ITENS DE PRODUTO (constar na NF)', M, y);
+    y += 3;
+    doc.autoTable({
+      startY:y, margin:{left:M,right:M},
+      head:[['Descrição Fiscal','Qtd','Vl. Unit.','Total','NF(s) de Entrada']],
+      body: itensProd.map(i=>[
+        i.descricao + (i.temFiscal?'':' ⚠ sem descrição fiscal'),
+        String(i.quantidade),
+        fmtMoney(i.valorUnitario),
+        fmtMoney(i.valorTotal),
+        i.nfsCompra.length ? i.nfsCompra.map(n=>`${n.numero||'—'} (${n.data?fmtDia2(n.data):'—'})`).join('; ') : '—'
+      ]),
+      foot:[['','','Total:', fmtMoney(totalProduto), '']],
+      headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
+      footStyles:{fillColor:[235,235,235],fontStyle:'bold',fontSize:9,textColor:[30,30,30]},
+      bodyStyles:{fontSize:8},
+      columnStyles:{1:{halign:'center'},2:{halign:'right'},3:{halign:'right'}},
+      theme:'striped', alternateRowStyles:{fillColor:[248,248,248]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  if(itensServ.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(9); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('ITENS DE SERVIÇO (constar na NF)', M, y);
+    y += 3;
+    doc.autoTable({
+      startY:y, margin:{left:M,right:M},
+      head:[['Descrição','Qtd','Vl. Unit.','Total']],
+      body: itensServ.map(i=>[i.descricao,String(i.quantidade),fmtMoney(i.valorUnitario),fmtMoney(i.valorTotal)]),
+      foot:[['','','Total:', fmtMoney(totalServico)]],
+      headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
+      footStyles:{fillColor:[235,235,235],fontStyle:'bold',fontSize:9,textColor:[30,30,30]},
+      bodyStyles:{fontSize:8},
+      columnStyles:{1:{halign:'center'},2:{halign:'right'},3:{halign:'right'}},
+      theme:'striped', alternateRowStyles:{fillColor:[248,248,248]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  if(y > 250){ doc.addPage(); y = M; }
+  doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
+  y += 7;
+  doc.setFontSize(9); doc.setTextColor(30,30,30); doc.setFont(undefined,'normal');
+  doc.text(`Total Produto: ${fmtMoney(totalProduto)}   |   Total Serviço: ${fmtMoney(totalServico)}   |   Total Geral: ${fmtMoney(totalProduto+totalServico)}`, M, y);
+  y += 7;
+  if(nf.impostosRetidos){
+    doc.text(`Impostos Retidos: ${fmtMoney(nf.impostosRetidos)}`, M, y);
+    y += 7;
+  }
+  if(nf.observacoes?.trim()){
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('OBSERVAÇÕES', M, y); y += 5;
+    doc.setFontSize(9); doc.setFont(undefined,'normal'); doc.setTextColor(25,25,25);
+    const lines = doc.splitTextToSize(nf.observacoes, lineW);
+    doc.text(lines, M, y); y += lines.length*5 + 5;
+  }
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for(let i=1;i<=totalPages;i++){
+    doc.setPage(i);
+    doc.setFontSize(7.5); doc.setTextColor(160,160,160); doc.setFont(undefined,'normal');
+    doc.setDrawColor(210,210,210); doc.setLineWidth(0.3);
+    doc.line(M, 288, W-M, 288);
+    doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')} — ${empresa.fantasia||empresa.razao||''}`, M, 292);
+    doc.text(`Pág. ${i}/${totalPages}`, W-M, 292, {align:'right'});
+  }
+
+  const filename = `Instrucao_NF_Espelho_${nf.id}_${(cli?.nome||'cliente').slice(0,30).replace(/[\s/\\:*?"<>|]+/g,'_')}.pdf`;
+  if(modo==='visualizar'){
+    const blob = doc.output('blob');
+    const url = URL.createObjectURL(blob);
+    window.open(url,'_blank');
+  } else {
+    doc.save(filename);
+  }
+}
+
+async function exportarExcelInstrucaoFaturamento(nfId){
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const { card, obra, cliente:cli, itensProd, itensServ, totalProduto, totalServico } = _dadosInstrucaoFaturamento(nf);
+  let X;
+  try{ X = await carregarXlsxJs(); } catch(e){ alert('Sem acesso ao CDN pra gerar o Excel (verifique a internet).'); return; }
+
+  const dadosAOA = [
+    ['Instrução para Emissão de NF — Espelho #'+nf.id],
+    [],
+    ['Cliente', cli?cli.nome:'—'],
+    ['CNPJ/CPF', fmtCpfCnpj(cli?.cnpjCpf||'')||'—'],
+    ['Endereço do Cliente', _endCompletoStr(cli?.endereco)],
+    ['Obra', obra?obra.nome:'—'],
+    ['Endereço da Obra', _endCompletoStr(obra?.endereco)],
+    ['Cartão CRM', card?'#'+card.num:'—'],
+    [],
+    ['Total Produto', totalProduto],
+    ['Total Serviço', totalServico],
+    ['Total Geral', totalProduto+totalServico],
+    ['Impostos Retidos', nf.impostosRetidos||0],
+    [],
+    ['Observações', nf.observacoes||'']
+  ];
+  const wb = X.utils.book_new();
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(dadosAOA), 'Dados');
+
+  const prodAOA = [
+    ['Descrição Fiscal','Descrição Comercial','Qtd','Valor Unitário','Valor Total','O.S.','NF(s) de Entrada'],
+    ...itensProd.map(i=>[
+      i.descricao, i.descricaoComercial, i.quantidade, i.valorUnitario, i.valorTotal, i.os,
+      i.nfsCompra.length ? i.nfsCompra.map(n=>`${n.numero||'—'} (${n.data?fmtDia2(n.data):'—'})`).join('; ') : ''
+    ])
+  ];
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(prodAOA), 'Itens de Produto');
+
+  const servAOA = [
+    ['Descrição','Qtd','Valor Unitário','Valor Total'],
+    ...itensServ.map(i=>[i.descricao, i.quantidade, i.valorUnitario, i.valorTotal])
+  ];
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(servAOA), 'Itens de Serviço');
+
+  const filename = `Instrucao_NF_Espelho_${nf.id}_${(cli?.nome||'cliente').slice(0,30).replace(/[\s/\\:*?"<>|]+/g,'_')}.xlsx`;
+  X.writeFile(wb, filename);
 }
 
 async function excluirEspelhoNF(id){
