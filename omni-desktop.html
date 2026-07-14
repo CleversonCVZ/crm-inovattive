@@ -1094,18 +1094,11 @@
   <!-- FATURAMENTO: PREVISÃO DE TRIBUTOS -->
   <div class="view" id="view-fat-tributos">
     <div class="bar">
-      <h2>Previsão de Tributos</h2>
-    </div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Previsão de impostos calculada por Espelho de Faturamento (produto/serviço × alíquotas configuradas em Configurações do Sistema), conciliada aqui contra as Guias de Recolhimento reais enviadas pelo contador.
-    </p>
-
-    <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 10px">
-      <h2 style="margin:0;font-size:16px">Guias de Recolhimento</h2>
+      <h2>Guias de Recolhimento</h2>
       <button class="btn primary" id="btn-nova-guia-tributos" onclick="abrirNovaGuiaTributos()">+ Nova Guia</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Registre aqui a guia real (DAS) que o contador manda cada mês, vinculando os Espelhos que ela cobre — o valor informado por Espelho vira Conta a Pagar automaticamente e baixa a previsão correspondente da conta "Provisão de Impostos".
+      Registre aqui a guia real (DAS) que o contador manda cada mês, vinculando os Espelhos que ela cobre — o valor informado por Espelho vira Conta a Pagar automaticamente e baixa a previsão correspondente da conta "Provisão de Impostos" (calculada por Espelho: produto/serviço × alíquotas de Configurações do Sistema).
     </p>
     <div id="fat-guias-lista"></div>
   </div>
@@ -1309,11 +1302,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.63';
+const APP_VERSION = '1.47.64';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.64',
+    data: '14/07/2026',
+    itens: [
+      'Faturamento → Previsão de Tributos: removido o título e o parágrafo redundantes que sobraram no topo depois da limpeza da v1.47.63. A tela agora abre direto em "Guias de Recolhimento" (título + botão "+ Nova Guia" já na barra), com um único parágrafo explicando previsão e conciliação.',
+    ]
+  },
   {
     versao: '1.47.63',
     data: '14/07/2026',
