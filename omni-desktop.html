@@ -1326,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.72';
+const APP_VERSION = '1.47.73';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.73',
+    data: '14/07/2026',
+    itens: [
+      'Guias de Recolhimento: novo campo "Número da Guia (DAS)" — o identificador único da guia real informado pelo contador, digitável na criação e na edição, e exibido na lista e na descrição da Conta a Pagar gerada.',
+    ]
+  },
   {
     versao: '1.47.72',
     data: '14/07/2026',
@@ -3483,7 +3490,7 @@ async function carregarDadosSupabase(){
       }));
     if(guiasTributosRes.data)
       db.guiasTributos = guiasTributosRes.data.map(g=>({
-        id:g.id, dataRecebimento:g.data_recebimento?g.data_recebimento.slice(0,10):'', observacoes:g.observacoes||'',
+        id:g.id, numero:g.numero||'', dataRecebimento:g.data_recebimento?g.data_recebimento.slice(0,10):'', observacoes:g.observacoes||'',
         valorTotal:Number(g.valor_total)||0, status:g.status||'aberta', contasPagarId:g.contas_pagar_id||null,
         criadoEm:g.criado_em||''
       }));
@@ -9453,6 +9460,7 @@ function abrirNovaGuiaTributos(){
     </div>
     <p style="font-size:13px;color:var(--muted)">Marque os Espelhos que essa guia cobre (segundo o contador) e digite o valor real de imposto de cada um.</p>
     <div class="form-row">
+      <div><label>Número da Guia (DAS)</label><input type="text" id="gt-numero" placeholder="Nº informado pelo contador"></div>
       <div><label>Data de Recebimento da Guia</label><input type="date" id="gt-data" value="${localDia(0)}"></div>
       <div><label>Vencimento da Conta a Pagar</label><input type="date" id="gt-vencimento"></div>
     </div>
@@ -9505,6 +9513,7 @@ async function confirmarNovaGuiaTributos(){
   if(!selecionados.length){ alert('Selecione ao menos um Espelho e informe o valor real (maior que zero).'); return; }
   const dataVencimento = document.getElementById('gt-vencimento').value||null;
   if(!dataVencimento){ alert('Informe o vencimento da Conta a Pagar.'); return; }
+  const numero = document.getElementById('gt-numero').value.trim();
   const dataRecebimento = document.getElementById('gt-data').value||null;
   const observacoes = document.getElementById('gt-obs').value.trim();
   const valorTotal = selecionados.reduce((s,x)=>s+x.valorReal,0);
@@ -9514,27 +9523,28 @@ async function confirmarNovaGuiaTributos(){
   if(!Array.isArray(db.guiasTributos)) db.guiasTributos=[];
   const guiaId = await proximoIdSeguro('guias_tributos', db.guiasTributos);
   const {error:errGuia} = await sb.from('guias_tributos').insert({
-    id:guiaId, data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal, status:'lancada'
+    id:guiaId, numero, data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal, status:'lancada'
   });
   if(errGuia){ alert('Erro ao criar guia: '+errGuia.message); btn.disabled=false; btn.textContent='Confirmar e Lançar'; return; }
 
+  const rotuloCp = `Guia de Recolhimento (DAS) — Guia #${guiaId}${numero?' (Nº '+numero+')':''}`;
   if(!Array.isArray(db.contasPagar)) db.contasPagar=[];
   const cpId = await proximoIdSeguro('contas_pagar', db.contasPagar);
   const {error:errCp} = await sb.from('contas_pagar').insert({
-    id:cpId, descricao:`Guia de Recolhimento (DAS) — Guia #${guiaId}`, valor:valorTotal,
+    id:cpId, descricao:rotuloCp, valor:valorTotal,
     data_vencimento:dataVencimento, status:'pendente', guia_tributos_id:guiaId
   });
   if(errCp){
     alert('A guia foi criada, mas houve erro ao gerar a Conta a Pagar: '+errCp.message+'. Lance manualmente e vincule depois.');
   } else {
     db.contasPagar.push({
-      id:cpId, descricao:`Guia de Recolhimento (DAS) — Guia #${guiaId}`, fornecedorId:null, valor:valorTotal,
+      id:cpId, descricao:rotuloCp, fornecedorId:null, valor:valorTotal,
       dataVencimento, dataPagamento:null, status:'pendente', condicao:null, centroCustoId:null, obraId:null, osId:null,
       contaId:null, cardSrmId:null, observacao:'', recorrenteId:null, guiaTributosId:guiaId, criadoEm:new Date().toISOString()
     });
     await sb.from('guias_tributos').update({contas_pagar_id:cpId}).eq('id', guiaId);
   }
-  db.guiasTributos.push({id:guiaId, dataRecebimento, observacoes, valorTotal, status:'lancada', contasPagarId:errCp?null:cpId, criadoEm:new Date().toISOString()});
+  db.guiasTributos.push({id:guiaId, numero, dataRecebimento, observacoes, valorTotal, status:'lancada', contasPagarId:errCp?null:cpId, criadoEm:new Date().toISOString()});
 
   for(const {nf, valorReal} of selecionados){
     nf.guiaTributosId = guiaId;
@@ -9605,7 +9615,7 @@ function renderGuiasTributos(){
       : `<span style="color:#e65100">⏳ Pendente</span>`;
     return `<tr style="cursor:pointer" onclick="abrirEditarGuiaTributos(${g.id})">
       <td>
-        <div style="font-weight:600;font-size:14px">Guia #${g.id}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
+        <div style="font-weight:600;font-size:14px">Guia #${g.id}${g.numero?' · Nº '+escHtml(g.numero):''}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
         ${cp?`<div style="font-size:11px;color:var(--muted)">Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':'pendente'})</div>`:''}
         ${g.observacoes?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(g.observacoes)}</div>`:''}
       </td>
@@ -9658,6 +9668,7 @@ function abrirEditarGuiaTributos(id){
       ${ajudaBtnModalHTML()}
     </div>
     <div class="form-row">
+      <div><label>Número da Guia (DAS)</label><input type="text" id="egt-numero" value="${escHtml(g.numero||'')}" placeholder="Nº informado pelo contador" ${podeEditar?'':'disabled'}></div>
       <div><label>Data de Recebimento da Guia</label><input type="date" id="egt-data" value="${g.dataRecebimento||''}" ${podeEditar?'':'disabled'}></div>
       <div><label>Vencimento da Conta a Pagar</label><input type="date" id="egt-vencimento" value="${cp?.dataVencimento||''}" ${podeEditar?'':'disabled'}></div>
     </div>
@@ -9685,6 +9696,7 @@ async function salvarEdicaoGuiaTributos(id){
   if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão pra editar guias.'); return; }
   const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
   const espelhos = window._egtEspelhos||[];
+  const numero = document.getElementById('egt-numero').value.trim();
   const dataRecebimento = document.getElementById('egt-data').value||null;
   const dataVencimento = document.getElementById('egt-vencimento').value||null;
   const observacoes = document.getElementById('egt-obs').value.trim();
@@ -9697,10 +9709,11 @@ async function salvarEdicaoGuiaTributos(id){
   const btn = btnModalPrimario();
   btnSalvando(btn);
 
+  g.numero = numero;
   g.dataRecebimento = dataRecebimento;
   g.observacoes = observacoes;
   g.valorTotal = valorTotal;
-  await sb.from('guias_tributos').update({data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal}).eq('id', id);
+  await sb.from('guias_tributos').update({numero, data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal}).eq('id', id);
 
   const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
   if(cp){
