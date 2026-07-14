@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.52';
-const APP_VERSION_DATE = '13/07/2026';
+const APP_VERSION = '1.47.53';
+const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.53',
+    data: '14/07/2026',
+    itens: [
+      'Ajuda contextual concluída em todos os módulos: Propostas, Obras, O.S. (incluindo os 3 tipos de detalhe: Projeto/Execução/Avulsa, com botão ❓ embutido também), Financeiro, o restante de Faturamento e Estoque, e as telas administrativas (Configurações, Auditoria & Logs, Downloads, Grupos de Acesso, Funções, Usuários).',
+    ]
+  },
   {
     versao: '1.47.52',
     data: '13/07/2026',
@@ -9299,6 +9306,112 @@ const AJUDA_CONTEUDO = {
       <p>Dados cadastrais do cliente (nome, CPF/CNPJ, contato, endereço) e a lista das Obras vinculadas a ele — cada obra com endereço próprio, já que um mesmo cliente pode ter mais de uma obra ao longo do tempo. "+ Cadastrar nova obra" abre o cadastro de obra já vinculado a este cliente.</p>
       <p>O selo de classificação (🟢 Cliente Ativo / 🟢 Cliente / 🟡 Prospect / 🔴 Lead Frio) é calculado automaticamente a partir dos cartões e obras do cliente — ver ajuda da tela "Clientes / Prospects" pra regra completa.</p>`
   },
+  'prop-painel': {
+    titulo: 'Propostas — Acompanhamento',
+    html: `<p>Kanban das propostas emitidas, arrastando entre as fases da proposta. Cada proposta pertence a um Cartão CRM — as ações de emitir/aprovar acontecem na aba Propostas Emitidas/Proposta Aprovada do próprio cartão, aqui é só acompanhamento visual. Visualizações: por fase, aprovadas, perdidas/abandonadas ou por validade (data limite antes de vencer).</p>`
+  },
+  'prop-fases': {
+    titulo: 'Propostas — Fases',
+    html: `<p>Cadastro das colunas do kanban de Propostas — edite nome, cor e ordem direto na tabela.</p>`
+  },
+  'propostas': {
+    titulo: 'Controle de Propostas',
+    html: `<p>Lista de todas as propostas emitidas (com filtro por status/fase/período). Clique numa linha pra abrir o Cartão CRM correspondente na aba certa. Aditivos aparecem separados da proposta principal, mas contam pro mesmo cartão/obra.</p>`
+  },
+  'obras-painel': {
+    titulo: 'Obras — Acompanhamento',
+    html: `<p>Kanban das obras em andamento. Visualizações: por fase (etapa física da obra), por status (ativa/pausada), por cidade, ou concluídas/abandonadas (arquivo). Cada card representa uma Obra — a mesma entidade acessada pela aba "Obra" do Cartão CRM correspondente.</p>`
+  },
+  'obras-fases': {
+    titulo: 'Obras — Fases',
+    html: `<p>Cadastro das etapas físicas de uma obra (ex.: Projeto, Instalação, Testes, Entrega) — edite nome, cor e ordem direto na tabela. Diferente das fases do CRM/O.S., que acompanham a negociação/atendimento; estas acompanham a execução física da obra em si.</p>`
+  },
+  'cat-outros-custos': {
+    titulo: 'Categoria Custos Obra',
+    html: `<p>Categorias (com ícone) usadas ao lançar "Outros Custos" dentro da aba Obra do Cartão CRM — despesas da obra que não são mão de obra nem material comprado via SRM (ex.: taxas, aluguel de equipamento, frete). Clique no ícone pra trocar, edite o nome direto na linha.</p>`
+  },
+  'obras-lista': {
+    titulo: 'Obras — Lista',
+    html: `<p>Lista de todas as obras com filtros (status/fase/cidade) e ordenação (nome, cliente, mais O.S., maior valor aprovado). Clique numa linha pra abrir o Cartão CRM correspondente na aba Obra. Coluna "Compras" soma o que já foi comprado via SRM pra essa obra.</p>`
+  },
+  'os-painel': {
+    titulo: 'O.S. — Acompanhamento',
+    html: `<p>Kanban das Ordens de Serviço. Visualizações: Abertas, Fechadas, por data de execução, ou por fases. Filtro por tipo (Projeto/Execução/Avulsa). Cada card representa uma O.S. — clique pra abrir o detalhe (mesmo modal acessado pela aba O.S. do Cartão CRM).</p>`
+  },
+  'os-fases': {
+    titulo: 'O.S. — Fases',
+    html: `<p>Cadastro das etapas de andamento de uma Ordem de Serviço (ex.: Aguardando, Em Execução, Concluída) — edite nome, cor e ordem direto na tabela. Válido pros 3 tipos de O.S. (Projeto/Execução/Avulsa).</p>`
+  },
+  'os-lista': {
+    titulo: 'O.S. — Lista',
+    html: `<p>Lista de todas as Ordens de Serviço com filtro por tipo/fase/status (aberta ou fechada). Clique numa linha pra abrir o Cartão CRM correspondente.</p>`
+  },
+  'os-projeto': {
+    titulo: 'O.S. — Projeto (PRJ)',
+    html: `
+      <p>O.S. usada pra fase de projeto/automação (antes da execução física). Não tem abas — os campos ficam direto na tela, divididos em 2 colunas.</p>
+      <h5>Arquivos do Arquiteto × Projeto de Automação</h5>
+      <p>"Arquivos do Arquiteto" são os DWG/PDF recebidos de fora (início formal do projeto). "Projeto de Automação" são os arquivos do SEU projeto finalizado — obrigatório ter ao menos 1 arquivo aqui antes de encerrar a O.S.</p>
+      <h5>Fechar / Reabrir</h5>
+      <p>Fechar trava edição dos campos; reabrir pede confirmação extra se já tiver arquivo de projeto enviado (pra evitar reabrir sem querer uma O.S. já entregue).</p>`
+  },
+  'os-execucao': {
+    titulo: 'O.S. — Execução/Obra (OBR)',
+    abas: {
+      geral: {
+        titulo: 'Aba Geral',
+        html: `<p>Fase da O.S., Fase da Obra executada (etapa física, ligada à tela Obras→Fases — pode ficar diferente da fase da própria O.S.), responsável e agendamento. Todos os campos salvam sozinhos (autosave) ao sair do campo.</p>`
+      },
+      equipe: {
+        titulo: 'Aba Equipe',
+        html: `<p>Técnicos internos alocados nesta O.S. — não confundir com "Custo M.Obra" do Cartão CRM (que trata o CUSTO financeiro de mão de obra própria/fornecedor); aqui é só a equipe de execução em si.</p>`
+      },
+      itens: {
+        titulo: 'Aba Itens',
+        html: `<p>Itens da proposta aprovada alocados pra serem entregues/consumidos nesta O.S. específica (uma obra pode ter várias O.S. de execução, cada uma consumindo uma parte dos itens contratados). Marcar um item de produto aqui é o que dispara a baixa automática no Estoque, descontando do saldo reservado da obra.</p>`
+      },
+      diario: {
+        titulo: 'Aba Diário',
+        html: `<p>Registro fotográfico do andamento da obra, com legenda por foto — serve de diário de obra visual.</p>`
+      },
+      pendencias: {
+        titulo: 'Aba Pendências',
+        html: `<p>Itens em aberto que precisam ser resolvidos antes (ou depois) do encerramento. Uma pendência não resolvida pode ser "transferida" pra próxima O.S. de execução da mesma obra, em vez de ficar perdida numa O.S. já fechada.</p>`
+      }
+    }
+  },
+  'os-avulsa': {
+    titulo: 'O.S. — Avulsa (AVL)',
+    abas: {
+      geral: {
+        titulo: 'Aba Geral',
+        html: `
+          <p>Usada pra atendimentos pontuais, geralmente numa obra já concluída (manutenção, chamado, ajuste). Autosave campo a campo, igual à Execução.</p>
+          <h5>Tipo de atendimento</h5>
+          <p><b>🛡 Garantia:</b> sem cobrança, coberto pela garantia do serviço original. <b>💰 Cobrado:</b> gera cobrança ao cliente. <b>❓ A definir:</b> ainda não decidido.</p>`
+      },
+      itens: {
+        titulo: 'Aba Itens',
+        html: `<p>Diferente da Execução (que puxa da proposta aprovada), aqui Serviços e Produtos são escolhidos direto do catálogo — não depende de uma proposta vinculada, já que atendimento avulso normalmente não tem uma proposta formal por trás.</p>`
+      },
+      custos: {
+        titulo: 'Aba Custos',
+        html: `<p>Custos extras dessa O.S. avulsa (ex.: material comprado à parte, deslocamento). Pode ser lançado como Conta a Pagar via botão "📋 → C.P." — esse lançamento NUNCA leva o campo Obra junto (mesmo escolhendo Centro de Custo "Mão de Obra"), de propósito: a Avulsa normalmente atende uma obra já concluída, e incluir o custo lá contaminaria o Resultado Aparente de uma obra já fechada.</p>`
+      },
+      fotos: {
+        titulo: 'Aba Fotos',
+        html: `<p>Registro fotográfico do atendimento, com legenda por foto.</p>`
+      },
+      equipe: {
+        titulo: 'Aba Equipe',
+        html: `<p>Técnicos alocados neste atendimento avulso.</p>`
+      },
+      historico: {
+        titulo: 'Aba Histórico',
+        html: `<p>Linha do tempo de observações registradas ao longo do atendimento.</p>`
+      }
+    }
+  },
   'srm-painel': {
     titulo: 'SRM — Painel',
     html: `
@@ -9379,10 +9492,45 @@ const AJUDA_CONTEUDO = {
       }
     }
   },
+  'fin-painel': {
+    titulo: 'Financeiro — Acompanhamento',
+    html: `<p>Painel geral com 4 visualizações: Centros de Custo (gasto agrupado por categoria), Contas a Pagar, Contas a Receber e Extrato por Conta (escolha uma conta corrente pra ver o extrato). Filtro de período (mês/trimestre/ano/tudo) se aplica às 3 primeiras visualizações.</p>`
+  },
+  'fin-recorrentes': {
+    titulo: 'Contas Recorrentes',
+    html: `
+      <p>Contas que se repetem todo mês (ou ano) automaticamente — o sistema gera o lançamento em Contas a Pagar sozinho todo início de mês (via job agendado no servidor, não depende de ninguém estar logado).</p>
+      <h5>Pausar × Excluir</h5>
+      <p>Pausar interrompe a geração automática sem perder o cadastro (útil pra conta sazonal ou temporariamente suspensa) — reativar volta a gerar a partir do mês da reativação, sem gerar retroativo dos meses pausados.</p>`
+  },
+  'fin-centros-custo': {
+    titulo: 'Centros de Custo',
+    html: `<p>Classificação dos gastos da empresa por área/finalidade (ex.: Mão de Obra, Material de Obra, Administrativo) — usado em Contas a Pagar, Contas Recorrentes e nos custos lançados dentro da obra. Alguns centros de custo (Material de Obra, Mão de Obra) têm tratamento especial: liberam um campo "Obra" pra vincular o gasto a uma obra específica, somando no Resultado Aparente dela.</p>`
+  },
+  'fin-contas-correntes': {
+    titulo: 'Contas Correntes',
+    html: `<p>Cadastro das contas bancárias/caixa da empresa. "📋 Extrato" e "＋ Lançar" no topo abrem o fluxo escolhendo a conta primeiro; clicar direto numa linha da lista vai pro cadastro/edição da conta. O saldo atual é sempre calculado a partir do histórico de lançamentos (Contas a Pagar pagas + Contas a Receber recebidas + lançamentos manuais/transferências), nunca digitado à mão depois do saldo inicial.</p>`
+  },
+  'fin-contas-pagar': {
+    titulo: 'Contas a Pagar',
+    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui.</p>`
+  },
+  'fin-contas-receber': {
+    titulo: 'Contas a Receber',
+    html: `<p>Painel global de TODAS as parcelas a receber de todos os cartões (a versão por cartão fica na aba Financeiro do Cartão CRM). Cada parcela pode estar Pendente, Parcial (recebeu uma parte) ou Recebida (quitada) — parcelas quitadas ficam ordenadas da mais recente pra mais antiga; pendentes/vencidas sempre aparecem primeiro.</p>`
+  },
   'fat-painel': {
     titulo: 'Faturamento — Painel',
     html: `
       <p>Kanban dos Espelhos de Faturamento (Notas Fiscais de venda), arrastando entre fases (A Emitir → Emitida → Enviada ao Cliente → Paga → Cancelada). Cada card é um Espelho — a mesma entidade que aparece na lista "Espelhos de NF", só que em outra visualização.</p>`
+  },
+  'fat-fases': {
+    titulo: 'Faturamento — Fases',
+    html: `<p>Cadastro das colunas do kanban de Faturamento (ex.: A Emitir, Emitida, Enviada ao Cliente, Paga, Cancelada) — edite nome, cor e ordem direto na tabela.</p>`
+  },
+  'fat-tributos': {
+    titulo: 'Faturamento — Previsão de Tributos',
+    html: `<p>Relatório agregado, sem cadastro próprio: agrupa as Notas Fiscais dos Espelhos por mês de emissão e aplica as alíquotas de Produto/Serviço configuradas em Configurações do Sistema. Diferente da coluna "Previsão de Impostos" de cada Espelho (que já mostra o valor exato por NF) — aqui é a visão consolidada mês a mês, útil pra planejamento de caixa.</p>`
   },
   'fat-espelhos': {
     titulo: 'Faturamento — Espelhos de NF',
@@ -9425,6 +9573,10 @@ const AJUDA_CONTEUDO = {
       }
     }
   },
+  'estoque-categorias': {
+    titulo: 'Estoque — Categorias de Produtos',
+    html: `<p>Categorias (com cor) usadas pra agrupar os produtos do Catálogo por área (ex.: Rede de Dados, Automação, Áudio e Vídeo) — só organização, não afeta saldo nem movimentação.</p>`
+  },
   'estoque-catalogo': {
     titulo: 'Estoque — Catálogo',
     html: `
@@ -9448,6 +9600,40 @@ const AJUDA_CONTEUDO = {
   'estoque-painel': {
     titulo: 'Estoque — Painel (Acompanhamento)',
     html: `<p>Kanban por obra cruzando compras (SRM) com uso em O.S. — mostra o que foi comprado pra cada obra e em quais Ordens de Serviço já foi consumido. Puramente informativo, sem cadastro próprio.</p>`
+  },
+  'gerais': {
+    titulo: 'Configurações do Sistema',
+    html: `
+      <p>Logotipo (aparece no topo e na tela de login), dados cadastrais da empresa (usados nos PDFs, ex.: Instrução para Emissão de NF) e as alíquotas de tributos.</p>
+      <h5>Alíquotas de Tributos (Produto/Serviço)</h5>
+      <p>Separadas porque produto e serviço costumam ter tributação diferente (ICMS × ISS). Usadas em 2 lugares: a "Previsão de Impostos" de cada Espelho de Faturamento individual, e o relatório agregado "Previsão de Tributos" (Faturamento).</p>`
+  },
+  'auditoria': {
+    titulo: 'Auditoria & Logs',
+    html: `<p>Histórico de todas as ações relevantes do sistema (criar/editar/excluir), com usuário, data e descrição — não dá pra apagar manualmente, só expira sozinho conforme o prazo de "Retenção" configurado no topo (em dias). Use os filtros de busca/período pra investigar algo específico (ex.: "quem excluiu esse cartão?").</p>`
+  },
+  'downloads': {
+    titulo: 'Downloads',
+    html: `<p>Repositório de arquivos gerais da empresa, organizados em categorias (coluna esquerda) — pra materiais que não pertencem a nenhum cadastro específico (catálogos, manuais, tabelas de preço). Diferente dos arquivos anexados dentro de um Cartão/O.S./Espelho, que ficam vinculados àquele registro.</p>`
+  },
+  'grupos': {
+    titulo: 'Grupos de Acesso',
+    html: `
+      <p>Cada usuário pertence a um grupo, e o grupo define quais telas ele acessa e o que pode fazer nelas. O grupo "Administradores" sempre tem acesso total, não editável.</p>
+      <h5>Ver × Editar × Excluir</h5>
+      <p>Pra cada tela, o grupo pode ter 3 níveis: sem acesso, só Ver, ou Ver+Editar (Excluir é chave separada, mais restrita — nem toda tela com Editar libera Excluir). Ações de exclusão "forte" (Cartão/Obra/Cliente/Conta Corrente/Usuário/Grupo) sempre pedem digitar o nome do registro pra confirmar, independente do nível de acesso.</p>`
+  },
+  'grupo-form': {
+    titulo: 'Editar Grupo de Acesso',
+    html: `<p>Marque, tela por tela, o nível de acesso deste grupo (Ver / Editar / Excluir conforme disponível). Algumas telas têm sub-permissões próprias (ex.: abas do Cartão CRM — Propostas/Obra/O.S./Financeiro/Garantias podem ser liberadas ou não independente umas das outras).</p>`
+  },
+  'funcoes': {
+    titulo: 'Funções na Empresa',
+    html: `<p>Cadastro simples (ex.: Técnico, Vendedor, Administrativo) — aparece como sugestão no campo "Função" ao cadastrar um Usuário, só pra referência/organização.</p>`
+  },
+  'usuarios': {
+    titulo: 'Usuários',
+    html: `<p>Cadastro de quem acessa o sistema — cada usuário pertence a um Grupo de Acesso (define o que ele pode ver/editar) e, opcionalmente, uma Função (só informativo). Usuário inativo não consegue mais logar, mas continua aparecendo no histórico de tudo que já fez.</p>`
   }
 };
 
@@ -15285,19 +15471,23 @@ function abrirVerOS(osId, cardId){
     </div>`:''}
   `;
 
+  contextoAjuda.modal='os-projeto'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.53
   abrirModal(`
     <!-- Cabeçalho fixo -->
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
-      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>${os.numero}</span>
-        <span class="os-tag" style="background:${tipoColor}">${tipoLabel}</span>
-        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
-      </h3>
-      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
-      <div style="font-size:12px;color:var(--muted)">
-        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
-        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <div>
+        <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>${os.numero}</span>
+          <span class="os-tag" style="background:${tipoColor}">${tipoLabel}</span>
+          ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+        </h3>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+        <div style="font-size:12px;color:var(--muted)">
+          🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+          ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+        </div>
       </div>
+      ${ajudaBtnModalHTML()}
     </div>
 
     <!-- Corpo 2 colunas -->
@@ -15865,19 +16055,23 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
       </div>`:''}`;
   }
 
+  contextoAjuda.modal='os-execucao'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.53
   abrirModal(`
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
-      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>${os.numero}</span>
-        <span class="os-tag" style="background:${tipoColor}">Execução/Obra (OBR)</span>
-        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
-      </h3>
-      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
-      <div style="font-size:12px;color:var(--muted)">
-        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
-        ${os.faseObraId?` &nbsp;·&nbsp; 📋 Fase: ${faseObra(os.faseObraId)?.nome||'—'}`:''}
-        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <div>
+        <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>${os.numero}</span>
+          <span class="os-tag" style="background:${tipoColor}">Execução/Obra (OBR)</span>
+          ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+        </h3>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+        <div style="font-size:12px;color:var(--muted)">
+          🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+          ${os.faseObraId?` &nbsp;·&nbsp; 📋 Fase: ${faseObra(os.faseObraId)?.nome||'—'}`:''}
+          ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+        </div>
       </div>
+      ${ajudaBtnModalHTML()}
     </div>
 
     <!-- Abas -->
@@ -16252,19 +16446,23 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
 
   const badgeAtend = `<span style="background:${tipoAtendCor[tipoAtend]};color:#fff;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700">${tipoAtendLabel[tipoAtend]}</span>`;
 
+  contextoAjuda.modal='os-avulsa'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.53
   abrirModal(`
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
-      <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>${os.numero}</span>
-        <span class="os-tag" style="background:${tipoColor}">Avulsa (AVL)</span>
-        ${badgeAtend}
-        ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
-      </h3>
-      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
-      <div style="font-size:12px;color:var(--muted)">
-        🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
-        ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <div>
+        <h3 style="margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>${os.numero}</span>
+          <span class="os-tag" style="background:${tipoColor}">Avulsa (AVL)</span>
+          ${badgeAtend}
+          ${os.fechada?'<span class="os-tag" style="background:#555">🔒 Fechada</span>':''}
+        </h3>
+        <div style="font-size:15px;font-weight:700;margin-bottom:4px">${os.titulo}</div>
+        <div style="font-size:12px;color:var(--muted)">
+          🏗 ${obra?obra.nome:'—'} &nbsp;·&nbsp; 👤 ${resp?resp.nome:'—'}
+          ${os.dataTermino?` &nbsp;·&nbsp; ✅ Encerrada: ${fmtData(os.dataTermino)}`:''}
+        </div>
       </div>
+      ${ajudaBtnModalHTML()}
     </div>
     <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-shrink:0;flex-wrap:wrap">
       ${tabBtn('geral','⚙️ Geral')}
