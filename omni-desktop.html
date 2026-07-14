@@ -1097,22 +1097,10 @@
       <h2>Previsão de Tributos</h2>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Cálculo automático da previsão de tributos sobre o faturamento (Notas Fiscais cadastradas em Espelhos de NF), agrupado por mês de emissão. As alíquotas de Produto e Serviço são configuradas em Configurações do Sistema.
+      Previsão de impostos calculada por Espelho de Faturamento (produto/serviço × alíquotas configuradas em Configurações do Sistema), conciliada aqui contra as Guias de Recolhimento reais enviadas pelo contador.
     </p>
-    <table class="lista">
-      <thead>
-        <tr>
-          <th>Competência</th>
-          <th style="width:150px">Faturamento Total</th>
-          <th style="width:150px">Impostos Retidos</th>
-          <th style="width:150px">Previsão de Tributos</th>
-          <th style="width:150px">A Recolher</th>
-        </tr>
-      </thead>
-      <tbody id="fat-tributos-tbody"></tbody>
-    </table>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:10px 0 10px">
       <h2 style="margin:0;font-size:16px">Guias de Recolhimento</h2>
       <button class="btn primary" id="btn-nova-guia-tributos" onclick="abrirNovaGuiaTributos()">+ Nova Guia</button>
     </div>
@@ -1321,11 +1309,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.61';
+const APP_VERSION = '1.47.63';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.63',
+    data: '14/07/2026',
+    itens: [
+      'Faturamento → Previsão de Tributos: removida a tabela por competência (mês a mês), que dependia da data de emissão da NF de venda — campo que nunca é preenchido em nenhum lugar do sistema, então a tabela sempre aparecia vazia. A tela agora mostra só a previsão calculada por Espelho e a seção "Guias de Recolhimento", que já é o controle real (previsto × valor informado pelo contador).',
+    ]
+  },
+  {
+    versao: '1.47.62',
+    data: '14/07/2026',
+    itens: [
+      'Ajuste visual: checkboxes novos das Guias de Recolhimento/Previsão de Impostos passaram de azul (padrão do navegador) para verde, mesma cor usada no resto do sistema.',
+    ]
+  },
   {
     versao: '1.47.61',
     data: '14/07/2026',
@@ -8638,7 +8640,7 @@ function abaEspelhoDadosHTML(nf, c, ob, cli){
     <label>Previsão de Impostos</label>
     <input type="text" value="${fmtMoney(previsaoImpostos)}" disabled>
     <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:6px;${podeEditar?'cursor:pointer':'opacity:.65'}">
-      <input type="checkbox" id="fe-incluir-previsao" ${nf.incluirPrevisaoImpostos!==false?'checked':''} ${podeEditar?'':'disabled'} style="width:16px;height:16px">
+      <input type="checkbox" id="fe-incluir-previsao" ${nf.incluirPrevisaoImpostos!==false?'checked':''} ${podeEditar?'':'disabled'} style="width:16px;height:16px;accent-color:var(--green)">
       Incluir este Espelho na Previsão de Impostos (conta "Provisão de Impostos" em Contas Correntes)
     </label>
     <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;gap:24px;flex-wrap:wrap">
@@ -9314,44 +9316,13 @@ async function excluirEspelhoNF(id){
   fecharModal(); renderAll();
 }
 
-/* ---- Previsão de Tributos (relatório calculado, sem cadastro próprio) ---- */
+/* ---- Previsão de Tributos ----
+ * v1.47.63: removida a tabela por competência (agrupava por nf.dataEmissao, campo
+ * que nunca é preenchido em nenhum lugar do sistema — a tela ficava sempre vazia,
+ * pra qualquer Espelho). A tela virou só a seção de Guias de Recolhimento, que é
+ * o controle real (previsão por Espelho × valor real informado pelo contador). */
 function renderFatTributos(){
-  const tb=document.getElementById('fat-tributos-tbody'); if(!tb) return;
-  tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-tributos')) return;
-  // v1.47.61: a previsão deixou de usar a MÉDIA das 2 alíquotas sobre o valor total
-  // da NF (aproximação de antes de existir a separação produto/serviço por Espelho)
-  // e passou a somar previsaoImpostosEspelho(n) — o mesmo cálculo exato já usado em
-  // cada Espelho individualmente (produto×alíquota + serviço×alíquota). Só entram
-  // nessa soma os Espelhos com "Incluir na Previsão de Impostos" marcado.
-  const porMes = {};
-  (db.notasFiscais||[]).forEach(n=>{
-    if(!n.dataEmissao) return;
-    const mes = n.dataEmissao.slice(0,7); // "YYYY-MM"
-    if(!porMes[mes]) porMes[mes] = {valor:0, retido:0, previsao:0};
-    porMes[mes].valor += n.valor||0;
-    porMes[mes].retido += n.impostosRetidos||0;
-    if(n.incluirPrevisaoImpostos!==false) porMes[mes].previsao += previsaoImpostosEspelho(n);
-  });
-  const meses = Object.keys(porMes).sort().reverse();
-  if(!meses.length){
-    tb.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">Nenhuma NF com data de emissão cadastrada ainda.</td></tr>';
-    return;
-  }
-  meses.forEach(mes=>{
-    const {valor, retido, previsao} = porMes[mes];
-    const aRecolher = previsao - retido;
-    const [ano,mm] = mes.split('-');
-    const label = new Date(+ano, +mm-1, 1).toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
-    const tr=document.createElement('tr');
-    tr.innerHTML=`
-      <td>${label.charAt(0).toUpperCase()+label.slice(1)}</td>
-      <td>${fmtMoney(valor)}</td>
-      <td>${fmtMoney(retido)}</td>
-      <td>${fmtMoney(previsao)}</td>
-      <td style="font-weight:600;color:${aRecolher>0?'var(--red)':'var(--green)'}">${fmtMoney(aRecolher)}</td>`;
-    tb.appendChild(tr);
-  });
   renderGuiasTributos();
 }
 
@@ -9375,7 +9346,7 @@ function abrirNovaGuiaTributos(){
     const previsto = previsaoImpostosEspelho(n);
     return `
       <div style="border-bottom:1px solid var(--border);padding:8px 4px;display:flex;align-items:center;gap:10px">
-        <input type="checkbox" id="gt-inc-${idx}" onchange="_gtToggleLinha(${idx})" style="width:16px;height:16px;flex-shrink:0">
+        <input type="checkbox" id="gt-inc-${idx}" onchange="_gtToggleLinha(${idx})" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--green)">
         <div style="flex:1;min-width:0;font-size:13px">
           <div><b>Espelho #${n.id}</b>${c?' · Cartão #'+c.num:''}${cli?' · '+escHtml(cli.nome):''}</div>
           <div style="color:var(--muted);font-size:12px">${n.dataEmissao?fmtDia2(n.dataEmissao):'sem data de emissão'} · Previsto: ${fmtMoney(previsto)}</div>
