@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.53';
+const APP_VERSION = '1.47.54';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.54',
+    data: '14/07/2026',
+    itens: [
+      'SRM → Pedido Aprovado: quando não há XML da NF e a extração do PDF falha (ou não é confiável), agora dá pra cadastrar os itens manualmente (número/data da NF + itens um a um) — antes o processo ficava travado, sem jeito nenhum de liberar "Lançar no Estoque" ou "Cadastrar no Catálogo" nesse caso.',
+    ]
+  },
   {
     versao: '1.47.53',
     data: '14/07/2026',
@@ -6973,6 +6980,9 @@ function abaPedidoAprovadoSRMHTML(c){
           <div style="background:#e0e0e0;border-radius:4px;height:5px;overflow:hidden"><div id="nf-xml-bar" style="background:#1976d2;height:100%;width:0%;transition:width 0.15s"></div></div>
           <div id="nf-xml-size" style="font-size:10px;color:var(--muted);margin-top:2px;text-align:right"></div>
         </div>
+        <div style="text-align:center;margin-top:${temPdf?'6px':'10px'};padding-top:${temPdf?'8px':'0'};${temPdf?'border-top:1px dashed var(--border)':''}">
+          <button type="button" class="link-btn" style="font-size:11.5px" onclick="abrirCadastroManualNF(${cot.id},${c.id})">✍️ Não tenho XML nem PDF confiável — cadastrar itens manualmente</button>
+        </div>
       </div>`;
   }
 
@@ -7272,6 +7282,96 @@ async function extrairDanfePdfSRM(cotId, srmId){
   }catch(e){
     if(statusEl) statusEl.textContent='❌ '+(e.message||e);
   }
+}
+
+/* v1.47.54: cadastro manual dos itens da NF — último recurso quando não há XML e a
+   extração do PDF (parseDanfePDF) falha ou não é confiável. Sem isso o processo
+   ficava travado: "Lançar no Estoque" e "Cadastrar no Catálogo" exigem cot.nfItens
+   preenchido, e só existiam 2 jeitos automáticos de preencher (XML/PDF). Os itens
+   digitados aqui viram exatamente o mesmo formato de nfItens que XML/PDF produzem
+   (nItem/xProd/NCM/CFOP/qCom/uCom/vUnCom/vProd), então o resto do fluxo (match com
+   proposta, Lançar no Estoque, Cadastrar no Catálogo) funciona sem nenhum caso especial. */
+function _linhaManualNFHTML(){
+  return `
+    <div class="manf-row" style="display:grid;grid-template-columns:1fr 90px 70px 70px 100px 28px;gap:6px;align-items:center;margin-bottom:6px">
+      <input class="manf-desc" placeholder="Descrição Fiscal *" style="font-size:12px">
+      <input class="manf-ncm" placeholder="NCM" style="font-size:12px">
+      <input class="manf-qtd" type="number" step="0.001" min="0" placeholder="Qtd *" style="font-size:12px;text-align:right">
+      <input class="manf-un" placeholder="Un" value="UN" style="font-size:12px;text-align:center">
+      <input class="manf-valor" placeholder="Vl Unit *" inputmode="decimal" value="0,00" style="font-size:12px;text-align:right" oninput="mascaraMoeda(this)">
+      <button type="button" class="icon-btn del" title="Remover item" onclick="this.closest('.manf-row').remove()">🗑</button>
+    </div>`;
+}
+function adicionarLinhaManualNF(){
+  document.getElementById('manf-itens-wrap')?.insertAdjacentHTML('beforeend', _linhaManualNFHTML());
+}
+function abrirCadastroManualNF(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  abrirModal(`
+    <h3>✍️ Cadastrar Itens da NF Manualmente</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Use quando não há XML e a extração do PDF não funcionou. Preencha os dados como aparecem na NF — os itens entram no fluxo normal (correspondência com a proposta, Lançar no Estoque, Cadastrar no Catálogo).</p>
+    <div class="form-row">
+      <div><label>Número da NF *</label><input id="manf-numero" placeholder="Ex.: 12345"></div>
+      <div><label>Data de emissão *</label><input id="manf-data" type="date" value="${localDia(0)}"></div>
+    </div>
+    <label style="margin-top:10px;margin-bottom:2px">Itens</label>
+    <div style="display:grid;grid-template-columns:1fr 90px 70px 70px 100px 28px;gap:6px;font-size:10.5px;color:var(--muted);margin-bottom:3px">
+      <span>Descrição Fiscal</span><span>NCM</span><span>Qtd</span><span>Un</span><span>Vl Unit</span><span></span>
+    </div>
+    <div id="manf-itens-wrap">${_linhaManualNFHTML()}</div>
+    <button type="button" class="link-btn" style="font-size:12px;margin-top:2px" onclick="adicionarLinhaManualNF()">＋ Adicionar item</button>
+    <div id="manf-status" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:8px"></div>
+    <div class="actions">
+      <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'pedidos')">← Voltar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarNFManualSRM(${cotId},${srmId})">Salvar Itens</button>
+    </div>`);
+}
+async function salvarNFManualSRM(cotId, srmId){
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const numero=(document.getElementById('manf-numero').value||'').trim();
+  const data=document.getElementById('manf-data').value;
+  const statusEl=document.getElementById('manf-status');
+  if(!numero){ alert('Informe o número da NF.'); return; }
+  if(!data){ alert('Informe a data de emissão.'); return; }
+  const linhas=[...document.querySelectorAll('.manf-row')];
+  const itens=[];
+  for(const linha of linhas){
+    const desc=(linha.querySelector('.manf-desc').value||'').trim();
+    if(!desc) continue;
+    const qtd=parseFloat(linha.querySelector('.manf-qtd').value)||0;
+    const valorUnit=parseFloat((linha.querySelector('.manf-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
+    const ncm=(linha.querySelector('.manf-ncm').value||'').trim();
+    const un=(linha.querySelector('.manf-un').value||'').trim();
+    if(qtd<=0){ alert(`Item "${desc}": informe uma quantidade válida.`); return; }
+    if(!valorUnit){ alert(`Item "${desc}": informe o valor unitário.`); return; }
+    itens.push({
+      nItem: itens.length+1, xProd: desc, NCM: ncm||null, CFOP: null,
+      qCom: qtd, uCom: un||'UN',
+      vUnCom: valorUnit, vProd: Math.round(qtd*valorUnit*100)/100
+    });
+  }
+  if(!itens.length){ alert('Adicione ao menos 1 item.'); return; }
+  const btn=btnModalPrimario(); btnSalvando(btn);
+  const valorTotal=Math.round(itens.reduce((s,i)=>s+i.vProd,0)*100)/100;
+  const card=(db.cardsSRM||[]).find(x=>x.id===srmId);
+  const forn=card?(db.fornecedores||[]).find(f=>f.id===card.fornecedorId):null;
+  const emitCnpj=forn?(forn.cnpjCpf||null):null;
+  const emitNome=forn?(forn.nomeFantasia||forn.nome):null;
+  try{
+    const {error}=await sb.from('srm_cotacoes').update({
+      nf_itens:itens, nf_numero:numero, nf_data:data, nf_valor_total:valorTotal,
+      nf_emit_cnpj:emitCnpj, nf_emit_nome:emitNome
+    }).eq('id',cotId);
+    if(error) throw error;
+  }catch(e){
+    btnRestaurar(btn);
+    if(statusEl) statusEl.textContent='❌ Erro ao salvar: '+(e.message||e);
+    return;
+  }
+  cot.nfItens=itens; cot.nfNumero=numero; cot.nfData=data; cot.nfValorTotal=valorTotal;
+  cot.nfEmitCnpj=emitCnpj; cot.nfEmitNome=emitNome;
+  registrarLog('editar','srm',srmId,`NF ${numero} cadastrada manualmente (${itens.length} itens, ${fmtMoney(valorTotal)}) — sem XML/PDF`);
+  save(); abrirEditarSRM(srmId,'pedidos');
 }
 
 /** Salva as correspondências entre itens da NF (nfItens[]) e produtos do estoque.
@@ -9445,7 +9545,7 @@ const AJUDA_CONTEUDO = {
       pedidos: {
         titulo: 'Aba Pedido Aprovado',
         html: `
-          <p>É aqui que a Nota Fiscal da cotação vencedora é anexada — em XML (o sistema lê e quebra em itens automaticamente) ou só PDF (fica um registro só de valor total, sem itens discriminados).</p>
+          <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois).</p>
           <h5>Lançar no Estoque</h5>
           <p>Só aparece quando: veio XML com itens, nós somos quem paga (🏢 empresa), e — o card NÃO tem obra vinculada, OU tem obra vinculada com "🧾 Fatura direta" marcado. Cria entrada real em <code>estoque_movimentacoes</code>, reservando saldo pra essa obra se houver uma vinculada.</p>
           <h5>Cadastrar no Catálogo</h5>
