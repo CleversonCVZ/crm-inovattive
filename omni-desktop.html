@@ -1326,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.74';
+const APP_VERSION = '1.47.75';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.75',
+    data: '14/07/2026',
+    itens: [
+      'Nova classificação "Conta de Sistema" em Contas Correntes, aplicada às contas internas Provisão de Impostos e Migração Sistema junho 2026: contas marcadas assim escondem o botão "＋ Lançar" e bloqueiam editar/excluir lançamentos (na tela da conta, no Extrato e nos próprios atalhos de edição) para quem não tiver a nova permissão "Contas Correntes — Lançar/Editar/Excluir em Contas de Sistema" liberada em Grupos de Acesso. Visualizar o Extrato continua liberado normalmente. Um selo 🔒 identifica essas contas na lista, no cabeçalho da conta e no Extrato.',
+    ]
+  },
   {
     versao: '1.47.74',
     data: '14/07/2026',
@@ -2733,6 +2740,7 @@ const RECURSOS = [
   {id:'fin-contas-receber-receber',     grupo:'financeiro', nome:'Contas a Receber — Marcar como Recebido'},
   {id:'fin-contas-correntes-gerenciar', grupo:'financeiro', nome:'Contas Correntes — Criar, Editar e Excluir contas'},
   {id:'fin-contas-correntes-lancar',   grupo:'financeiro', nome:'Contas Correntes — Lançar movimentações e ver Extrato'},
+  {id:'fin-contas-correntes-sistema',  grupo:'financeiro', nome:'Contas Correntes — Lançar/Editar/Excluir em Contas de Sistema (ex.: Provisão de Impostos)'},
   {id:'fin-centros-custo-gerenciar',    grupo:'financeiro', nome:'Centros de Custo — Adicionar e Editar'}
 ];
 
@@ -3390,7 +3398,8 @@ async function carregarDadosSupabase(){
         diaVencimentoFatura:c.dia_vencimento_fatura||null,
         faturaInicial:Number(c.fatura_inicial)||0,
         ocultarPainel:!!c.ocultar_painel,
-        ehProvisaoImpostos:!!c.eh_provisao_impostos
+        ehProvisaoImpostos:!!c.eh_provisao_impostos,
+        ehContaSistema:!!c.eh_conta_sistema
       }));
     if(movimentacoes.data)
       db.movimentacoes = movimentacoes.data.map(m=>({
@@ -8646,13 +8655,13 @@ async function contaProvisaoImpostos(){
   if(conta) return conta;
   const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
   const {error} = await sb.from('contas_correntes').insert({
-    id, nome:'Provisão de Impostos', tipo:'caixa', saldo_inicial:0, ativo:true, eh_provisao_impostos:true
+    id, nome:'Provisão de Impostos', tipo:'caixa', saldo_inicial:0, ativo:true, eh_provisao_impostos:true, eh_conta_sistema:true
   });
   if(error){ console.error('Erro ao criar conta Provisão de Impostos:', error.message); return null; }
   conta = {
     id, nome:'Provisão de Impostos', banco:'', agencia:'', conta:'', tipo:'caixa',
     saldoInicial:0, ativo:true, limite:null, diaFechamento:null, diaVencimentoFatura:null,
-    faturaInicial:0, ocultarPainel:false, ehProvisaoImpostos:true
+    faturaInicial:0, ocultarPainel:false, ehProvisaoImpostos:true, ehContaSistema:true
   };
   if(!Array.isArray(db.contasCorrente)) db.contasCorrente=[];
   db.contasCorrente.push(conta);
@@ -12810,7 +12819,7 @@ function renderContasCorrente(){
     tr.onmouseleave = ()=>{ tr.style.background=''; };
     tr.innerHTML = `
       <td>
-        <div style="font-weight:600;font-size:14px">${escHtml(c.nome)}${c.ocultarPainel?` <span style="font-size:10px;color:var(--muted);font-weight:400;background:var(--border);padding:1px 6px;border-radius:8px">oculta do painel</span>`:''}</div>
+        <div style="font-weight:600;font-size:14px">${escHtml(c.nome)}${c.ocultarPainel?` <span style="font-size:10px;color:var(--muted);font-weight:400;background:var(--border);padding:1px 6px;border-radius:8px">oculta do painel</span>`:''}${c.ehContaSistema?` <span style="font-size:10px;color:var(--muted);font-weight:400;background:var(--border);padding:1px 6px;border-radius:8px">🔒 sistema</span>`:''}</div>
         ${nomeExtra?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${escHtml(nomeExtra)}</div>`:''}
       </td>
       <td>
@@ -12898,6 +12907,12 @@ function _ccFormHTML(c={}){
           </label>
         </label>
       </div>
+      <div>
+        <label style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="ncc-sistema" ${c.ehContaSistema?'checked':''} ${podeUsar(usuarioAtual,'fin-contas-correntes-sistema')?'':'disabled'} style="accent-color:var(--green)">
+          <span style="font-size:12px;color:var(--muted)">Conta de Sistema (só quem tem a permissão "Contas de Sistema" pode lançar/editar/excluir movimentações)</span>
+        </label>
+      </div>
     </div>`;
 }
 
@@ -12906,7 +12921,11 @@ function _ccFormHTML(c={}){
  *  sobre uma conta qualquer em vez de precisar abrir a conta primeiro). */
 function abrirEscolherConta(acao){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para acessar Contas Correntes.'); return; }
-  const contas = (db.contasCorrente||[]).filter(c=>c.ativo);
+  // v1.47.75: contas de sistema (Provisão de Impostos, Migração etc.) só entram na
+  // lista de "Lançar" pra quem tem a permissão extra — visualizar Extrato continua
+  // liberado normalmente (é só a mutação que é travada).
+  const podeSistema = podeUsar(usuarioAtual,'fin-contas-correntes-sistema');
+  const contas = (db.contasCorrente||[]).filter(c=>c.ativo && (acao!=='lancar' || !c.ehContaSistema || podeSistema));
   if(!contas.length){ alert('Nenhuma conta cadastrada ainda. Clique em "＋ Nova Conta" para começar.'); return; }
   const opts = contas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
     .map(c=>`<option value="${c.id}">${escHtml(c.nome)}</option>`).join('');
@@ -12945,13 +12964,16 @@ function abrirEditarContaCorrente(id){
   if(!podeGer && !podeLancar){ alert('Sem permissão para acessar esta conta.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===id);
   if(!c) return;
+  // v1.47.75: conta de sistema esconde o botão "+ Lançar" pra quem não tem a
+  // permissão extra — Extrato continua liberado (só leitura de saldo).
+  const podeLancarAqui = podeLancar && (!c.ehContaSistema || podeUsar(usuarioAtual,'fin-contas-correntes-sistema'));
   abrirModal(`
-    <h3>${escHtml(c.nome)}</h3>
+    <h3>${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:8px;vertical-align:middle">🔒 Conta de Sistema</span>`:''}</h3>
     <div class="aba-corpo">${podeGer ? _ccFormHTML(c) : `<p style="color:var(--muted);padding:20px 0">Você tem acesso apenas a lançamentos e extrato desta conta.</p>`}</div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
         ${podeLancar?`<button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${id})">📋 Extrato</button>`:''}
-        ${podeLancar?`<button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>`:''}
+        ${podeLancarAqui?`<button class="btn neutral" onclick="fecharModal();abrirLancamentoManual(${id})">＋ Lançar</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
         ${podeGer?`<button class="btn danger" onclick="excluirContaCorrente(${id})">Excluir</button>`:''}
@@ -13004,6 +13026,7 @@ async function salvarEdicaoContaCorrente(id){
   const agencia  = (document.getElementById('ncc-agencia').value||'').trim();
   const ativo    = document.getElementById('ncc-ativo').checked;
   const ocultarPainel = document.getElementById('ncc-ocultar')?.checked || false;
+  const ehContaSistema = document.getElementById('ncc-sistema')?.checked || false;
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
@@ -13012,10 +13035,10 @@ async function salvarEdicaoContaCorrente(id){
     nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo, ocultar_painel:ocultarPainel,
     limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
-    fatura_inicial:faturaInicial||0
+    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
-  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
+  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
   save();
   await _delay;
   btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
@@ -13061,15 +13084,16 @@ async function salvarNovaContaCorrente(){
   ) || 0;
   const {limite, diaFechamento, diaVencimentoFatura, faturaInicial} = _ccCartaoCampos();
   const ocultarPainel = document.getElementById('ncc-ocultar')?.checked || false;
+  const ehContaSistema = document.getElementById('ncc-sistema')?.checked || false;
 
   const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
-  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, ocultarPainel, limite, diaFechamento, diaVencimentoFatura, faturaInicial};
+  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial};
 
   const {error} = await sb.from('contas_correntes').insert({
     id, nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo:true, ocultar_painel:ocultarPainel,
     limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
-    fatura_inicial:faturaInicial||0
+    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema
   });
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
@@ -13086,6 +13110,12 @@ function abrirLancamentoManual(contaId){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para lançar movimentações.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
   if(!c) return;
+  // v1.47.75: contas de sistema exigem a permissão extra 'fin-contas-correntes-sistema'
+  // — trava aqui também (não só escondendo o botão) pra cobrir chamadas diretas.
+  if(c.ehContaSistema && !podeUsar(usuarioAtual,'fin-contas-correntes-sistema')){
+    alert(`"${c.nome}" é uma Conta de Sistema — só quem tem a permissão "Contas de Sistema" pode lançar movimentações nela.`);
+    return;
+  }
   const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
     .map(x=>`<option value="${x.id}">${escHtml(x.nome)}</option>`).join('');
   const contasOpts = (db.contasCorrente||[]).filter(x=>x.ativo && x.id!==contaId)
@@ -13270,6 +13300,9 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para visualizar o extrato.'); return; }
   const c = (db.contasCorrente||[]).find(x=>x.id===contaId);
   if(!c) return;
+  // v1.47.75: em contas de sistema, só quem tem a permissão extra vê os botões de
+  // lançar/editar/excluir aqui no extrato — o resto continua vendo só leitura.
+  const podeMexerAqui = !c.ehContaSistema || podeUsar(usuarioAtual,'fin-contas-correntes-sistema');
 
   const todasMovs = (db.movimentacoes||[])
     .filter(m=>m.contaId===contaId)
@@ -13316,8 +13349,8 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
           <td style="padding:8px 10px;font-size:11px;color:var(--muted);white-space:nowrap">${TIPO_LABEL[m.tipo]||m.tipo}</td>
           <td style="padding:8px 10px;text-align:right;font-weight:700;color:${cor};white-space:nowrap">${sinal} ${fmtMoney(m.valor)}</td>
           <td style="padding:8px 6px;text-align:right;white-space:nowrap">
-            <button class="icon-btn" title="Editar" onclick="editarMovimentacao(${m.id},${contaId})">✏️</button>
-            <button class="icon-btn del" title="Excluir" onclick="excluirMovimentacao(${m.id},${contaId})">🗑</button>
+            ${podeMexerAqui?`<button class="icon-btn" title="Editar" onclick="editarMovimentacao(${m.id},${contaId})">✏️</button>
+            <button class="icon-btn del" title="Excluir" onclick="excluirMovimentacao(${m.id},${contaId})">🗑</button>`:''}
           </td>
         </tr>`;
       }).join('')
@@ -13326,7 +13359,7 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   abrirModal(`
     <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:0;border-bottom:1px solid var(--border)">
       <h3 style="margin-bottom:4px">📋 Extrato</h3>
-      <div style="font-size:14px;font-weight:600;color:var(--muted)">${escHtml(c.nome)}</div>
+      <div style="font-size:14px;font-weight:600;color:var(--muted)">${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;background:var(--border);padding:2px 8px;border-radius:8px">🔒 Conta de Sistema</span>`:''}</div>
     </div>
 
     <div style="flex-shrink:0;display:flex;gap:20px;padding:14px 0 10px;border-bottom:1px solid var(--border)">
@@ -13391,7 +13424,7 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
 
     <div class="actions" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:10px">
       <button class="btn neutral" onclick="fecharModal()">← Fechar</button>
-      <button class="btn primary" style="margin-left:auto" onclick="fecharModal();abrirLancamentoManual(${contaId})">＋ Lançar</button>
+      ${podeMexerAqui?`<button class="btn primary" style="margin-left:auto" onclick="fecharModal();abrirLancamentoManual(${contaId})">＋ Lançar</button>`:''}
     </div>`, 'cartao');
 }
 
@@ -13399,6 +13432,11 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
 function editarMovimentacao(id, contaId){
   const m = (db.movimentacoes||[]).find(x=>x.id===id);
   if(!m) return;
+  const _cc = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(_cc && _cc.ehContaSistema && !podeUsar(usuarioAtual,'fin-contas-correntes-sistema')){
+    alert('Esta é uma Conta de Sistema. Você não tem permissão para editar lançamentos nela.');
+    return;
+  }
   const ccOpts = (db.centrosCusto||[]).filter(x=>x.ativo)
     .map(x=>`<option value="${x.id}" ${m.centroCustoId===x.id?'selected':''}>${escHtml(x.nome)}</option>`).join('');
   const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
@@ -13463,6 +13501,11 @@ function editarMovimentacao(id, contaId){
 async function salvarEdicaoMovimentacao(id, contaId){
   const m = (db.movimentacoes||[]).find(x=>x.id===id);
   if(!m) return;
+  const _cc = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(_cc && _cc.ehContaSistema && !podeUsar(usuarioAtual,'fin-contas-correntes-sistema')){
+    alert('Esta é uma Conta de Sistema. Você não tem permissão para editar lançamentos nela.');
+    return;
+  }
   const tipo      = document.getElementById('em-tipo').value;
   const valor     = parseFloat((document.getElementById('em-valor').value||'0').replace(/\./g,'').replace(',','.')) || 0;
   const data      = document.getElementById('em-data').value;
@@ -13495,6 +13538,11 @@ async function salvarEdicaoMovimentacao(id, contaId){
 
 /** Exclui uma movimentação individual */
 async function excluirMovimentacao(id, contaId){
+  const _cc = (db.contasCorrente||[]).find(x=>x.id===contaId);
+  if(_cc && _cc.ehContaSistema && !podeUsar(usuarioAtual,'fin-contas-correntes-sistema')){
+    alert('Esta é uma Conta de Sistema. Você não tem permissão para excluir lançamentos nela.');
+    return;
+  }
   if(!confirm('Excluir este lançamento?')) return;
   await excluirDoSupabase('movimentacoes_financeiras', id);
   db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
