@@ -1326,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.71';
+const APP_VERSION = '1.47.72';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.72',
+    data: '14/07/2026',
+    itens: [
+      'Corrigido: a conta "Provisão de Impostos" (Contas Correntes) lançava a previsão como entrada (positiva), somando indevidamente ao Saldo Consolidado — como se fosse dinheiro extra. Já que é dinheiro comprometido pra pagar imposto depois (e já está fisicamente numa conta real), agora é lançado como saída (negativa), descontando do consolidado o quanto já está reservado. Os 3 lançamentos existentes foram corrigidos direto no banco.',
+    ]
+  },
   {
     versao: '1.47.71',
     data: '14/07/2026',
@@ -8648,12 +8655,20 @@ async function _removerMovProvisaoEspelho(nfId, contaId){
   db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.contaId===contaId && m.origemTipo==='espelho_previsao' && m.origemId===nfId));
 }
 
-/* v1.47.61: mantém 1 único lançamento de entrada na conta Provisão de Impostos por
- * Espelho, sempre substituído (nunca duplicado) pelo valor ATUAL da previsão —
- * chamar sempre que o Espelho for salvo, ganhar/perder item, tiver o checkbox
- * "Incluir na Previsão de Impostos" alterado, ou for excluído. Espelhos já
- * vinculados a uma Guia de Recolhimento (guiaTributosId) não entram mais aqui —
- * a baixa desses é feita explicitamente na confirmação da guia. */
+/* v1.47.61: mantém 1 único lançamento na conta Provisão de Impostos por Espelho,
+ * sempre substituído (nunca duplicado) pelo valor ATUAL da previsão — chamar
+ * sempre que o Espelho for salvo, ganhar/perder item, tiver o checkbox "Incluir
+ * na Previsão de Impostos" alterado, ou for excluído. Espelhos já vinculados a
+ * uma Guia de Recolhimento (guiaTributosId) não entram mais aqui — a baixa
+ * desses é feita explicitamente na confirmação da guia.
+ * v1.47.72: o lançamento é 'saida' (negativo), não 'entrada'. Essa conta soma no
+ * Saldo Consolidado de Contas Correntes junto com as contas reais — o dinheiro da
+ * previsão de imposto já está fisicamente em alguma conta real (Inter, Mercado
+ * Pago etc.), então lançar como entrada positiva aqui duplicava esse valor no
+ * total. Como 'saida', a previsão desconta do consolidado o quanto já está
+ * comprometido com imposto a pagar, mostrando o saldo "livre" de verdade —
+ * cleverson identificou isso ao notar que uma provisão de algo a pagar deveria
+ * reduzir o saldo, não somar. */
 async function sincronizarProvisaoImpostoEspelho(nf){
   const conta = await contaProvisaoImpostos();
   if(!conta) return;
@@ -8664,7 +8679,7 @@ async function sincronizarProvisaoImpostoEspelho(nf){
   if(!(valor>0)) return;
   const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const {data, error} = await sb.from('movimentacoes_financeiras').insert({
-    id:idMov, conta_id:conta.id, tipo:'entrada', valor,
+    id:idMov, conta_id:conta.id, tipo:'saida', valor,
     descricao:`Previsão de Impostos — Espelho #${nf.id}`,
     data_movimento: nf.dataEmissao || localDia(0),
     origem_tipo:'espelho_previsao', origem_id:nf.id
