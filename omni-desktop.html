@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.58';
+const APP_VERSION = '1.47.59';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.59',
+    data: '14/07/2026',
+    itens: [
+      'Ajuda contextual: atualizado o texto de "Lançar no Estoque" e "Fatura Direta" no Card SRM (estava desatualizado desde a liberação da v1.47.57 — ainda descrevia a trava antiga por obra). Adicionado explicação das 3 situações de entrada (sem obra, com obra, com obra + Fatura Direta) e da mecânica de saída de estoque nas 3 abas Itens de O.S. (Projeto não mexe com material; Execução reserva por obra e completa do geral se faltar; Avulsa sempre debita do estoque geral).',
+    ]
+  },
   {
     versao: '1.47.58',
     data: '14/07/2026',
@@ -9516,7 +9523,9 @@ const AJUDA_CONTEUDO = {
       <h5>Arquivos do Arquiteto × Projeto de Automação</h5>
       <p>"Arquivos do Arquiteto" são os DWG/PDF recebidos de fora (início formal do projeto). "Projeto de Automação" são os arquivos do SEU projeto finalizado — obrigatório ter ao menos 1 arquivo aqui antes de encerrar a O.S.</p>
       <h5>Fechar / Reabrir</h5>
-      <p>Fechar trava edição dos campos; reabrir pede confirmação extra se já tiver arquivo de projeto enviado (pra evitar reabrir sem querer uma O.S. já entregue).</p>`
+      <p>Fechar trava edição dos campos; reabrir pede confirmação extra se já tiver arquivo de projeto enviado (pra evitar reabrir sem querer uma O.S. já entregue).</p>
+      <h5>Estoque</h5>
+      <p>Este tipo de O.S. não mexe com material nenhum — é só mão de obra de projeto/automação, então não existe aba Itens nem baixa de estoque aqui.</p>`
   },
   'os-execucao': {
     titulo: 'O.S. — Execução/Obra (OBR)',
@@ -9531,7 +9540,7 @@ const AJUDA_CONTEUDO = {
       },
       itens: {
         titulo: 'Aba Itens',
-        html: `<p>Itens da proposta aprovada alocados pra serem entregues/consumidos nesta O.S. específica (uma obra pode ter várias O.S. de execução, cada uma consumindo uma parte dos itens contratados). Marcar um item de produto aqui é o que dispara a baixa automática no Estoque, descontando do saldo reservado da obra.</p>`
+        html: `<p>Itens da proposta aprovada alocados pra serem entregues/consumidos nesta O.S. específica (uma obra pode ter várias O.S. de execução, cada uma consumindo uma parte dos itens contratados). Alocar um item de produto aqui já dispara a baixa automática no Estoque, na hora — sem precisar de um passo extra de "confirmar retirada". A baixa consome primeiro do saldo reservado pra esta obra; se faltar, completa do estoque geral automaticamente. Nunca puxa da reserva de outra obra sozinho — isso só acontece via transferência manual, feita no Almoxarifado. Reduzir ou remover a quantidade do item devolve (estorna) a parte correspondente.</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -9555,7 +9564,7 @@ const AJUDA_CONTEUDO = {
       },
       itens: {
         titulo: 'Aba Itens',
-        html: `<p>Diferente da Execução (que puxa da proposta aprovada), aqui Serviços e Produtos são escolhidos direto do catálogo — não depende de uma proposta vinculada, já que atendimento avulso normalmente não tem uma proposta formal por trás.</p>`
+        html: `<p>Diferente da Execução (que puxa da proposta aprovada), aqui Serviços e Produtos são escolhidos direto do catálogo — não depende de uma proposta vinculada, já que atendimento avulso normalmente não tem uma proposta formal por trás. Selecionar um produto na combo já debita do estoque na hora, mas sempre do estoque GERAL — nunca da reserva de uma obra específica, mesmo que esta O.S. esteja vinculada a um cartão de obra (o raciocínio: atendimento avulso normalmente acontece numa obra já concluída, então não faz sentido reservar material contra ela).</p>`
       },
       custos: {
         titulo: 'Aba Custos',
@@ -9595,7 +9604,7 @@ const AJUDA_CONTEUDO = {
           <p><b>🏢 Nós pagamos:</b> gera Conta a Pagar normalmente (aba Financeiro), o custo entra no Resultado Aparente da obra.</p>
           <p><b>👤 Cliente paga diretamente:</b> o dinheiro nunca passa pela empresa — nenhuma Conta a Pagar é criada, o material NÃO entra em estoque (fica só o histórico/ficha do produto), e o valor não conta no Resultado Aparente. Aparece com o selo "💳 Cliente paga direto".</p>
           <h5>🧾 Fornecedor emite a NF de venda direto ao cliente final</h5>
-          <p>Só aparece quando o card tem obra vinculada. Marque quando: nós pagamos o fornecedor normalmente, colocamos o material em estoque e controlamos o uso via O.S. — mas quem fatura a VENDA desse material pro cliente final é o próprio fornecedor, direto, a preço de custo (sem markup nosso). Efeito prático: libera o botão "Lançar no Estoque" mesmo com obra vinculada (normalmente travado nesse caso), e os itens desse produto, nessa obra, somem da lista de "disponíveis pra adicionar" no Espelho de Faturamento — porque a NF fiscal deles não é nossa.</p>
+          <p>Só aparece quando o card tem obra vinculada. Marque quando: nós pagamos o fornecedor normalmente, colocamos o material em estoque e controlamos o uso via O.S. — mas quem fatura a VENDA desse material pro cliente final é o próprio fornecedor, direto, a preço de custo (sem markup nosso). O material entra em estoque e é reservado pra obra normalmente, do mesmo jeito que qualquer outra compra vinculada a obra — a única diferença prática é que os itens desse produto, nessa obra, somem da lista de "disponíveis pra adicionar" no Espelho de Faturamento, porque a NF fiscal deles não é nossa.</p>
           <h5>Concluído / Cancelado</h5>
           <p>Marcar "Concluído" valida antes: precisa ter uma cotação selecionada com N.F. importada (XML ou PDF), e — se formos nós que pagamos — nenhuma Conta a Pagar pendente na aba Financeiro.</p>`
       },
@@ -9610,9 +9619,12 @@ const AJUDA_CONTEUDO = {
         html: `
           <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois). Itens digitados manualmente podem ser corrigidos depois no botão "✏️ Editar Itens" (some assim que "Lançar no Estoque" já foi confirmado, pra não desincronizar do que já virou movimentação real); itens de XML/PDF são fiéis ao documento fiscal — pra corrigi-los, o caminho é remover e reimportar.</p>
           <h5>Lançar no Estoque</h5>
-          <p>Só aparece quando: veio XML com itens, nós somos quem paga (🏢 empresa), e — o card NÃO tem obra vinculada, OU tem obra vinculada com "🧾 Fatura direta" marcado. Cria entrada real em <code>estoque_movimentacoes</code>, reservando saldo pra essa obra se houver uma vinculada.</p>
+          <p>Disponível sempre que a NF já tem itens (XML, PDF ou cadastro manual) e somos nós que pagamos (🏢 empresa) — com ou sem obra vinculada. São 3 situações possíveis:</p>
+          <p><b>1. Sem obra vinculada (compra pro almoxarifado):</b> a entrada fica no estoque geral, disponível pra qualquer obra puxar depois.</p>
+          <p><b>2. Com obra vinculada:</b> a entrada já reserva o saldo pra aquela obra específica — só uma O.S. daquela obra consegue puxar esse material como reservado.</p>
+          <p><b>3. Com obra vinculada e "🧾 Fatura direta" marcado:</b> funciona igual à situação 2 (reserva pra obra normalmente), a única diferença é que esse material fica de fora do Espelho de Faturamento — porque a NF de venda pro cliente não é nossa.</p>
           <h5>Cadastrar no Catálogo</h5>
-          <p>Aparece quando o material NÃO vai passar por estoque de verdade (obra vinculada sem "Fatura direta", ou cliente paga direto) — cadastra só a ficha do produto (nome/NCM/unidade), sem quantidade nem movimentação, só pra ajudar o catálogo a crescer e futuros matches automáticos funcionarem melhor.</p>`
+          <p>Aparece só quando o material NÃO vai passar por estoque de verdade — caso do cliente pagando direto o fornecedor. Cadastra só a ficha do produto (nome/NCM/unidade), sem quantidade nem movimentação, pra ajudar o catálogo a crescer e futuros matches automáticos funcionarem melhor.</p>`
       },
       financeiro: {
         titulo: 'Aba Financeiro',
