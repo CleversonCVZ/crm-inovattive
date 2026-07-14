@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.57';
+const APP_VERSION = '1.47.58';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.58',
+    data: '14/07/2026',
+    itens: [
+      'Corrigido bug de correspondência entre item de NF e produto do catálogo (matchProdutoEstoque): quando mais de um produto tinha o mesmo NCM (normal — NCM é um código fiscal amplo, não identifica produto), o sistema escolhia o primeiro da lista sem checar se era o certo, podendo lançar entrada de estoque no produto errado. Agora casa primeiro por nome fiscal exato; NCM só decide sozinho quando aponta pra um único produto.',
+    ]
+  },
   {
     versao: '1.47.57',
     data: '14/07/2026',
@@ -21330,18 +21337,30 @@ function normalizarNomeProduto(s){
   }).join(' ');
 }
 
-/** Tenta casar um item de NF com um produto já cadastrado no catálogo de estoque,
- *  por NCM (exato) e, na falta, por nome fiscal (exato, case-insensitive).
- *  Usada tanto no lançamento no estoque quanto no cadastro de catálogo sem estoque. */
+/** Tenta casar um item de NF com um produto já cadastrado no catálogo de estoque.
+ *  v1.47.58: prioridade invertida — nome fiscal exato primeiro (identifica o produto
+ *  certo mesmo quando o NCM é compartilhado por vários produtos, o que é normal:
+ *  NCM é um código de classificação fiscal amplo, não um identificador único de
+ *  produto). NCM sozinho só decide quando aponta pra exatamente 1 produto ativo —
+ *  se apontar pra mais de um (ambíguo), não escolhe sozinho, devolve null e deixa
+ *  pra confirmação manual (combo do "Lançar no Estoque"/"Cadastrar no Catálogo").
+ *  Bug real encontrado: 3 produtos diferentes (Relé/Dimmer/Controladora RT1021,
+ *  fornecedor Controlart) compartilhavam NCM 85371020 com um 4º produto (Central
+ *  Processadora RTI) — a versão antiga (NCM primeiro, sem checar ambiguidade)
+ *  casava os 3 itens errados com a Central Processadora, porque ela vinha primeiro
+ *  na lista ordenada por nome. */
 function matchProdutoEstoque(it){
-  const produtos=db.estoqueProdutos||[];
-  let m=null;
-  if(it.NCM) m=produtos.find(p=>p.ativo&&p.ncm===it.NCM);
-  if(!m&&it.xProd){
+  const produtos=(db.estoqueProdutos||[]).filter(p=>p.ativo);
+  if(it.xProd){
     const xUp=it.xProd.toUpperCase();
-    m=produtos.find(p=>p.ativo&&p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
+    const porNome=produtos.find(p=>p.nomeFiscal&&p.nomeFiscal.toUpperCase()===xUp);
+    if(porNome) return porNome;
   }
-  return m;
+  if(it.NCM){
+    const candidatos=produtos.filter(p=>p.ncm===it.NCM);
+    if(candidatos.length===1) return candidatos[0];
+  }
+  return null;
 }
 
 /** v1.47.0: tenta casar a descrição comercial de um item de PROPOSTA com o catálogo de
