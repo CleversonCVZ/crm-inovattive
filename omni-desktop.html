@@ -1098,6 +1098,7 @@
       <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-guia-tributos" onclick="abrirNovaGuiaTributos()">+ Nova Guia</button>
     </div>
+    <div class="stats" id="fat-tributos-stats-bar" style="display:none;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Registre aqui a guia real (DAS) que o contador manda cada mês, vinculando os Espelhos que ela cobre — o valor informado por Espelho vira Conta a Pagar automaticamente e baixa a previsão correspondente da conta "Provisão de Impostos" (calculada por Espelho: produto/serviço × alíquotas de Configurações do Sistema).
     </p>
@@ -1303,11 +1304,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.66';
+const APP_VERSION = '1.47.67';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.67',
+    data: '14/07/2026',
+    itens: [
+      'Faturamento → Previsão de Tributos: adicionados indicadores no topo (mesmo layout de Contas Correntes/Clientes/Obras) com o Total Estimado, Total Real (somando todas as Guias já lançadas) e a diferença acumulada (Sobrou/Faltou).',
+    ]
+  },
   {
     versao: '1.47.66',
     data: '14/07/2026',
@@ -9480,6 +9488,31 @@ function renderGuiasTributos(){
   const btnNova = document.getElementById('btn-nova-guia-tributos');
   if(btnNova) btnNova.style.display = podeEditar ? '' : 'none';
   const guias = (db.guiasTributos||[]).slice().sort((a,b)=>(b.dataRecebimento||'').localeCompare(a.dataRecebimento||''));
+
+  // v1.47.67: indicadores agregados no topo (mesmo padrão visual usado em Contas
+  // Correntes/Clientes/Obras etc.) — soma previsto×real de TODAS as guias já
+  // lançadas, pra dar a visão consolidada de quanto foi estimado vs. realmente
+  // cobrado pelo contador, e a diferença acumulada (sobra ou falta).
+  const statsBar = document.getElementById('fat-tributos-stats-bar');
+  if(statsBar){
+    let totalPrevisto=0, totalReal=0;
+    guias.forEach(g=>{
+      const espelhosG = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===g.id);
+      totalPrevisto += espelhosG.reduce((s,n)=>s+previsaoImpostosEspelho(n),0);
+      totalReal += g.valorTotal||0;
+    });
+    const diffTotal = totalPrevisto - totalReal;
+    if(guias.length){
+      statsBar.style.display = 'flex';
+      statsBar.innerHTML = `
+        <div class="stat"><div class="n">${fmtMoney(totalPrevisto)}</div><div class="l">Total Estimado</div></div>
+        <div class="stat"><div class="n">${fmtMoney(totalReal)}</div><div class="l">Total Real (Guias)</div></div>
+        <div class="stat"><div class="n" style="color:${diffTotal>=0?'var(--green)':'var(--red)'}">${fmtMoney(Math.abs(diffTotal))}</div><div class="l">${diffTotal>=0?'Sobrou':'Faltou'}</div></div>`;
+    } else {
+      statsBar.style.display = 'none';
+    }
+  }
+
   if(!guias.length){
     cont.innerHTML = `<div class="empty" style="padding:16px;text-align:center">Nenhuma guia registrada ainda.</div>`;
     return;
