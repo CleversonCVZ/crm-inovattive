@@ -1302,11 +1302,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.64';
+const APP_VERSION = '1.47.65';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.65',
+    data: '14/07/2026',
+    itens: [
+      'Adicionado botão de ajuda (❓) no modal "Nova Guia de Recolhimento", que estava sem — e atualizado o texto de ajuda de Faturamento → Previsão de Tributos, que ainda descrevia a tabela por competência removida na v1.47.63.',
+    ]
+  },
   {
     versao: '1.47.64',
     data: '14/07/2026',
@@ -9339,6 +9346,7 @@ function abrirNovaGuiaTributos(){
     .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
   if(!elegiveis.length){ alert('Nenhum Espelho disponível — todos já estão vinculados a alguma guia, ou nenhum está marcado "Incluir na Previsão de Impostos".'); return; }
   window._gtElegiveis = elegiveis;
+  contextoAjuda.modal='guia-tributos'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.65
   const linhas = elegiveis.map((n,idx)=>{
     const c = (db.cards||[]).find(x=>x.id===n.cardId);
     const ob = (db.obras||[]).find(o=>o.id===n.obraId);
@@ -9357,7 +9365,10 @@ function abrirNovaGuiaTributos(){
       </div>`;
   }).join('');
   abrirModal(`
-    <h3>Nova Guia de Recolhimento</h3>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:0">Nova Guia de Recolhimento</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <p style="font-size:13px;color:var(--muted)">Marque os Espelhos que essa guia cobre (segundo o contador) e digite o valor real de imposto de cada um.</p>
     <div class="form-row">
       <div><label>Data de Recebimento da Guia</label><input type="date" id="gt-data" value="${localDia(0)}"></div>
@@ -9967,8 +9978,18 @@ const AJUDA_CONTEUDO = {
     html: `<p>Cadastro das colunas do kanban de Faturamento (ex.: A Emitir, Emitida, Enviada ao Cliente, Paga, Cancelada) — edite nome, cor e ordem direto na tabela.</p>`
   },
   'fat-tributos': {
-    titulo: 'Faturamento — Previsão de Tributos',
-    html: `<p>Relatório agregado, sem cadastro próprio: agrupa as Notas Fiscais dos Espelhos por mês de emissão e aplica as alíquotas de Produto/Serviço configuradas em Configurações do Sistema. Diferente da coluna "Previsão de Impostos" de cada Espelho (que já mostra o valor exato por NF) — aqui é a visão consolidada mês a mês, útil pra planejamento de caixa.</p>`
+    titulo: 'Faturamento — Guias de Recolhimento',
+    html: `
+      <p>Aqui você registra a guia real (DAS) que o contador manda todo mês, vinculando os Espelhos de Faturamento que ela cobre e digitando o valor real de imposto de cada um (o campo já vem pré-preenchido com a Previsão de Impostos calculada do Espelho, mas é editável).</p>
+      <p>Ao confirmar: cria a guia, gera 1 Conta a Pagar no valor total e baixa a previsão desses Espelhos da conta "Provisão de Impostos" (Contas Correntes) — é assim que a previsão "sai" de lá pra virar a conta real. Um Espelho só aparece na lista de "elegíveis" enquanto não estiver marcado numa guia ainda.</p>
+      <p>Ao pagar a Conta a Pagar gerada, a guia é marcada como paga automaticamente.</p>`
+  },
+  'guia-tributos': {
+    titulo: 'Nova Guia de Recolhimento',
+    html: `
+      <p>Marque os Espelhos que essa guia cobre (segundo o que o contador informou) e digite o valor real de imposto de cada um — o campo vem pré-preenchido com a Previsão de Impostos calculada, mas edite pro valor real se for diferente.</p>
+      <p>Só aparecem aqui Espelhos marcados "Incluir na Previsão de Impostos" e que ainda não foram vinculados a nenhuma outra guia.</p>
+      <p>Se a mesma guia cobrir vários Espelhos, peça pro contador separar o valor de cada um — o rateio é manual, não há divisão automática.</p>`
   },
   'fat-espelhos': {
     titulo: 'Faturamento — Espelhos de NF',
