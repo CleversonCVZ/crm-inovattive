@@ -1326,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.75';
+const APP_VERSION = '1.47.76';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.76',
+    data: '14/07/2026',
+    itens: [
+      'Corrigido: a tela Financeiro — Acompanhamento (visão Centros de Custo) estava somando os lançamentos automáticos de "Previsão de Impostos" (conta Provisão de Impostos) como se fossem gasto real do mês, aparecendo como "(sem centro)" dentro de Custos Variáveis. Essa conta é só controle interno (uma reserva do que ainda vai ser pago), não um gasto realizado — agora os lançamentos de Contas de Sistema são excluídos desse relatório.',
+    ]
+  },
   {
     versao: '1.47.75',
     data: '14/07/2026',
@@ -3954,9 +3961,12 @@ function _finPainelCC(statsEl, corpoEl, periodo){
   const t=termoBusca();
   const CCs = db.centrosCusto||[];
   const mapa = {};
+  // Contas de Sistema (ex.: Provisão de Impostos) são controle interno, não gasto real — não entram aqui
+  const contasSistemaIds = new Set((db.contasCorrente||[]).filter(c=>c.ehContaSistema).map(c=>c.id));
   // Apenas movimentações de saída (fonte única — evita dupla contagem com CP e OS Custos)
   (db.movimentacoes||[]).forEach(m=>{
     if(m.tipo!=='saida') return;
+    if(contasSistemaIds.has(m.contaId)) return;
     if(!_finPainelDentroFiltro(m.dataMovimento, periodo)) return;
     if(t){
       const cc=CCs.find(x=>x.id===(m.centroCustoId||0));
