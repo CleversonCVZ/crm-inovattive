@@ -1095,6 +1095,7 @@
   <div class="view" id="view-fat-tributos">
     <div class="bar">
       <h2>Guias de Recolhimento</h2>
+      <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-guia-tributos" onclick="abrirNovaGuiaTributos()">+ Nova Guia</button>
     </div>
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
@@ -1302,11 +1303,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.65';
+const APP_VERSION = '1.47.66';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.66',
+    data: '14/07/2026',
+    itens: [
+      'Ajuste visual: botão "+ Nova Guia" (Faturamento → Previsão de Tributos) estava sem o `spacer` que empurra os botões pro canto superior direito nas outras telas do sistema — corrigido, agora fica no mesmo lugar padrão.',
+    ]
+  },
   {
     versao: '1.47.65',
     data: '14/07/2026',
