@@ -1326,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.77';
+const APP_VERSION = '1.47.78';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.78',
+    data: '14/07/2026',
+    itens: [
+      'Guias de Recolhimento: o combo de período agora filtra de verdade a tela inteira (indicadores e lista), não só "Todo o período" — "Este mês"/"3 meses"/"Este ano" passam a considerar a data de cada Guia, de cada Espelho e dos lançamentos manuais da Provisão de Impostos. Novo campo de data de criação nos Espelhos (não existia antes); Espelhos criados em versões anteriores ficam com a data de hoje, sem histórico retroativo real.',
+    ]
+  },
   {
     versao: '1.47.77',
     data: '14/07/2026',
@@ -3516,7 +3523,8 @@ async function carregarDadosSupabase(){
         servicoXlsPath:n.servico_xls_path||null, servicoXlsNome:n.servico_xls_nome||null,
         incluirPrevisaoImpostos:n.incluir_previsao_impostos!==false,
         impostoReal:n.imposto_real!=null?Number(n.imposto_real):null,
-        guiaTributosId:n.guia_tributos_id||null
+        guiaTributosId:n.guia_tributos_id||null,
+        criadoEm:n.criado_em||''
       }));
     if(guiasTributosRes.data)
       db.guiasTributos = guiasTributosRes.data.map(g=>({
@@ -8602,7 +8610,7 @@ async function confirmarNovoEspelhoFaturamento(){
     valor:0, impostosRetidos:0, dataEmissao:'', observacoes:'',
     produtoNumero:'', produtoData:'', produtoValor:null, produtoPdfPath:null, produtoPdfNome:null, produtoXlsPath:null, produtoXlsNome:null,
     servicoNumero:'', servicoData:'', servicoValor:null, servicoPdfPath:null, servicoPdfNome:null, servicoXlsPath:null, servicoXlsNome:null,
-    incluirPrevisaoImpostos:true, impostoReal:null, guiaTributosId:null
+    incluirPrevisaoImpostos:true, impostoReal:null, guiaTributosId:null, criadoEm:new Date().toISOString()
   };
   try{
     const {error} = await sb.from('notas_fiscais').upsert({
@@ -9609,37 +9617,40 @@ function renderGuiasTributos(){
   const podeEditar = podeEditarTela(usuarioAtual,'fat-tributos');
   const btnNova = document.getElementById('btn-nova-guia-tributos');
   if(btnNova) btnNova.style.display = podeEditar ? '' : 'none';
-  const guias = (db.guiasTributos||[]).slice().sort((a,b)=>(b.dataRecebimento||'').localeCompare(a.dataRecebimento||''));
+  // v1.47.78: período agora filtra a tela inteira (indicadores + lista), usando a
+  // data que cada tipo de registro realmente tem: Guias por dataRecebimento,
+  // Espelhos por criadoEm (novo campo — Espelhos criados antes desta versão não
+  // têm data real e ficam todos com "hoje", ver migração add_criado_em_notas_fiscais),
+  // lançamentos manuais da Provisão de Impostos por dataMovimento.
+  const periodoSel = (document.getElementById('fat-guias-periodo')||{}).value || 'tudo';
+  const guias = (db.guiasTributos||[]).filter(g=>_finPainelDentroFiltro(g.dataRecebimento, periodoSel))
+    .sort((a,b)=>(b.dataRecebimento||'').localeCompare(a.dataRecebimento||''));
 
   // v1.47.68: indicadores agregados no topo (mesmo padrão visual usado em Contas
   // Correntes/Clientes/Obras etc.). "Total Estimado" soma a Previsão de Impostos de
   // TODOS os Espelhos elegíveis (incluirPrevisaoImpostos!==false), estejam ou não
   // já vinculados a uma guia — é o total que a empresa espera pagar de imposto no
-  // regime Simples Nacional. "Total Real" soma o valor de TODAS as guias já
-  // lançadas pelo contador (0 se nenhuma guia existir ainda). A diferença mostra
-  // quanto do estimado ainda não foi confirmado como real (sempre visível, mesmo
-  // sem nenhuma guia lançada — diferente da v1.47.67, que só aparecia depois da
-  // 1ª guia e por isso cleverson não via nada na tela).
+  // regime Simples Nacional. "Total Real" soma o valor das guias já lançadas pelo
+  // contador dentro do período selecionado (0 se nenhuma guia existir ainda). A
+  // diferença mostra quanto do estimado ainda não foi confirmado como real (sempre
+  // visível, mesmo sem nenhuma guia lançada — diferente da v1.47.67, que só
+  // aparecia depois da 1ª guia e por isso cleverson não via nada na tela).
   const statsBar = document.getElementById('fat-tributos-stats-bar');
   if(statsBar){
-    const espelhosElegiveis = (db.notasFiscais||[]).filter(n=>n.incluirPrevisaoImpostos!==false);
+    const espelhosElegiveis = (db.notasFiscais||[]).filter(n=>n.incluirPrevisaoImpostos!==false && _finPainelDentroFiltro(n.criadoEm, periodoSel));
     let totalEstimado = espelhosElegiveis.reduce((s,n)=>s+previsaoImpostosEspelho(n),0);
-    // v1.47.77: quando o período selecionado é "Todo o período", soma também os
-    // lançamentos manuais (histórico migrado do sistema antigo) já registrados
-    // direto na conta "Provisão de Impostos" — eles não vêm de Espelho nenhum, mas
-    // representam imposto real já devido, e cleverson pediu pra entrarem no total
-    // estimado quando a visão é irrestrita por período.
-    const periodoSel = (document.getElementById('fat-guias-periodo')||{}).value || 'tudo';
-    if(periodoSel==='tudo'){
-      const contaProv = (db.contasCorrente||[]).find(c=>c.ehProvisaoImpostos);
-      if(contaProv){
-        const totalManual = (db.movimentacoes||[])
-          .filter(m=>m.contaId===contaProv.id && m.origemTipo==='manual' && m.tipo==='saida')
-          .reduce((s,m)=>s+(m.valor||0),0);
-        totalEstimado += totalManual;
-      }
+    // v1.47.77/78: soma também os lançamentos manuais (histórico migrado do sistema
+    // antigo) registrados direto na conta "Provisão de Impostos" — eles não vêm de
+    // Espelho nenhum, mas representam imposto real já devido. Filtrados pela data
+    // real do lançamento (dataMovimento), igual a qualquer outro relatório.
+    const contaProv = (db.contasCorrente||[]).find(c=>c.ehProvisaoImpostos);
+    if(contaProv){
+      const totalManual = (db.movimentacoes||[])
+        .filter(m=>m.contaId===contaProv.id && m.origemTipo==='manual' && m.tipo==='saida' && _finPainelDentroFiltro(m.dataMovimento, periodoSel))
+        .reduce((s,m)=>s+(m.valor||0),0);
+      totalEstimado += totalManual;
     }
-    const totalReal = (db.guiasTributos||[]).reduce((s,g)=>s+(g.valorTotal||0),0);
+    const totalReal = guias.reduce((s,g)=>s+(g.valorTotal||0),0);
     const diffTotal = totalEstimado - totalReal;
     statsBar.style.display = 'flex';
     statsBar.innerHTML = `
