@@ -1111,7 +1111,20 @@
     <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Registre aqui a guia real (DAS) que o contador manda cada mês, vinculando os Espelhos que ela cobre — o valor informado por Espelho vira Conta a Pagar automaticamente e baixa a previsão correspondente da conta "Provisão de Impostos" (calculada por Espelho: produto/serviço × alíquotas de Configurações do Sistema).
     </p>
-    <div id="fat-guias-lista"></div>
+    <table class="lista" id="fat-guias-table">
+      <thead><tr>
+        <th>Guia</th>
+        <th style="width:110px;text-align:center">Espelhos</th>
+        <th style="width:130px;text-align:right">Previsto</th>
+        <th style="width:130px;text-align:right">Real</th>
+        <th style="width:130px;text-align:right">Diferença</th>
+        <th style="width:170px">Status</th>
+      </tr></thead>
+      <tbody id="fat-guias-tbody"></tbody>
+    </table>
+    <div id="fat-guias-empty" class="empty" style="display:none">
+      Nenhuma guia registrada ainda. Clique em <b>+ Nova Guia</b> para começar.
+    </div>
   </div>
 
   <!-- ESTOQUE: PAINEL -->
@@ -1313,11 +1326,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.69';
+const APP_VERSION = '1.47.70';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.70',
+    data: '14/07/2026',
+    itens: [
+      'Guias de Recolhimento: a lista virou uma tabela igual ao resto do sistema (era um bloco de cards solto, destoando visualmente). Clicar numa guia agora abre um card de edição (mesmo padrão de Contas a Pagar) — dá pra corrigir a data, observações e o valor real de cada Espelho, ou excluir a guia inteira (o que desvincula os Espelhos, devolvendo-os pra previsão, e remove a Conta a Pagar gerada).',
+    ]
+  },
   {
     versao: '1.47.69',
     data: '14/07/2026',
@@ -9507,7 +9527,15 @@ async function confirmarNovaGuiaTributos(){
   renderFatTributos();
 }
 function renderGuiasTributos(){
-  const cont = document.getElementById('fat-guias-lista'); if(!cont) return;
+  // v1.47.70: convertido de lista de divs pro padrão <table class="lista"> +
+  // linha clicável (mesmo formato de Contas a Pagar/Recorrentes/etc.) — cleverson
+  // notou que a versão anterior (cards soltos) destoava visualmente do resto do
+  // sistema. Clique na linha abre abrirEditarGuiaTributos() (editar valores reais/
+  // data/observações ou excluir), igual ao padrão abrirEditarContaPagar().
+  const table = document.getElementById('fat-guias-table');
+  const tbody = document.getElementById('fat-guias-tbody');
+  const empty = document.getElementById('fat-guias-empty');
+  if(!tbody) return;
   const podeEditar = podeEditarTela(usuarioAtual,'fat-tributos');
   const btnNova = document.getElementById('btn-nova-guia-tributos');
   if(btnNova) btnNova.style.display = podeEditar ? '' : 'none';
@@ -9536,10 +9564,14 @@ function renderGuiasTributos(){
   }
 
   if(!guias.length){
-    cont.innerHTML = `<div class="empty" style="padding:16px;text-align:center">Nenhuma guia registrada ainda.</div>`;
+    if(table) table.style.display='none';
+    if(empty) empty.style.display='';
     return;
   }
-  cont.innerHTML = guias.map(g=>{
+  if(table) table.style.display='';
+  if(empty) empty.style.display='none';
+
+  tbody.innerHTML = guias.map(g=>{
     const espelhos = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===g.id);
     const totalPrevisto = espelhos.reduce((s,n)=>s+previsaoImpostosEspelho(n),0);
     const diff = totalPrevisto - g.valorTotal;
@@ -9547,21 +9579,152 @@ function renderGuiasTributos(){
     const statusBadge = g.status==='paga'
       ? `<span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">✅ Paga</span>`
       : `<span style="background:#e65100;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">⏳ Aguardando pagamento</span>`;
+    return `<tr style="cursor:pointer" onclick="abrirEditarGuiaTributos(${g.id})">
+      <td>
+        <div style="font-weight:600;font-size:14px">Guia #${g.id}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
+        ${cp?`<div style="font-size:11px;color:var(--muted)">Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':'pendente'})</div>`:''}
+        ${g.observacoes?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(g.observacoes)}</div>`:''}
+      </td>
+      <td style="text-align:center;font-size:13px">${espelhos.length}</td>
+      <td style="text-align:right;font-size:13px">${fmtMoney(totalPrevisto)}</td>
+      <td style="text-align:right;font-weight:700">${fmtMoney(g.valorTotal)}</td>
+      <td style="text-align:right;color:${diff>=0?'var(--green)':'var(--red)'}">${diff>=0?'Sobrou':'Faltou'} ${fmtMoney(Math.abs(diff))}</td>
+      <td>${statusBadge}</td>
+    </tr>`;
+  }).join('');
+}
+
+/* Modal "Editar Guia": mesmo dado da guia (data/observações) + valor real de cada
+ * Espelho vinculado, editável — cleverson pode corrigir um valor digitado errado
+ * ou ajustar a data depois de já ter lançado. Excluir desfaz tudo: desvincula os
+ * Espelhos (voltam a aparecer como elegíveis pra outra guia, e a previsão deles
+ * volta a entrar na conta "Provisão de Impostos"), remove a Conta a Pagar gerada
+ * e apaga a guia. */
+function abrirEditarGuiaTributos(id){
+  const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-tributos');
+  const podeExcluir = podeExcluirTela(usuarioAtual,'fat-tributos');
+  const espelhos = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===id);
+  const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+  window._egtGuiaId = id;
+  window._egtEspelhos = espelhos;
+  contextoAjuda.modal='guia-tributos'; contextoAjuda.aba=null; _refreshAjudaSeAberta();
+
+  const linhas = espelhos.map(n=>{
+    const c = (db.cards||[]).find(x=>x.id===n.cardId);
+    const ob = (db.obras||[]).find(o=>o.id===n.obraId);
+    const cli = ob ? cliente(ob.clienteId) : null;
+    const previsto = previsaoImpostosEspelho(n);
+    const valorFmt = (n.impostoReal||0).toFixed(2).replace('.',',');
     return `
-      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-          <div style="font-weight:700">Guia #${g.id}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
-          ${statusBadge}
+      <div style="border-bottom:1px solid var(--border);padding:8px 4px;display:flex;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0;font-size:13px">
+          <div><b>Espelho #${n.id}</b>${c?' · Cartão #'+c.num:''}${cli?' · '+escHtml(cli.nome):''}</div>
+          <div style="color:var(--muted);font-size:12px">Previsto: ${fmtMoney(previsto)}</div>
         </div>
-        <div style="font-size:13px;color:var(--muted);margin-top:4px">${espelhos.length} Espelho(s) vinculado(s)${cp?` · Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':'pendente'})`:''}</div>
-        <div style="display:flex;gap:20px;margin-top:6px;font-size:13px;flex-wrap:wrap">
-          <div>Previsto: <b>${fmtMoney(totalPrevisto)}</b></div>
-          <div>Real (guia): <b>${fmtMoney(g.valorTotal)}</b></div>
-          <div style="color:${diff>=0?'var(--green)':'var(--red)'}">${diff>=0?'Sobrou':'Faltou'}: <b>${fmtMoney(Math.abs(diff))}</b></div>
+        <div style="width:140px;flex-shrink:0">
+          <input type="text" id="egt-real-${n.id}" inputmode="decimal" value="${valorFmt}" oninput="mascaraMoeda(this);_egtRecalc()" ${podeEditar?'':'disabled'} style="width:100%">
         </div>
-        ${g.observacoes?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${escHtml(g.observacoes)}</div>`:''}
       </div>`;
   }).join('');
+
+  abrirModal(`
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h3 style="margin:0">Guia de Recolhimento #${id}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
+    <div class="form-row">
+      <div><label>Data de Recebimento da Guia</label><input type="date" id="egt-data" value="${g.dataRecebimento||''}" ${podeEditar?'':'disabled'}></div>
+      <div><label>Vencimento da Conta a Pagar</label><input type="date" id="egt-vencimento" value="${cp?.dataVencimento||''}" ${podeEditar?'':'disabled'}></div>
+    </div>
+    <label>Observações</label><textarea id="egt-obs" placeholder="Opcional" ${podeEditar?'':'disabled'}>${escHtml(g.observacoes||'')}</textarea>
+    <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;margin-top:10px">${linhas}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
+      <span>Previsto: <b id="egt-tot-previsto">${fmtMoney(espelhos.reduce((s,n)=>s+previsaoImpostosEspelho(n),0))}</b></span>
+      <span>Valor real: <b id="egt-tot-real">${fmtMoney(g.valorTotal)}</b></span>
+    </div>
+    <div class="actions rodape-cartao" style="justify-content:space-between">
+      <div>${podeExcluir?`<button class="btn danger" onclick="excluirGuiaTributos(${id})">Excluir</button>`:''}</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn neutral" onclick="fecharModal()">Fechar</button>
+        ${podeEditar?`<button class="btn primary" data-btn-salvar onclick="salvarEdicaoGuiaTributos(${id})">Salvar</button>`:''}
+      </div>
+    </div>`, 'wide');
+}
+function _egtRecalc(){
+  const espelhos = window._egtEspelhos||[];
+  let totReal=0;
+  espelhos.forEach(n=>{ totReal += lerMoeda(`egt-real-${n.id}`)||0; });
+  const elR = document.getElementById('egt-tot-real'); if(elR) elR.textContent = fmtMoney(totReal);
+}
+async function salvarEdicaoGuiaTributos(id){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão pra editar guias.'); return; }
+  const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
+  const espelhos = window._egtEspelhos||[];
+  const dataRecebimento = document.getElementById('egt-data').value||null;
+  const dataVencimento = document.getElementById('egt-vencimento').value||null;
+  const observacoes = document.getElementById('egt-obs').value.trim();
+  if(!dataVencimento){ alert('Informe o vencimento da Conta a Pagar.'); return; }
+
+  const valores = espelhos.map(n=>({nf:n, valorReal: lerMoeda(`egt-real-${n.id}`)||0}));
+  const valorTotal = valores.reduce((s,x)=>s+x.valorReal,0);
+  if(valorTotal<=0){ alert('Informe ao menos um valor real maior que zero.'); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  g.dataRecebimento = dataRecebimento;
+  g.observacoes = observacoes;
+  g.valorTotal = valorTotal;
+  await sb.from('guias_tributos').update({data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal}).eq('id', id);
+
+  const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+  if(cp){
+    cp.valor = valorTotal;
+    cp.dataVencimento = dataVencimento;
+    await sb.from('contas_pagar').update({valor:valorTotal, data_vencimento:dataVencimento}).eq('id', cp.id);
+  }
+
+  for(const {nf, valorReal} of valores){
+    nf.impostoReal = valorReal;
+    await sb.from('notas_fiscais').update({imposto_real:valorReal}).eq('id', nf.id);
+  }
+
+  registrarLog('editar','guia_tributos',id,`Guia de Recolhimento #${id} editada`);
+  saveLocal(); syncDadosSupabase();
+  renderFatTributos(); renderFinPainel();
+  btnSalvo(btn);
+}
+async function excluirGuiaTributos(id){
+  if(!podeExcluirTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para excluir guias.'); return; }
+  const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
+  const espelhos = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===id);
+  const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+  const avisoPaga = (cp&&cp.status==='pago') ? '\n\nA Conta a Pagar já estava paga — a movimentação na conta corrente também será removida.' : '';
+  if(!confirm(`Excluir a Guia #${id}? ${espelhos.length} Espelho(s) vinculado(s) voltam a ficar disponíveis pra outra guia, e a Conta a Pagar gerada será removida.${avisoPaga}`)) return;
+
+  for(const nf of espelhos){
+    nf.guiaTributosId = null;
+    nf.impostoReal = null;
+    await sb.from('notas_fiscais').update({guia_tributos_id:null, imposto_real:null}).eq('id', nf.id);
+    await sincronizarProvisaoImpostoEspelho(nf); // recria a previsão desse Espelho na conta Provisão de Impostos
+  }
+
+  if(cp){
+    const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cp.id));
+    for(const m of movsVinculadas) await excluirDoSupabase('movimentacoes_financeiras', m.id);
+    db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cp.id)));
+    await excluirDoSupabase('contas_pagar', cp.id);
+    db.contasPagar = (db.contasPagar||[]).filter(x=>x.id!==cp.id);
+  }
+
+  await excluirDoSupabase('guias_tributos', id);
+  db.guiasTributos = (db.guiasTributos||[]).filter(x=>x.id!==id);
+
+  registrarLog('excluir','guia_tributos',id,`Guia de Recolhimento #${id} excluída, ${espelhos.length} Espelho(s) desvinculado(s)`);
+  saveLocal(); syncDadosSupabase();
+  fecharModal();
+  renderFatTributos(); renderFinPainel();
 }
 
 function salvarAliquotasTributos(){
