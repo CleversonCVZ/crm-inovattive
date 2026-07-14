@@ -1111,6 +1111,15 @@
       </thead>
       <tbody id="fat-tributos-tbody"></tbody>
     </table>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:24px 0 10px">
+      <h2 style="margin:0;font-size:16px">Guias de Recolhimento</h2>
+      <button class="btn primary" id="btn-nova-guia-tributos" onclick="abrirNovaGuiaTributos()">+ Nova Guia</button>
+    </div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+      Registre aqui a guia real (DAS) que o contador manda cada mês, vinculando os Espelhos que ela cobre — o valor informado por Espelho vira Conta a Pagar automaticamente e baixa a previsão correspondente da conta "Provisão de Impostos".
+    </p>
+    <div id="fat-guias-lista"></div>
   </div>
 
   <!-- ESTOQUE: PAINEL -->
@@ -1312,11 +1321,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.60';
+const APP_VERSION = '1.47.61';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.61',
+    data: '14/07/2026',
+    itens: [
+      'Faturamento → Previsão de Tributos: corrigido o cálculo (agora soma a previsão exata de cada Espelho, em vez da média antiga das 2 alíquotas sobre o valor total da NF).',
+      'Novo checkbox "Incluir na Previsão de Impostos" em cada Espelho de Faturamento — controla se ele entra na previsão calculada e na nova conta "Provisão de Impostos" (Contas Correntes, controle interno, sem movimentação bancária real).',
+      'Nova seção "Guias de Recolhimento" (dentro de Previsão de Tributos): registre a guia real (DAS) que o contador envia, vinculando os Espelhos que ela cobre com o valor real informado por ele — ao confirmar, gera automaticamente 1 Conta a Pagar e baixa a previsão correspondente da conta Provisão de Impostos, mostrando quanto sobrou/faltou em relação ao previsto. Ao pagar essa Conta a Pagar, a guia é marcada como paga automaticamente.',
+    ]
+  },
   {
     versao: '1.47.60',
     data: '14/07/2026',
@@ -2780,6 +2798,7 @@ function load(){
   if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
   if(!Array.isArray(db.notasFiscais))   db.notasFiscais=[];
   if(!Array.isArray(db.faturamentoItens)) db.faturamentoItens=[];
+  if(!Array.isArray(db.guiasTributos))   db.guiasTributos=[];
   if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
   if(!Array.isArray(db.estoqueMov))      db.estoqueMov=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
@@ -3049,7 +3068,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes, guiasTributosRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -3084,7 +3103,8 @@ async function carregarDadosSupabase(){
       sb.from('estoque_produtos').select('*').order('nome'),
       sb.from('estoque_movimentacoes').select('*').order('criado_em', {ascending:false}),
       sb.from('notas_fiscais').select('*').order('id'),
-      sb.from('faturamento_itens').select('*').order('id')
+      sb.from('faturamento_itens').select('*').order('id'),
+      sb.from('guias_tributos').select('*').order('id')
     ]);
     if(clientes.data)
       db.clientes = clientes.data.map(c=>({
@@ -3272,7 +3292,8 @@ async function carregarDadosSupabase(){
         diaFechamento:c.dia_fechamento||null,
         diaVencimentoFatura:c.dia_vencimento_fatura||null,
         faturaInicial:Number(c.fatura_inicial)||0,
-        ocultarPainel:!!c.ocultar_painel
+        ocultarPainel:!!c.ocultar_painel,
+        ehProvisaoImpostos:!!c.eh_provisao_impostos
       }));
     if(movimentacoes.data)
       db.movimentacoes = movimentacoes.data.map(m=>({
@@ -3303,6 +3324,7 @@ async function carregarDadosSupabase(){
         cardSrmId:p.card_srm_id||null,
         observacao:p.observacao||'',
         recorrenteId:p.recorrente_id||null,
+        guiaTributosId:p.guia_tributos_id||null,
         criadoEm:p.created_at||''
       }));
     if(fornecedores.data)
@@ -3371,7 +3393,16 @@ async function carregarDadosSupabase(){
         produtoXlsPath:n.produto_xls_path||null, produtoXlsNome:n.produto_xls_nome||null,
         servicoNumero:n.servico_numero||'', servicoData:n.servico_data?n.servico_data.slice(0,10):'', servicoValor:n.servico_valor!=null?Number(n.servico_valor):null,
         servicoPdfPath:n.servico_pdf_path||null, servicoPdfNome:n.servico_pdf_nome||null,
-        servicoXlsPath:n.servico_xls_path||null, servicoXlsNome:n.servico_xls_nome||null
+        servicoXlsPath:n.servico_xls_path||null, servicoXlsNome:n.servico_xls_nome||null,
+        incluirPrevisaoImpostos:n.incluir_previsao_impostos!==false,
+        impostoReal:n.imposto_real!=null?Number(n.imposto_real):null,
+        guiaTributosId:n.guia_tributos_id||null
+      }));
+    if(guiasTributosRes.data)
+      db.guiasTributos = guiasTributosRes.data.map(g=>({
+        id:g.id, dataRecebimento:g.data_recebimento?g.data_recebimento.slice(0,10):'', observacoes:g.observacoes||'',
+        valorTotal:Number(g.valor_total)||0, status:g.status||'aberta', contasPagarId:g.contas_pagar_id||null,
+        criadoEm:g.criado_em||''
       }));
     if(faturamentoItensRes.data)
       db.faturamentoItens = faturamentoItensRes.data.map(x=>({
@@ -8207,6 +8238,8 @@ async function adicionarItemFaturamentoMaterial(nfId, cardId, osId, propostaId, 
     if(error){ alert('Erro ao adicionar item: '+error.message); return; }
     db.faturamentoItens.push(novo);
     save();
+    const nf = (db.notasFiscais||[]).find(x=>x.id===nfId);
+    if(nf) await sincronizarProvisaoImpostoEspelho(nf);
     abrirEspelhoNF(nfId, 'produtos');
   } finally { _fatItemLock = false; }
 }
@@ -8230,6 +8263,8 @@ async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propost
     if(error){ alert('Erro ao adicionar item: '+error.message); return; }
     db.faturamentoItens.push(novo);
     save();
+    const nf2 = (db.notasFiscais||[]).find(x=>x.id===nfId);
+    if(nf2) await sincronizarProvisaoImpostoEspelho(nf2);
     abrirEspelhoNF(nfId, 'servicos');
   } finally { _fatItemLock = false; }
 }
@@ -8239,6 +8274,8 @@ async function removerItemFaturamento(itemId, nfId, tipo){
   await sb.from('faturamento_itens').delete().eq('id', itemId);
   db.faturamentoItens = (db.faturamentoItens||[]).filter(x=>x.id!==itemId);
   save();
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId);
+  if(nf) await sincronizarProvisaoImpostoEspelho(nf);
   abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
 }
 
@@ -8441,12 +8478,13 @@ async function confirmarNovoEspelhoFaturamento(){
     numero:'', obraId, cardId, faseId:primeiraFase?.id||null,
     valor:0, impostosRetidos:0, dataEmissao:'', observacoes:'',
     produtoNumero:'', produtoData:'', produtoValor:null, produtoPdfPath:null, produtoPdfNome:null, produtoXlsPath:null, produtoXlsNome:null,
-    servicoNumero:'', servicoData:'', servicoValor:null, servicoPdfPath:null, servicoPdfNome:null, servicoXlsPath:null, servicoXlsNome:null
+    servicoNumero:'', servicoData:'', servicoValor:null, servicoPdfPath:null, servicoPdfNome:null, servicoXlsPath:null, servicoXlsNome:null,
+    incluirPrevisaoImpostos:true, impostoReal:null, guiaTributosId:null
   };
   try{
     const {error} = await sb.from('notas_fiscais').upsert({
       id:novo.id, numero:'', obra_id:obraId, card_id:cardId, fase_id:novo.faseId,
-      valor:0, impostos_retidos:0, data_emissao:null, observacoes:''
+      valor:0, impostos_retidos:0, data_emissao:null, observacoes:'', incluir_previsao_impostos:true
     });
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao criar espelho: '+(e.message||e)); return; }
@@ -8500,6 +8538,72 @@ function abrirEspelhoNF(id, aba='dados'){
   if(aba==='xmlservico') carregarXmlFaturaTab(nf.id,'servico');
 }
 
+/* v1.47.61: conta virtual (Caixa Interno) que acumula a Previsão de Impostos de cada
+ * Espelho de Faturamento marcado "Incluir na Previsão de Impostos" — não representa
+ * dinheiro real nem exige transferência bancária nenhuma, é só um controle interno
+ * de quanto já foi "reservado" mentalmente pra impostos ainda não conciliados com
+ * uma Guia de Recolhimento real. Achada pela flag eh_provisao_impostos (não por id
+ * fixo) e criada sob demanda na primeira vez que for necessária. */
+async function contaProvisaoImpostos(){
+  let conta = (db.contasCorrente||[]).find(c=>c.ehProvisaoImpostos);
+  if(conta) return conta;
+  const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
+  const {error} = await sb.from('contas_correntes').insert({
+    id, nome:'Provisão de Impostos', tipo:'caixa', saldo_inicial:0, ativo:true, eh_provisao_impostos:true
+  });
+  if(error){ console.error('Erro ao criar conta Provisão de Impostos:', error.message); return null; }
+  conta = {
+    id, nome:'Provisão de Impostos', banco:'', agencia:'', conta:'', tipo:'caixa',
+    saldoInicial:0, ativo:true, limite:null, diaFechamento:null, diaVencimentoFatura:null,
+    faturaInicial:0, ocultarPainel:false, ehProvisaoImpostos:true
+  };
+  if(!Array.isArray(db.contasCorrente)) db.contasCorrente=[];
+  db.contasCorrente.push(conta);
+  return conta;
+}
+
+/* Remove o(s) lançamento(s) de previsão já existentes desse Espelho na conta
+ * Provisão de Impostos (nunca deveria haver mais de 1, mas limpa todos por
+ * segurança) — usado tanto pra ressincronizar quanto na exclusão do Espelho. */
+async function _removerMovProvisaoEspelho(nfId, contaId){
+  const existentes = (db.movimentacoes||[]).filter(m=>m.contaId===contaId && m.origemTipo==='espelho_previsao' && m.origemId===nfId);
+  if(!existentes.length) return;
+  await sb.from('movimentacoes_financeiras').delete().in('id', existentes.map(m=>m.id));
+  db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.contaId===contaId && m.origemTipo==='espelho_previsao' && m.origemId===nfId));
+}
+
+/* v1.47.61: mantém 1 único lançamento de entrada na conta Provisão de Impostos por
+ * Espelho, sempre substituído (nunca duplicado) pelo valor ATUAL da previsão —
+ * chamar sempre que o Espelho for salvo, ganhar/perder item, tiver o checkbox
+ * "Incluir na Previsão de Impostos" alterado, ou for excluído. Espelhos já
+ * vinculados a uma Guia de Recolhimento (guiaTributosId) não entram mais aqui —
+ * a baixa desses é feita explicitamente na confirmação da guia. */
+async function sincronizarProvisaoImpostoEspelho(nf){
+  const conta = await contaProvisaoImpostos();
+  if(!conta) return;
+  await _removerMovProvisaoEspelho(nf.id, conta.id);
+  if(nf.guiaTributosId) return;
+  if(nf.incluirPrevisaoImpostos===false) return;
+  const valor = previsaoImpostosEspelho(nf);
+  if(!(valor>0)) return;
+  const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
+  const {data, error} = await sb.from('movimentacoes_financeiras').insert({
+    id:idMov, conta_id:conta.id, tipo:'entrada', valor,
+    descricao:`Previsão de Impostos — Espelho #${nf.id}`,
+    data_movimento: nf.dataEmissao || localDia(0),
+    origem_tipo:'espelho_previsao', origem_id:nf.id
+  }).select().single();
+  if(error){ console.error('Erro ao lançar previsão de imposto:', error.message); return; }
+  if(!Array.isArray(db.movimentacoes)) db.movimentacoes=[];
+  db.movimentacoes.unshift({
+    id:data.id, contaId:data.conta_id, tipo:data.tipo, valor:Number(data.valor),
+    descricao:data.descricao||'', dataMovimento:data.data_movimento?data.data_movimento.slice(0,10):null,
+    centroCustoId:data.centro_custo_id||null, obraId:data.obra_id||null,
+    origemTipo:data.origem_tipo||'manual', origemId:data.origem_id||null,
+    contaDestinoId:data.conta_destino_id||null, criadoEm:data.created_at||''
+  });
+}
+
 /* v1.47.44: Previsão de Impostos — deixou de ser um valor digitado manualmente
  * ("Impostos Retidos") e passou a ser calculada automaticamente a partir do valor
  * de produto/serviço do próprio Espelho e das alíquotas de Produto/Serviço
@@ -8533,6 +8637,10 @@ function abaEspelhoDadosHTML(nf, c, ob, cli){
     </div>
     <label>Previsão de Impostos</label>
     <input type="text" value="${fmtMoney(previsaoImpostos)}" disabled>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:6px;${podeEditar?'cursor:pointer':'opacity:.65'}">
+      <input type="checkbox" id="fe-incluir-previsao" ${nf.incluirPrevisaoImpostos!==false?'checked':''} ${podeEditar?'':'disabled'} style="width:16px;height:16px">
+      Incluir este Espelho na Previsão de Impostos (conta "Provisão de Impostos" em Contas Correntes)
+    </label>
     <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:12px;display:flex;gap:24px;flex-wrap:wrap">
       <div style="font-size:13px"><span style="color:var(--muted)">Total Produto:</span> <b>${fmtMoney(totalProduto)}</b></div>
       <div style="font-size:13px"><span style="color:var(--muted)">Total Serviço:</span> <b>${fmtMoney(totalServico)}</b></div>
@@ -8545,15 +8653,18 @@ async function salvarDadosEspelhoNF(id){
   nf.faseId = +document.getElementById('fe-fase').value||nf.faseId;
   nf.impostosRetidos = previsaoImpostosEspelho(nf);
   nf.observacoes = document.getElementById('fe-obs').value.trim();
+  nf.incluirPrevisaoImpostos = !!document.getElementById('fe-incluir-previsao')?.checked;
   nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
            + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
   const btn=btnModalPrimario(); btnSalvando(btn);
   try{
     const {error}=await sb.from('notas_fiscais').update({
-      fase_id:nf.faseId, impostos_retidos:nf.impostosRetidos, observacoes:nf.observacoes, valor:nf.valor
+      fase_id:nf.faseId, impostos_retidos:nf.impostosRetidos, observacoes:nf.observacoes, valor:nf.valor,
+      incluir_previsao_impostos:nf.incluirPrevisaoImpostos
     }).eq('id', nf.id);
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  await sincronizarProvisaoImpostoEspelho(nf);
   registrarLog('editar','nota_fiscal',nf.id,`Espelho de Faturamento #${nf.id} atualizado`);
   saveLocal(); syncDadosSupabase();
   btnSalvo(btn); renderAll(); // v1.47.36: não fecha mais — só confirma que salvou
@@ -8909,6 +9020,7 @@ async function salvarBlocoEspelhoNF(id, bloco, btn){
     }).eq('id', nf.id);
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  await sincronizarProvisaoImpostoEspelho(nf);
   registrarLog('editar','nota_fiscal',nf.id,`Dados da NF de ${bloco} atualizados no Espelho #${nf.id}`);
   save();
   abrirEspelhoNF(id, bloco==='produto'?'produtos':'servicos');
@@ -9193,6 +9305,8 @@ async function excluirEspelhoNF(id){
   if(nf.servicoPdfPath) await sb.storage.from('faturamento-servicos').remove([nf.servicoPdfPath]);
   if(nf.servicoXlsPath) await sb.storage.from('faturamento-servicos').remove([nf.servicoXlsPath]);
   registrarLog('excluir','nota_fiscal',nf.id,`Espelho de Faturamento #${nf.id} excluído`);
+  const contaProv = (db.contasCorrente||[]).find(c=>c.ehProvisaoImpostos);
+  if(contaProv) await _removerMovProvisaoEspelho(nf.id, contaProv.id);
   await sb.from('notas_fiscais').delete().eq('id', id); // cascade apaga faturamento_itens
   db.notasFiscais=(db.notasFiscais||[]).filter(x=>x.id!==id);
   db.faturamentoItens=(db.faturamentoItens||[]).filter(x=>x.notaFiscalId!==id);
@@ -9205,22 +9319,19 @@ function renderFatTributos(){
   const tb=document.getElementById('fat-tributos-tbody'); if(!tb) return;
   tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-tributos')) return;
-  // v1.47.21: alíquota virou 2 (produto/serviço), configuradas em Configurações do
-  // Sistema. Os Espelhos de NF ainda não têm a separação produto×serviço por NF
-  // (isso vem com o novo fluxo de Espelhos de Faturamento) — até lá, esse cálculo
-  // usa a MÉDIA das duas alíquotas como aproximação. Trocar por valor exato assim
-  // que cada NF tiver seu valor de produto/serviço discriminado.
-  const empresa = db.empresa||{};
-  const aliqProduto = Number(empresa.aliquotaTributosProduto)||0;
-  const aliqServico = Number(empresa.aliquotaTributosServico)||0;
-  const aliquota = (aliqProduto + aliqServico) / 2;
+  // v1.47.61: a previsão deixou de usar a MÉDIA das 2 alíquotas sobre o valor total
+  // da NF (aproximação de antes de existir a separação produto/serviço por Espelho)
+  // e passou a somar previsaoImpostosEspelho(n) — o mesmo cálculo exato já usado em
+  // cada Espelho individualmente (produto×alíquota + serviço×alíquota). Só entram
+  // nessa soma os Espelhos com "Incluir na Previsão de Impostos" marcado.
   const porMes = {};
   (db.notasFiscais||[]).forEach(n=>{
     if(!n.dataEmissao) return;
     const mes = n.dataEmissao.slice(0,7); // "YYYY-MM"
-    if(!porMes[mes]) porMes[mes] = {valor:0, retido:0};
+    if(!porMes[mes]) porMes[mes] = {valor:0, retido:0, previsao:0};
     porMes[mes].valor += n.valor||0;
     porMes[mes].retido += n.impostosRetidos||0;
+    if(n.incluirPrevisaoImpostos!==false) porMes[mes].previsao += previsaoImpostosEspelho(n);
   });
   const meses = Object.keys(porMes).sort().reverse();
   if(!meses.length){
@@ -9228,8 +9339,7 @@ function renderFatTributos(){
     return;
   }
   meses.forEach(mes=>{
-    const {valor, retido} = porMes[mes];
-    const previsao = valor * aliquota/100;
+    const {valor, retido, previsao} = porMes[mes];
     const aRecolher = previsao - retido;
     const [ano,mm] = mes.split('-');
     const label = new Date(+ano, +mm-1, 1).toLocaleDateString('pt-BR',{month:'long', year:'numeric'});
@@ -9242,7 +9352,173 @@ function renderFatTributos(){
       <td style="font-weight:600;color:${aRecolher>0?'var(--red)':'var(--green)'}">${fmtMoney(aRecolher)}</td>`;
     tb.appendChild(tr);
   });
+  renderGuiasTributos();
 }
+
+/* ---- Guias de Recolhimento (DAS) — v1.47.61 ---- */
+
+/* Modal "Nova Guia": lista Espelhos elegíveis (incluídos na previsão e ainda sem
+ * guia vinculada) — cleverson escolhe quais essa guia cobre e digita o valor REAL
+ * de cada um (informado pelo contador), sem cálculo automático de rateio (decisão
+ * dele: prefere pedir o valor já separado por Espelho ao contador). */
+function abrirNovaGuiaTributos(){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão pra criar guias.'); return; }
+  const elegiveis = (db.notasFiscais||[])
+    .filter(n=>n.incluirPrevisaoImpostos!==false && !n.guiaTributosId)
+    .sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||''));
+  if(!elegiveis.length){ alert('Nenhum Espelho disponível — todos já estão vinculados a alguma guia, ou nenhum está marcado "Incluir na Previsão de Impostos".'); return; }
+  window._gtElegiveis = elegiveis;
+  const linhas = elegiveis.map((n,idx)=>{
+    const c = (db.cards||[]).find(x=>x.id===n.cardId);
+    const ob = (db.obras||[]).find(o=>o.id===n.obraId);
+    const cli = ob ? cliente(ob.clienteId) : null;
+    const previsto = previsaoImpostosEspelho(n);
+    return `
+      <div style="border-bottom:1px solid var(--border);padding:8px 4px;display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="gt-inc-${idx}" onchange="_gtToggleLinha(${idx})" style="width:16px;height:16px;flex-shrink:0">
+        <div style="flex:1;min-width:0;font-size:13px">
+          <div><b>Espelho #${n.id}</b>${c?' · Cartão #'+c.num:''}${cli?' · '+escHtml(cli.nome):''}</div>
+          <div style="color:var(--muted);font-size:12px">${n.dataEmissao?fmtDia2(n.dataEmissao):'sem data de emissão'} · Previsto: ${fmtMoney(previsto)}</div>
+        </div>
+        <div style="width:140px;flex-shrink:0">
+          <input type="text" id="gt-real-${idx}" inputmode="decimal" placeholder="Valor real" oninput="mascaraMoeda(this);_gtRecalc()" disabled style="width:100%">
+        </div>
+      </div>`;
+  }).join('');
+  abrirModal(`
+    <h3>Nova Guia de Recolhimento</h3>
+    <p style="font-size:13px;color:var(--muted)">Marque os Espelhos que essa guia cobre (segundo o contador) e digite o valor real de imposto de cada um.</p>
+    <div class="form-row">
+      <div><label>Data de Recebimento da Guia</label><input type="date" id="gt-data" value="${localDia(0)}"></div>
+      <div><label>Vencimento da Conta a Pagar</label><input type="date" id="gt-vencimento"></div>
+    </div>
+    <label>Observações</label><textarea id="gt-obs" placeholder="Opcional"></textarea>
+    <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;margin-top:10px">${linhas}</div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
+      <span>Previsto selecionado: <b id="gt-tot-previsto">R$ 0,00</b></span>
+      <span>Valor real digitado: <b id="gt-tot-real">R$ 0,00</b></span>
+    </div>
+    <div class="actions">
+      <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" id="btn-confirmar-guia" onclick="confirmarNovaGuiaTributos()">Confirmar e Lançar</button>
+    </div>`, 'wide');
+}
+function _gtToggleLinha(idx){
+  const chk = document.getElementById(`gt-inc-${idx}`);
+  const inp = document.getElementById(`gt-real-${idx}`);
+  if(inp){
+    inp.disabled = !chk.checked;
+    if(chk.checked && !inp.value){
+      const n = (window._gtElegiveis||[])[idx];
+      inp.value = previsaoImpostosEspelho(n).toFixed(2).replace('.',',');
+    }
+  }
+  _gtRecalc();
+}
+function _gtRecalc(){
+  const elegiveis = window._gtElegiveis||[];
+  let totPrevisto=0, totReal=0;
+  elegiveis.forEach((n,idx)=>{
+    const chk = document.getElementById(`gt-inc-${idx}`);
+    if(!chk||!chk.checked) return;
+    totPrevisto += previsaoImpostosEspelho(n);
+    totReal += lerMoeda(`gt-real-${idx}`)||0;
+  });
+  const elP = document.getElementById('gt-tot-previsto'); if(elP) elP.textContent = fmtMoney(totPrevisto);
+  const elR = document.getElementById('gt-tot-real'); if(elR) elR.textContent = fmtMoney(totReal);
+}
+async function confirmarNovaGuiaTributos(){
+  const btn = document.getElementById('btn-confirmar-guia');
+  if(btn?.disabled) return;
+  const elegiveis = window._gtElegiveis||[];
+  const selecionados = [];
+  elegiveis.forEach((n,idx)=>{
+    const chk = document.getElementById(`gt-inc-${idx}`);
+    if(!chk||!chk.checked) return;
+    const valorReal = lerMoeda(`gt-real-${idx}`)||0;
+    if(valorReal>0) selecionados.push({nf:n, valorReal});
+  });
+  if(!selecionados.length){ alert('Selecione ao menos um Espelho e informe o valor real (maior que zero).'); return; }
+  const dataVencimento = document.getElementById('gt-vencimento').value||null;
+  if(!dataVencimento){ alert('Informe o vencimento da Conta a Pagar.'); return; }
+  const dataRecebimento = document.getElementById('gt-data').value||null;
+  const observacoes = document.getElementById('gt-obs').value.trim();
+  const valorTotal = selecionados.reduce((s,x)=>s+x.valorReal,0);
+
+  btn.disabled=true; btn.textContent='Salvando…';
+
+  if(!Array.isArray(db.guiasTributos)) db.guiasTributos=[];
+  const guiaId = await proximoIdSeguro('guias_tributos', db.guiasTributos);
+  const {error:errGuia} = await sb.from('guias_tributos').insert({
+    id:guiaId, data_recebimento:dataRecebimento, observacoes, valor_total:valorTotal, status:'lancada'
+  });
+  if(errGuia){ alert('Erro ao criar guia: '+errGuia.message); btn.disabled=false; btn.textContent='Confirmar e Lançar'; return; }
+
+  if(!Array.isArray(db.contasPagar)) db.contasPagar=[];
+  const cpId = await proximoIdSeguro('contas_pagar', db.contasPagar);
+  const {error:errCp} = await sb.from('contas_pagar').insert({
+    id:cpId, descricao:`Guia de Recolhimento (DAS) — Guia #${guiaId}`, valor:valorTotal,
+    data_vencimento:dataVencimento, status:'pendente', guia_tributos_id:guiaId
+  });
+  if(errCp){
+    alert('A guia foi criada, mas houve erro ao gerar a Conta a Pagar: '+errCp.message+'. Lance manualmente e vincule depois.');
+  } else {
+    db.contasPagar.push({
+      id:cpId, descricao:`Guia de Recolhimento (DAS) — Guia #${guiaId}`, fornecedorId:null, valor:valorTotal,
+      dataVencimento, dataPagamento:null, status:'pendente', condicao:null, centroCustoId:null, obraId:null, osId:null,
+      contaId:null, cardSrmId:null, observacao:'', recorrenteId:null, guiaTributosId:guiaId, criadoEm:new Date().toISOString()
+    });
+    await sb.from('guias_tributos').update({contas_pagar_id:cpId}).eq('id', guiaId);
+  }
+  db.guiasTributos.push({id:guiaId, dataRecebimento, observacoes, valorTotal, status:'lancada', contasPagarId:errCp?null:cpId, criadoEm:new Date().toISOString()});
+
+  for(const {nf, valorReal} of selecionados){
+    nf.guiaTributosId = guiaId;
+    nf.impostoReal = valorReal;
+    await sb.from('notas_fiscais').update({guia_tributos_id:guiaId, imposto_real:valorReal}).eq('id', nf.id);
+    await sincronizarProvisaoImpostoEspelho(nf); // remove a previsão desses Espelhos (já conciliados nesta guia)
+  }
+
+  registrarLog('criar','guia_tributos',guiaId,`Guia de Recolhimento #${guiaId} criada, cobrindo ${selecionados.length} Espelho(s), Conta a Pagar #${cpId} gerada`);
+  saveLocal(); syncDadosSupabase();
+  fecharModal();
+  renderFatTributos();
+}
+function renderGuiasTributos(){
+  const cont = document.getElementById('fat-guias-lista'); if(!cont) return;
+  const podeEditar = podeEditarTela(usuarioAtual,'fat-tributos');
+  const btnNova = document.getElementById('btn-nova-guia-tributos');
+  if(btnNova) btnNova.style.display = podeEditar ? '' : 'none';
+  const guias = (db.guiasTributos||[]).slice().sort((a,b)=>(b.dataRecebimento||'').localeCompare(a.dataRecebimento||''));
+  if(!guias.length){
+    cont.innerHTML = `<div class="empty" style="padding:16px;text-align:center">Nenhuma guia registrada ainda.</div>`;
+    return;
+  }
+  cont.innerHTML = guias.map(g=>{
+    const espelhos = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===g.id);
+    const totalPrevisto = espelhos.reduce((s,n)=>s+previsaoImpostosEspelho(n),0);
+    const diff = totalPrevisto - g.valorTotal;
+    const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+    const statusBadge = g.status==='paga'
+      ? `<span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">✅ Paga</span>`
+      : `<span style="background:#e65100;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700">⏳ Aguardando pagamento</span>`;
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+          <div style="font-weight:700">Guia #${g.id}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
+          ${statusBadge}
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-top:4px">${espelhos.length} Espelho(s) vinculado(s)${cp?` · Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':'pendente'})`:''}</div>
+        <div style="display:flex;gap:20px;margin-top:6px;font-size:13px;flex-wrap:wrap">
+          <div>Previsto: <b>${fmtMoney(totalPrevisto)}</b></div>
+          <div>Real (guia): <b>${fmtMoney(g.valorTotal)}</b></div>
+          <div style="color:${diff>=0?'var(--green)':'var(--red)'}">${diff>=0?'Sobrou':'Faltou'}: <b>${fmtMoney(Math.abs(diff))}</b></div>
+        </div>
+        ${g.observacoes?`<div style="font-size:12px;color:var(--muted);margin-top:6px">${escHtml(g.observacoes)}</div>`:''}
+      </div>`;
+  }).join('');
+}
+
 function salvarAliquotasTributos(){
   if(!podeEditarTela(usuarioAtual,'gerais')){ alert('Sem permissão para alterar as alíquotas de tributos.'); return; }
   const elP = document.getElementById('emp-aliquota-produto');
@@ -13988,6 +14264,15 @@ async function confirmarPagamentoConta(id){
       origemTipo:'contas_pagar', origemId:id,
       contaDestinoId:null, criadoEm:new Date().toISOString()
     });
+  }
+
+  // v1.47.61: se essa Conta a Pagar veio de uma Guia de Recolhimento, marca a guia como paga
+  if(p.guiaTributosId){
+    const {error:eGuia} = await sb.from('guias_tributos').update({status:'paga'}).eq('id', p.guiaTributosId);
+    if(!eGuia){
+      const g = (db.guiasTributos||[]).find(x=>x.id===p.guiaTributosId);
+      if(g) g.status='paga';
+    }
   }
 
   save();
