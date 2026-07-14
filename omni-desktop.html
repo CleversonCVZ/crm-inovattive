@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.59';
+const APP_VERSION = '1.47.60';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.60',
+    data: '14/07/2026',
+    itens: [
+      'Espelho de Faturamento (PDF, Excel e tela): itens de produto vinculados a uma compra de obra agora mostram também o número do Card SRM e a quantidade lançada, além do número da NF do fornecedor — antes só aparecia a NF. Facilita a contabilidade rastrear a compra real por trás do item faturado.',
+    ]
+  },
   {
     versao: '1.47.59',
     data: '14/07/2026',
@@ -8129,12 +8136,21 @@ function itensProdutoDisponiveis(cardId){
 /* NFs de entrada (compra) do produto — lista de referência pra contabilidade
  * validar o estoque contábil. Sem rastreio por lote (o sistema não guarda qual
  * entrada exata cobriu qual saída), então mostra todas as entradas conhecidas
- * daquele produto/obra vindas de XML (com srmCotacaoId). */
+ * daquele produto/obra vindas de XML (com srmCotacaoId). v1.47.60: além da NF do
+ * fornecedor, também traz o número do Card SRM de origem e a quantidade lançada
+ * naquela entrada (somada por cotação, caso haja mais de uma movimentação pro
+ * mesmo par produto/cotação) — facilita a contabilidade rastrear a compra real
+ * por trás do item faturado. */
 function nfsEntradaDoProduto(produtoEstoqueId, obraId){
   const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===produtoEstoqueId && m.tipo==='entrada' && m.srmCotacaoId && (!obraId || m.obraId===obraId || !m.obraId));
-  const cotIds = [...new Set(movs.map(m=>m.srmCotacaoId))];
+  const qtdPorCotacao = {};
+  movs.forEach(m=>{ qtdPorCotacao[m.srmCotacaoId] = (qtdPorCotacao[m.srmCotacaoId]||0) + (m.quantidade||0); });
+  const cotIds = Object.keys(qtdPorCotacao).map(Number);
   return cotIds.map(id=>(db.srmCotacoes||[]).find(c=>c.id===id)).filter(Boolean)
-    .map(c=>({numero:c.nfNumero, data:c.nfData, valor:c.nfValorTotal, emitente:c.nfEmitNome}));
+    .map(c=>{
+      const card = (db.cardsSRM||[]).find(x=>x.id===c.cardSrmId);
+      return {numero:c.nfNumero, data:c.nfData, valor:c.nfValorTotal, emitente:c.nfEmitNome, srmNum: card?card.num:null, quantidade: qtdPorCotacao[c.id]};
+    });
 }
 
 /* Serviços: itens de proposta aprovada, categoria servico, não clienteFornece,
@@ -8562,7 +8578,7 @@ function abaEspelhoProdutosHTML(nf){
                 ${podeEditar?` · <a href="javascript:void(0)" onclick="abrirVincularProdutoEspelho(${i.id},${nf.id})" style="color:#1565c0;text-decoration:underline">🔗 Vincular produto</a>`:''}
                </div>`}
           <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)} · O.S. ${os?os.numero:'—'}</div>
-          ${nfsCompra.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">NF(s) de compra: ${nfsCompra.map(n=>`${escHtml(n.numero||'—')} (${n.data?fmtDia2(n.data):'—'})`).join(', ')}</div>`:''}
+          ${nfsCompra.length?`<div style="font-size:11px;color:var(--muted);margin-top:3px">Compra de origem: ${nfsCompra.map(n=>`SRM #${n.srmNum!=null?n.srmNum:'—'} / NF ${escHtml(n.numero||'—')} — ${fmtNum(n.quantidade)} un. (${n.data?fmtDia2(n.data):'—'})`).join(', ')}</div>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
           <b>${fmtMoney(i.valorTotal)}</b>
@@ -9047,13 +9063,13 @@ async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
     y += 3;
     doc.autoTable({
       startY:y, margin:{left:M,right:M},
-      head:[['Descrição (Comercial / Fiscal)','Qtd','Vl. Unit.','Total','NF(s) de Entrada']],
+      head:[['Descrição (Comercial / Fiscal)','Qtd','Vl. Unit.','Total','Compra de origem (SRM / NF)']],
       body: itensProd.map(i=>[
         i.descricaoComercial + '\n' + (i.temFiscal ? `Descrição Fiscal: ${i.descricao}` : '⚠ sem descrição fiscal cadastrada'),
         String(i.quantidade),
         fmtMoney(i.valorUnitario),
         fmtMoney(i.valorTotal),
-        i.nfsCompra.length ? i.nfsCompra.map(n=>`${n.numero||'—'} (${n.data?fmtDia2(n.data):'—'})`).join('; ') : '—'
+        i.nfsCompra.length ? i.nfsCompra.map(n=>`SRM #${n.srmNum!=null?n.srmNum:'—'} / NF ${n.numero||'—'} — ${fmtNum(n.quantidade)} un. (${n.data?fmtDia2(n.data):'—'})`).join('\n') : '—'
       ]),
       foot:[['','','Total:', fmtMoney(totalProduto), '']],
       headStyles:{fillColor:[42,42,40],textColor:255,fontSize:8,fontStyle:'bold'},
@@ -9150,10 +9166,10 @@ async function exportarExcelInstrucaoFaturamento(nfId){
   X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(dadosAOA), 'Dados');
 
   const prodAOA = [
-    ['Descrição Fiscal','Descrição Comercial','Qtd','Valor Unitário','Valor Total','O.S.','NF(s) de Entrada'],
+    ['Descrição Fiscal','Descrição Comercial','Qtd','Valor Unitário','Valor Total','O.S.','Compra de origem (SRM / NF)'],
     ...itensProd.map(i=>[
       i.descricao, i.descricaoComercial, i.quantidade, i.valorUnitario, i.valorTotal, i.os,
-      i.nfsCompra.length ? i.nfsCompra.map(n=>`${n.numero||'—'} (${n.data?fmtDia2(n.data):'—'})`).join('; ') : ''
+      i.nfsCompra.length ? i.nfsCompra.map(n=>`SRM #${n.srmNum!=null?n.srmNum:'—'} / NF ${n.numero||'—'} — ${fmtNum(n.quantidade)} un. (${n.data?fmtDia2(n.data):'—'})`).join('; ') : ''
     ])
   ];
   X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(prodAOA), 'Itens de Produto');
