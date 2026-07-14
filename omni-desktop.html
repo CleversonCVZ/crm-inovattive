@@ -1312,11 +1312,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.54';
+const APP_VERSION = '1.47.56';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.56',
+    data: '14/07/2026',
+    itens: [
+      'SRM → Pedido Aprovado: itens da NF cadastrados manualmente (v1.47.54) agora podem ser editados/removidos depois, via botão "✏️ Editar Itens" — reabre o mesmo formulário já preenchido, sem precisar redigitar tudo. Some automaticamente assim que "Lançar no Estoque" já foi confirmado, pra não desincronizar da movimentação de estoque já criada. Itens vindos de XML/PDF continuam só-leitura (fiéis ao documento fiscal original).',
+    ]
+  },
+  {
+    versao: '1.47.55',
+    data: '14/07/2026',
+    itens: [
+      'Corrigido: no cadastro manual de itens da NF (SRM → Pedido Aprovado, v1.47.54), o campo Descrição Fiscal ficava minúsculo — o modal abria no tamanho padrão (460px), estreito demais pras 6 colunas da tabela de itens. Agora abre largo (mesmo tamanho do "Lançar no Estoque").',
+    ]
+  },
   {
     versao: '1.47.54',
     data: '14/07/2026',
@@ -3360,6 +3374,7 @@ async function carregarDadosSupabase(){
         nfValorTotal:x.nf_valor_total!=null?Number(x.nf_valor_total):null,
         nfEmitCnpj:x.nf_emit_cnpj||null,
         nfEmitNome:x.nf_emit_nome||null,
+        nfItensOrigem:x.nf_itens_origem||null,
         estoqueLancado:!!x.estoque_lancado,
         estoqueLancadoEm:x.estoque_lancado_em||null
       }));
@@ -3608,6 +3623,7 @@ function syncDadosSupabase(){
       nf_valor_total:x.nfValorTotal||null,
       nf_emit_cnpj:x.nfEmitCnpj||null,
       nf_emit_nome:x.nfEmitNome||null,
+      nf_itens_origem:x.nfItensOrigem||null,
       estoque_lancado:!!x.estoqueLancado,
       estoque_lancado_em:x.estoqueLancadoEm||null
     }));
@@ -7115,11 +7131,19 @@ function abaPedidoAprovadoSRMHTML(c){
       ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
       : '';
 
+    /* v1.47.56: só itens cadastrados manualmente podem ser editados/reabertos aqui —
+       itens de XML/PDF ficam fiéis ao documento fiscal original (pra corrigi-los, o
+       caminho continua sendo "Remover XML/PDF" e reimportar). */
+    const btnEditarManual = (cot.nfItensOrigem==='manual' && !cot.estoqueLancado)
+      ? `<button class="btn" onclick="abrirCadastroManualNF(${cot.id},${c.id})">✏️ Editar Itens</button>`
+      : '';
+
     const botoesHTML=`
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)">
         ${showMatchCol?`<button class="btn primary" data-btn-salvar-corresp onclick="salvarCorrespondenciasNF(${cot.id},${c.id})" style="font-size:15px;padding:10px 24px;font-weight:700;letter-spacing:0.3px">💾 Salvar Correspondências</button>`:''}
         ${btnEstoque}
         ${btnCatalogo}
+        ${btnEditarManual}
       </div>`;
 
     return `<div style="padding:4px 0">${cotCardHTML}${xmlSectionHTML}${nfHeaderHTML}${tableHTML}${botoesHTML}</div>`;
@@ -7157,11 +7181,13 @@ async function uploadXmlNfSRM(input, cotId, srmId){
     cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
     cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
     cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
+    cot.nfItensOrigem='xml';
     await sb.from('srm_cotacoes').update({
       xml_nf_path:path, xml_nf_nome:file.name,
       nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
       nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
-      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
+      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome,
+      nf_itens_origem:'xml'
     }).eq('id',cotId);
     registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada via XML (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
     save(); abrirEditarSRM(srmId,'pedidos');
@@ -7219,11 +7245,13 @@ async function removerXmlNfSRM(cotId, srmId){
   cot.xmlNfPath=null; cot.xmlNfNome=null;
   cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
   cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+  cot.nfItensOrigem=null;
   cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
   await sb.from('srm_cotacoes').update({
     xml_nf_path:null, xml_nf_nome:null,
     nf_itens:null, nf_numero:null, nf_data:null,
     nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
+    nf_itens_origem:null,
     estoque_lancado:false, estoque_lancado_em:null
   }).eq('id',cotId);
   save(); abrirEditarSRM(srmId,'pedidos');
@@ -7234,17 +7262,19 @@ async function removerPdfNfSRM(cotId, srmId){
   if(!confirm('Remover o PDF DANFE?')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.pdfNfPath) await sb.storage.from('srm-nfs').remove([cot.pdfNfPath]);
-  /* se não há XML, os itens vieram do PDF → limpa também */
+  /* se não há XML, os itens vieram do PDF (ou foram digitados) → limpa também */
   const temXml=!!cot.xmlNfNome;
   cot.pdfNfPath=null; cot.pdfNfNome=null;
   const dbUpdate={pdf_nf_path:null, pdf_nf_nome:null};
   if(!temXml){
     cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
     cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
+    cot.nfItensOrigem=null;
     cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
     Object.assign(dbUpdate,{
       nf_itens:null, nf_numero:null, nf_data:null,
       nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
+      nf_itens_origem:null,
       estoque_lancado:false, estoque_lancado_em:null
     });
   }
@@ -7272,10 +7302,12 @@ async function extrairDanfePdfSRM(cotId, srmId){
     cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
     cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
     cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
+    cot.nfItensOrigem='pdf';
     await sb.from('srm_cotacoes').update({
       nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
       nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
-      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome
+      nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome,
+      nf_itens_origem:'pdf'
     }).eq('id',cotId);
     registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} extraída do PDF DANFE (${nfDados.itens.length} itens)`);
     save(); abrirEditarSRM(srmId,'pedidos');
@@ -7291,40 +7323,53 @@ async function extrairDanfePdfSRM(cotId, srmId){
    digitados aqui viram exatamente o mesmo formato de nfItens que XML/PDF produzem
    (nItem/xProd/NCM/CFOP/qCom/uCom/vUnCom/vProd), então o resto do fluxo (match com
    proposta, Lançar no Estoque, Cadastrar no Catálogo) funciona sem nenhum caso especial. */
-function _linhaManualNFHTML(){
+function _linhaManualNFHTML(item){
+  const desc=item?escHtml(item.xProd||''):'';
+  const ncm=item?escHtml(item.NCM||''):'';
+  const qtd=item?item.qCom:'';
+  const un=item?escHtml(item.uCom||'UN'):'UN';
+  const valor=item?(Number(item.vUnCom||0).toFixed(2).replace('.',',')):'0,00';
   return `
     <div class="manf-row" style="display:grid;grid-template-columns:1fr 90px 70px 70px 100px 28px;gap:6px;align-items:center;margin-bottom:6px">
-      <input class="manf-desc" placeholder="Descrição Fiscal *" style="font-size:12px">
-      <input class="manf-ncm" placeholder="NCM" style="font-size:12px">
-      <input class="manf-qtd" type="number" step="0.001" min="0" placeholder="Qtd *" style="font-size:12px;text-align:right">
-      <input class="manf-un" placeholder="Un" value="UN" style="font-size:12px;text-align:center">
-      <input class="manf-valor" placeholder="Vl Unit *" inputmode="decimal" value="0,00" style="font-size:12px;text-align:right" oninput="mascaraMoeda(this)">
+      <input class="manf-desc" placeholder="Descrição Fiscal *" style="font-size:12px" value="${desc}">
+      <input class="manf-ncm" placeholder="NCM" style="font-size:12px" value="${ncm}">
+      <input class="manf-qtd" type="number" step="0.001" min="0" placeholder="Qtd *" style="font-size:12px;text-align:right" value="${qtd}">
+      <input class="manf-un" placeholder="Un" value="${un}" style="font-size:12px;text-align:center">
+      <input class="manf-valor" placeholder="Vl Unit *" inputmode="decimal" value="${valor}" style="font-size:12px;text-align:right" oninput="mascaraMoeda(this)">
       <button type="button" class="icon-btn del" title="Remover item" onclick="this.closest('.manf-row').remove()">🗑</button>
     </div>`;
 }
 function adicionarLinhaManualNF(){
   document.getElementById('manf-itens-wrap')?.insertAdjacentHTML('beforeend', _linhaManualNFHTML());
 }
+/* v1.47.56: reaproveitada também pra EDITAR itens já cadastrados manualmente — só
+   pra quem tem nfItensOrigem==='manual' (itens de XML/PDF continuam só-leitura, fiéis
+   ao documento fiscal original; pra corrigi-los o caminho continua sendo "Remover
+   XML/PDF" e reimportar). Se já existem itens, a tela abre pré-preenchida em vez de
+   com 1 linha vazia — cleverson pediu depois de ver que não dava pra corrigir um
+   item digitado errado sem redigitar tudo de novo. */
 function abrirCadastroManualNF(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
+  const editando = cot.nfItensOrigem==='manual' && cot.nfItens && cot.nfItens.length;
+  const linhasHTML = editando ? cot.nfItens.map(it=>_linhaManualNFHTML(it)).join('') : _linhaManualNFHTML();
   abrirModal(`
-    <h3>✍️ Cadastrar Itens da NF Manualmente</h3>
+    <h3>✍️ ${editando?'Editar':'Cadastrar'} Itens da NF Manualmente</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Use quando não há XML e a extração do PDF não funcionou. Preencha os dados como aparecem na NF — os itens entram no fluxo normal (correspondência com a proposta, Lançar no Estoque, Cadastrar no Catálogo).</p>
     <div class="form-row">
-      <div><label>Número da NF *</label><input id="manf-numero" placeholder="Ex.: 12345"></div>
-      <div><label>Data de emissão *</label><input id="manf-data" type="date" value="${localDia(0)}"></div>
+      <div><label>Número da NF *</label><input id="manf-numero" placeholder="Ex.: 12345" value="${editando?escHtml(cot.nfNumero||''):''}"></div>
+      <div><label>Data de emissão *</label><input id="manf-data" type="date" value="${editando?(cot.nfData||''):localDia(0)}"></div>
     </div>
     <label style="margin-top:10px;margin-bottom:2px">Itens</label>
     <div style="display:grid;grid-template-columns:1fr 90px 70px 70px 100px 28px;gap:6px;font-size:10.5px;color:var(--muted);margin-bottom:3px">
       <span>Descrição Fiscal</span><span>NCM</span><span>Qtd</span><span>Un</span><span>Vl Unit</span><span></span>
     </div>
-    <div id="manf-itens-wrap">${_linhaManualNFHTML()}</div>
+    <div id="manf-itens-wrap">${linhasHTML}</div>
     <button type="button" class="link-btn" style="font-size:12px;margin-top:2px" onclick="adicionarLinhaManualNF()">＋ Adicionar item</button>
     <div id="manf-status" style="font-size:12px;color:var(--muted);min-height:16px;margin-top:8px"></div>
     <div class="actions">
       <button class="btn neutral" onclick="abrirEditarSRM(${srmId},'pedidos')">← Voltar</button>
-      <button class="btn primary" data-btn-salvar onclick="salvarNFManualSRM(${cotId},${srmId})">Salvar Itens</button>
-    </div>`);
+      <button class="btn primary" data-btn-salvar onclick="salvarNFManualSRM(${cotId},${srmId})">${editando?'Salvar Alterações':'Salvar Itens'}</button>
+    </div>`, 'wide');
 }
 async function salvarNFManualSRM(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
@@ -7360,7 +7405,7 @@ async function salvarNFManualSRM(cotId, srmId){
   try{
     const {error}=await sb.from('srm_cotacoes').update({
       nf_itens:itens, nf_numero:numero, nf_data:data, nf_valor_total:valorTotal,
-      nf_emit_cnpj:emitCnpj, nf_emit_nome:emitNome
+      nf_emit_cnpj:emitCnpj, nf_emit_nome:emitNome, nf_itens_origem:'manual'
     }).eq('id',cotId);
     if(error) throw error;
   }catch(e){
@@ -7369,7 +7414,7 @@ async function salvarNFManualSRM(cotId, srmId){
     return;
   }
   cot.nfItens=itens; cot.nfNumero=numero; cot.nfData=data; cot.nfValorTotal=valorTotal;
-  cot.nfEmitCnpj=emitCnpj; cot.nfEmitNome=emitNome;
+  cot.nfEmitCnpj=emitCnpj; cot.nfEmitNome=emitNome; cot.nfItensOrigem='manual';
   registrarLog('editar','srm',srmId,`NF ${numero} cadastrada manualmente (${itens.length} itens, ${fmtMoney(valorTotal)}) — sem XML/PDF`);
   save(); abrirEditarSRM(srmId,'pedidos');
 }
@@ -9545,7 +9590,7 @@ const AJUDA_CONTEUDO = {
       pedidos: {
         titulo: 'Aba Pedido Aprovado',
         html: `
-          <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois).</p>
+          <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois). Itens digitados manualmente podem ser corrigidos depois no botão "✏️ Editar Itens" (some assim que "Lançar no Estoque" já foi confirmado, pra não desincronizar do que já virou movimentação real); itens de XML/PDF são fiéis ao documento fiscal — pra corrigi-los, o caminho é remover e reimportar.</p>
           <h5>Lançar no Estoque</h5>
           <p>Só aparece quando: veio XML com itens, nós somos quem paga (🏢 empresa), e — o card NÃO tem obra vinculada, OU tem obra vinculada com "🧾 Fatura direta" marcado. Cria entrada real em <code>estoque_movimentacoes</code>, reservando saldo pra essa obra se houver uma vinculada.</p>
           <h5>Cadastrar no Catálogo</h5>
