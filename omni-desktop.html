@@ -1312,11 +1312,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.56';
+const APP_VERSION = '1.47.57';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.57',
+    data: '14/07/2026',
+    itens: [
+      'SRM → Pedido Aprovado: o botão "🏭 Lançar no Estoque" estava travado sempre que a compra era vinculada a uma obra específica (a não ser que fosse "Fatura Direta") — regra antiga de antes de existir o controle de reserva de estoque por obra. Como a O.S. já dava baixa automática desses materiais mesmo sem entrada real, isso podia deixar o saldo do produto negativo, sem rastro. Agora qualquer compra paga pela empresa pode ser lançada no estoque, vinculada ou não a uma obra.',
+    ]
+  },
   {
     versao: '1.47.56',
     data: '14/07/2026',
@@ -7100,16 +7107,19 @@ function abaPedidoAprovadoSRMHTML(c){
         </table>
       </div>`;
 
-    /* Botão "Lançar no Estoque": para almoxarifado (sem obraId) pago pela empresa, ou
-       pra compra vinculada a obra específica quando faturaDireta=true (v1.47.46 — nesse
-       caso a entrada já grava obra_id=c.obraId, reservando o saldo pra essa obra desde
-       já, já que o material vai sim ter controle de estoque/uso, só a NF de venda pro
-       cliente é que não é nossa). */
+    /* Botão "Lançar no Estoque": disponível pra qualquer compra paga pela empresa,
+       com ou sem obra vinculada (v1.47.57 — antes ficava travado pra compra de obra
+       a não ser que fosse faturaDireta=true; a arquitetura de reserva por obra
+       (saldoProdutoObra/obra_id na movimentação) já suporta isso desde o v1.47.0,
+       então a trava era só sobra de uma regra anterior a ela. Lançar aqui grava
+       obra_id=c.obraId, reservando o saldo pra essa obra — sem isso, a baixa
+       automática da O.S. (aba Itens) debitava do estoque geral sem nenhuma entrada
+       correspondente, deixando saldo negativo/fantasma). faturaDireta continua
+       existindo só pra decidir se o item entra ou não no Espelho de Faturamento
+       (a NF de venda pro cliente não é nossa nesse regime). */
     let btnEstoque;
     if(cot.estoqueLancado){
       btnEstoque=`<span style="background:#2e7d32;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:5px">✅ Lançado no Estoque${cot.estoqueLancadoEm?` <span style="font-weight:400;font-size:11px;opacity:.85">em ${fmtDia2(cot.estoqueLancadoEm.slice(0,10))}</span>`:''}</span>`;
-    } else if(c.obraId && !c.faturaDireta){
-      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Material vinculado a obra específica — não entra no almoxarifado">🏭 Lançar no Estoque</button>`;
     } else if(c.pagamentoResponsavel!=='empresa'){
       btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Pagamento de responsabilidade do cliente — não entra no estoque da empresa">🏭 Lançar no Estoque</button>`;
     } else if(!cot.nfItens||!cot.nfItens.length){
@@ -7119,13 +7129,14 @@ function abaPedidoAprovadoSRMHTML(c){
     }
 
     /* Botão "Cadastrar no Catálogo": para compras que NÃO passam pelo estoque
-       (vinculadas a obra, ou pagas pelo cliente) — cadastra só a ficha do produto
-       (nome/NCM/unidade) no catálogo de estoque_produtos, sem lançar quantidade
-       nem movimentação. Checagem é por item (não pela cotação inteira): mesmo que
-       a cotação já tenha sido parcialmente lançada no estoque (itens desmarcados
-       no modal "Lançar no Estoque" nunca ganham produto no catálogo), os itens que
-       ainda não batem com nenhum produto existente continuam elegíveis aqui. */
-    const semEstoque = (!!c.obraId && !c.faturaDireta) || c.pagamentoResponsavel!=='empresa';
+       (pagas pelo cliente — obra vinculada não entra mais aqui desde v1.47.57,
+       ver comentário acima) — cadastra só a ficha do produto (nome/NCM/unidade)
+       no catálogo de estoque_produtos, sem lançar quantidade nem movimentação.
+       Checagem é por item (não pela cotação inteira): mesmo que a cotação já
+       tenha sido parcialmente lançada no estoque (itens desmarcados no modal
+       "Lançar no Estoque" nunca ganham produto no catálogo), os itens que ainda
+       não batem com nenhum produto existente continuam elegíveis aqui. */
+    const semEstoque = c.pagamentoResponsavel!=='empresa';
     const itensParaCatalogar = semEstoque ? cot.nfItens.filter(it=>!it.catalogoRevisado && !matchProdutoEstoque(it)) : [];
     const btnCatalogo = itensParaCatalogar.length
       ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
