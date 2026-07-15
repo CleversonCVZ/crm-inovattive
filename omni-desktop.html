@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.98';
+const APP_VERSION = '1.47.99';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.99',
+    data: '15/07/2026',
+    itens: [
+      'Restrição "Ver apenas as próprias Obras" agora também cobre vendedores: além do critério de O.S. (responsável/técnico), a obra fica visível se houver uma proposta vinculada a ela cujo cartão CRM tenha o usuário como responsável (qualquer status). Mesmo checkbox de antes, sem configuração nova.',
+    ]
+  },
   {
     versao: '1.47.98',
     data: '15/07/2026',
@@ -21357,7 +21364,7 @@ function formGrupo(g){
               <input type="checkbox" id="ck-filtrar-obras" ${g&&g.filtrarObras?'checked':''}>
               <span>
                 <b>Ver apenas as próprias Obras</b><br>
-                <span style="font-size:11px;color:var(--muted)">O usuário só vê obras com pelo menos uma OS em que consta como responsável ou técnico. Vale no desktop e no app mobile.</span>
+                <span style="font-size:11px;color:var(--muted)">O usuário só vê obras com pelo menos uma OS (responsável/técnico) ou uma proposta (responsável do cartão) vinculada a ele. Vale no desktop e no app mobile.</span>
               </span>
             </label>
           </div>
@@ -21566,20 +21573,31 @@ function propostasDoCartaoVisiveis(c){
 /* obraVisivelParaUsuario(obra):
    Retorna true se o usuário logado tem permissão para ver esta obra.
    Se o grupo do usuário tiver filtrarObras === true (e não for admin), a obra só é
-   visível se houver pelo menos uma OS vinculada a ela (obraId) em que o usuário conste
-   como responsável ou técnico. Checa responsável/técnico diretamente (não reusa
-   osVisivelParaUsuario) porque esse critério deve valer independente do flag filtrarOS
-   estar ligado ou não — são duas restrições independentes, podem ser configuradas
-   separadamente por grupo. Vale tanto no desktop quanto no app mobile (omni-mobile.html
-   tem uma cópia desta mesma função). */
+   visível se o usuário tiver algum vínculo direto com ela — cobre tanto técnico
+   quanto vendedor com o mesmo flag/checkbox:
+     - técnico: pelo menos uma OS vinculada à obra (obraId) em que conste como
+       responsável ou técnico;
+     - vendedor: pelo menos uma proposta vinculada à obra (obraId) cujo cartão CRM
+       tenha ele como responsável (qualquer status — rascunho/emitida/aprovada/perdida
+       contam, mesmo critério "sem filtro de status" já usado em propostaVisivelParaUsuario).
+   Checa os dois critérios diretamente (não reusa osVisivelParaUsuario/propostaVisivelParaUsuario)
+   porque esse vínculo deve valer independente dos flags filtrarOS/filtrarPropostas estarem
+   ligados ou não — são restrições independentes, configuráveis separadamente por grupo.
+   Vale tanto no desktop quanto no app mobile (omni-mobile.html tem uma cópia desta função). */
 function obraVisivelParaUsuario(obra){
   if(!usuarioAtual) return false;
   const g = grupoDe(usuarioAtual);
   if(g.admin || !g.filtrarObras) return true; // admin ou sem restrição: vê tudo
-  return (db.ordensServico||[]).some(os=>
+  const viaOS = (db.ordensServico||[]).some(os=>
     os.obraId===obra.id &&
     (os.responsavelId===usuarioAtual.id || (os.tecnicos||[]).some(t=>t.usuarioId===usuarioAtual.id))
   );
+  if(viaOS) return true;
+  return (db.propostas||[]).some(p=>{
+    if(p.obraId!==obra.id) return false;
+    const card = db.cards.find(c=>c.id===p.cardId);
+    return !!card && card.responsavelId===usuarioAtual.id;
+  });
 }
 
 function renderOSLista(){
