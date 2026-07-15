@@ -399,9 +399,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.4',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: "Diário" da O.S. Avulsa sempre aparecia vazio (0) mesmo com registros — O.S. Avulsa não usa a tabela de Diário no sistema (essa é só de Execução/Projeto), e sim o Histórico da própria O.S.. Agora, pra O.S. Avulsa, essa seção mostra e permite adicionar registros no Histórico de verdade, igual ao desktop.',
+    ]
+  },
   {
     versao: '1.0.3',
     data: '15/07/2026',
@@ -638,7 +645,7 @@ async function carregarDados(){
   if(grupo.acessoTecnico || grupo.admin){
     promises.push(
       sb.from('obras').select('*').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
-      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado').order('data_agend',{ascending:false}).then(r=>{db.os=r.data||[];}),
+      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[]}));}),
       sb.from('os_diario').select('*').order('data',{ascending:false}).then(r=>{db.osDiario=r.data||[];}),
       sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];})
     );
@@ -1034,35 +1041,64 @@ function abrirOS(id){
     </div>`;
   }
 
-  // Diário
-  html+=`<div class="section-title">Diário (${diario.length})</div>`;
-  if(!o.fechada){
-    html+=`<div style="background:#f0f4ff;border-radius:12px;padding:14px;margin-bottom:12px">
-      <div class="form-field" style="margin-bottom:10px">
-        <label>Nova entrada</label>
-        <textarea id="diary-txt" placeholder="Descreva o que foi feito..." rows="3"></textarea>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="file" id="diary-foto" accept="image/*" capture="environment" style="display:none" onchange="previewFoto(this)">
-        <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('diary-foto').click()">📷 Foto</button>
-        <div id="diary-foto-preview" style="display:flex;gap:6px;flex:1;overflow-x:auto"></div>
-        <button class="btn btn-primary btn-sm" style="flex:none" onclick="salvarDiario(${o.id})">Salvar</button>
-      </div>
-    </div>`;
-  }
-  if(diario.length){
-    html+=diario.map(d=>{
-      const imgs=(d.imagens||[]);
-      return `<div class="diary-entry">
-        <div class="diary-entry-meta">
-          📅 ${fmtData(d.data)}
+  // Diário (Execução/Projeto) × Histórico (Avulsa)
+  // v1.0.4: O.S. Avulsa NÃO tem "Diário" de verdade no desktop (tabela os_diario é
+  // exclusiva de Execução/Projeto) — pra Avulsa o desktop usa a aba "Histórico"
+  // (coluna ordens_servico.historico, JSONB [{data,texto}], sem foto por entrada,
+  // ver adicionarHistOS() no desktop). Antes o mobile mostrava a mesma seção "Diário"
+  // (lendo os_diario) pra todos os tipos, sempre vazia pra Avulsa.
+  if(o.tipo==='avulsa'){
+    const hist=(o.historico||[]).slice().sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    html+=`<div class="section-title">Histórico (${hist.length})</div>`;
+    if(!o.fechada){
+      html+=`<div style="background:#f0f4ff;border-radius:12px;padding:14px;margin-bottom:12px">
+        <div class="form-field" style="margin-bottom:10px">
+          <label>Nova entrada</label>
+          <textarea id="diary-txt" placeholder="Descreva o que foi feito..." rows="3"></textarea>
         </div>
-        <div class="diary-entry-text">${esc(d.descricao||'')}</div>
-        ${imgs.length?`<div class="diary-imgs">${imgs.map(url=>`<img src="${url}" onclick="abrirImgPreview('${url}')">`).join('')}</div>`:''}
+        <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
+          <button class="btn btn-primary btn-sm" style="flex:none" onclick="salvarHistoricoAvulsa(${o.id})">Salvar</button>
+        </div>
       </div>`;
-    }).join('');
-  } else if(o.fechada){
-    html+='<p style="font-size:13px;color:var(--muted)">Nenhuma entrada no diário.</p>';
+    }
+    if(hist.length){
+      html+=hist.map(h=>`<div class="diary-entry">
+        <div class="diary-entry-meta">📅 ${fmtDataHora(h.data)||''}</div>
+        <div class="diary-entry-text">${esc(h.texto||'')}</div>
+      </div>`).join('');
+    } else if(o.fechada){
+      html+='<p style="font-size:13px;color:var(--muted)">Nenhum registro no histórico.</p>';
+    }
+  } else {
+    html+=`<div class="section-title">Diário (${diario.length})</div>`;
+    if(!o.fechada){
+      html+=`<div style="background:#f0f4ff;border-radius:12px;padding:14px;margin-bottom:12px">
+        <div class="form-field" style="margin-bottom:10px">
+          <label>Nova entrada</label>
+          <textarea id="diary-txt" placeholder="Descreva o que foi feito..." rows="3"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="file" id="diary-foto" accept="image/*" capture="environment" style="display:none" onchange="previewFoto(this)">
+          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('diary-foto').click()">📷 Foto</button>
+          <div id="diary-foto-preview" style="display:flex;gap:6px;flex:1;overflow-x:auto"></div>
+          <button class="btn btn-primary btn-sm" style="flex:none" onclick="salvarDiario(${o.id})">Salvar</button>
+        </div>
+      </div>`;
+    }
+    if(diario.length){
+      html+=diario.map(d=>{
+        const imgs=(d.imagens||[]);
+        return `<div class="diary-entry">
+          <div class="diary-entry-meta">
+            📅 ${fmtData(d.data)}
+          </div>
+          <div class="diary-entry-text">${esc(d.descricao||'')}</div>
+          ${imgs.length?`<div class="diary-imgs">${imgs.map(url=>`<img src="${url}" onclick="abrirImgPreview('${url}')">`).join('')}</div>`:''}
+        </div>`;
+      }).join('');
+    } else if(o.fechada){
+      html+='<p style="font-size:13px;color:var(--muted)">Nenhuma entrada no diário.</p>';
+    }
   }
 
   const footerBtns=o.fechada?'':
@@ -1165,6 +1201,34 @@ async function salvarDiario(osId){
     abrirOS(osId);
   } catch(e){
     toast('Erro ao salvar diário.');
+    if(btn){btn.textContent=oriTxt;btn.disabled=false;}
+  }
+}
+
+/* v1.0.4: equivalente do adicionarHistOS() do desktop, pra O.S. Avulsa — grava direto na
+   coluna ordens_servico.historico (JSONB), sem foto (o desktop também não suporta foto
+   por entrada de histórico, só no Diário de Execução/Projeto). */
+async function salvarHistoricoAvulsa(osId){
+  const txt=(document.getElementById('diary-txt')?.value||'').trim();
+  if(!txt){toast('Escreva algo.');return;}
+
+  const btn=document.querySelector('#sheet-body .btn-primary');
+  const oriTxt=btn?.textContent;
+  if(btn){btn.textContent='Salvando...';btn.disabled=true;}
+
+  try{
+    const o=db.os.find(x=>x.id===osId);
+    const agora=new Date();
+    agora.setMinutes(agora.getMinutes()-agora.getTimezoneOffset());
+    const dataISO=agora.toISOString().slice(0,16);
+    const novoHistorico=[{data:dataISO, texto:txt}, ...(o.historico||[])];
+    const {error}=await sb.from('ordens_servico').update({historico:novoHistorico}).eq('id',osId);
+    if(error) throw error;
+    o.historico=novoHistorico;
+    toast('Histórico salvo ✓');
+    abrirOS(osId);
+  } catch(e){
+    toast('Erro ao salvar histórico.');
     if(btn){btn.textContent=oriTxt;btn.disabled=false;}
   }
 }
