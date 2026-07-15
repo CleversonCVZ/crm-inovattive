@@ -400,9 +400,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.10';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.10',
+    data: '15/07/2026',
+    itens: [
+      'Diário da O.S.: agora permite mais de um registro no mesmo dia (antes, o segundo registro do dia era colado dentro do primeiro em vez de virar uma entrada nova) — mesmo comportamento do desktop.',
+    ]
+  },
   {
     versao: '1.0.9',
     data: '15/07/2026',
@@ -1297,24 +1304,15 @@ async function salvarDiario(osId){
       }
     }
 
+    // v1.0.10: sempre cria uma entrada nova (não junta com outra do mesmo dia) —
+    // padronizado com o desktop, que permite múltiplos registros na mesma data
+    // (cada "Registrar no Diário" é um evento separado, ex: manhã e tarde).
     const hoje=new Date().toISOString().slice(0,10);
-    // Checar se já há entrada hoje
-    const existente=db.osDiario.find(d=>d.os_id===osId&&d.data===hoje);
-    if(existente){
-      // Atualiza
-      const novaDesc=(existente.descricao?existente.descricao+'\n\n'+txt:txt);
-      const novasImgs=[...(existente.imagens||[]),...enviadas];
-      const {error}=await sb.from('os_diario').update({descricao:novaDesc,imagens:novasImgs}).eq('id',existente.id);
-      if(error) throw error;
-      existente.descricao=novaDesc;
-      existente.imagens=novasImgs;
-    } else {
-      // Insere
-      const novoId=Math.max(0,...db.osDiario.map(x=>x.id))+1;
-      const {error}=await sb.from('os_diario').insert({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:enviadas});
-      if(error) throw error;
-      db.osDiario.push({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:enviadas});
-    }
+    const {data:row, error}=await sb.from('os_diario')
+      .insert({os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:enviadas})
+      .select().single();
+    if(error) throw error;
+    db.osDiario.push(row);
     _fotoFiles=[];
     toast('Diário salvo ✓');
     abrirOS(osId);
