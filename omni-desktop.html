@@ -1337,11 +1337,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.88';
+const APP_VERSION = '1.47.89';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.89',
+    data: '15/07/2026',
+    itens: [
+      'Garantias: a aba Garantias do Cartão CRM agora carrega a lista sozinha ao abrir (antes precisava clicar em "Buscar" toda vez) — botão virou "🔄 Atualizar", só necessário se algo mudou com a aba já aberta. Continua sem tabela própria: cálculo sempre ao vivo relendo SRM/Estoque, incluindo itens com garantia vencida (nunca somem da lista, só mudam pro selo vermelho).',
+    ]
+  },
   {
     versao: '1.47.88',
     data: '15/07/2026',
@@ -10308,11 +10315,13 @@ const AJUDA_CONTEUDO = {
       garantias: {
         titulo: 'Aba Garantias',
         html: `
-          <p>O botão "🔍 Buscar Itens em Garantia" procura, na obra vinculada a este cartão, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto.</p>
+          <p>A lista carrega sozinha ao abrir a aba — procura, na obra vinculada a este cartão, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto. O botão "🔄 Atualizar" só é necessário se algo mudou (nova compra, troca de classe) enquanto essa aba já estava aberta.</p>
           <h5>Por que é por obra, não só por este cartão</h5>
           <p>Uma obra pode ter mais de um Cartão CRM ao longo do tempo — mas os produtos instalados pertencem fisicamente à obra, não a um cartão específico. Por isso a busca sempre traz TODOS os itens em garantia da obra, mesmo que a compra tenha entrado por outro cartão.</p>
+          <h5>Itens vencidos continuam aparecendo</h5>
+          <p>A lista nunca esconde item — garantia vencida some o selo verde "✅ Em garantia" e vira "⚠️ Vencida" em vermelho, mas o produto continua na lista pra consulta.</p>
           <h5>Cálculo sempre ao vivo</h5>
-          <p>Nada fica salvo — cada clique recalcula na hora com os dados atuais. Se a classe de garantia do produto mudar depois da compra, o próximo clique já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>`
+          <p>Nada fica numa tabela própria — a cada abertura da aba (ou clique em Atualizar) o sistema relê SRM/Estoque na hora. Se a classe de garantia do produto mudar depois da compra, a próxima abertura já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>`
       }
     }
   },
@@ -15806,40 +15815,21 @@ function abaOSCartaoHTML(c){
    data_vencimento OU condicao, status (pendente/recebido),
    origem (proposta ou os_avulsa).
    ═══════════════════════════════════════════════════════════ */
-/* Aba Garantias do cartão CRM (v1.46.0 placeholder → v1.47.87 implementada).
-   Busca AO VIVO (sem persistir) os produtos com controle de garantia comprados
-   pra obra deste cartão — cruza estoqueMov (obraId) com a cotação SRM que
-   originou a entrada (NF número/data) e a classe de garantia do produto.
-   Combinado com cleverson: a busca é por OBRA (não por este Cartão CRM
-   especificamente), porque uma obra pode ter mais de um Cartão CRM ao longo
-   do tempo e os produtos instalados fisicamente pertencem à obra como um
-   todo — ver memória do feature. */
-function abaGarantiasCartaoHTML(c){
-  if(!c.obraId){
-    return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
-      <div style="font-size:32px;margin-bottom:12px">🛡️</div>
-      <div style="font-weight:600">Sem obra vinculada</div>
-      <div style="font-size:13px;margin-top:6px">Vincule uma obra a este cartão (aba Dados) pra poder buscar itens em garantia.</div>
-    </div>`;
-  }
-  return `
-    <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id})">🔍 Buscar Itens em Garantia</button>
-      <span style="font-size:12px;color:var(--muted);margin-left:10px">Procura no SRM os produtos com controle de garantia comprados pra esta obra e calcula o vencimento a partir da data da NF de compra.</span>
-    </div>
-    <div id="garantias-resultado">
-      <div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Clique em "Buscar Itens em Garantia" pra ver o resultado.</div>
-    </div>`;
-}
-
-function buscarItensGarantiaCartao(cardId){
-  const c = db.cards.find(x=>x.id===cardId);
-  const resultEl = document.getElementById('garantias-resultado');
-  if(!c || !resultEl) return;
-  const itens = itensGarantiaDaObra(c.obraId);
+/* Aba Garantias do cartão CRM (v1.46.0 placeholder → v1.47.87 implementada →
+   v1.47.89: carrega sozinha ao abrir a aba, sem precisar clicar em nada).
+   Busca AO VIVO (sem persistir em tabela própria — não precisa, os dados de
+   origem já estão persistidos em estoqueMov/srmCotacoes/garantiaClasses, é
+   só reler eles) os produtos com controle de garantia comprados pra obra
+   deste cartão — cruza estoqueMov (obraId) com a cotação SRM que originou a
+   entrada (NF número/data) e a classe de garantia do produto. Combinado com
+   cleverson: a busca é por OBRA (não por este Cartão CRM especificamente),
+   porque uma obra pode ter mais de um Cartão CRM ao longo do tempo e os
+   produtos instalados fisicamente pertencem à obra como um todo — ver
+   memória do feature. Itens vencidos continuam aparecendo (badge vermelho
+   "⚠️ Vencida"), nunca somem da lista. */
+function _garantiasTabelaHTML(itens){
   if(!itens.length){
-    resultEl.innerHTML = `<div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Nenhum produto com controle de garantia encontrado nas compras desta obra.</div>`;
-    return;
+    return `<div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Nenhum produto com controle de garantia encontrado nas compras desta obra.</div>`;
   }
   const hoje = localDia(0);
   const linhas = itens.map(it=>{
@@ -15857,7 +15847,7 @@ function buscarItensGarantiaCartao(cardId){
       <td style="padding:6px 10px">${statusHtml}</td>
     </tr>`;
   }).join('');
-  resultEl.innerHTML = `
+  return `
     <table class="lista">
       <thead><tr>
         <th>Produto</th>
@@ -15870,6 +15860,29 @@ function buscarItensGarantiaCartao(cardId){
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>`;
+}
+
+function abaGarantiasCartaoHTML(c){
+  if(!c.obraId){
+    return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">🛡️</div>
+      <div style="font-weight:600">Sem obra vinculada</div>
+      <div style="font-size:13px;margin-top:6px">Vincule uma obra a este cartão (aba Dados) pra poder ver os itens em garantia.</div>
+    </div>`;
+  }
+  return `
+    <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn neutral sm" onclick="buscarItensGarantiaCartao(${c.id})">🔄 Atualizar</button>
+      <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM) pra esta obra — vencimento calculado a partir da data da NF de compra. Recalculado sempre que a aba é aberta.</span>
+    </div>
+    <div id="garantias-resultado">${_garantiasTabelaHTML(itensGarantiaDaObra(c.obraId))}</div>`;
+}
+
+function buscarItensGarantiaCartao(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  const resultEl = document.getElementById('garantias-resultado');
+  if(!c || !resultEl) return;
+  resultEl.innerHTML = _garantiasTabelaHTML(itensGarantiaDaObra(c.obraId));
 }
 
 function abaFinanceiroCartaoHTML(c){
