@@ -1327,11 +1327,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.81';
+const APP_VERSION = '1.47.82';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.82',
+    data: '14/07/2026',
+    itens: [
+      'Ajuda Contextual: botão ❓ adicionado em mais 8 modais que ainda não tinham — Custo M.Obra da O.S. (fornecedor×técnico interno), Cadastrar Itens da NF Manualmente (SRM), Vincular ao Catálogo de Estoque (Espelho), Registrar Saída de Estoque, Liberar Reserva de Estoque, Lançar Itens da NF no Estoque, Confirmar Recebimento (Contas a Receber) e Confirmar Pagamento (Contas a Pagar).',
+    ]
+  },
   {
     versao: '1.47.81',
     data: '14/07/2026',
@@ -7569,8 +7576,12 @@ function abrirCadastroManualNF(cotId, srmId){
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const editando = cot.nfItensOrigem==='manual' && cot.nfItens && cot.nfItens.length;
   const linhasHTML = editando ? cot.nfItens.map(it=>_linhaManualNFHTML(it)).join('') : _linhaManualNFHTML();
+  contextoAjuda.modal='nf-manual'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <h3>✍️ ${editando?'Editar':'Cadastrar'} Itens da NF Manualmente</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✍️ ${editando?'Editar':'Cadastrar'} Itens da NF Manualmente</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Use quando não há XML e a extração do PDF não funcionou. Preencha os dados como aparecem na NF — os itens entram no fluxo normal (correspondência com a proposta, Lançar no Estoque, Cadastrar no Catálogo).</p>
     <div class="form-row">
       <div><label>Número da NF *</label><input id="manf-numero" placeholder="Ex.: 12345" value="${editando?escHtml(cot.nfNumero||''):''}"></div>
@@ -7925,8 +7936,12 @@ async function pagarCPdoSRM(cpId, srmId){
   const hoje = localDia(0);
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo!==false);
   const contaOpts = contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('');
+  contextoAjuda.modal='confirmar-pagamento'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
+    <div class="modal-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✅ Confirmar Pagamento</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="modal-body" style="display:grid;gap:14px">
       <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b> — <b style="color:#e65100">${fmtMoney(p.valor)}</b></p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -8451,8 +8466,12 @@ function abrirVincularProdutoEspelho(itemId, nfId){
     ...resto.map(p=>`<option value="${p.id}">${escHtml(p.nome)}</option>`)
   ].join('');
 
+  contextoAjuda.modal='vincular-produto-espelho'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <h3>🔗 Vincular ao Catálogo de Estoque</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">🔗 Vincular ao Catálogo de Estoque</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
       <div style="font-size:12px;color:var(--muted)">Item comercial (proposta)</div>
       <div style="font-weight:600">${escHtml(item.descricao)}</div>
@@ -10126,6 +10145,14 @@ const AJUDA_CONTEUDO = {
       <p>Dados cadastrais do cliente (nome, CPF/CNPJ, contato, endereço) e a lista das Obras vinculadas a ele — cada obra com endereço próprio, já que um mesmo cliente pode ter mais de uma obra ao longo do tempo. "+ Cadastrar nova obra" abre o cadastro de obra já vinculado a este cliente.</p>
       <p>O selo de classificação (🟢 Cliente Ativo / 🟢 Cliente / 🟡 Prospect / 🔴 Lead Frio) é calculado automaticamente a partir dos cartões e obras do cliente — ver ajuda da tela "Clientes / Prospects" pra regra completa.</p>`
   },
+  'custo-mo': {
+    titulo: 'Custo M.Obra da O.S.',
+    html: `
+      <h5>👷 Técnico interno × 🏢 Fornecedor contratado</h5>
+      <p>Técnico interno é só um registro de custo (não gera Conta a Pagar — a empresa já paga esse funcionário por outros meios, ex.: folha). Fornecedor contratado é dinheiro real a pagar: aparece com o botão "📋 → C.P." pra lançar como Conta a Pagar pendente, com o Centro de Custo "Mão de Obra" e a Obra já pré-preenchidos.</p>
+      <h5>Onde a baixa acontece</h5>
+      <p>Lançar aqui como C.P. só cria a pendência — confirmar o pagamento de verdade (debitar de uma conta corrente) sempre acontece na tela normal de Contas a Pagar, nunca por aqui. Um lançamento já vinculado a uma C.P. mostra "✅ Lançado C.P." em vez do botão.</p>`
+  },
   'prop-painel': {
     titulo: 'Propostas — Acompanhamento',
     html: `<p>Kanban das propostas emitidas, arrastando entre as fases da proposta. Cada proposta pertence a um Cartão CRM — as ações de emitir/aprovar acontecem na aba Propostas Emitidas/Proposta Aprovada do próprio cartão, aqui é só acompanhamento visual. Visualizações: por fase, aprovadas, perdidas/abandonadas ou por validade (data limite antes de vencer).</p>`
@@ -10284,6 +10311,12 @@ const AJUDA_CONTEUDO = {
       }
     }
   },
+  'nf-manual': {
+    titulo: 'Cadastrar Itens da NF Manualmente',
+    html: `
+      <p>Fallback pra quando não há XML da NF e a extração automática do PDF não funcionou — digite número, data e os itens (descrição fiscal, NCM, quantidade, unidade, valor) exatamente como aparecem na Nota Fiscal em papel/PDF. Uma vez salvos, esses itens entram no fluxo normal (correspondência com a proposta, "Lançar no Estoque", "Cadastrar no Catálogo") do mesmo jeito que itens vindos de XML/PDF.</p>
+      <p>Editar depois: o botão "✏️ Editar Itens" só aparece enquanto os itens ainda não foram lançados no estoque — depois de "Lançar no Estoque" confirmado, a edição trava (pra não desincronizar do que já virou movimentação real). Itens que vieram de XML/PDF nunca são editáveis aqui, mesmo antes de lançar — pra corrigi-los o caminho é remover o XML/PDF e reimportar.</p>`
+  },
   'srm-fases': {
     titulo: 'SRM — Fases',
     html: `
@@ -10352,9 +10385,17 @@ const AJUDA_CONTEUDO = {
     titulo: 'Contas a Pagar',
     html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui.</p>`
   },
+  'confirmar-pagamento': {
+    titulo: 'Confirmar Pagamento',
+    html: `<p>É o único jeito de "dar baixa" numa Conta a Pagar, não importa de onde ela veio (lançada aqui, gerada pelo SRM, pelo Custo M.Obra do Cartão CRM, por uma Recorrente ou por uma Guia de Recolhimento). O valor vem pré-preenchido com o previsto, mas é editável — útil pra contas de valor variável (ex.: recorrente que muda todo mês). Confirmar cria automaticamente uma saída na conta corrente escolhida em "Debitar de", refletindo no saldo dela imediatamente.</p>`
+  },
   'fin-contas-receber': {
     titulo: 'Contas a Receber',
     html: `<p>Painel global de TODAS as parcelas a receber de todos os cartões (a versão por cartão fica na aba Financeiro do Cartão CRM). Cada parcela pode estar Pendente, Parcial (recebeu uma parte) ou Recebida (quitada) — parcelas quitadas ficam ordenadas da mais recente pra mais antiga; pendentes/vencidas sempre aparecem primeiro.</p>`
+  },
+  'confirmar-recebimento': {
+    titulo: 'Confirmar Recebimento',
+    html: `<p>Registra o dinheiro recebido de uma parcela, creditando numa conta corrente. Se o valor recebido agora for MENOR que o restante da parcela, ela fica com status "Parcial" e continua aparecendo na lista pra registrar o próximo pagamento depois (o histórico de pagamentos parciais anteriores aparece aqui em cima, se houver). Só quando a soma dos recebimentos bater com o valor total (ou passar, com folga de centavos) a parcela vira "Recebida".</p>`
   },
   'fat-painel': {
     titulo: 'Faturamento — Painel',
@@ -10420,6 +10461,12 @@ const AJUDA_CONTEUDO = {
       }
     }
   },
+  'vincular-produto-espelho': {
+    titulo: 'Vincular ao Catálogo de Estoque',
+    html: `
+      <p>Corrige, direto por aqui, um item de produto do Espelho que ficou sem "Descrição Fiscal" (xProd) — comum em itens antigos, de antes do sistema passar a exigir o vínculo com o catálogo na hora da saída da O.S. Escolha o produto certo do catálogo e o Espelho passa a usar a descrição fiscal dele.</p>
+      <p>Produtos marcados com ⭐ têm saldo reservado especificamente para a obra deste Espelho — são os candidatos mais prováveis de ser o item certo. Se o produto não existir ainda no catálogo, cadastre primeiro em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui.</p>`
+  },
   'estoque-categorias': {
     titulo: 'Estoque — Categorias de Produtos',
     html: `<p>Categorias (com cor) usadas pra agrupar os produtos do Catálogo por área (ex.: Rede de Dados, Automação, Áudio e Vídeo) — só organização, não afeta saldo nem movimentação.</p>`
@@ -10439,6 +10486,22 @@ const AJUDA_CONTEUDO = {
       <p>Transfere saldo reservado de uma obra de volta pro estoque geral (ou pra outra obra) — use quando sobrar material de uma obra que não vai mais ser usado ali.</p>
       <h5>Saída Manual</h5>
       <p>Pra baixas que não vieram de uma O.S. (perda, ajuste, etc.) — a baixa "normal" por uso em obra acontece automaticamente ao lançar itens de produto na O.S. de Execução.</p>`
+  },
+  'estoque-saida': {
+    titulo: 'Registrar Saída de Estoque',
+    html: `
+      <p>Baixa manual de saldo — use pra perda, ajuste de inventário, uso administrativo ou qualquer consumo que não passou por uma O.S. (a baixa "normal" por uso em obra é automática, direto na aba Itens de Produto da O.S. de Execução, não precisa lançar aqui).</p>
+      <p>Se marcar uma Obra, o sistema desconta primeiro do saldo reservado daquela obra e só usa o estoque geral se faltar — igual à baixa automática. Sem obra marcada, desconta direto do estoque geral. Se a quantidade informada for maior que o disponível, o sistema avisa mas deixa continuar (pra não travar um ajuste de inventário que precise zerar/negativar por algum motivo).</p>`
+  },
+  'estoque-liberar-reserva': {
+    titulo: 'Liberar Reserva de Estoque',
+    html: `<p>Transfere saldo reservado de uma obra de volta pro estoque geral, ou direto pra outra obra — use quando sobrar material de uma obra que não vai mais consumir aquele saldo (ex.: excedente de compra, obra concluída com material de sobra). Não afeta o saldo total do produto, só troca a "etiqueta" de qual obra tem prioridade sobre ele.</p>`
+  },
+  'estoque-lancar': {
+    titulo: 'Lançar Itens da NF no Estoque',
+    html: `
+      <p>Confirma a entrada dos itens de uma NF de compra (SRM) no Almoxarifado. Pra cada item, o sistema tenta um auto-match com um produto já cadastrado no catálogo (por NCM/nome fiscal) — se não achar, oferece criar um produto novo na hora. Corrija a quantidade se for diferente do que veio na NF (ex.: compra parcial recebida).</p>
+      <p>Se o Card SRM tem uma Obra vinculada, a entrada já reserva o saldo pra essa obra (situação 2/3 explicadas na ajuda do Card SRM); sem obra, vai pro estoque geral. Depois de confirmado, a cotação fica marcada "✅ Lançado" e os itens não podem mais ser reeditados via cadastro manual (só corrigindo a movimentação direto em Estoque → Movimentações, se precisar).</p>`
   },
   'estoque-movimentacoes': {
     titulo: 'Estoque — Movimentações',
@@ -11915,10 +11978,13 @@ function abrirSeletorMOOS(osId, cardId, tipoSel='tecnico'){
   const tecDisponiveis  = usuarios.filter(u=>!itens.some(t=>(t.tipo||'tecnico')==='tecnico' && t.tecnicoId===u.id));
   const fornDisponiveis = fornecedoresAtivos.filter(f=>!itens.some(t=>t.tipo==='fornecedor' && t.fornecedorId===f.id));
 
+  contextoAjuda.modal='custo-mo'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <h3 style="margin:0">👷 M.O. da O.S.</h3>
       <span style="font-size:13px;color:var(--muted)">${os.numero} — ${os.titulo}</span>
+      <span style="flex:1"></span>
+      ${ajudaBtnModalHTML()}
     </div>
     <div style="background:#f8f9fa;border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:20px">
       <label style="font-weight:700;font-size:13px;display:block;margin-bottom:10px">Adicionar lançamento</label>
@@ -12036,9 +12102,11 @@ function abrirLancarMOComoCP(osId, idx, cardId){
   const hoje = localDia(0);
   const ccMO = (db.centrosCusto||[]).find(cc=>cc.slug==='mao_de_obra');
   const ccOpts = (db.centrosCusto||[]).map(cc=>`<option value="${cc.id}" ${ccMO&&cc.id===ccMO.id?'selected':''}>${escHtml(cc.nome)}</option>`).join('');
+  contextoAjuda.modal='custo-mo'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
-      <h3>📋 Lançar M.O. como Conta a Pagar</h3>
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">📋 Lançar M.O. como Conta a Pagar</h3>
+      ${ajudaBtnModalHTML()}
     </div>
     <div class="aba-corpo" style="display:grid;gap:14px">
       <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
@@ -14624,8 +14692,12 @@ function abrirPagarConta(id){
     ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
     : '<option value="">— nenhuma conta cadastrada —</option>';
 
+  contextoAjuda.modal='confirmar-pagamento'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <div class="modal-header"><h3>✅ Confirmar Pagamento</h3></div>
+    <div class="modal-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✅ Confirmar Pagamento</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="modal-body" style="display:grid;gap:14px">
       <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?' — '+escHtml(f.nome):''})()}</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -15929,8 +16001,12 @@ function marcarParcelaRecebida(id, cardId){
   const historicoHTML = (r.pagamentos||[]).length ? `
     <div style="font-size:12px;color:var(--muted)">Pagamentos anteriores: ${r.pagamentos.map(p=>`${fmtMoney(p.valor)} em ${fmtDia2(p.data)}`).join(' · ')}</div>` : '';
 
+  contextoAjuda.modal='confirmar-recebimento'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <div class="modal-header"><h3>✅ Confirmar Recebimento</h3></div>
+    <div class="modal-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✅ Confirmar Recebimento</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="modal-body" style="display:grid;gap:14px">
       <div>
         <p style="margin:0">Parcela: <b>${escHtml(r.descricao)}</b></p>
@@ -21858,8 +21934,12 @@ function abrirSaidaEstoque(){
   const produtos = (db.estoqueProdutos||[]).filter(p=>p.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
   const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa').sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
     .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
+  contextoAjuda.modal='estoque-saida'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <h3>− Registrar Saída de Estoque</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">− Registrar Saída de Estoque</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="aba-corpo" style="display:grid;gap:12px">
       <div>
         <label>Produto *</label>
@@ -21944,8 +22024,12 @@ function abrirLiberarReservaEstoque(produtoId, obraOrigemId){
   const saldoOrigem = saldoProdutoObra(produtoId, obraOrigemId);
   const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa' && o.id!==obraOrigemId).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))
     .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
+  contextoAjuda.modal='estoque-liberar-reserva'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <h3>Liberar Reserva de Estoque</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Liberar Reserva de Estoque</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="aba-corpo" style="display:grid;gap:12px">
       <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
         <div style="font-weight:600">${escHtml(produto?produto.nome:'—')}</div>
@@ -22154,8 +22238,12 @@ function abrirLancarEstoque(cotId, srmId){
       </div>`;
   }).join('');
 
+  contextoAjuda.modal='estoque-lancar'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
-    <h3>🏭 Lançar Itens da NF no Estoque</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">🏭 Lançar Itens da NF no Estoque</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div style="background:#e8f5e9;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px">
       📦 Itens lançados como <b>Entrada</b> no almoxarifado · data de hoje (<b>${fmtDia2(localDia(0))}</b>)
     </div>
