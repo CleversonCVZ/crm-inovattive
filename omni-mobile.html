@@ -399,9 +399,18 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.6',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: fotos anexadas a uma entrada do Diário da O.S. apareciam quebradas — o upload ia pro bucket errado (privado); trocado pro bucket correto (público, mesmo que o desktop já usa), então fotos novas aparecem normalmente.',
+      'Novo: dá pra excluir uma foto de uma entrada do Diário (ex: foto que não ficou boa) — botão ✕ no canto da miniatura.',
+      'Novo: ao anexar foto no Diário, agora dá pra escolher entre "📷 Câmera" (tira na hora) ou "🖼 Galeria" (escolhe uma ou mais fotos já salvas no aparelho) — antes só abria a câmera direto.',
+    ]
+  },
   {
     versao: '1.0.5',
     data: '15/07/2026',
@@ -475,6 +484,16 @@ let db = {
 };
 
 /* ===== UTILS ===== */
+/* v1.0.6: bucket das fotos do Diário da O.S. — 'os-diario-imagens' é PÚBLICO (mesmo
+   bucket que o desktop já usa pra essa mesma finalidade), diferente de 'os-arquivos'
+   (privado, onde o mobile estava enviando por engano — por isso as fotos apareciam
+   quebradas). Cada imagem é salva como {path, descricao}, igual ao desktop, pra
+   registros criados num app aparecerem certos no outro. */
+function urlImagemDiario(path){
+  if(!path) return '';
+  try{ return sb.storage.from('os-diario-imagens').getPublicUrl(path).data.publicUrl; }
+  catch(e){ return ''; }
+}
 function fmtData(iso){
   if(!iso) return '—';
   const d = new Date(iso+'T00:00:00');
@@ -1095,12 +1114,14 @@ function abrirOS(id){
           <label>Nova entrada</label>
           <textarea id="diary-txt" placeholder="Descreva o que foi feito..." rows="3"></textarea>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input type="file" id="diary-foto" accept="image/*" capture="environment" style="display:none" onchange="previewFoto(this)">
-          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('diary-foto').click()">📷 Foto</button>
-          <div id="diary-foto-preview" style="display:flex;gap:6px;flex:1;overflow-x:auto"></div>
-          <button class="btn btn-primary btn-sm" style="flex:none" onclick="salvarDiario(${o.id})">Salvar</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="diary-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="previewFoto(this)">
+          <input type="file" id="diary-foto-gal" accept="image/*" multiple style="display:none" onchange="previewFoto(this)">
+          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('diary-foto-cam').click()">📷 Câmera</button>
+          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('diary-foto-gal').click()">🖼 Galeria</button>
+          <button class="btn btn-primary btn-sm" style="flex:none;margin-left:auto" onclick="salvarDiario(${o.id})">Salvar</button>
         </div>
+        <div id="diary-foto-preview" style="display:flex;gap:6px;overflow-x:auto;margin-top:8px"></div>
       </div>`;
     }
     if(diario.length){
@@ -1111,7 +1132,11 @@ function abrirOS(id){
             📅 ${fmtData(d.data)}
           </div>
           <div class="diary-entry-text">${esc(d.descricao||'')}</div>
-          ${imgs.length?`<div class="diary-imgs">${imgs.map(url=>`<img src="${url}" onclick="abrirImgPreview('${url}')">`).join('')}</div>`:''}
+          ${imgs.length?`<div class="diary-imgs">${imgs.map((img,i)=>`
+            <div style="position:relative">
+              <img src="${urlImagemDiario(img.path)}" onclick="abrirImgPreview('${urlImagemDiario(img.path)}')">
+              ${!o.fechada?`<button onclick="event.stopPropagation();excluirFotoDiario(${o.id},${d.id},${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#e53935;color:#fff;border:2px solid #fff;font-size:12px;line-height:1;cursor:pointer;padding:0">✕</button>`:''}
+            </div>`).join('')}</div>`:''}
         </div>`;
       }).join('');
     } else if(o.fechada){
@@ -1192,17 +1217,20 @@ async function fecharOS(osId){
 
 let _fotoFiles=[];
 function previewFoto(input){
-  const file=input.files[0];
-  if(!file) return;
-  _fotoFiles.push(file);
-  const url=URL.createObjectURL(file);
+  const files=[...(input.files||[])];
+  if(!files.length) return;
   const prev=document.getElementById('diary-foto-preview');
-  if(prev){
-    const img=document.createElement('img');
-    img.src=url;
-    img.style.cssText='width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0';
-    prev.appendChild(img);
-  }
+  files.forEach(file=>{
+    _fotoFiles.push(file);
+    const url=URL.createObjectURL(file);
+    if(prev){
+      const img=document.createElement('img');
+      img.src=url;
+      img.style.cssText='width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0';
+      prev.appendChild(img);
+    }
+  });
+  input.value='';
 }
 
 async function salvarDiario(osId){
@@ -1214,14 +1242,17 @@ async function salvarDiario(osId){
   if(btn){btn.textContent='Salvando...';btn.disabled=true;}
 
   try{
-    // Upload fotos
-    const urls=[];
+    // Upload fotos — bucket os-diario-imagens (público, mesmo do desktop), salvando
+    // {path, descricao} em vez de URL pronta (v1.0.6, ver nota em urlImagemDiario()).
+    const enviadas=[];
     for(const f of _fotoFiles){
-      const path=`os-diario/${osId}/${Date.now()}-${f.name}`;
-      const {error:upErr}=await sb.storage.from('os-arquivos').upload(path,f);
+      const ext=(f.name.split('.').pop()||'jpg').toLowerCase();
+      const path=`os${osId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const {error:upErr}=await sb.storage.from('os-diario-imagens').upload(path,f);
       if(!upErr){
-        const {data:pu}=sb.storage.from('os-arquivos').getPublicUrl(path);
-        if(pu?.publicUrl) urls.push(pu.publicUrl);
+        enviadas.push({path, descricao:''});
+      } else {
+        console.error('Erro no upload da foto:', upErr);
       }
     }
 
@@ -1231,7 +1262,7 @@ async function salvarDiario(osId){
     if(existente){
       // Atualiza
       const novaDesc=(existente.descricao?existente.descricao+'\n\n'+txt:txt);
-      const novasImgs=[...(existente.imagens||[]),...urls];
+      const novasImgs=[...(existente.imagens||[]),...enviadas];
       const {error}=await sb.from('os_diario').update({descricao:novaDesc,imagens:novasImgs}).eq('id',existente.id);
       if(error) throw error;
       existente.descricao=novaDesc;
@@ -1239,9 +1270,9 @@ async function salvarDiario(osId){
     } else {
       // Insere
       const novoId=Math.max(0,...db.osDiario.map(x=>x.id))+1;
-      const {error}=await sb.from('os_diario').insert({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:urls});
+      const {error}=await sb.from('os_diario').insert({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:enviadas});
       if(error) throw error;
-      db.osDiario.push({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:urls});
+      db.osDiario.push({id:novoId,os_id:osId,data:hoje,autor_id:usuario.id,descricao:txt,imagens:enviadas});
     }
     _fotoFiles=[];
     toast('Diário salvo ✓');
@@ -1250,6 +1281,23 @@ async function salvarDiario(osId){
     toast('Erro ao salvar diário.');
     if(btn){btn.textContent=oriTxt;btn.disabled=false;}
   }
+}
+
+/* v1.0.6: exclui uma foto individual de uma entrada do diário (ex: foto que não ficou
+   boa). Tira do storage (os-diario-imagens) e regrava o array imagens sem ela. */
+async function excluirFotoDiario(osId, diaId, idx){
+  if(!confirm('Excluir esta foto?')) return;
+  const d=(db.osDiario||[]).find(x=>x.id===diaId);
+  if(!d) return;
+  const img=(d.imagens||[])[idx];
+  if(!img) return;
+  const novasImgs=(d.imagens||[]).filter((_,i)=>i!==idx);
+  const {error}=await sb.from('os_diario').update({imagens:novasImgs}).eq('id',diaId);
+  if(error){ alert('Erro ao excluir foto: '+error.message); return; }
+  if(img.path) sb.storage.from('os-diario-imagens').remove([img.path]).then(({error:e2})=>{ if(e2) console.error('Erro ao remover arquivo:', e2); });
+  d.imagens=novasImgs;
+  toast('Foto excluída ✓');
+  abrirOS(osId);
 }
 
 /* v1.0.4: equivalente do adicionarHistOS() do desktop, pra O.S. Avulsa — grava direto na
@@ -1340,7 +1388,7 @@ function abrirObra(id){
       return `<div class="diary-entry">
         <div class="diary-entry-meta">📅 ${fmtData(d.data)}</div>
         <div class="diary-entry-text">${esc(d.descricao||'')}</div>
-        ${imgs.length?`<div class="diary-imgs">${imgs.map(url=>`<img src="${url}" onclick="abrirImgPreview('${url}')">`).join('')}</div>`:''}
+        ${imgs.length?`<div class="diary-imgs">${imgs.map(img=>{const u=urlImagemDiario(img.path);return `<img src="${u}" onclick="abrirImgPreview('${u}')">`;}).join('')}</div>`:''}
       </div>`;
     }).join('');
   } else html+='<p style="font-size:13px;color:var(--muted)">Sem entradas.</p>';
