@@ -346,11 +346,17 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
           <span class="txt">Abrir versão desktop</span>
           <span class="chevron">›</span>
         </div>
+        <div class="perfil-item" style="cursor:pointer" onclick="abrirChangelogMobile()">
+          <span class="ico">📋</span>
+          <span class="txt" id="perfil-novidades-txt">Novidades</span>
+          <span class="chevron">›</span>
+        </div>
         <div class="perfil-item" style="cursor:pointer;color:var(--red)" onclick="logout()">
           <span class="ico">🚪</span>
           <span class="txt" style="color:var(--red)">Sair</span>
         </div>
       </div>
+      <div style="text-align:center;font-size:12px;color:var(--muted);padding:16px 0" id="perfil-versao"></div>
     </div>
 
   </div><!-- /content -->
@@ -384,6 +390,24 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 'use strict';
+/* ===== VERSÃO ===== */
+/* Mesmo padrão do omni-desktop.html (APP_VERSION/CHANGELOG + tela Novidades),
+   implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
+   visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
+   que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
+const APP_VERSION = '1.0.0';
+const APP_VERSION_DATE = '15/07/2026';
+const CHANGELOG = [
+  {
+    versao: '1.0.0',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: card "Cards ativos" na Home sempre mostrava 0 — a tela buscava a tabela "fases", que não existe (o nome certo é "fases_crm"), então nenhuma fase de card era encontrada. Esse mesmo erro também afetava o nome da fase mostrado no CRM e no detalhe do card.',
+      'Corrigido: card "Prop. enviadas" na Home sempre mostrava 0 — o filtro buscava propostas com status "enviada", mas o valor real de proposta emitida no banco é "emitida".',
+      'Novo: número de versão e tela de Novidades (Perfil → Novidades), mesmo padrão do desktop.',
+    ]
+  }
+];
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
@@ -1145,6 +1169,38 @@ function atualizarPerfil(){
 
   // Home avatar
   document.getElementById('home-nome').textContent=usuario.nome;
+
+  // Versão: rodapé do Perfil + bolinha vermelha em "Novidades" se a versão mudou desde o último acesso
+  const verEl=document.getElementById('perfil-versao');
+  if(verEl) verEl.textContent=`OMNI Mobile v${APP_VERSION}`;
+  const lastSeen=localStorage.getItem('omniMobileLastVersionSeen');
+  const novTxt=document.getElementById('perfil-novidades-txt');
+  if(novTxt) novTxt.innerHTML = lastSeen!==APP_VERSION ? 'Novidades <span style="color:var(--red)">●</span>' : 'Novidades';
+}
+
+/* ===== Changelog / Novidades (mesmo padrão do omni-desktop.html) ===== */
+function abrirChangelogMobile(){
+  localStorage.setItem('omniMobileLastVersionSeen', APP_VERSION);
+  const novTxt=document.getElementById('perfil-novidades-txt');
+  if(novTxt) novTxt.textContent='Novidades';
+
+  const corpo=CHANGELOG.map((v,i)=>{
+    const isLatest=i===0;
+    return `
+    <div style="margin-bottom:${i<CHANGELOG.length-1?'20px':'0'}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="background:${isLatest?'var(--accent)':'var(--muted)'};color:#fff;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px">v${v.versao}</span>
+        ${isLatest?'<span style="background:#2f9e44;color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:20px">ATUAL</span>':''}
+        <span style="font-size:12px;color:var(--muted)">${v.data}</span>
+      </div>
+      <ul style="margin:0;padding-left:18px">
+        ${v.itens.map(item=>`<li style="font-size:13px;margin-bottom:5px">${esc(item)}</li>`).join('')}
+      </ul>
+    </div>
+    ${i<CHANGELOG.length-1?'<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">':''}`;
+  }).join('');
+
+  abrirSheet(`📋 Novidades — v${APP_VERSION}`, corpo);
 }
 
 /* ===== SHEET ===== */
