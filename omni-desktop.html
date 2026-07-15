@@ -1081,7 +1081,8 @@
         <tr>
           <th>Número</th>
           <th>Obra / Cliente</th>
-          <th style="width:110px">Data</th>
+          <th style="width:110px">Data de Criação</th>
+          <th style="width:110px">Data de Emissão</th>
           <th style="width:130px">Valor</th>
           <th style="width:130px">Previsão de Impostos</th>
           <th style="width:150px">Fase</th>
@@ -1326,11 +1327,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.79';
+const APP_VERSION = '1.47.80';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.80',
+    data: '14/07/2026',
+    itens: [
+      'Lista de Espelhos de NF (Faturamento): nova coluna "Data de Criação" e a coluna de data existente foi renomeada para "Data de Emissão", deixando claro que são datas diferentes.',
+    ]
+  },
   {
     versao: '1.47.79',
     data: '14/07/2026',
@@ -8557,7 +8565,7 @@ function renderFatEspelhos(){
   if(!usuarioAtual || !podeVer(usuarioAtual,'fat-espelhos')) return;
   const lista=(db.notasFiscais||[]).filter(_fatMatchBusca).sort((a,b)=>(b.dataEmissao||'').localeCompare(a.dataEmissao||'') || b.id-a.id);
   if(!lista.length){
-    tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Nenhum Espelho de Faturamento cadastrado.</td></tr>';
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">Nenhum Espelho de Faturamento cadastrado.</td></tr>';
     return;
   }
   lista.forEach(n=>{
@@ -8573,6 +8581,7 @@ function renderFatEspelhos(){
     tr.innerHTML=`
       <td><b>#${n.id}</b>${c?` <small style="color:var(--muted)">Cartão #${c.num}</small>`:''}${numeros?`<br><small style="color:var(--muted)">NF ${escHtml(numeros)}</small>`:''}</td>
       <td>${ob?escHtml(ob.nome)+(cli&&cli.nome!=='—'?' <small style="color:var(--muted)">('+escHtml(cli.nome)+')</small>':''):'<em style="color:var(--muted)">—</em>'}</td>
+      <td>${n.criadoEm?fmtDia2(n.criadoEm.slice(0,10)):'—'}</td>
       <td>${n.produtoData?fmtDia2(n.produtoData):(n.servicoData?fmtDia2(n.servicoData):'—')}</td>
       <td>${fmtMoney(n.valor)||'—'}</td>
       <td>${fmtMoney(previsaoImpostosEspelho(n))||'—'}</td>
