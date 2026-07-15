@@ -399,9 +399,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.7',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: a restrição "só ver minhas próprias O.S./Propostas" (configurada em Grupos de Acesso no desktop) não funcionava direito no app — O.S. usava uma regra fixa que ignorava a configuração real do grupo, e Propostas não tinha nenhuma restrição. Agora o app segue exatamente a mesma regra do desktop.',
+    ]
+  },
   {
     versao: '1.0.6',
     data: '15/07/2026',
@@ -620,7 +627,7 @@ async function iniciar(){
 
     const {data:gr} = await sb.from('grupos').select('*').eq('id',us.grupo_id).single();
     usuario = {id:us.id, nome:us.nome, grupoId:us.grupo_id, admin:!!us.admin, fotoUrl:us.foto_url||null};
-    grupo   = {id:gr.id, nome:gr.nome, admin:!!gr.admin, acessoComercial:!!gr.acesso_comercial, acessoTecnico:!!gr.acesso_tecnico};
+    grupo   = {id:gr.id, nome:gr.nome, admin:!!gr.admin, acessoComercial:!!gr.acesso_comercial, acessoTecnico:!!gr.acesso_tecnico, filtrarOS:!!gr.filtrar_os, filtrarPropostas:!!gr.filtrar_propostas};
 
     // Verifica acesso
     if(!grupo.admin && !grupo.acessoComercial && !grupo.acessoTecnico){
@@ -657,7 +664,7 @@ async function carregarDados(){
   if(grupo.acessoComercial || grupo.admin){
     promises.push(
       sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
-      sb.from('cards').select('id,num,cliente_id,fase_id,perdido,concluido').order('id',{ascending:false}).then(r=>{
+      sb.from('cards').select('id,num,cliente_id,fase_id,perdido,concluido,responsavel_id').order('id',{ascending:false}).then(r=>{
         db.cards=(r.data||[]).map(c=>({...c, historico:[]}));
       }),
       sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
@@ -785,13 +792,13 @@ function renderHome(){
     }).length;
     // v1.0.2: "emitidas em aberto" = mesma regra do desktop (abertas_g em renderPropostasPainel):
     // status==='emitida' E NÃO perdida (propStatusEfetivo já cobre essa checagem via fase).
-    const propsEmAberto=(db.propostas||[]).filter(p=>propStatusEfetivo(p)==='emitida').length;
+    const propsEmAberto=(db.propostas||[]).filter(propostaVisivelParaUsuario).filter(p=>propStatusEfetivo(p)==='emitida').length;
     stats.push(`<div class="stat-card"><div class="n">${cardsAbertos}</div><div class="l">Cards ativos</div></div>`);
     stats.push(`<div class="stat-card"><div class="n" style="color:var(--blue)">${propsEmAberto}</div><div class="l">Emitidas em aberto</div></div>`);
   }
   if(grupo.acessoTecnico||grupo.admin){
-    const osHoje=(db.os||[]).filter(o=>o.data_agend===hoje&&!o.fechada).length;
-    const osAbertas=(db.os||[]).filter(o=>!o.fechada).length;
+    const osHoje=(db.os||[]).filter(osVisivelParaUsuario).filter(o=>o.data_agend===hoje&&!o.fechada).length;
+    const osAbertas=(db.os||[]).filter(osVisivelParaUsuario).filter(o=>!o.fechada).length;
     stats.push(`<div class="stat-card"><div class="n" style="color:var(--orange)">${osHoje}</div><div class="l">OS hoje</div></div>`);
     stats.push(`<div class="stat-card"><div class="n" style="color:var(--accent)">${osAbertas}</div><div class="l">OS abertas</div></div>`);
   }
@@ -816,7 +823,7 @@ function renderHome(){
   // Recente: últimas OS ou propostas
   let html='';
   if(grupo.acessoTecnico||grupo.admin){
-    const rec=(db.os||[]).filter(o=>!o.fechada).slice(0,3);
+    const rec=(db.os||[]).filter(osVisivelParaUsuario).filter(o=>!o.fechada).slice(0,3);
     if(rec.length){
       html+=rec.map(o=>{
         const cl=db.clientes.find(c=>c.id===o.cliente_id);
@@ -873,7 +880,7 @@ function abrirCliente(id){
   const c=db.clientes.find(x=>x.id===id);
   if(!c) return;
   const cards=(db.cards||[]).filter(x=>x.cliente_id===id);
-  const props=(db.propostas||[]).filter(x=>x.cliente_id===id);
+  const props=(db.propostas||[]).filter(propostaVisivelParaUsuario).filter(x=>x.cliente_id===id);
 
   let html=`
     <div class="info-row"><span class="lbl">Telefone</span><span class="val">${esc(c.telefone||'—')}</span></div>
@@ -941,9 +948,25 @@ function setPropFiltro(el){
   propFiltro=el.dataset.f;
   renderPropostas();
 }
+/* v1.0.7: mesma regra do desktop (osVisivelParaUsuario/propostaVisivelParaUsuario) —
+   antes o mobile tinha um filtro de O.S. fixo no código (sempre restringia quem não
+   era admin/comercial) e NENHUM filtro de Propostas, ignorando totalmente a config
+   "Restringir visualização" (filtrar_os/filtrar_propostas) que já existe em Grupos
+   de Acesso e é respeitada no desktop. */
+function osVisivelParaUsuario(o){
+  if(grupo.admin || !grupo.filtrarOS) return true;
+  if(o.responsavel_id===usuario.id) return true;
+  return (db.osTecnicos||[]).some(t=>t.os_id===o.id && t.usuario_id===usuario.id);
+}
+function propostaVisivelParaUsuario(p){
+  if(grupo.admin || !grupo.filtrarPropostas) return true;
+  const card=(db.cards||[]).find(c=>c.id===p.card_id);
+  return !!card && card.responsavel_id===usuario.id;
+}
+
 function renderPropostas(){
   const busca=(document.getElementById('prop-busca')?.value||'').toLowerCase();
-  let lista=db.propostas||[];
+  let lista=(db.propostas||[]).filter(propostaVisivelParaUsuario);
   if(propFiltro) lista=lista.filter(p=>propStatusEfetivo(p)===propFiltro);
   if(busca) lista=lista.filter(p=>{
     const cl=db.clientes.find(c=>c.id===p.cliente_id);
@@ -998,12 +1021,7 @@ function renderOS(){
   const semIniStr=semIni.toISOString().slice(0,10);
   const semFimStr=semFim.toISOString().slice(0,10);
 
-  let lista=db.os||[];
-  // filtrar por técnico se não for admin/comercial
-  if(!grupo.admin && !grupo.acessoComercial){
-    const meuIds=(db.osTecnicos||[]).filter(t=>t.usuario_id===usuario.id).map(t=>t.os_id);
-    lista=lista.filter(o=>o.responsavel_id===usuario.id||meuIds.includes(o.id));
-  }
+  let lista=(db.os||[]).filter(osVisivelParaUsuario);
   if(osFiltro==='hoje') lista=lista.filter(o=>o.data_agend===hoje);
   else if(osFiltro==='semana') lista=lista.filter(o=>o.data_agend>=semIniStr&&o.data_agend<=semFimStr);
   else if(osFiltro==='abertas') lista=lista.filter(o=>!o.fechada);
@@ -1363,7 +1381,7 @@ function abrirObra(id){
   const o=db.obras.find(x=>x.id===id);
   if(!o) return;
   const cl=db.clientes.find(c=>c.id===o.cliente_id);
-  const osObra=(db.os||[]).filter(x=>x.obra_id===id);
+  const osObra=(db.os||[]).filter(osVisivelParaUsuario).filter(x=>x.obra_id===id);
   const diario=(db.osDiario||[]).filter(d=>osObra.map(x=>x.id).includes(d.os_id)).sort((a,b)=>b.data.localeCompare(a.data));
 
   let html=`
