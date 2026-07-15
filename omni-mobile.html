@@ -237,9 +237,14 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
       <label>Senha</label>
       <input id="l-senha" type="password" placeholder="••••••••" autocomplete="current-password">
     </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:2px 0 14px;cursor:pointer">
+      <input id="l-manter" type="checkbox" checked style="width:16px;height:16px;margin:0">
+      Manter conectado
+    </label>
     <button class="btn-login" onclick="login()">Entrar</button>
     <div class="login-err" id="login-err"></div>
   </div>
+  <div id="login-versao" style="font-size:12px;color:#ffffffaa;margin-top:18px"></div>
 </div>
 
 <!-- App -->
@@ -293,8 +298,7 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
       </div>
       <div class="filter-row">
         <div class="filter-tag active" data-f="" onclick="setPropFiltro(this)">Todas</div>
-        <div class="filter-tag" data-f="rascunho" onclick="setPropFiltro(this)">Rascunho</div>
-        <div class="filter-tag" data-f="enviada" onclick="setPropFiltro(this)">Enviada</div>
+        <div class="filter-tag" data-f="emitida" onclick="setPropFiltro(this)">Emitida</div>
         <div class="filter-tag" data-f="aprovada" onclick="setPropFiltro(this)">Aprovada</div>
         <div class="filter-tag" data-f="perdida" onclick="setPropFiltro(this)">Perdida</div>
       </div>
@@ -395,9 +399,18 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.1',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: filtro de Propostas tinha 4 abas (Rascunho/Enviada/Aprovada/Perdida) baseadas em valores de status que não existem no banco. O status real só tem "emitida" e "aprovada"; "Perdida" agora é calculado a partir da fase da própria proposta, igual no desktop. Abas passaram a ser Todas/Emitida/Aprovada/Perdida.',
+      'Novo: número da versão exibido também na tela de login (antes só aparecia em Perfil).',
+      'Novo: opção "Manter conectado" na tela de login — desmarcada, a sessão só continua válida enquanto o app fica aberto; ao reabrir do zero, pede login de novo.',
+    ]
+  },
   {
     versao: '1.0.0',
     data: '15/07/2026',
@@ -408,6 +421,7 @@ const CHANGELOG = [
     ]
   }
 ];
+document.getElementById('login-versao').textContent = 'v'+APP_VERSION;
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
@@ -422,6 +436,7 @@ let db = {
   cards:[],
   fases:[],
   propostas:[],
+  fasesProposta:[],
   obras:[],
   os:[],
   osDiario:[],
@@ -459,14 +474,22 @@ function loading(show){
 }
 
 /* ===== BADGES ===== */
+/* v1.0.1: o campo status de propostas só tem 2 valores reais no banco — 'emitida' e
+   'aprovada'. "Perdida" não é status nenhum: é calculado a partir da FASE da própria
+   proposta (tabela fases_proposta, separada de fases_crm) — mesma regra do desktop
+   (propostaPerdida(p) = faseProp(p.faseId)?.tipo==='perdida'). As chaves antigas
+   (rascunho/enviada/reprovada/concluida) nunca existiram de verdade — removidas. */
 const STATUS_PROP = {
-  rascunho:{cls:'badge-gray',lbl:'Rascunho'},
-  enviada:{cls:'badge-blue',lbl:'Enviada'},
+  emitida:{cls:'badge-blue',lbl:'Emitida'},
   aprovada:{cls:'badge-green',lbl:'Aprovada'},
-  reprovada:{cls:'badge-red',lbl:'Reprovada'},
   perdida:{cls:'badge-red',lbl:'Perdida'},
-  concluida:{cls:'badge-purple',lbl:'Concluída'},
 };
+/** Status "efetivo" de uma proposta pra exibição/filtro: 'perdida' se a fase da
+ *  proposta for do tipo perdida, senão o status real (emitida/aprovada). */
+function propStatusEfetivo(p){
+  const f=(db.fasesProposta||[]).find(x=>x.id===p.fase_id);
+  return (f && f.tipo==='perdida') ? 'perdida' : p.status;
+}
 const STATUS_OS = {
   aberta:{cls:'badge-orange',lbl:'Aberta'},
   em_andamento:{cls:'badge-blue',lbl:'Em andamento'},
@@ -485,6 +508,12 @@ function badge(status, map){
 }
 
 /* ===== AUTH ===== */
+/* "Manter conectado": o Supabase já persiste a sessão em localStorage por padrão (survive
+   fechar/reabrir o navegador/PWA). O checkbox dá controle sobre isso: marcado (padrão) não
+   muda nada; desmarcado, a gente grava a flag omniMobileManterConectado='0' e um marcador em
+   sessionStorage (que dura só enquanto a aba/PWA fica aberta). Em iniciar(), se a flag for '0'
+   e o marcador de sessionStorage não estiver presente, é sinal de que o app foi reaberto do
+   zero — força logout e volta pra tela de login, em vez de restaurar a sessão salva. */
 async function login(){
   const email=document.getElementById('l-email').value.trim();
   const senha=document.getElementById('l-senha').value;
@@ -496,12 +525,16 @@ async function login(){
   const {data,error}=await sb.auth.signInWithPassword({email,password:senha});
   btn.textContent='Entrar'; btn.disabled=false;
   if(error){err.textContent='E-mail ou senha inválidos.';return;}
+  const manter=document.getElementById('l-manter').checked;
+  localStorage.setItem('omniMobileManterConectado', manter?'1':'0');
+  sessionStorage.setItem('omniMobileSessaoAberta','1');
   await iniciar();
 }
 async function logout(){
   if(!confirm('Sair do OMNI Mobile?')) return;
   await sb.auth.signOut();
   usuario=null; grupo=null;
+  sessionStorage.removeItem('omniMobileSessaoAberta');
   document.getElementById('app').classList.remove('visible');
   document.getElementById('login-screen').style.display='flex';
 }
@@ -513,6 +546,12 @@ function abrirDesktop(){
 async function iniciar(){
   loading(true);
   try{
+    // "Manter conectado" desmarcado numa sessão anterior + app reaberto do zero (sem
+    // marcador de sessionStorage) => não restaura a sessão salva, pede login de novo.
+    if(localStorage.getItem('omniMobileManterConectado')==='0' && !sessionStorage.getItem('omniMobileSessaoAberta')){
+      await sb.auth.signOut();
+      mostrarLogin(); loading(false); return;
+    }
     const {data:{user}} = await sb.auth.getUser();
     if(!user){ mostrarLogin(); loading(false); return; }
 
@@ -561,7 +600,8 @@ async function carregarDados(){
       sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
       sb.from('cards').select('id,num,cliente_id,fase_id,historico').order('id',{ascending:false}).then(r=>{db.cards=r.data||[];}),
       sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
-      sb.from('propostas').select('id,numero,card_id,cliente_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];})
+      sb.from('propostas').select('id,numero,card_id,cliente_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];}),
+      sb.from('fases_proposta').select('id,nome,cor,tipo').then(r=>{db.fasesProposta=r.data||[];})
     );
   }
   if(grupo.acessoTecnico || grupo.admin){
@@ -640,6 +680,8 @@ function voltar(){ fecharSheet(); }
 function mostrarLogin(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').classList.remove('visible');
+  const chk=document.getElementById('l-manter');
+  if(chk) chk.checked = localStorage.getItem('omniMobileManterConectado')!=='0';
 }
 
 /* ===== HOME ===== */
@@ -774,7 +816,7 @@ function abrirCliente(id){
         <div style="background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:8px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
             <span style="font-weight:700">Prop. ${esc(p.numero)}</span>
-            ${badge(p.status,STATUS_PROP)}
+            ${badge(propStatusEfetivo(p),STATUS_PROP)}
           </div>
           <span style="font-size:13px;color:var(--muted)">${fmtMoney(p.valor)} · ${fmtData(p.data_emissao)}</span>
         </div>`).join('');
@@ -818,7 +860,7 @@ function setPropFiltro(el){
 function renderPropostas(){
   const busca=(document.getElementById('prop-busca')?.value||'').toLowerCase();
   let lista=db.propostas||[];
-  if(propFiltro) lista=lista.filter(p=>p.status===propFiltro);
+  if(propFiltro) lista=lista.filter(p=>propStatusEfetivo(p)===propFiltro);
   if(busca) lista=lista.filter(p=>{
     const cl=db.clientes.find(c=>c.id===p.cliente_id);
     return (p.numero||'').toLowerCase().includes(busca)||(cl?.nome||'').toLowerCase().includes(busca);
@@ -835,7 +877,7 @@ function renderPropostas(){
           <div class="card-meta-top">Prop. <b>${esc(p.numero)}</b>${p.aditivo?' · Aditivo':''}</div>
           <div class="card-title">${esc(cl?.nome||'Cliente não encontrado')}</div>
         </div>
-        ${badge(p.status,STATUS_PROP)}
+        ${badge(propStatusEfetivo(p),STATUS_PROP)}
       </div>
       <div class="card-body">
         <span style="font-size:14px;font-weight:700;color:var(--green)">${fmtMoney(p.valor)}</span>
@@ -851,7 +893,7 @@ function abrirProposta(id){
   const html=`
     <div class="info-row"><span class="lbl">Número</span><span class="val">${esc(p.numero)}${p.aditivo?' (Aditivo)':''}</span></div>
     <div class="info-row"><span class="lbl">Cliente</span><span class="val">${esc(cl?.nome||'—')}</span></div>
-    <div class="info-row"><span class="lbl">Status</span><span class="val">${badge(p.status,STATUS_PROP)}</span></div>
+    <div class="info-row"><span class="lbl">Status</span><span class="val">${badge(propStatusEfetivo(p),STATUS_PROP)}</span></div>
     <div class="info-row"><span class="lbl">Valor</span><span class="val" style="color:var(--green);font-size:18px">${fmtMoney(p.valor)}</span></div>
     <div class="info-row"><span class="lbl">Emissão</span><span class="val">${fmtData(p.data_emissao)}</span></div>`;
   abrirSheet(`Proposta ${p.numero}`,html);
