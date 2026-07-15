@@ -956,23 +956,25 @@
         <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
         <div id="emp-endereco"></div>
       </div>
-      <div class="config-card">
-        <h3>Classes de Garantia</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas no Catálogo de Estoque pra marcar produtos com controle de garantia, e na aba Garantias do Cartão CRM pra calcular até quando vai a garantia (data da NF de compra + prazo da classe).</p>
-        <table class="fases-table">
-          <thead><tr><th>Classe</th><th style="width:100px">Meses</th><th style="width:70px">Ordem</th><th></th></tr></thead>
-          <tbody id="garantia-classes-tbody"></tbody>
-        </table>
-        <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
-      </div>
-      <div class="config-card">
-        <h3>Garantia de Serviços</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Prazos usados na aba Garantias do Cartão CRM — Garantia da Obra conta a partir da data em que a obra foi marcada Concluída; Garantia de O.S. Avulsa conta a partir do Término Real de cada O.S. Avulsa fechada depois da obra concluída.</p>
-        <div class="form-row">
-          <div><label>Obra concluída (meses)</label><input id="emp-garantia-obra" type="number" step="1" min="0"></div>
-          <div><label>O.S. Avulsa (meses)</label><input id="emp-garantia-os-avulsa" type="number" step="1" min="0"></div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="config-card">
+          <h3>Classes de Garantia</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas no Catálogo de Estoque pra marcar produtos com controle de garantia, e na aba Garantias do Cartão CRM pra calcular até quando vai a garantia (data da NF de compra + prazo da classe).</p>
+          <table class="fases-table">
+            <thead><tr><th>Classe</th><th style="width:100px">Meses</th><th style="width:70px">Ordem</th><th></th></tr></thead>
+            <tbody id="garantia-classes-tbody"></tbody>
+          </table>
+          <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
         </div>
-        <button class="btn sm" style="margin-top:6px" onclick="salvarGarantiaServicos()">Salvar prazos</button>
+        <div class="config-card">
+          <h3>Garantia de Serviços</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Prazos usados na aba Garantias do Cartão CRM — Garantia da Obra conta a partir da data em que a obra foi marcada Concluída; Garantia de O.S. Avulsa conta a partir do Término Real de cada O.S. Avulsa fechada depois da obra concluída.</p>
+          <div class="form-row">
+            <div><label>Obra concluída (meses)</label><input id="emp-garantia-obra" type="number" step="1" min="0"></div>
+            <div><label>O.S. Avulsa (meses)</label><input id="emp-garantia-os-avulsa" type="number" step="1" min="0"></div>
+          </div>
+          <button class="btn sm" style="margin-top:6px" onclick="salvarGarantiaServicos()">Salvar prazos</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1346,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.92';
+const APP_VERSION = '1.47.93';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.93',
+    data: '15/07/2026',
+    itens: [
+      'Configurações do Sistema: card "Garantia de Serviços" movido pra baixo de "Classes de Garantia" (mesma coluna, 3ª do grid) — antes ficava empilhado embaixo de "Alíquotas de Tributos", na coluna errada.',
+    ]
+  },
   {
     versao: '1.47.92',
     data: '15/07/2026',
