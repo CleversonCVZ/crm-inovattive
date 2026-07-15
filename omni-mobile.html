@@ -399,9 +399,17 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.2',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido de vez: "Cards ativos" continuava zerado mesmo depois do fix da v1.0.0 — a causa real era outra: a consulta de cards pedia uma coluna "historico" que não existe na tabela (o histórico mora numa tabela separada, card_historico); isso derrubava a consulta inteira e zerava TODOS os cards, não só a contagem. Corrigido carregando o histórico à parte e juntando por card, igual no desktop.',
+      'Renomeado "Prop. enviadas" para "Emitidas em aberto" — mesmo nome e mesmo cálculo do desktop (proposta com status emitida e que não está perdida).',
+    ]
+  },
   {
     versao: '1.0.1',
     data: '15/07/2026',
@@ -598,10 +606,18 @@ async function carregarDados(){
   if(grupo.acessoComercial || grupo.admin){
     promises.push(
       sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
-      sb.from('cards').select('id,num,cliente_id,fase_id,historico').order('id',{ascending:false}).then(r=>{db.cards=r.data||[];}),
+      sb.from('cards').select('id,num,cliente_id,fase_id,perdido,concluido').order('id',{ascending:false}).then(r=>{
+        db.cards=(r.data||[]).map(c=>({...c, historico:[]}));
+      }),
       sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
       sb.from('propostas').select('id,numero,card_id,cliente_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];}),
-      sb.from('fases_proposta').select('id,nome,cor,tipo').then(r=>{db.fasesProposta=r.data||[];})
+      sb.from('fases_proposta').select('id,nome,cor,tipo').then(r=>{db.fasesProposta=r.data||[];}),
+      sb.from('card_historico').select('card_id,data,texto').order('data',{ascending:false,nullsFirst:false}).then(r=>{
+        // v1.0.2: "historico" NÃO é coluna da tabela cards (nunca foi — vinha de um select
+        // inválido que quebrava a query inteira e zerava db.cards). O histórico de verdade
+        // mora na tabela card_historico, igual no desktop — carrega à parte e agrupa por card_id.
+        db._cardHistorico = r.data||[];
+      })
     );
   }
   if(grupo.acessoTecnico || grupo.admin){
@@ -616,10 +632,22 @@ async function carregarDados(){
       promises.push(
         sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
         sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];})
+        // (sem card_historico aqui: perfil técnico não abre o detalhe do card CRM)
       );
     }
   }
   await Promise.all(promises);
+
+  // Agrupa card_historico (carregado à parte) dentro de cada db.cards[i].historico[].
+  // Feito depois do Promise.all pra não depender de qual query termina primeiro.
+  if(db._cardHistorico && db._cardHistorico.length && db.cards && db.cards.length){
+    const porCard = {};
+    db._cardHistorico.forEach(h=>{
+      if(!porCard[h.card_id]) porCard[h.card_id]=[];
+      porCard[h.card_id].push({data:h.data?h.data.slice(0,16):null, texto:h.texto});
+    });
+    db.cards.forEach(c=>{ c.historico = porCard[c.id] || []; });
+  }
 }
 
 async function recarregar(){
@@ -701,9 +729,11 @@ function renderHome(){
       const f=db.fases.find(x=>x.id===c.fase_id);
       return f && f.tipo!=='perdido' && f.tipo!=='concluido';
     }).length;
-    const propsEnv=(db.propostas||[]).filter(p=>p.status==='emitida').length;
+    // v1.0.2: "emitidas em aberto" = mesma regra do desktop (abertas_g em renderPropostasPainel):
+    // status==='emitida' E NÃO perdida (propStatusEfetivo já cobre essa checagem via fase).
+    const propsEmAberto=(db.propostas||[]).filter(p=>propStatusEfetivo(p)==='emitida').length;
     stats.push(`<div class="stat-card"><div class="n">${cardsAbertos}</div><div class="l">Cards ativos</div></div>`);
-    stats.push(`<div class="stat-card"><div class="n" style="color:var(--blue)">${propsEnv}</div><div class="l">Prop. enviadas</div></div>`);
+    stats.push(`<div class="stat-card"><div class="n" style="color:var(--blue)">${propsEmAberto}</div><div class="l">Emitidas em aberto</div></div>`);
   }
   if(grupo.acessoTecnico||grupo.admin){
     const osHoje=(db.os||[]).filter(o=>o.data_agend===hoje&&!o.fechada).length;
