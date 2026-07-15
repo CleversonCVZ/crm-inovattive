@@ -403,9 +403,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.15';
+const APP_VERSION = '1.0.16';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.16',
+    data: '15/07/2026',
+    itens: [
+      'Nova restrição de visibilidade (configurada em Grupos de Acesso no desktop): "Ver apenas os próprios Cards do CRM" — quando ligada, a tela CRM só conta/mostra os cards do cliente em que o usuário consta como responsável. O cliente continua aparecendo normalmente na lista.',
+    ]
+  },
   {
     versao: '1.0.15',
     data: '15/07/2026',
@@ -719,7 +726,7 @@ async function iniciar(){
 
     const {data:gr} = await sb.from('grupos').select('*').eq('id',us.grupo_id).single();
     usuario = {id:us.id, nome:us.nome, grupoId:us.grupo_id, admin:!!us.admin, fotoUrl:us.foto_url||null};
-    grupo   = {id:gr.id, nome:gr.nome, admin:!!gr.admin, acessoComercial:!!gr.acesso_comercial, acessoTecnico:!!gr.acesso_tecnico, filtrarOS:!!gr.filtrar_os, filtrarPropostas:!!gr.filtrar_propostas, filtrarObras:!!gr.filtrar_obras};
+    grupo   = {id:gr.id, nome:gr.nome, admin:!!gr.admin, acessoComercial:!!gr.acesso_comercial, acessoTecnico:!!gr.acesso_tecnico, filtrarOS:!!gr.filtrar_os, filtrarPropostas:!!gr.filtrar_propostas, filtrarObras:!!gr.filtrar_obras, filtrarCards:!!gr.filtrar_cards};
 
     // Verifica acesso
     if(!grupo.admin && !grupo.acessoComercial && !grupo.acessoTecnico){
@@ -881,7 +888,7 @@ function renderHome(){
   const statsEl=document.getElementById('home-stats');
   const stats=[];
   if(grupo.acessoComercial||grupo.admin){
-    const cardsAbertos=(db.cards||[]).filter(c=>{
+    const cardsAbertos=(db.cards||[]).filter(cardVisivelParaUsuario).filter(c=>{
       const f=db.fases.find(x=>x.id===c.fase_id);
       return f && f.tipo!=='perdido' && f.tipo!=='concluido';
     }).length;
@@ -956,7 +963,7 @@ function renderClientes(){
   const el=document.getElementById('crm-list');
   if(!lista.length){el.innerHTML=`<div class="empty-state"><div class="ico">👥</div><p>Nenhum cliente encontrado.</p></div>`;return;}
   el.innerHTML=lista.slice(0,60).map(c=>{
-    const cards=(db.cards||[]).filter(x=>x.cliente_id===c.id);
+    const cards=(db.cards||[]).filter(x=>x.cliente_id===c.id).filter(cardVisivelParaUsuario);
     const abertos=cards.filter(x=>{const f=db.fases.find(f=>f.id===x.fase_id);return f&&f.tipo!=='perdido'&&f.tipo!=='concluido';}).length;
     return `<div class="card" onclick="abrirCliente(${c.id})">
       <div class="card-header">
@@ -974,7 +981,7 @@ function renderClientes(){
 function abrirCliente(id){
   const c=db.clientes.find(x=>x.id===id);
   if(!c) return;
-  const cards=(db.cards||[]).filter(x=>x.cliente_id===id);
+  const cards=(db.cards||[]).filter(x=>x.cliente_id===id).filter(cardVisivelParaUsuario);
   const props=(db.propostas||[]).filter(propostaVisivelParaUsuario).filter(x=>x.cliente_id===id);
 
   let html=`
@@ -1076,6 +1083,14 @@ function obraVisivelParaUsuario(o){
     const card=(db.cards||[]).find(c=>c.id===p.card_id);
     return !!card && card.responsavel_id===usuario.id;
   });
+}
+/* v1.0.16: cardVisivelParaUsuario(card) — mesma regra do desktop. Se filtrarCards
+   estiver ligado, só conta/mostra em listas o card em que o usuário conste como
+   responsável (card.responsavel_id). Abrir um card específico por id continua
+   funcionando (padrão igual a osVisivelParaUsuario/obraVisivelParaUsuario). */
+function cardVisivelParaUsuario(c){
+  if(grupo.admin || !grupo.filtrarCards) return true;
+  return c.responsavel_id===usuario.id;
 }
 
 function renderPropostas(){

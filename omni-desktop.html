@@ -1348,11 +1348,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.99';
+const APP_VERSION = '1.47.101';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.101',
+    data: '15/07/2026',
+    itens: [
+      'Nova restrição de visibilidade em Grupos de Acesso: "Ver apenas os próprios Cards do CRM" — quando ligada, o usuário só vê/conta no Kanban e na lista de Clientes os cards em que consta como responsável. O cliente continua aparecendo normalmente na lista (só a contagem/lista de cards fica restrita). Vale no desktop e no app mobile.',
+    ]
+  },
+  {
+    versao: '1.47.100',
+    data: '15/07/2026',
+    itens: [
+      'Grupos de Acesso: os textos de "Ver apenas as próprias O.S." e "Ver apenas as próprias Propostas" agora deixam claro que a restrição vale no desktop e no app mobile também (já valia desde a v1.0.7 do mobile — só o texto estava desatualizado).',
+    ]
+  },
   {
     versao: '1.47.99',
     data: '15/07/2026',
@@ -3055,6 +3069,8 @@ function load(){
     if(!('filtrarPropostas' in g)) g.filtrarPropostas = false;
     // filtrarObras: true = o grupo só enxerga obras com pelo menos uma OS em que consta como responsável ou técnico
     if(!('filtrarObras' in g)) g.filtrarObras = false;
+    // filtrarCards: true = o grupo só enxerga cards do CRM em que consta como responsável
+    if(!('filtrarCards' in g)) g.filtrarCards = false;
   });
   const gAdmin = db.grupos.find(g=>g.admin);
   db.usuarios.forEach(u=>{
@@ -3339,7 +3355,7 @@ async function carregarConfigSupabase(){
            em telas[]; isso só refina o que pode ser feito dentro de uma tela já visível).
            Tela ausente no mapa = 'excluir' (acesso total), ver nivelTela(). */
         telasNivel: g.telas_nivel||{},
-        fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, filtrarPropostas:!!g.filtrar_propostas, filtrarObras:!!g.filtrar_obras, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico,
+        fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, filtrarPropostas:!!g.filtrar_propostas, filtrarObras:!!g.filtrar_obras, filtrarCards:!!g.filtrar_cards, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico,
         /* notificacoesCategorias: quais das 5 categorias de notificação o grupo recebe.
            null = sem restrição configurada ainda = recebe todas (comportamento padrão até
            o admin salvar o grupo de novo com as checkboxes da nova seção "Notificações"). */
@@ -3821,7 +3837,7 @@ function syncConfigSupabase(){
     sincronizarTabela('estoque_categorias', db.estoqueCats||[], c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, filtrar_propostas:!!g.filtrarPropostas, filtrar_obras:!!g.filtrarObras, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico, notificacoes_categorias:g.notificacoesCategorias??null}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, filtrar_propostas:!!g.filtrarPropostas, filtrar_obras:!!g.filtrarObras, filtrar_cards:!!g.filtrarCards, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico, notificacoes_categorias:g.notificacoesCategorias??null}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -6166,8 +6182,8 @@ function renderVistaFases(k){
   fasesOrdenadas().forEach(f=>{
     if(f.tipo) return; // fases de sistema (Perdido/Abandonado e CRM Concluído) NUNCA aparecem nesta visualização
     if(!podeVerFase(f.id)) return; // restrição por grupo
-    if(!db.cards.some(c=>c.faseId===f.id && cardAtivo(c))) return; // só fases com cartão ativo
-    const itens = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c) && filtroBusca(c));
+    if(!db.cards.some(c=>c.faseId===f.id && cardAtivo(c) && cardVisivelParaUsuario(c))) return; // só fases com cartão ativo e visível
+    const itens = db.cards.filter(c=>c.faseId===f.id && cardAtivo(c) && cardVisivelParaUsuario(c) && filtroBusca(c));
     k.appendChild(colEl(f.nome, f.cor, itens, {
       onDrop: id=>{
         const c = db.cards.find(x=>x.id===id);
@@ -6191,8 +6207,8 @@ function renderVistaArquivados(k){
   if(!fp || !fc) return;
 
   const grupos = [
-    { fase: fc, cards: db.cards.filter(c=>c.concluido && podeVerFase(c.faseId) && filtroBusca(c)) },
-    { fase: fp, cards: db.cards.filter(c=>c.perdido  && podeVerFase(c.faseId) && filtroBusca(c)) },
+    { fase: fc, cards: db.cards.filter(c=>c.concluido && podeVerFase(c.faseId) && cardVisivelParaUsuario(c) && filtroBusca(c)) },
+    { fase: fp, cards: db.cards.filter(c=>c.perdido  && podeVerFase(c.faseId) && cardVisivelParaUsuario(c) && filtroBusca(c)) },
   ];
 
   let html = '';
@@ -6237,7 +6253,7 @@ function renderVistaData(k){
   const dow=(new Date().getDay()+6)%7; // 0 = segunda-feira
   const fimSem=localDia(6-dow), fimProx=localDia(13-dow);
   const buckets={atrasado:[],hoje:[],amanha:[],semana:[],proxsemana:[],futuro:[],sem:[]};
-  db.cards.filter(c=>cardAtivo(c) && podeVerFase(c.faseId) && filtroBusca(c)).forEach(c=>{
+  db.cards.filter(c=>cardAtivo(c) && podeVerFase(c.faseId) && cardVisivelParaUsuario(c) && filtroBusca(c)).forEach(c=>{
     let b='sem';
     if(c.agenda){
       const dia=c.agenda.slice(0,10);
@@ -10309,12 +10325,12 @@ function renderClientes(){
   lista = lista.slice().sort((a,b)=>{
     if(sort==='aprovadas') return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='aprovada').length - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='aprovada').length;
     if(sort==='emitidas')  return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='emitida').length  - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='emitida').length;
-    if(sort==='crms')      return db.cards.filter(x=>x.clienteId===b.id).length - db.cards.filter(x=>x.clienteId===a.id).length;
+    if(sort==='crms')      return db.cards.filter(x=>x.clienteId===b.id && cardVisivelParaUsuario(x)).length - db.cards.filter(x=>x.clienteId===a.id && cardVisivelParaUsuario(x)).length;
     return a.nome.localeCompare(b.nome);
   });
 
   lista.forEach(c=>{
-    const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
+    const qtd = db.cards.filter(x=>x.clienteId===c.id && cardVisivelParaUsuario(x)).length;
     const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
     const qtdEmitidas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='emitida').length;
     const qtdAprovadas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='aprovada').length;
@@ -21350,14 +21366,14 @@ function formGrupo(g){
               <input type="checkbox" id="ck-filtrar-os" ${g&&g.filtrarOS?'checked':''}>
               <span>
                 <b>Ver apenas as próprias O.S.</b><br>
-                <span style="font-size:11px;color:var(--muted)">O usuário só vê OS em que consta como responsável ou técnico.</span>
+                <span style="font-size:11px;color:var(--muted)">O usuário só vê OS em que consta como responsável ou técnico. Vale no desktop e no app mobile.</span>
               </span>
             </label>
             <label class="perm-item" style="gap:8px;margin-top:8px">
               <input type="checkbox" id="ck-filtrar-propostas" ${g&&g.filtrarPropostas?'checked':''}>
               <span>
                 <b>Ver apenas as próprias Propostas</b><br>
-                <span style="font-size:11px;color:var(--muted)">O usuário só vê propostas do cartão CRM em que consta como responsável.</span>
+                <span style="font-size:11px;color:var(--muted)">O usuário só vê propostas do cartão CRM em que consta como responsável. Vale no desktop e no app mobile.</span>
               </span>
             </label>
             <label class="perm-item" style="gap:8px;margin-top:8px">
@@ -21365,6 +21381,13 @@ function formGrupo(g){
               <span>
                 <b>Ver apenas as próprias Obras</b><br>
                 <span style="font-size:11px;color:var(--muted)">O usuário só vê obras com pelo menos uma OS (responsável/técnico) ou uma proposta (responsável do cartão) vinculada a ele. Vale no desktop e no app mobile.</span>
+              </span>
+            </label>
+            <label class="perm-item" style="gap:8px;margin-top:8px">
+              <input type="checkbox" id="ck-filtrar-cards" ${g&&g.filtrarCards?'checked':''}>
+              <span>
+                <b>Ver apenas os próprios Cards do CRM</b><br>
+                <span style="font-size:11px;color:var(--muted)">No Kanban e na lista de Clientes, o usuário só vê/conta cards em que consta como responsável. O cliente continua aparecendo na lista mesmo sem cards visíveis. Vale no desktop e no app mobile.</span>
               </span>
             </label>
           </div>
@@ -21481,6 +21504,7 @@ async function salvarGrupo(id){
   const filtrarOS=document.getElementById('ck-filtrar-os')?.checked||false;
   const filtrarPropostas=document.getElementById('ck-filtrar-propostas')?.checked||false;
   const filtrarObras=document.getElementById('ck-filtrar-obras')?.checked||false;
+  const filtrarCards=document.getElementById('ck-filtrar-cards')?.checked||false;
   const acessoComercial=document.getElementById('ck-acesso-comercial')?.checked||false;
   const acessoTecnico=document.getElementById('ck-acesso-tecnico')?.checked||false;
   const notificacoesCategorias=[...document.querySelectorAll('.ck-gnotif:checked')].map(c=>c.value);
@@ -21488,17 +21512,17 @@ async function salvarGrupo(id){
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.telasNivel=telasNivel; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.filtrarPropostas=filtrarPropostas; g.filtrarObras=filtrarObras; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; g.notificacoesCategorias=notificacoesCategorias; }
+    if(!g.admin){ g.telas=telas; g.telasNivel=telasNivel; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.filtrarPropostas=filtrarPropostas; g.filtrarObras=filtrarObras; g.filtrarCards=filtrarCards; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; g.notificacoesCategorias=notificacoesCategorias; }
     row=g;
     registrarLog('editar','grupo',id,`Grupo editado: "${nome}"`);
   } else {
-    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,telasNivel,recursos,recursosEditar,fasesPermitidas,filtrarOS,filtrarPropostas,filtrarObras,acessoComercial,acessoTecnico,notificacoesCategorias};
+    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,telasNivel,recursos,recursosEditar,fasesPermitidas,filtrarOS,filtrarPropostas,filtrarObras,filtrarCards,acessoComercial,acessoTecnico,notificacoesCategorias};
     db.grupos.push(ng);
     row=ng;
     registrarLog('criar','grupo',ng.id,`Novo grupo criado: "${nome}"`);
   }
   try{
-    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],telas_nivel:row.telasNivel||{},recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,filtrar_propostas:!!row.filtrarPropostas,filtrar_obras:!!row.filtrarObras,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico,notificacoes_categorias:row.notificacoesCategorias??null});
+    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],telas_nivel:row.telasNivel||{},recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,filtrar_propostas:!!row.filtrarPropostas,filtrar_obras:!!row.filtrarObras,filtrar_cards:!!row.filtrarCards,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico,notificacoes_categorias:row.notificacoesCategorias??null});
     if(error) throw error;
     await _delay;
   }catch(e){
@@ -21598,6 +21622,21 @@ function obraVisivelParaUsuario(obra){
     const card = db.cards.find(c=>c.id===p.cardId);
     return !!card && card.responsavelId===usuarioAtual.id;
   });
+}
+
+/* cardVisivelParaUsuario(card):
+   Retorna true se o usuário logado pode ver este card do CRM em LISTAS (Kanban,
+   contagem de cards do cliente). Se o grupo tiver filtrarCards === true (e não for
+   admin), só aparece o card em que o usuário conste como responsável (card.responsavelId).
+   Igual ao padrão de osVisivelParaUsuario/propostaVisivelParaUsuario/obraVisivelParaUsuario:
+   só se aplica a listas — abrir um card específico por id (abrirEditarCartao) continua
+   funcionando por link direto, mesmo se ele não aparecer nas listas. Vale tanto no
+   desktop quanto no app mobile (omni-mobile.html tem uma cópia desta função). */
+function cardVisivelParaUsuario(card){
+  if(!usuarioAtual) return false;
+  const g = grupoDe(usuarioAtual);
+  if(g.admin || !g.filtrarCards) return true;
+  return card.responsavelId === usuarioAtual.id;
 }
 
 function renderOSLista(){
