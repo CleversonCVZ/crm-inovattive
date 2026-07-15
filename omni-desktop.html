@@ -1337,11 +1337,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.89';
+const APP_VERSION = '1.47.90';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.90',
+    data: '15/07/2026',
+    itens: [
+      'Garantias: botão "🔄 Atualizar" da aba Garantias voltou a ser verde (btn primary) e ganhou feedback de clique — Atualizar → Atualizando… → ✔ Atualizado → Atualizar (mesmo padrão usado no botão Salvar do resto do sistema), pra ficar claro que o clique surtiu efeito.',
+    ]
+  },
   {
     versao: '1.47.89',
     data: '15/07/2026',
@@ -15872,17 +15879,19 @@ function abaGarantiasCartaoHTML(c){
   }
   return `
     <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn neutral sm" onclick="buscarItensGarantiaCartao(${c.id})">🔄 Atualizar</button>
+      <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id}, this)">🔄 Atualizar</button>
       <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM) pra esta obra — vencimento calculado a partir da data da NF de compra. Recalculado sempre que a aba é aberta.</span>
     </div>
     <div id="garantias-resultado">${_garantiasTabelaHTML(itensGarantiaDaObra(c.obraId))}</div>`;
 }
 
-function buscarItensGarantiaCartao(cardId){
+function buscarItensGarantiaCartao(cardId, btn){
   const c = db.cards.find(x=>x.id===cardId);
   const resultEl = document.getElementById('garantias-resultado');
   if(!c || !resultEl) return;
+  if(btn) btnSalvando(btn, 'Atualizando…');
   resultEl.innerHTML = _garantiasTabelaHTML(itensGarantiaDaObra(c.obraId));
+  if(btn) btnSalvo(btn, '✔ Atualizado');
 }
 
 function abaFinanceiroCartaoHTML(c){
