@@ -1346,11 +1346,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.91';
+const APP_VERSION = '1.47.92';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.92',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: o valor de referência de uma O.S. Avulsa na aba Financeiro do Cartão CRM (bloco "Valor a parcelar" / "Referência") sempre aparecia R$ 0,00 e "✔ Quitado" — estava lendo um campo (valor) que nunca é preenchido em lugar nenhum. Agora usa a soma dos itens (Serviços + Produtos) lançados na aba Itens da própria O.S., o mesmo "Total geral" que já aparece lá. Não afeta O.S. de Execução/Projeto, que não têm cobrança própria (a receita delas vem da Proposta aprovada).',
+    ]
+  },
   {
     versao: '1.47.91',
     data: '15/07/2026',
@@ -15852,6 +15859,15 @@ function osNumero(cardNum, tipo, osDoCard){
   return `OS-${cardNum}-${prefixo}-${String(seq).padStart(3,'0')}`;
 }
 
+/* v1.47.92: total cobrado de uma O.S. Avulsa = soma dos itens lançados na aba Itens
+   (Serviços + Produtos, valorUnit × qtd). Não existe (nem nunca existiu) um campo
+   "valor" próprio na O.S. preenchido em algum formulário — usar diretamente os.valor
+   sempre dava 0. Único ponto de cálculo, reusado na aba Itens, aba Custos (Resultado
+   Aparente) e no Financeiro/Contas a Receber do Cartão CRM. */
+function valorTotalOSAvulsa(os){
+  return (os?.produtos||[]).reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+}
+
 function abaOSCartaoHTML(c){
   const podeEditar = podeEditarRecurso(usuarioAtual,'aba-os');
   const lista = db.ordensServico.filter(o=>o.cardId===c.id)
@@ -16027,7 +16043,7 @@ function abaFinanceiroCartaoHTML(c){
 
   // valor de referência das propostas aprovadas (exclui clienteFornece)
   const refProposta = propostas.reduce((s,p)=>s+valorReceberProposta(p),0);
-  const refOsAvulsa = osAvulsas.reduce((s,o)=>s+(o.valor||0),0);
+  const refOsAvulsa = osAvulsas.reduce((s,o)=>s+valorTotalOSAvulsa(o),0);
   const refTotal = refProposta + refOsAvulsa;
   const saldoNaoParcelado = refTotal - totalParcelado;
 
@@ -16048,7 +16064,7 @@ function abaFinanceiroCartaoHTML(c){
       ${osAvulsas.map(o=>`
         <div style="display:flex;justify-content:space-between;padding:3px 0">
           <span style="color:#374151">OS ${o.numero} — ${o.titulo||'Avulsa'}</span>
-          <span style="font-weight:600">${fmtMoney(o.valor||0)}</span>
+          <span style="font-weight:600">${fmtMoney(valorTotalOSAvulsa(o))}</span>
         </div>`).join('')}
       <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:700">
         <span>Total de referência</span>
@@ -16139,7 +16155,7 @@ function abrirNovaParcelaReceber(cardId){
     return {label:`Proposta ${p.numero}${p.aditivo?' (Aditivo)':''}`, total, parcelado, restante:total-parcelado};
   });
   const restOS = osAvulsas.map(o=>{
-    const total = o.valor||0;
+    const total = valorTotalOSAvulsa(o);
     const parcelado = recebimentos.filter(r=>r.osId===o.id).reduce((s,r)=>s+r.valor,0);
     return {label:`OS ${o.numero}${o.titulo?' — '+o.titulo:''}`, total, parcelado, restante:total-parcelado};
   });
@@ -17560,7 +17576,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     const todos = os.produtos||[];
     const servicos = []; const produtosLista = [];
     todos.forEach((it,i)=>{ (it.produtoEstoqueId ? produtosLista : servicos).push({it,i}); });
-    const totalGeral = todos.reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    const totalGeral = valorTotalOSAvulsa(os);
 
     const tabelaItens = (lista, tituloVazio, mostrarUn=true) => lista.length ? `
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px">
@@ -17690,7 +17706,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
   }
   else if(aba === 'custos'){
     const custos = (db.osCustos||[]).filter(c=>Number(c.osId)===osId);
-    const totalReceita = (os.produtos||[]).reduce((s,it)=>s+(it.valorUnit||0)*(it.qtd||1),0);
+    const totalReceita = valorTotalOSAvulsa(os);
     const totalCustos  = custos.reduce((s,c)=>s+(c.valor||0),0);
 
     // Custo estimado dos produtos (só pra este cálculo de Resultado Aparente — nunca vai
