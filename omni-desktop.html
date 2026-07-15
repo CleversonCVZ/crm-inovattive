@@ -938,6 +938,15 @@
           </div>
           <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
         </div>
+        <div class="config-card">
+          <h3>Classes de Garantia</h3>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas no Catálogo de Estoque pra marcar produtos com controle de garantia, e na aba Garantias do Cartão CRM pra calcular até quando vai a garantia (data da NF de compra + prazo da classe).</p>
+          <table class="fases-table">
+            <thead><tr><th>Classe</th><th style="width:100px">Meses</th><th style="width:70px">Ordem</th><th></th></tr></thead>
+            <tbody id="garantia-classes-tbody"></tbody>
+          </table>
+          <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
+        </div>
       </div>
       <div class="config-card">
         <h3>Dados da Empresa</h3>
@@ -1327,11 +1336,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.82';
-const APP_VERSION_DATE = '14/07/2026';
+const APP_VERSION = '1.47.83';
+const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.83',
+    data: '15/07/2026',
+    itens: [
+      'Garantias (parte 1/3): nova seção "Classes de Garantia" em Configurações do Sistema (criar/editar/excluir, ex.: "Garantia 12 meses" = 12 meses). No Catálogo de Estoque, o cadastro de produto ganhou o checkbox "Produto com controle de garantia", que revela um combo pra escolher a classe — produto com garantia ativa mostra um selo 🛡️ na lista do Catálogo. Preparação pra próxima etapa: o botão de busca de itens em garantia na aba Garantias do Cartão CRM.',
+    ]
+  },
   {
     versao: '1.47.82',
     data: '14/07/2026',
@@ -2957,6 +2973,7 @@ function load(){
   if(!Array.isArray(db.guiasTributos))   db.guiasTributos=[];
   if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
   if(!Array.isArray(db.estoqueMov))      db.estoqueMov=[];
+  if(!Array.isArray(db.garantiaClasses)) db.garantiaClasses=[];
   if(!Array.isArray(db.propostas)) db.propostas=[];
   if(!Array.isArray(db.fasesProposta) || !db.fasesProposta.length){
     db.fasesProposta = [
@@ -3148,7 +3165,7 @@ function enderecoVazio(cidade){ return {cep:'',rua:'',numero:'',complemento:'',b
    db.funcoes, db.grupos, db.empresa), salvando no localStorage também. */
 async function carregarConfigSupabase(){
   try{
-    const [fasesCrm, fasesProp, fasesObra, fasesOS, fasesSRM, fasesFat, estoqueCatsRes, origens, funcoes, grupos, empresa, catOutrosCustos] = await Promise.all([
+    const [fasesCrm, fasesProp, fasesObra, fasesOS, fasesSRM, fasesFat, estoqueCatsRes, origens, funcoes, grupos, empresa, catOutrosCustos, garantiaClassesRes] = await Promise.all([
       sb.from('fases_crm').select('*').order('ordem'),
       sb.from('fases_proposta').select('*').order('ordem'),
       sb.from('fases_obra').select('*').order('ordem'),
@@ -3160,7 +3177,8 @@ async function carregarConfigSupabase(){
       sb.from('funcoes').select('*').order('id'),
       sb.from('grupos').select('*').order('id'),
       sb.from('empresa').select('*').limit(1).maybeSingle(),
-      sb.from('categorias_outros_custos').select('*').order('ordem')
+      sb.from('categorias_outros_custos').select('*').order('ordem'),
+      sb.from('garantia_classes').select('*').order('ordem')
     ]);
     if(fasesCrm.data && fasesCrm.data.length)
       db.fases = fasesCrm.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
@@ -3176,6 +3194,8 @@ async function carregarConfigSupabase(){
       db.fasesFaturamento = fasesFat.data.map(f=>({id:f.id, nome:f.nome, cor:f.cor, ordem:f.ordem, tipo:f.tipo||null}));
     if(estoqueCatsRes.data && estoqueCatsRes.data.length)
       db.estoqueCats = estoqueCatsRes.data.map(c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
+    if(garantiaClassesRes.data && garantiaClassesRes.data.length)
+      db.garantiaClasses = garantiaClassesRes.data.map(g=>({id:g.id, nome:g.nome, meses:Number(g.meses)||0, ordem:g.ordem}));
     if(origens.data && origens.data.length)
       db.origens = origens.data.map(o=>({id:o.id, nome:o.nome}));
     if(funcoes.data && funcoes.data.length)
@@ -3601,7 +3621,8 @@ async function carregarDadosSupabase(){
         ncm:p.ncm||null, unidade:p.unidade||'un',
         descricao:p.descricao||'', ativo:p.ativo!==false,
         categoriaId:p.categoria_id||null,
-        criadoEm:p.criado_em||''
+        criadoEm:p.criado_em||'',
+        garantiaAtiva:!!p.garantia_ativa, garantiaClasseId:p.garantia_classe_id||null
       }));
     if(estoqueMovRes.data)
       db.estoqueMov = estoqueMovRes.data.map(m=>({
@@ -5426,6 +5447,7 @@ function renderGerais(){
   const prev = document.getElementById('logo-preview');
   prev.innerHTML = e.logo ? `<img src="${e.logo}" alt="Logotipo">` : '<span class="sem-logo">Nenhum logotipo enviado</span>';
   document.getElementById('logo-remover').style.display = e.logo ? '' : 'none';
+  renderGarantiaClasses();
 }
 
 function salvarEmpresa(){
@@ -6277,6 +6299,76 @@ function excluirEstoqueCategoria(id){
   registrarLog('excluir', 'estoque_categorias', id, `Categoria de estoque excluída: "${c?c.nome:id}"`);
   db.estoqueCats = (db.estoqueCats||[]).filter(c=>c.id!==id);
   excluirDoSupabase('estoque_categorias', id);
+  save(); renderAll();
+}
+
+/* ================= CLASSES DE GARANTIA (Configurações do Sistema) ================= */
+function garantiaClasse(id){ return (db.garantiaClasses||[]).find(g=>g.id===id); }
+function garantiaClassesOrdenadas(){ return (db.garantiaClasses||[]).slice().sort((a,b)=>a.ordem-b.ordem||a.id-b.id); }
+
+function renderGarantiaClasses(){
+  const tb = document.getElementById('garantia-classes-tbody'); if(!tb) return;
+  tb.innerHTML='';
+  const podeEditar = podeEditarTela(usuarioAtual,'gerais');
+  const ro = podeEditar?'':'disabled';
+  garantiaClassesOrdenadas().forEach(g=>{
+    const qtd = (db.estoqueProdutos||[]).filter(p=>p.garantiaClasseId===g.id).length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" value="${escHtml(g.nome)}" data-id="${g.id}" data-campo="nome" ${ro}></td>
+      <td><input type="number" step="1" min="1" value="${g.meses}" data-id="${g.id}" data-campo="meses" ${ro}></td>
+      <td><input type="number" step="1" value="${g.ordem}" data-id="${g.id}" data-campo="ordem" ${ro}></td>
+      <td style="text-align:right">${podeEditar?`<button class="icon-btn del" title="Excluir classe" data-del="${g.id}" data-qtd="${qtd}">🗑</button>`:''}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp=>{
+    inp.onchange = ()=>{
+      if(!podeEditarTela(usuarioAtual,'gerais')) return;
+      const g = garantiaClasse(+inp.dataset.id); if(!g) return;
+      if(inp.dataset.campo==='meses') g.meses = Math.max(1, parseInt(inp.value)||1);
+      else if(inp.dataset.campo==='ordem') g.ordem = parseFloat(inp.value)||0;
+      else g[inp.dataset.campo] = inp.value;
+      salvarGarantiaClasse(g);
+    };
+  });
+  tb.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick = ()=> excluirGarantiaClasse(+btn.dataset.del, +btn.dataset.qtd);
+  });
+}
+
+async function salvarGarantiaClasse(g){
+  const {error} = await sb.from('garantia_classes').update({nome:g.nome, meses:g.meses, ordem:g.ordem}).eq('id',g.id);
+  if(error){ alert('Erro ao salvar classe de garantia: '+error.message); return; }
+  registrarLog('editar', 'garantia_classes', g.id, `Classe de garantia editada: "${g.nome}" (${g.meses} meses)`);
+  saveLocal(); renderAll();
+}
+
+async function novaGarantiaClasse(){
+  if(!podeEditarTela(usuarioAtual,'gerais')){ alert('Sem permissão para criar classes de garantia.'); return; }
+  const ordemMax = (db.garantiaClasses||[]).reduce((m,g)=>Math.max(m,g.ordem),0);
+  const nc = {id: await proximoIdSeguro('garantia_classes', db.garantiaClasses||[]), nome:'Nova Classe', meses:12, ordem:ordemMax+1};
+  // grava direto no Supabase antes de existir localmente: garantia_classes é FK de
+  // estoque_produtos.garantia_classe_id (mesma causa raiz do bug de Centro de Custo, v1.33.0).
+  const {error} = await sb.from('garantia_classes').upsert({id:nc.id, nome:nc.nome, meses:nc.meses, ordem:nc.ordem});
+  if(error){ alert('Erro ao criar classe de garantia: '+error.message); return; }
+  (db.garantiaClasses = db.garantiaClasses||[]).push(nc);
+  registrarLog('criar', 'garantia_classes', nc.id, `Nova classe de garantia criada: "${nc.nome}"`);
+  saveLocal(); renderAll();
+}
+
+function excluirGarantiaClasse(id, qtd){
+  if(!podeExcluirTela(usuarioAtual,'gerais')){ alert('Sem permissão para excluir classes de garantia.'); return; }
+  const g = garantiaClasse(id);
+  if(qtd>0){
+    if(!confirm(`Esta classe está em uso em ${qtd} produto(s). Eles ficarão sem classe de garantia definida (até você escolher outra). Excluir mesmo assim?`)) return;
+    (db.estoqueProdutos||[]).forEach(p=>{ if(p.garantiaClasseId===id) p.garantiaClasseId=null; });
+    sb.from('estoque_produtos').update({garantia_classe_id:null}).eq('garantia_classe_id', id).then(()=>{});
+  } else {
+    if(!confirm('Excluir esta classe de garantia?')) return;
+  }
+  registrarLog('excluir', 'garantia_classes', id, `Classe de garantia excluída: "${g?g.nome:id}"`);
+  db.garantiaClasses = (db.garantiaClasses||[]).filter(g=>g.id!==id);
+  excluirDoSupabase('garantia_classes', id);
   save(); renderAll();
 }
 
@@ -21864,8 +21956,10 @@ function _renderEstoqueCatalogo(el){
   const linhas=todos.map(p=>{
     const cat=categoriaEstoque(p.categoriaId);
     const catBadge=cat?`<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;background:${cat.cor};color:${textColor(cat.cor)}">${escHtml(cat.nome)}</span>`:'—';
+    const gc = p.garantiaAtiva ? garantiaClasse(p.garantiaClasseId) : null;
+    const garantiaBadge = gc ? ` <span title="Controle de garantia: ${escHtml(gc.nome)}" style="font-size:11px">🛡️</span>` : '';
     return `<tr style="cursor:pointer;${p.ativo?'':'opacity:0.5'}" onclick="editarProdutoEstoque(${p.id})">
-      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}</td>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(p.nome)}${garantiaBadge}</td>
       <td style="padding:6px 10px">${catBadge}</td>
       <td style="padding:6px 10px;font-size:12px;color:var(--muted)">${escHtml(p.nomeFiscal||'—')}</td>
       <td style="padding:6px 10px;font-size:12px;text-align:center">${p.ncm||'—'}</td>
@@ -21887,12 +21981,14 @@ function _renderEstoqueCatalogo(el){
 }
 
 /* ---- Modal Produto ---- */
-function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao, ativo, categoriaId){
+function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao, ativo, categoriaId, garantiaAtiva, garantiaClasseId){
   const esc=v=>(v||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   const opts=['un','m','m2','kg','l','cx','pc','rolo'];
   const labOpts={'un':'un — Unidade','m':'m — Metro','m2':'m² — Metro quadrado','kg':'kg — Quilograma','l':'l — Litro','cx':'cx — Caixa','pc':'pc — Peça','rolo':'rolo — Rolo'};
   const optsCategoria = `<option value="">— Sem categoria —</option>` +
     categoriasEstoqueOrdenadas().map(c=>`<option value="${c.id}"${c.id===categoriaId?' selected':''}>${escHtml(c.nome)}</option>`).join('');
+  const optsGarantia = `<option value="">— Selecione a classe —</option>` +
+    garantiaClassesOrdenadas().map(g=>`<option value="${g.id}"${g.id===garantiaClasseId?' selected':''}>${escHtml(g.nome)} (${g.meses} meses)</option>`).join('');
   const podeEditar = podeEditarTela(usuarioAtual,'estoque-catalogo');
   const ro = podeEditar?'':'disabled';
   return `
@@ -21915,6 +22011,15 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
         <input type="checkbox" id="prod-est-ativo"${ativo!==false?' checked':''} style="width:16px;height:16px" ${ro}>
         <label for="prod-est-ativo" style="font-size:13px;margin:0">Produto ativo (aparece nas listas)</label>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <input type="checkbox" id="prod-est-garantia"${garantiaAtiva?' checked':''} style="width:16px;height:16px" ${ro} onchange="document.getElementById('prod-est-garantia-classe-wrap').style.display=this.checked?'':'none'">
+        <label for="prod-est-garantia" style="font-size:13px;margin:0">Produto com controle de garantia</label>
+      </div>
+      <div id="prod-est-garantia-classe-wrap" style="display:${garantiaAtiva?'':'none'};margin-top:6px">
+        <label>Classe de Garantia</label>
+        <select id="prod-est-garantia-classe" ${ro}>${optsGarantia}</select>
+        <p style="font-size:12px;color:var(--muted);margin-top:4px">Cadastradas em Configurações do Sistema. Usada na aba Garantias do Cartão CRM pra calcular o vencimento a partir da data da NF de compra.</p>
+      </div>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">${id?'Fechar':'Cancelar'}</button>
@@ -21924,7 +22029,7 @@ function _htmlModalProduto(titulo, id, nome, nomeFiscal, ncm, unidade, descricao
 
 function abrirNovoProdutoEstoque(){
   if(!podeEditarTela(usuarioAtual,'estoque-catalogo')){ alert('Sem permissão para cadastrar produtos.'); return; }
-  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true,null), 'cartao');
+  abrirModal(_htmlModalProduto('Novo Produto','','','','','un','',true,null,false,null), 'cartao');
 }
 
 /* ===== v1.47.0: Saída manual de estoque ===== */
@@ -22083,7 +22188,7 @@ async function confirmarLiberarReserva(produtoId, obraOrigemId){
 
 function editarProdutoEstoque(id){
   const p=(db.estoqueProdutos||[]).find(x=>x.id===id); if(!p) return;
-  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo,p.categoriaId||null), 'cartao');
+  abrirModal(_htmlModalProduto('Editar Produto',p.id,p.nome,p.nomeFiscal,p.ncm,p.unidade,p.descricao,p.ativo,p.categoriaId||null,p.garantiaAtiva||false,p.garantiaClasseId||null), 'cartao');
 }
 
 async function salvarProdutoEstoque(){
@@ -22095,6 +22200,9 @@ async function salvarProdutoEstoque(){
   const idVal=document.getElementById('prod-est-id').value;
   const isEdit=!!idVal;
   const catIdRaw = parseInt((document.getElementById('prod-est-categoria')||{}).value)||null;
+  const garantiaAtiva = document.getElementById('prod-est-garantia').checked;
+  const garantiaClasseIdRaw = garantiaAtiva ? (parseInt((document.getElementById('prod-est-garantia-classe')||{}).value)||null) : null;
+  if(garantiaAtiva && !garantiaClasseIdRaw){ alert('Selecione a classe de garantia deste produto.'); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
   const payload={
     nome,
     nome_fiscal:(document.getElementById('prod-est-fiscal').value||'').trim()||null,
@@ -22102,19 +22210,21 @@ async function salvarProdutoEstoque(){
     unidade:document.getElementById('prod-est-unidade').value||'un',
     descricao:(document.getElementById('prod-est-descricao').value||'').trim()||'',
     ativo:document.getElementById('prod-est-ativo').checked,
-    categoria_id:catIdRaw
+    categoria_id:catIdRaw,
+    garantia_ativa:garantiaAtiva,
+    garantia_classe_id:garantiaClasseIdRaw
   };
   if(isEdit){
     const id=parseInt(idVal);
     const {error}=await sb.from('estoque_produtos').update(payload).eq('id',id);
     if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     const p=(db.estoqueProdutos||[]).find(x=>x.id===id);
-    if(p){ Object.assign(p,{nome:payload.nome,nomeFiscal:payload.nome_fiscal,ncm:payload.ncm,unidade:payload.unidade,descricao:payload.descricao||'',ativo:payload.ativo,categoriaId:catIdRaw}); }
+    if(p){ Object.assign(p,{nome:payload.nome,nomeFiscal:payload.nome_fiscal,ncm:payload.ncm,unidade:payload.unidade,descricao:payload.descricao||'',ativo:payload.ativo,categoriaId:catIdRaw,garantiaAtiva,garantiaClasseId:garantiaClasseIdRaw}); }
   } else {
     const {data,error}=await sb.from('estoque_produtos').insert(payload).select().single();
     if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
-    db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,categoriaId:data.categoria_id||null,criadoEm:data.criado_em||''});
+    db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,categoriaId:data.categoria_id||null,criadoEm:data.criado_em||'',garantiaAtiva:!!data.garantia_ativa,garantiaClasseId:data.garantia_classe_id||null});
   }
   renderEstoqueCatalogo(); renderEstoqueAlmoxarifado();
   // v1.47.36: editar um produto existente não fecha mais (só confirma que salvou);
