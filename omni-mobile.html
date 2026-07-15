@@ -400,9 +400,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.0.11';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.11',
+    data: '15/07/2026',
+    itens: [
+      'Novo: detalhe da Obra ganhou a seção "Contatos da Obra" (arquiteto, empreiteiro etc.) — mesma lista já cadastrada no desktop, com botão de ligar direto. Cadastro/edição de contato continua só no desktop.',
+    ]
+  },
   {
     versao: '1.0.10',
     data: '15/07/2026',
@@ -510,6 +517,7 @@ let db = {
   osDiario:[],
   osTecnicos:[],
   fasesOS:[],
+  obraContatos:[],
 };
 
 /* ===== UTILS ===== */
@@ -716,7 +724,10 @@ async function carregarDados(){
       sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];}),
       // v1.0.5: fases da O.S. (mesma tabela do desktop) — precisa pra achar a fase "Revisão
       // Interna" (tipo='revisao_interna') e mover a O.S. pra lá ao "Encerrar OS" no celular.
-      sb.from('fases_os').select('id,nome,cor,ordem,tipo').order('ordem').then(r=>{db.fasesOS=r.data||[];})
+      sb.from('fases_os').select('id,nome,cor,ordem,tipo').order('ordem').then(r=>{db.fasesOS=r.data||[];}),
+      // v1.0.11: contatos da obra (arquiteto, empreiteiro etc.) — mesma tabela do desktop
+      // (obra_contatos), só leitura no mobile (cadastro/edição continuam no desktop).
+      sb.from('obra_contatos').select('id,obra_id,nome,funcao,tel').then(r=>{db.obraContatos=r.data||[];})
     );
     // clientes e fases também para técnico (nome da OS)
     if(!grupo.acessoComercial){
@@ -1405,12 +1416,27 @@ function abrirObra(id){
   const cl=db.clientes.find(c=>c.id===o.cliente_id);
   const osObra=(db.os||[]).filter(osVisivelParaUsuario).filter(x=>x.obra_id===id);
   const diario=(db.osDiario||[]).filter(d=>osObra.map(x=>x.id).includes(d.os_id)).sort((a,b)=>b.data.localeCompare(a.data));
+  // v1.0.11: contatos da obra (arquiteto, empreiteiro etc.) — só leitura aqui, cadastro
+  // continua no desktop (aba Contatos do cartão CRM).
+  const contatosObra=(db.obraContatos||[]).filter(ct=>ct.obra_id===id);
 
   let html=`
     <div class="info-row"><span class="lbl">Cliente</span><span class="val">${esc(cl?.nome||'—')}</span></div>
     <div class="info-row"><span class="lbl">Status</span><span class="val">${badge(o.status||'ativa',STATUS_OBRA)}</span></div>
     <div class="info-row"><span class="lbl">Endereço</span><span class="val">${esc(resumoEnd(o.endereco))||'—'}</span></div>
     <div class="info-row"><span class="lbl">Início</span><span class="val">${fmtData(o.data_inicio)}</span></div>`;
+
+  html+=`<div class="section-title">Contatos da Obra (${contatosObra.length})</div>`;
+  if(contatosObra.length){
+    html+=contatosObra.map(ct=>`
+      <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ct.nome)}</div>
+          <div style="font-size:12px;color:var(--muted)">${esc(ct.funcao||'—')}</div>
+        </div>
+        ${ct.tel?`<a href="tel:${esc(ct.tel)}" style="flex-shrink:0;text-decoration:none"><button class="btn btn-neutral btn-sm">📞 ${esc(ct.tel)}</button></a>`:''}
+      </div>`).join('');
+  } else html+='<p style="font-size:13px;color:var(--muted)">Nenhum contato cadastrado.</p>';
 
   html+=`<div class="section-title">OS vinculadas (${osObra.length})</div>`;
   if(osObra.length){
