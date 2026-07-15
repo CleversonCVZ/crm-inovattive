@@ -118,6 +118,9 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
 .info-row .val{flex:1;font-size:14px;font-weight:600;word-break:break-word}
 .section-title{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:16px 0 10px}
 
+/* Arquivos de Projeto (Obra) — v1.0.14 */
+.arq-carregando button{opacity:.5}
+
 /* Diary */
 .diary-entry{background:#f8fafc;border-radius:10px;padding:12px;margin-bottom:10px}
 .diary-entry-meta{font-size:11px;color:var(--muted);margin-bottom:6px;display:flex;gap:8px;align-items:center}
@@ -400,9 +403,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.13';
+const APP_VERSION = '1.0.14';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.14',
+    data: '15/07/2026',
+    itens: [
+      'Novo: detalhe da Obra ganhou a seção "Projetos" — mostra as plantas/PDFs do projeto de automação finalizado (mesmo conteúdo que já existe no cartão CRM do desktop), com botão pra abrir/baixar direto no celular.',
+    ]
+  },
   {
     versao: '1.0.13',
     data: '15/07/2026',
@@ -544,6 +554,29 @@ function urlImagemDiario(path){
   if(!path) return '';
   try{ return sb.storage.from('os-diario-imagens').getPublicUrl(path).data.publicUrl; }
   catch(e){ return ''; }
+}
+/* v1.0.14: arquivos de Projeto (os.arquivos_projeto — plantas/PDFs do projeto de
+   automação finalizado) ficam no bucket 'os-arquivos', que é PRIVADO (diferente do
+   'os-diario-imagens' acima) — precisa de signed URL, não dá pra usar getPublicUrl().
+   Mesmo padrão que o desktop já usa (baixarArquivoOS/_baixarArquivoBucket) pra esse
+   mesmo bucket. */
+async function signedUrlArquivoOS(path){
+  try{
+    const {data, error} = await sb.storage.from('os-arquivos').createSignedUrl(path, 3600);
+    if(error || !data) return '';
+    return data.signedUrl;
+  }catch(e){ return ''; }
+}
+/* Preenche os hrefs de <a data-arq-path="..."> depois que o HTML da sheet já está no
+   DOM (assíncrono, igual ao padrão de carregarImagensOSPrivadas() do desktop) — assim
+   o link já está pronto quando o usuário toca, sem popup bloqueado por navegador. */
+async function carregarLinksArquivosProjeto(){
+  const els=[...document.querySelectorAll('#sheet-body a[data-arq-path]')];
+  for(const el of els){
+    const url=await signedUrlArquivoOS(el.dataset.arqPath);
+    if(url){ el.href=url; el.classList.remove('arq-carregando'); }
+    else { el.textContent='⚠ erro ao carregar'; }
+  }
 }
 function fmtData(iso){
   if(!iso) return '—';
@@ -733,7 +766,7 @@ async function carregarDados(){
   if(grupo.acessoTecnico || grupo.admin){
     promises.push(
       sb.from('obras').select('*').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
-      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico,fase_id').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[]}));}),
+      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico,fase_id,arquivos_projeto').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[]}));}),
       sb.from('os_diario').select('*').order('data',{ascending:false}).then(r=>{db.osDiario=r.data||[];}),
       sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];}),
       // v1.0.5: fases da O.S. (mesma tabela do desktop) — precisa pra achar a fase "Revisão
@@ -1452,6 +1485,11 @@ function abrirObra(id){
   // v1.0.11: contatos da obra (arquiteto, empreiteiro etc.) — só leitura aqui, cadastro
   // continua no desktop (aba Contatos do cartão CRM).
   const contatosObra=(db.obraContatos||[]).filter(ct=>ct.obra_id===id);
+  // v1.0.14: "nossos projetos" = arquivos_projeto das O.S. tipo=projeto vinculadas à
+  // obra (plantas/PDFs do projeto de automação finalizado — mesmo conteúdo da seção
+  // "Projetos Finalizados" do desktop, que só mostra arquivos_projeto, não
+  // arquivos_arquiteto). Só leitura/download aqui, upload continua no desktop.
+  const osProjetos=osObra.filter(os=>os.tipo==='projeto' && (os.arquivos_projeto||[]).length);
 
   let html=`
     <div class="info-row"><span class="lbl">Cliente</span><span class="val">${esc(cl?.nome||'—')}</span></div>
@@ -1470,6 +1508,25 @@ function abrirObra(id){
         ${ct.tel?`<a href="tel:${esc(ct.tel)}" style="flex-shrink:0;text-decoration:none"><button class="btn btn-neutral btn-sm">📞 ${esc(ct.tel)}</button></a>`:''}
       </div>`).join('');
   } else html+='<p style="font-size:13px;color:var(--muted)">Nenhum contato cadastrado.</p>';
+
+  if(osProjetos.length){
+    html+=`<div class="section-title">Projetos (${osProjetos.reduce((s,os)=>s+(os.arquivos_projeto||[]).length,0)})</div>`;
+    html+=osProjetos.map(os=>`
+      <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-size:11px;font-weight:700;color:#5c6bc0;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📋 ${esc(os.numero)} — ${esc(os.titulo||'')}</div>
+        ${(os.arquivos_projeto||[]).map(a=>{
+          const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
+          const path=(a.path||'').replace(/"/g,'&quot;');
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border)">
+            <span style="flex-shrink:0">${isPdf?'📄':'📐'}</span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nome||'arquivo')}</span>
+            <a class="arq-carregando" data-arq-path="${path}" href="#" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none" onclick="return this.classList.contains('arq-carregando')?false:true">
+              <button class="btn btn-neutral btn-sm">${isPdf?'👁 Abrir':'⬇ Baixar'}</button>
+            </a>
+          </div>`;
+        }).join('')}
+      </div>`).join('');
+  }
 
   html+=`<div class="section-title">OS vinculadas (${osObra.length})</div>`;
   if(osObra.length){
@@ -1493,6 +1550,7 @@ function abrirObra(id){
   } else html+='<p style="font-size:13px;color:var(--muted)">Sem entradas.</p>';
 
   abrirSheet(o.nome||'Obra', html);
+  if(osProjetos.length) carregarLinksArquivosProjeto();
 }
 
 /* ===== PERFIL ===== */
