@@ -1337,11 +1337,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.86';
+const APP_VERSION = '1.47.88';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.88',
+    data: '15/07/2026',
+    itens: [
+      'Cartão CRM — aba Dados: nota explicativa abaixo do campo "Valor (R$)" — ele fica editável manualmente enquanto não há proposta aprovada, e passa a ser atualizado sozinho (soma das propostas aprovadas) assim que alguma proposta do cartão for aprovada. cleverson estranhou o campo mostrando 0 com uma proposta emitida (ainda não aprovada) já tendo valor — não era bug, só faltava essa explicação na tela.',
+    ]
+  },
+  {
+    versao: '1.47.87',
+    data: '15/07/2026',
+    itens: [
+      'Garantias (parte 2/3): aba Garantias do Cartão CRM ganhou o botão "🔍 Buscar Itens em Garantia" — procura na obra vinculada todos os produtos com controle de garantia comprados (via SRM), traz NF e data de compra, e calcula o vencimento (data da NF + prazo da classe). Busca é por obra (não só este cartão, já que uma obra pode ter mais de um Cartão CRM) e sempre calculada na hora, sem salvar nada. Ajuda contextual da tela Catálogo de Estoque e da aba Garantias atualizadas.',
+    ]
+  },
   {
     versao: '1.47.86',
     data: '15/07/2026',
@@ -6394,6 +6408,50 @@ function excluirGarantiaClasse(id, qtd){
   save(); renderGarantiaClasses();
 }
 
+/* soma `meses` a uma data YYYY-MM-DD sem passar por Date/timezone (mesmo
+   cuidado de _finPainelDentroFiltro) — trava o dia no último dia do mês
+   de destino se ele não existir (ex.: 31/01 + 1 mês = 28 ou 29/02). */
+function somarMesesData(dataStr, meses){
+  if(!dataStr) return null;
+  const [y,m,d] = dataStr.slice(0,10).split('-').map(Number);
+  const totalM = (m-1) + meses;
+  const novoAno = y + Math.floor(totalM/12);
+  const novoMes = (totalM%12)+1;
+  const ultimoDia = new Date(novoAno, novoMes, 0).getDate();
+  const novoDia = Math.min(d, ultimoDia);
+  return `${novoAno}-${String(novoMes).padStart(2,'0')}-${String(novoDia).padStart(2,'0')}`;
+}
+
+/* Garantias (v1.47.87): busca, AO VIVO (sem persistir nada), os itens com
+   controle de garantia comprados pra uma obra. Fonte: estoqueMov (tipo
+   entrada, já tem obraId direto desde a v1.47.9) + o produto tem que estar
+   marcado com garantiaAtiva; a NF de compra (número/data) vem da cotação
+   SRM vinculada (srmCotacaoId). Vencimento = data da NF + meses da classe
+   ATUAL do produto (se a classe mudar depois, o cálculo muda junto — decisão
+   combinada com cleverson, ver memória do feature). */
+function itensGarantiaDaObra(obraId){
+  if(!obraId) return [];
+  const movs = (db.estoqueMov||[]).filter(m=>m.tipo==='entrada' && m.obraId===obraId);
+  const itens = [];
+  movs.forEach(m=>{
+    const produto = (db.estoqueProdutos||[]).find(p=>p.id===m.produtoId);
+    if(!produto || !produto.garantiaAtiva) return;
+    const classe = garantiaClasse(produto.garantiaClasseId);
+    if(!classe) return; // garantiaAtiva sem classe válida (ex.: classe foi excluída) — não dá pra calcular
+    const cot = m.srmCotacaoId ? (db.srmCotacoes||[]).find(x=>x.id===m.srmCotacaoId) : null;
+    const nfNumero = cot?.nfNumero || null;
+    const nfData = cot?.nfData || null;
+    itens.push({
+      produtoNome: produto.nome,
+      quantidade: m.quantidade,
+      nfNumero, nfData,
+      classeNome: classe.nome, meses: classe.meses,
+      dataFim: nfData ? somarMesesData(nfData, classe.meses) : null
+    });
+  });
+  return itens.sort((a,b)=> (b.dataFim||'').localeCompare(a.dataFim||''));
+}
+
 /* ================= SRM: PAINEL & CARD ================= */
 
 function srmCardAtivo(c){ return !c.encerrado && !c.cancelado; }
@@ -10249,7 +10307,12 @@ const AJUDA_CONTEUDO = {
       },
       garantias: {
         titulo: 'Aba Garantias',
-        html: `<p>Reservada para o controle de garantias pós-obra — ainda sem funcionalidade implementada.</p>`
+        html: `
+          <p>O botão "🔍 Buscar Itens em Garantia" procura, na obra vinculada a este cartão, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto.</p>
+          <h5>Por que é por obra, não só por este cartão</h5>
+          <p>Uma obra pode ter mais de um Cartão CRM ao longo do tempo — mas os produtos instalados pertencem fisicamente à obra, não a um cartão específico. Por isso a busca sempre traz TODOS os itens em garantia da obra, mesmo que a compra tenha entrado por outro cartão.</p>
+          <h5>Cálculo sempre ao vivo</h5>
+          <p>Nada fica salvo — cada clique recalcula na hora com os dados atuais. Se a classe de garantia do produto mudar depois da compra, o próximo clique já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>`
       }
     }
   },
@@ -10589,7 +10652,9 @@ const AJUDA_CONTEUDO = {
     titulo: 'Estoque — Catálogo',
     html: `
       <p>Cadastro dos produtos que passam pelo estoque: nome comercial (como você reconhece o item no dia a dia), Descrição Fiscal — o texto que deve aparecer na Nota Fiscal, geralmente igual ao <code>xProd</code> do XML de compra — NCM e unidade.</p>
-      <p>A Descrição Fiscal é o que alimenta o Espelho de Faturamento e a Instrução pra contabilidade — sem ela preenchida, o item aparece com aviso "sem descrição fiscal" lá na hora de faturar.</p>`
+      <p>A Descrição Fiscal é o que alimenta o Espelho de Faturamento e a Instrução pra contabilidade — sem ela preenchida, o item aparece com aviso "sem descrição fiscal" lá na hora de faturar.</p>
+      <h5>🛡️ Controle de Garantia</h5>
+      <p>O checkbox "Produto com controle de garantia" revela um combo pra escolher a Classe de Garantia do produto (cadastradas em Configurações do Sistema). Produtos marcados mostram o selo 🛡️ na lista do Catálogo. Esse cadastro é só o "de-para" produto↔prazo — o cálculo de até quando vai a garantia de cada unidade comprada acontece na aba Garantias do Cartão CRM, cruzando com a data da NF de compra no SRM.</p>`
   },
   'estoque-almoxarifado': {
     titulo: 'Estoque — Almoxarifado',
@@ -11067,6 +11132,7 @@ function camposCartaoForm(c, faseInicial, clienteIdInicial){
       ${c ? `<button type="button" id="btn-limpar-agenda-${c.id}" title="Limpar data e remover do Google Calendar" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px;display:${c.agenda?'':'none'}" onclick="limparAgendaCartao(${c.id})">✕</button>` : ''}
     </div>
     <label>Valor (R$)</label><input id="m-valor" type="number" step="0.01" value="${c?(c.valor||0):0}">
+    <p style="font-size:11px;color:var(--muted);margin:3px 0 10px">Editável enquanto não há proposta aprovada — assim que uma proposta for aprovada, este valor passa a ser atualizado sozinho com a soma das propostas aprovadas.</p>
     <div class="flags">
       <label class="flag perdido"><input type="checkbox" id="m-perdido" ${c&&c.perdido?'checked':''}> ✖ Perdido</label>
       <label class="flag concluido"><input type="checkbox" id="m-concluido" ${c&&c.concluido?'checked':''}> ✔ Concluído</label>
@@ -15740,14 +15806,70 @@ function abaOSCartaoHTML(c){
    data_vencimento OU condicao, status (pendente/recebido),
    origem (proposta ou os_avulsa).
    ═══════════════════════════════════════════════════════════ */
-/* Aba Garantias do cartão CRM (v1.46.0) — reservada por enquanto, sem funcionalidade
-   ainda; cleverson pediu a aba criada de antemão pra usar depois. */
+/* Aba Garantias do cartão CRM (v1.46.0 placeholder → v1.47.87 implementada).
+   Busca AO VIVO (sem persistir) os produtos com controle de garantia comprados
+   pra obra deste cartão — cruza estoqueMov (obraId) com a cotação SRM que
+   originou a entrada (NF número/data) e a classe de garantia do produto.
+   Combinado com cleverson: a busca é por OBRA (não por este Cartão CRM
+   especificamente), porque uma obra pode ter mais de um Cartão CRM ao longo
+   do tempo e os produtos instalados fisicamente pertencem à obra como um
+   todo — ver memória do feature. */
 function abaGarantiasCartaoHTML(c){
-  return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
-    <div style="font-size:32px;margin-bottom:12px">🛡️</div>
-    <div style="font-weight:600">Em construção</div>
-    <div style="font-size:13px;margin-top:6px">Esta aba ainda não tem funcionalidade — reservada para o controle de garantias.</div>
-  </div>`;
+  if(!c.obraId){
+    return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
+      <div style="font-size:32px;margin-bottom:12px">🛡️</div>
+      <div style="font-weight:600">Sem obra vinculada</div>
+      <div style="font-size:13px;margin-top:6px">Vincule uma obra a este cartão (aba Dados) pra poder buscar itens em garantia.</div>
+    </div>`;
+  }
+  return `
+    <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id})">🔍 Buscar Itens em Garantia</button>
+      <span style="font-size:12px;color:var(--muted);margin-left:10px">Procura no SRM os produtos com controle de garantia comprados pra esta obra e calcula o vencimento a partir da data da NF de compra.</span>
+    </div>
+    <div id="garantias-resultado">
+      <div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Clique em "Buscar Itens em Garantia" pra ver o resultado.</div>
+    </div>`;
+}
+
+function buscarItensGarantiaCartao(cardId){
+  const c = db.cards.find(x=>x.id===cardId);
+  const resultEl = document.getElementById('garantias-resultado');
+  if(!c || !resultEl) return;
+  const itens = itensGarantiaDaObra(c.obraId);
+  if(!itens.length){
+    resultEl.innerHTML = `<div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Nenhum produto com controle de garantia encontrado nas compras desta obra.</div>`;
+    return;
+  }
+  const hoje = localDia(0);
+  const linhas = itens.map(it=>{
+    let statusHtml;
+    if(!it.dataFim) statusHtml = `<span style="color:var(--muted)">— sem data de NF —</span>`;
+    else if(it.dataFim >= hoje) statusHtml = `<span style="color:#2e7d32;font-weight:600">✅ Em garantia</span>`;
+    else statusHtml = `<span style="color:#c62828;font-weight:600">⚠️ Vencida</span>`;
+    return `<tr>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(it.produtoNome)}</td>
+      <td style="padding:6px 10px;text-align:center">${fmtNum(it.quantidade)}</td>
+      <td style="padding:6px 10px">${it.nfNumero?escHtml(String(it.nfNumero)):'—'}</td>
+      <td style="padding:6px 10px">${it.nfData?fmtDia2(it.nfData):'—'}</td>
+      <td style="padding:6px 10px">${escHtml(it.classeNome)} (${it.meses}m)</td>
+      <td style="padding:6px 10px">${it.dataFim?fmtDia2(it.dataFim):'—'}</td>
+      <td style="padding:6px 10px">${statusHtml}</td>
+    </tr>`;
+  }).join('');
+  resultEl.innerHTML = `
+    <table class="lista">
+      <thead><tr>
+        <th>Produto</th>
+        <th style="width:70px;text-align:center">Qtd</th>
+        <th style="width:110px">NF</th>
+        <th style="width:100px">Data Compra</th>
+        <th style="width:150px">Classe</th>
+        <th style="width:100px">Vencimento</th>
+        <th style="width:130px">Status</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>`;
 }
 
 function abaFinanceiroCartaoHTML(c){
