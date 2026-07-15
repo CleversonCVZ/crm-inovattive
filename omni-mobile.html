@@ -171,7 +171,7 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
 .checkin-bar{background:#fff;border-radius:14px;padding:16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:var(--shadow)}
 .checkin-info{flex:1}
 .checkin-label{font-size:12px;color:var(--muted);font-weight:600}
-.checkin-time{font-size:18px;font-weight:800;color:var(--text);margin-top:2px}
+.checkin-time{font-size:15px;font-weight:800;color:var(--text);margin-top:2px;line-height:1.4}
 
 /* Tabs */
 .tabs{display:flex;background:#fff;border-bottom:1px solid var(--border);padding:0 16px;gap:4px}
@@ -399,9 +399,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.3',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: no detalhe da O.S., "Em campo desde" e o horário de finalização mostravam só a hora (ex: 10:02) — agora mostram data e hora juntas (ex: 13/07/2026 10:02).',
+    ]
+  },
   {
     versao: '1.0.2',
     data: '15/07/2026',
@@ -465,6 +472,14 @@ function fmtDia(iso){
 function fmtHora(iso){
   if(!iso) return null;
   return new Date(iso).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+/* v1.0.3: data+hora juntos (ex: "13/07/2026 10:02"), pra check-in/checkout da O.S. —
+   diferente de fmtData() porque aqui o campo é timestamp completo (data_inicio/data_termino),
+   não uma data pura, então não pode reusar fmtData (que assume iso+'T00:00:00'). */
+function fmtDataHora(iso){
+  if(!iso) return null;
+  const d=new Date(iso);
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
 function fmtMoney(v){
   if(v===null||v===undefined) return '—';
@@ -989,8 +1004,8 @@ function abrirOS(id){
   const cl=db.clientes.find(c=>c.id===o.cliente_id);
   const obra=db.obras.find(ob=>ob.id===o.obra_id);
   const diario=(db.osDiario||[]).filter(d=>d.os_id===id).sort((a,b)=>b.data.localeCompare(a.data));
-  const checkin=fmtHora(o.data_inicio);
-  const checkout=fmtHora(o.data_termino);
+  const checkin=fmtDataHora(o.data_inicio);
+  const checkout=fmtDataHora(o.data_termino);
   const hoje=new Date().toISOString().slice(0,10);
 
   let html=`
