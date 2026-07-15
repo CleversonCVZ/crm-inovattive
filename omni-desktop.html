@@ -1327,11 +1327,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.80';
+const APP_VERSION = '1.47.81';
 const APP_VERSION_DATE = '14/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.81',
+    data: '14/07/2026',
+    itens: [
+      'Ajuda Contextual: botão ❓ adicionado nos modais de Contas Correntes (Nova/Editar Conta, Extrato, Lançamento Manual) — faltava desde que o sistema de ajuda foi criado. Conteúdo novo explica saldo calculado, tipos de conta, Extrato × Lançar, e a trava de "Conta de Sistema" (Provisão de Impostos/Migração) adicionada na v1.47.75.',
+    ]
+  },
   {
     versao: '1.47.80',
     data: '14/07/2026',
@@ -10327,7 +10334,19 @@ const AJUDA_CONTEUDO = {
   },
   'fin-contas-correntes': {
     titulo: 'Contas Correntes',
-    html: `<p>Cadastro das contas bancárias/caixa da empresa. "📋 Extrato" e "＋ Lançar" no topo abrem o fluxo escolhendo a conta primeiro; clicar direto numa linha da lista vai pro cadastro/edição da conta. O saldo atual é sempre calculado a partir do histórico de lançamentos (Contas a Pagar pagas + Contas a Receber recebidas + lançamentos manuais/transferências), nunca digitado à mão depois do saldo inicial.</p>`
+    html: `<p>Cadastro das contas bancárias/caixa da empresa. "📋 Extrato" e "＋ Lançar" no topo abrem o fluxo escolhendo a conta primeiro; clicar direto numa linha da lista vai pro cadastro/edição da conta. O saldo atual é sempre calculado a partir do histórico de lançamentos (Contas a Pagar pagas + Contas a Receber recebidas + lançamentos manuais/transferências), nunca digitado à mão depois do saldo inicial. Contas com o selo 🔒 são "Contas de Sistema" — abra qualquer uma delas e clique no ❓ do modal pra entender essa trava.</p>`
+  },
+  'conta-corrente': {
+    titulo: 'Conta Corrente',
+    html: `
+      <h5>Saldo</h5>
+      <p>Nunca é digitado — sempre calculado a partir do Saldo Inicial + entradas − saídas − transferências enviadas, olhando todo o histórico de lançamentos daquela conta (manuais, Contas a Pagar pagas, Contas a Receber recebidas, transferências entre contas). Corrigir um saldo errado é ajustar/excluir o lançamento que causou o erro, nunca o campo "Saldo Inicial" da conta (a menos que o erro seja mesmo no saldo de abertura).</p>
+      <h5>Tipos de conta</h5>
+      <p><b>Corrente/Caixa Interno:</b> saldo simples, soma e subtrai normalmente. <b>Cartão de Crédito:</b> funciona ao contrário — "Fatura Inicial" é uma dívida (mostrada negativa), gastos aumentam a fatura em aberto, pagamentos da fatura reduzem; use "Fechamento"/"Vencimento" só como referência de data, o sistema não fecha fatura sozinho.</p>
+      <h5>📋 Extrato × ＋ Lançar</h5>
+      <p>Extrato é a lista completa de movimentações da conta (filtrável por tipo) — clique numa linha pra editar/excluir aquele lançamento específico. "＋ Lançar" cria um lançamento manual novo (entrada, saída ou transferência para outra conta). Lançamentos que vieram de outra tela (pagamento de Conta a Pagar, recebimento de Conta a Receber, previsão de imposto de um Espelho etc.) também aparecem aqui, mas alguns campos ficam travados pra edição — mexer neles direto no extrato desalinharia com a tela de origem.</p>
+      <h5>🔒 Conta de Sistema</h5>
+      <p>Classificação pra contas de controle interno que não são dinheiro "mexível" no dia a dia — hoje só "Provisão de Impostos" (acumula a previsão de imposto a pagar dos Espelhos de Faturamento, ver Guias de Recolhimento) e "Migração Sistema junho 2026" (saldo de abertura trazido do sistema anterior). Contas marcadas assim escondem o botão "＋ Lançar" e bloqueiam editar/excluir lançamentos (aqui, no Extrato e nos atalhos de edição) pra quem não tiver a permissão "Contas Correntes — Lançar/Editar/Excluir em Contas de Sistema", configurável em Grupos de Acesso. Ver o Extrato continua liberado normalmente pra quem já acessa Contas Correntes — só a escrita é travada.</p>`
   },
   'fin-contas-pagar': {
     titulo: 'Contas a Pagar',
@@ -13033,8 +13052,12 @@ function confirmarEscolherConta(acao){
 /** Abre modal para cadastrar nova conta corrente */
 function abrirNovaContaCorrente(){
   if(!podeUsar(usuarioAtual,'fin-contas-correntes-gerenciar')){ alert('Sem permissão para gerenciar Contas Correntes.'); return; }
+  contextoAjuda.modal='conta-corrente'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.81
   abrirModal(`
-    <h3>Nova Conta Corrente</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Nova Conta Corrente</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="aba-corpo">${_ccFormHTML()}</div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal()">Cancelar</button>
@@ -13052,8 +13075,12 @@ function abrirEditarContaCorrente(id){
   // v1.47.75: conta de sistema esconde o botão "+ Lançar" pra quem não tem a
   // permissão extra — Extrato continua liberado (só leitura de saldo).
   const podeLancarAqui = podeLancar && (!c.ehContaSistema || podeUsar(usuarioAtual,'fin-contas-correntes-sistema'));
+  contextoAjuda.modal='conta-corrente'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.81
   abrirModal(`
-    <h3>${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:8px;vertical-align:middle">🔒 Conta de Sistema</span>`:''}</h3>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;color:var(--muted);background:var(--border);padding:2px 8px;border-radius:8px;vertical-align:middle">🔒 Conta de Sistema</span>`:''}</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
     <div class="aba-corpo">${podeGer ? _ccFormHTML(c) : `<p style="color:var(--muted);padding:20px 0">Você tem acesso apenas a lançamentos e extrato desta conta.</p>`}</div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
@@ -13208,9 +13235,11 @@ function abrirLancamentoManual(contaId){
   const obraOpts = (db.obras||[]).filter(o=>o.status==='ativa')
     .map(o=>`<option value="${o.id}">${escHtml(o.nome)}</option>`).join('');
 
+  contextoAjuda.modal='conta-corrente'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.81
   const html = `
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
-      <h3>Lançamento — ${escHtml(c.nome)}</h3>
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">Lançamento — ${escHtml(c.nome)}</h3>
+      ${ajudaBtnModalHTML()}
     </div>
     <div class="aba-corpo" style="display:grid;gap:14px">
       <div>
@@ -13388,6 +13417,7 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
   // v1.47.75: em contas de sistema, só quem tem a permissão extra vê os botões de
   // lançar/editar/excluir aqui no extrato — o resto continua vendo só leitura.
   const podeMexerAqui = !c.ehContaSistema || podeUsar(usuarioAtual,'fin-contas-correntes-sistema');
+  contextoAjuda.modal='conta-corrente'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.81
 
   const todasMovs = (db.movimentacoes||[])
     .filter(m=>m.contaId===contaId)
@@ -13442,9 +13472,12 @@ function abrirMovimentacoesContaCorrente(contaId, filtroTipo='todos'){
     : `<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--muted);font-size:13px">Nenhuma movimentação encontrada.</td></tr>`;
 
   abrirModal(`
-    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:0;border-bottom:1px solid var(--border)">
-      <h3 style="margin-bottom:4px">📋 Extrato</h3>
-      <div style="font-size:14px;font-weight:600;color:var(--muted)">${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;background:var(--border);padding:2px 8px;border-radius:8px">🔒 Conta de Sistema</span>`:''}</div>
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <div>
+        <h3 style="margin-bottom:4px">📋 Extrato</h3>
+        <div style="font-size:14px;font-weight:600;color:var(--muted)">${escHtml(c.nome)}${c.ehContaSistema?` <span style="font-size:11px;font-weight:400;background:var(--border);padding:2px 8px;border-radius:8px">🔒 Conta de Sistema</span>`:''}</div>
+      </div>
+      ${ajudaBtnModalHTML()}
     </div>
 
     <div style="flex-shrink:0;display:flex;gap:20px;padding:14px 0 10px;border-bottom:1px solid var(--border)">
