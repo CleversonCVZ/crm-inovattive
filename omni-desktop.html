@@ -230,7 +230,8 @@
   .empty{color:var(--muted);font-size:13px;text-align:center;padding:14px}
 
   /* ===== Configurações do sistema ===== */
-  .config-grid{display:grid;grid-template-columns:340px minmax(0,560px);gap:14px;align-items:start}
+  .config-grid{display:grid;grid-template-columns:340px minmax(0,460px) minmax(0,340px);gap:14px;align-items:start}
+  @media (max-width:1100px){.config-grid{grid-template-columns:340px minmax(0,560px)}}
   @media (max-width:800px){.config-grid{grid-template-columns:1fr}}
   .config-card{background:#fff;border-radius:var(--radius);padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
   .config-card h3{font-size:15px;margin-bottom:10px;color:var(--blue-dark)}
@@ -939,32 +940,30 @@
           <button class="btn sm" style="margin-top:6px" onclick="salvarAliquotasTributos()">Salvar alíquotas</button>
         </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:14px">
-        <div class="config-card">
-          <h3>Dados da Empresa</h3>
-          <label>Razão social</label><input id="emp-razao">
-          <label>Nome fantasia <small>(exibido no sistema)</small></label><input id="emp-fantasia">
-          <div class="form-row">
-            <div><label>CNPJ</label><input id="emp-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
-              oninput="this.value=this.value.replace(/\D/g,'').replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d)/,'$1-$2')"></div>
-            <div><label>Inscrição estadual</label><input id="emp-ie"></div>
-          </div>
-          <div class="form-row">
-            <div><label>Telefone</label><input id="emp-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)"></div>
-            <div><label>E-mail</label><input id="emp-email"></div>
-          </div>
-          <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
-          <div id="emp-endereco"></div>
+      <div class="config-card">
+        <h3>Dados da Empresa</h3>
+        <label>Razão social</label><input id="emp-razao">
+        <label>Nome fantasia <small>(exibido no sistema)</small></label><input id="emp-fantasia">
+        <div class="form-row">
+          <div><label>CNPJ</label><input id="emp-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+            oninput="this.value=this.value.replace(/\D/g,'').replace(/(\d{2})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1/$2').replace(/(\d{4})(\d)/,'$1-$2')"></div>
+          <div><label>Inscrição estadual</label><input id="emp-ie"></div>
         </div>
-        <div class="config-card">
-          <h3>Classes de Garantia</h3>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas no Catálogo de Estoque pra marcar produtos com controle de garantia, e na aba Garantias do Cartão CRM pra calcular até quando vai a garantia (data da NF de compra + prazo da classe).</p>
-          <table class="fases-table">
-            <thead><tr><th>Classe</th><th style="width:100px">Meses</th><th style="width:70px">Ordem</th><th></th></tr></thead>
-            <tbody id="garantia-classes-tbody"></tbody>
-          </table>
-          <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
+        <div class="form-row">
+          <div><label>Telefone</label><input id="emp-tel" placeholder="(41) 99999-9999" maxlength="15" oninput="mascaraTel(this)"></div>
+          <div><label>E-mail</label><input id="emp-email"></div>
         </div>
+        <label>Site</label><input id="emp-site" placeholder="www.suaempresa.com.br">
+        <div id="emp-endereco"></div>
+      </div>
+      <div class="config-card">
+        <h3>Classes de Garantia</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Usadas no Catálogo de Estoque pra marcar produtos com controle de garantia, e na aba Garantias do Cartão CRM pra calcular até quando vai a garantia (data da NF de compra + prazo da classe).</p>
+        <table class="fases-table">
+          <thead><tr><th>Classe</th><th style="width:100px">Meses</th><th style="width:70px">Ordem</th><th></th></tr></thead>
+          <tbody id="garantia-classes-tbody"></tbody>
+        </table>
+        <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
       </div>
     </div>
   </div>
@@ -1338,11 +1337,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.84';
+const APP_VERSION = '1.47.85';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.85',
+    data: '15/07/2026',
+    itens: [
+      'Garantias: "Classes de Garantia" em Configurações do Sistema virou uma 3ª coluna no grid, ao lado de "Dados da Empresa" (antes estava empilhado embaixo dele) — as 3 colunas ficam alinhadas pelo topo.',
+    ]
+  },
   {
     versao: '1.47.84',
     data: '15/07/2026',
