@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.101';
+const APP_VERSION = '1.47.102';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.102',
+    data: '15/07/2026',
+    itens: [
+      'Ajuste na restrição "Ver apenas os próprios Cards do CRM" (v1.47.101): a contagem de cards que aparece na LISTA de Clientes agora mostra o número total real, sem aplicar o filtro — só o Kanban continua restrito aos cards em que o usuário é responsável.',
+    ]
+  },
   {
     versao: '1.47.101',
     data: '15/07/2026',
@@ -10325,12 +10332,17 @@ function renderClientes(){
   lista = lista.slice().sort((a,b)=>{
     if(sort==='aprovadas') return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='aprovada').length - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='aprovada').length;
     if(sort==='emitidas')  return db.propostas.filter(p=>p.clienteId===b.id&&p.status==='emitida').length  - db.propostas.filter(p=>p.clienteId===a.id&&p.status==='emitida').length;
-    if(sort==='crms')      return db.cards.filter(x=>x.clienteId===b.id && cardVisivelParaUsuario(x)).length - db.cards.filter(x=>x.clienteId===a.id && cardVisivelParaUsuario(x)).length;
+    if(sort==='crms')      return db.cards.filter(x=>x.clienteId===b.id).length - db.cards.filter(x=>x.clienteId===a.id).length;
     return a.nome.localeCompare(b.nome);
   });
 
   lista.forEach(c=>{
-    const qtd = db.cards.filter(x=>x.clienteId===c.id && cardVisivelParaUsuario(x)).length;
+    // v1.47.102: a contagem de cards na LISTA de Clientes mostra o total real, sem
+    // filtro de filtrarCards — cleverson decidiu que esse número (agregado, sem
+    // detalhe do card) pode aparecer pra todo mundo. A restrição continua valendo
+    // no Kanban (cardVisivelParaUsuario) e em qualquer lugar que mostre os cards
+    // individualmente.
+    const qtd = db.cards.filter(x=>x.clienteId===c.id).length;
     const qtdObras = db.obras.filter(o=>o.clienteId===c.id).length;
     const qtdEmitidas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='emitida').length;
     const qtdAprovadas = db.propostas.filter(p=>p.clienteId===c.id && p.status==='aprovada').length;
@@ -21387,7 +21399,7 @@ function formGrupo(g){
               <input type="checkbox" id="ck-filtrar-cards" ${g&&g.filtrarCards?'checked':''}>
               <span>
                 <b>Ver apenas os próprios Cards do CRM</b><br>
-                <span style="font-size:11px;color:var(--muted)">No Kanban e na lista de Clientes, o usuário só vê/conta cards em que consta como responsável. O cliente continua aparecendo na lista mesmo sem cards visíveis. Vale no desktop e no app mobile.</span>
+                <span style="font-size:11px;color:var(--muted)">No Kanban, o usuário só vê os cards em que consta como responsável. A lista de Clientes continua mostrando todos os clientes com o número real de cards de cada um. Vale no desktop e no app mobile.</span>
               </span>
             </label>
           </div>
