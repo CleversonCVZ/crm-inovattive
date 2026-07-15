@@ -405,9 +405,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.20';
+const APP_VERSION = '1.0.21';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.21',
+    data: '15/07/2026',
+    itens: [
+      'Corrigido: o nome da empresa não aparecia no Perfil nem no Home (sempre "—") porque a busca usava nomes de coluna errados; agora mostra corretamente.',
+    ]
+  },
   {
     versao: '1.0.20',
     data: '15/07/2026',
@@ -768,8 +775,10 @@ async function iniciar(){
     }
 
     // Empresa
-    const {data:emp} = await sb.from('empresa').select('nome,logo_url').limit(1).single();
-    empresa = emp||{};
+    // v1.0.21: colunas certas são razao/fantasia/logo (nome/logo_url nunca existiram
+    // na tabela empresa) — por isso o nome da empresa nunca aparecia no Perfil/Home.
+    const {data:emp} = await sb.from('empresa').select('razao,fantasia,logo').limit(1).single();
+    empresa = emp ? {nome: emp.fantasia||emp.razao, logoUrl: emp.logo} : {};
 
     // Carrega dados conforme perfil
     await carregarDados();
