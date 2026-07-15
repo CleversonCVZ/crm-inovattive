@@ -536,7 +536,7 @@ async function carregarDados(){
     promises.push(
       sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
       sb.from('cards').select('id,num,cliente_id,fase_id,historico').order('id',{ascending:false}).then(r=>{db.cards=r.data||[];}),
-      sb.from('fases').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
+      sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
       sb.from('propostas').select('id,numero,card_id,cliente_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];})
     );
   }
@@ -551,7 +551,7 @@ async function carregarDados(){
     if(!grupo.acessoComercial){
       promises.push(
         sb.from('clientes').select('*').order('nome').then(r=>{db.clientes=r.data||[];}),
-        sb.from('fases').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];})
+        sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];})
       );
     }
   }
@@ -633,9 +633,9 @@ function renderHome(){
   if(grupo.acessoComercial||grupo.admin){
     const cardsAbertos=(db.cards||[]).filter(c=>{
       const f=db.fases.find(x=>x.id===c.fase_id);
-      return f && f.tipo!=='won' && f.tipo!=='lost';
+      return f && f.tipo!=='perdido' && f.tipo!=='concluido';
     }).length;
-    const propsEnv=(db.propostas||[]).filter(p=>p.status==='enviada').length;
+    const propsEnv=(db.propostas||[]).filter(p=>p.status==='emitida').length;
     stats.push(`<div class="stat-card"><div class="n">${cardsAbertos}</div><div class="l">Cards ativos</div></div>`);
     stats.push(`<div class="stat-card"><div class="n" style="color:var(--blue)">${propsEnv}</div><div class="l">Prop. enviadas</div></div>`);
   }
@@ -705,7 +705,7 @@ function renderClientes(){
   if(!lista.length){el.innerHTML=`<div class="empty-state"><div class="ico">👥</div><p>Nenhum cliente encontrado.</p></div>`;return;}
   el.innerHTML=lista.slice(0,60).map(c=>{
     const cards=(db.cards||[]).filter(x=>x.cliente_id===c.id);
-    const abertos=cards.filter(x=>{const f=db.fases.find(f=>f.id===x.fase_id);return f&&f.tipo!=='won'&&f.tipo!=='lost';}).length;
+    const abertos=cards.filter(x=>{const f=db.fases.find(f=>f.id===x.fase_id);return f&&f.tipo!=='perdido'&&f.tipo!=='concluido';}).length;
     return `<div class="card" onclick="abrirCliente(${c.id})">
       <div class="card-header">
         <div style="width:42px;height:42px;border-radius:21px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0">${(c.nome||'?')[0].toUpperCase()}</div>
