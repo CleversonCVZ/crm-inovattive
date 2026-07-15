@@ -399,9 +399,17 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 const APP_VERSION_DATE = '15/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.5',
+    data: '15/07/2026',
+    itens: [
+      'Mudou o botão "Encerrar OS": agora ele não fecha mais a O.S. de verdade — envia ela para a fase "Revisão Interna" (nova fase de sistema, protegida contra edição/exclusão em Fases da O.S.), avisa a empresa por notificação, e aparece na coluna "Revisão Interna" do Painel do desktop. Quem faz o fechamento definitivo continua sendo o escritório, pelo desktop.',
+      'Exige Check-in e Finalizar preenchidos antes de poder enviar a O.S. para revisão (mesma validação que já existia no desktop para fechar uma O.S.).',
+    ]
+  },
   {
     versao: '1.0.4',
     data: '15/07/2026',
@@ -463,6 +471,7 @@ let db = {
   os:[],
   osDiario:[],
   osTecnicos:[],
+  fasesOS:[],
 };
 
 /* ===== UTILS ===== */
@@ -523,6 +532,7 @@ function propStatusEfetivo(p){
 const STATUS_OS = {
   aberta:{cls:'badge-orange',lbl:'Aberta'},
   em_andamento:{cls:'badge-blue',lbl:'Em andamento'},
+  revisao:{cls:'badge-purple',lbl:'Em revisão interna'},
   concluida:{cls:'badge-green',lbl:'Concluída'},
   cancelada:{cls:'badge-gray',lbl:'Cancelada'},
 };
@@ -645,9 +655,12 @@ async function carregarDados(){
   if(grupo.acessoTecnico || grupo.admin){
     promises.push(
       sb.from('obras').select('*').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
-      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[]}));}),
+      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico,fase_id').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[]}));}),
       sb.from('os_diario').select('*').order('data',{ascending:false}).then(r=>{db.osDiario=r.data||[];}),
-      sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];})
+      sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];}),
+      // v1.0.5: fases da O.S. (mesma tabela do desktop) — precisa pra achar a fase "Revisão
+      // Interna" (tipo='revisao_interna') e mover a O.S. pra lá ao "Encerrar OS" no celular.
+      sb.from('fases_os').select('id,nome,cor,ordem,tipo').order('ordem').then(r=>{db.fasesOS=r.data||[];})
     );
     // clientes e fases também para técnico (nome da OS)
     if(!grupo.acessoComercial){
@@ -983,11 +996,13 @@ function renderOS(){
     el.innerHTML=`<div class="empty-state"><div class="ico">🔧</div><p>${osFiltro==='hoje'?'Nenhuma OS para hoje.':osFiltro==='semana'?'Nenhuma OS esta semana.':'Nenhuma OS encontrada.'}</p></div>`;
     return;
   }
+  const faseRev=faseRevisaoInterna();
   el.innerHTML=lista.slice(0,40).map(o=>{
     const cl=db.clientes.find(c=>c.id===o.cliente_id);
     const d=o.data_agend?fmtDia(o.data_agend):null;
     const checkin=fmtHora(o.data_inicio);
     const checkout=fmtHora(o.data_termino);
+    const emRevisao=!!(faseRev && o.fase_id===faseRev.id);
     return `<div class="card" onclick="abrirOS(${o.id})">
       <div class="card-header">
         ${d?`<div class="date-badge"><div class="day">${d.dia}</div><div class="mon">${d.mes}</div></div>`:'<div style="width:46px"></div>'}
@@ -997,6 +1012,7 @@ function renderOS(){
           ${cl?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(cl.nome)}</div>`:''}
         </div>
         ${o.fechada?'<span class="badge badge-gray">Fechada</span>':
+          emRevisao?'<span class="badge badge-purple">Em revisão</span>':
           checkin?'<span class="badge badge-blue">Em campo</span>':
           '<span class="badge badge-orange">Aberta</span>'}
       </div>
@@ -1014,12 +1030,14 @@ function abrirOS(id){
   const checkin=fmtDataHora(o.data_inicio);
   const checkout=fmtDataHora(o.data_termino);
   const hoje=new Date().toISOString().slice(0,10);
+  const faseRev=faseRevisaoInterna();
+  const emRevisao=!!(faseRev && o.fase_id===faseRev.id);
 
   let html=`
     <div class="info-row"><span class="lbl">Cliente</span><span class="val">${esc(cl?.nome||'—')}</span></div>
     ${obra?`<div class="info-row"><span class="lbl">Obra</span><span class="val">${esc(obra.nome)}</span></div>`:''}
     <div class="info-row"><span class="lbl">Data</span><span class="val">${fmtData(o.data_agend)}</span></div>
-    <div class="info-row"><span class="lbl">Situação</span><span class="val">${o.fechada?badge('concluida',STATUS_OS):checkin?badge('em_andamento',STATUS_OS):badge('aberta',STATUS_OS)}</span></div>`;
+    <div class="info-row"><span class="lbl">Situação</span><span class="val">${o.fechada?badge('concluida',STATUS_OS):emRevisao?badge('revisao',STATUS_OS):checkin?badge('em_andamento',STATUS_OS):badge('aberta',STATUS_OS)}</span></div>`;
 
   if(o.instrucoes){
     html+=`<div class="info-row"><span class="lbl">Instruções</span><span class="val" style="font-size:13px;line-height:1.5">${esc(o.instrucoes)}</span></div>`;
@@ -1101,9 +1119,10 @@ function abrirOS(id){
     }
   }
 
-  const footerBtns=o.fechada?'':
+  const footerBtns=o.fechada?'':emRevisao?
+    `<button class="btn btn-neutral" style="flex:1" onclick="fecharSheet()">🕓 Aguardando revisão interna</button>`:
     `<button class="btn btn-neutral" onclick="fecharSheet()">Fechar</button>
-     <button class="btn btn-success" onclick="fecharOS(${o.id})" style="flex:1">✅ Encerrar OS</button>`;
+     <button class="btn btn-success" onclick="fecharOS(${o.id})" style="flex:1">📋 Enviar p/ Revisão</button>`;
 
   abrirSheet(`OS ${o.numero}`, html, footerBtns);
   window._osAtualId=id;
@@ -1131,14 +1150,42 @@ async function fazerCheckout(osId){
   abrirOS(id);
 }
 
+/* v1.0.5: "Encerrar OS" no mobile NÃO fecha mais a O.S. de verdade — o técnico em
+   campo não é quem faz o fechamento definitivo, só sinaliza que terminou. O botão
+   agora move a O.S. pra fase "Revisão Interna" (fase de sistema, protegida contra
+   renomear/excluir em Config → Fases da O.S.) e avisa a empresa por notificação;
+   quem decide se pode realmente fechar é a equipe, pelo desktop, olhando o Painel
+   (kanban por fase) e a própria O.S. */
+function faseRevisaoInterna(){ return (db.fasesOS||[]).find(f=>f.tipo==='revisao_interna'); }
+
 async function fecharOS(osId){
-  if(!confirm('Encerrar esta OS?')) return;
   const id=Number(osId);
-  const {error}=await sb.from('ordens_servico').update({fechada:true}).eq('id',id);
-  if(error){alert('Erro ao encerrar: '+error.message);return;}
   const o=db.os.find(x=>Number(x.id)===id);
-  if(o) o.fechada=true;
-  toast('OS encerrada ✓');
+  if(!o) return;
+  if(!o.data_inicio || !o.data_termino){
+    alert('Preencha o Check-in e o Finalizar (horário de entrada e saída) antes de enviar esta O.S. para revisão.');
+    return;
+  }
+  const faseRev=faseRevisaoInterna();
+  if(!faseRev){ alert('Fase "Revisão Interna" não encontrada. Avise o administrador.'); return; }
+  if(o.fase_id===faseRev.id){ toast('Esta O.S. já está em revisão interna.'); return; }
+  if(!confirm('Enviar esta O.S. para revisão interna? A equipe do escritório vai validar e fazer o fechamento definitivo.')) return;
+
+  const {error}=await sb.from('ordens_servico').update({fase_id:faseRev.id}).eq('id',id);
+  if(error){alert('Erro ao enviar para revisão: '+error.message);return;}
+  o.fase_id=faseRev.id;
+
+  // Notifica a empresa (categoria "tecnica" — grupos técnicos/supervisão veem no sininho do desktop)
+  const cl=db.clientes.find(c=>c.id===o.cliente_id);
+  sb.from('notificacoes').insert({
+    categoria:'tecnica',
+    titulo:`O.S. ${o.numero} enviada para Revisão Interna`,
+    descricao:`${o.titulo||''}${cl?' · '+cl.nome:''} — registrada por ${usuario?.nome||'técnico'} via app mobile.`,
+    entidade:'os',
+    entidade_id:String(o.id)
+  }).then(({error})=>{ if(error) console.error('Erro ao notificar:', error); });
+
+  toast('Enviada para revisão interna ✓');
   fecharSheet();
   renderOS();
 }

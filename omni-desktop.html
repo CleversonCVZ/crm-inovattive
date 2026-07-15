@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.96';
+const APP_VERSION = '1.47.97';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.97',
+    data: '15/07/2026',
+    itens: [
+      'Fases da O.S.: a fase "Revisão Interna" virou fase de sistema (🔒, protegida contra renomear/excluir, igual "Concluída"), pra suportar o novo fluxo do app mobile: quando o técnico toca "Encerrar OS" no celular, a O.S. não fecha mais direto — ela vai para essa fase e aparece no Painel (kanban) aqui, pra a equipe validar e fazer o fechamento definitivo.',
+    ]
+  },
   {
     versao: '1.47.96',
     data: '15/07/2026',
