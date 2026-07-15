@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.95';
+const APP_VERSION = '1.47.96';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.96',
+    data: '15/07/2026',
+    itens: [
+      'Obras: reforçada a trava entre Fase e Status pra evitar dessincronização (já aconteceu 4 vezes). No cadastro da obra, o campo Status agora fica travado (🔒, desabilitado) automaticamente sempre que a Fase escolhida é do tipo Concluída/Abandonada — só destrava se você trocar a Fase de volta. Além disso, um trigger novo no banco corrige o Status sozinho em qualquer gravação na tabela de obras, mesmo as que não passam por essa tela (import, script, correção manual de dado).',
+    ]
+  },
   {
     versao: '1.47.95',
     data: '15/07/2026',
@@ -10383,7 +10390,7 @@ const AJUDA_CONTEUDO = {
         html: `
           <p>Só aparece com conteúdo se o cartão já tem uma obra vinculada (campo "Nome da obra" na aba Dados). Reúne, num menu lateral: Informações da obra, Contatos, Equipamentos & Senhas, Compras (visualização do que foi comprado via SRM pra essa obra, incluindo os itens em regime "🧾 Fatura direta"), Custo M.Obra (lançamento de mão de obra própria ou de fornecedor), Outros Custos e Resultado Aparente (o resumo financeiro da obra: contratado − custos ≈ resultado).</p>
           <h5>Status × Fase</h5>
-          <p>São dois campos independentes no cadastro da obra: "Fase" é a etapa física (definida em Faturamento — Fases de Obra), "Status" é ativa/pausada/concluída/abandonada — usado pelos filtros de combo (Estoque, Contas a Pagar, Recorrentes, SRM só oferecem obra "ativa"). Escolher uma fase do tipo Concluída/Abandonada já sugere o Status correspondente, mas não trava — os dois podem ficar dessincronizados se editados separadamente.</p>
+          <p>São dois campos no cadastro da obra: "Fase" é a etapa física (definida em Faturamento — Fases de Obra), "Status" é ativa/pausada/concluída/abandonada — usado pelos filtros de combo (Estoque, Contas a Pagar, Recorrentes, SRM só oferecem obra "ativa"). Escolher uma fase do tipo Concluída/Abandonada trava o Status automaticamente nesse mesmo valor (🔒 campo desabilitado) — pra mudar o Status manualmente, primeiro troque a Fase pra um tipo diferente. Essa trava existe nos dois lados: na tela e também num trigger no banco, pra cobrir qualquer escrita que não passe por este modal.</p>
           <p>Quando o Status vira "Concluída", aparece o campo "Concluída em" — preenchido sozinho com a data de hoje na primeira vez, mas editável. Essa data alimenta a Garantia de Serviços da Obra na aba Garantias (ver Configurações do Sistema → Garantia de Serviços).</p>`
       },
       os: {
@@ -10447,7 +10454,7 @@ const AJUDA_CONTEUDO = {
       <h5>Por que alguns cards não abrem ao clicar</h5>
       <p>O clique no card leva direto pra aba "Obra" do Cartão CRM vinculado — só que uma Obra pode existir sem nenhum Cartão CRM associado (ex.: cadastro antigo, ou obra criada solta). Nesse caso o card fica sem ação de clique (cursor normal, nada acontece). Pra resolver, cadastre um Cartão CRM vinculado a essa obra, ou exclua a obra pelo cadastro de Obras se ela não for mais necessária.</p>
       <h5>Coluna "Concluída" na visualização por fase vs. campo Status</h5>
-      <p>Essa visualização agrupa pela FASE atual da obra, não pelo campo Status — os dois são independentes no cadastro (ver aba Informações da obra). Se a fase for "Concluída" mas o Status ainda estiver em "Ativa" (dado dessincronizado), a obra aparece na coluna Concluída aqui mas não conta como concluída em outras telas que filtram por Status (nem habilita a Garantia de Serviços, que depende do Status = Concluída — ver Configurações do Sistema → Garantia de Serviços). Se notar essa divergência, corrija o Status da obra pra ficar igual à fase.</p>`
+      <p>Essa visualização agrupa pela FASE atual da obra, não pelo campo Status. O cadastro da obra trava o Status automaticamente (🔒) sempre que a Fase escolhida é do tipo Concluída/Abandonada — inclusive com um trigger no banco cobrindo qualquer escrita que não passe pelo cadastro — então as duas visualizações tendem a bater. Se ainda assim aparecer uma obra na coluna Concluída daqui sem contar como concluída em outras telas (nem habilitar a Garantia de Serviços, que depende do Status = Concluída — ver Configurações do Sistema → Garantia de Serviços), é sinal de dado antigo, de antes dessa trava existir — abra o cadastro da obra e resalve pra sincronizar.</p>`
   },
   'obras-fases': {
     titulo: 'Obras — Fases',
@@ -20665,15 +20672,21 @@ function editarObraDoCartao(cardId, clienteId){
 function abrirObraModal(obraId, clienteId, returnCardId=null){
   const o = obraId ? db.obras.find(x=>x.id===obraId) : null;
   const fasesOpts = fasesObraOrdenadas().map(f=>`<option value="${f.id}" ${o&&o.faseId===f.id?'selected':''}>${f.nome}</option>`).join('');
-  const statusOpts = [['ativa','🟢 Ativa'],['pausada','🟡 Pausada'],['concluida','✅ Concluída'],['cancelada','🔴 Abandonada']].map(([v,l])=>`<option value="${v}" ${(o?o.status||'ativa':'ativa')===v?'selected':''}>${l}</option>`).join('');
+  const faseAtual = o ? faseObra(o.faseId) : null;
+  const travaStatus = !!(faseAtual && (faseAtual.tipo==='concluida'||faseAtual.tipo==='cancelada'));
+  // se a fase já é do tipo concluida/cancelada, o valor selecionado do Status é o da FASE,
+  // não o que estiver salvo em o.status — corrige na hora qualquer dado que já tenha entrado
+  // dessincronizado (ex.: obra #20, ver comentário em _sincronizarStatusPelaFaseObra).
+  const statusEfetivo = travaStatus ? faseAtual.tipo : (o?o.status||'ativa':'ativa');
+  const statusOpts = [['ativa','🟢 Ativa'],['pausada','🟡 Pausada'],['concluida','✅ Concluída'],['cancelada','🔴 Abandonada']].map(([v,l])=>`<option value="${v}" ${statusEfetivo===v?'selected':''}>${l}</option>`).join('');
   abrirModal(`
     <h3>${o ? 'Obra — '+o.nome : 'Nova Obra — '+cliente(clienteId).nome}</h3>
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div><label>Fase da obra</label><select id="o-fase" style="width:100%" onchange="_sincronizarStatusPelaFaseObra(this)"><option value="">— sem fase —</option>${fasesOpts}</select></div>
-      <div><label>Status</label><select id="o-status" style="width:100%" onchange="toggleCampoConcluidaEmObra(this)">${statusOpts}</select></div>
+      <div><label>Status</label><select id="o-status" style="width:100%" onchange="toggleCampoConcluidaEmObra(this)" ${travaStatus?'disabled':''}>${statusOpts}</select></div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin:2px 0 0">Escolher uma fase "Concluída" ou "Abandonada" já sugere o Status correspondente — pode trocar manualmente antes de salvar.</p>
+    <p id="o-status-trava-msg" style="font-size:11px;color:var(--muted);margin:2px 0 0">${travaStatus?`🔒 Status travado em "${faseAtual.tipo==='concluida'?'Concluída':'Abandonada'}" porque a Fase escolhida é desse tipo — troque a Fase pra liberar edição manual.`:'Escolher uma fase "Concluída" ou "Abandonada" trava o Status automaticamente nesse valor (evita ficar dessincronizado).'}</p>
     <div id="o-concluida-wrap" style="display:${(o?o.status||'ativa':'ativa')==='concluida'?'':'none'}">
       <label>Concluída em</label>
       <input id="o-concluida-em" type="date" value="${o?.concluidaEm||''}">
@@ -20695,18 +20708,29 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
    e a obra continuava aparecendo em todo lugar que filtra por status==='ativa' (Estoque:
    Registrar Saída/Liberar Reserva, Nova Conta a Pagar, Recorrentes, Novo Card SRM) mesmo já
    "concluída" na prática. Achados 3 casos reais assim em 07/07/2026 (Apto Gladimir, Casa
-   Jonathas, Casa Felipe Marochi) e corrigidos direto no banco. Isso aqui só sugere o Status
-   condizente quando a fase escolhida é do tipo concluida/cancelada — não trava, o usuário
-   ainda pode trocar o Status manualmente antes de salvar. */
+   Jonathas, Casa Felipe Marochi) e corrigidos direto no banco.
+   v1.47.96: virou trava de verdade (antes só sugeria e deixava editar por cima). Achado um
+   4º caso dessincronizado em 15/07/2026 (obra #20, "Corp Auto Posto Safra") mesmo com essa
+   sugestão já em produção — provavelmente esse registro nunca passou pelo modal (dado antigo
+   ou script). Duas camadas agora: aqui trava o select Status (disabled) sempre que a Fase
+   escolhida é do tipo concluida/cancelada, só destrava se o usuário trocar a Fase de volta
+   pra outro tipo; e um trigger no Postgres (ver migração enforce_obra_status_fase_sync)
+   corrige o dado sozinho pra qualquer escrita que não passe por este modal. */
 function _sincronizarStatusPelaFaseObra(selFase){
   const faseId = parseInt(selFase.value)||null;
   const fase = faseId ? faseObra(faseId) : null;
   const selStatus = document.getElementById('o-status');
-  if(!selStatus || !fase || !fase.tipo) return;
-  if(fase.tipo==='concluida' || fase.tipo==='cancelada'){
+  const msg = document.getElementById('o-status-trava-msg');
+  if(!selStatus) return;
+  const trava = !!(fase && fase.tipo && (fase.tipo==='concluida' || fase.tipo==='cancelada'));
+  selStatus.disabled = trava;
+  if(trava){
     selStatus.value = fase.tipo;
-    toggleCampoConcluidaEmObra(selStatus);
+    if(msg) msg.textContent = `🔒 Status travado em "${fase.tipo==='concluida'?'Concluída':'Abandonada'}" porque a Fase escolhida é desse tipo — troque a Fase pra liberar edição manual.`;
+  } else if(msg){
+    msg.textContent = 'Escolher uma fase "Concluída" ou "Abandonada" trava o Status automaticamente nesse valor (evita ficar dessincronizado).';
   }
+  toggleCampoConcluidaEmObra(selStatus);
 }
 
 /* v1.47.91: mostra/esconde o campo "Concluída em" (usado na aba Garantias pra
@@ -20925,7 +20949,12 @@ async function salvarObra(id, clienteId, returnCardId=null){
   if(!nome){ alert('Informe o nome da obra.'); if(btnSalvar){ btnSalvar.disabled=false; btnSalvar.textContent='Salvar'; } return; }
   const end=lerEndereco('o');
   const faseId=+document.getElementById('o-fase').value||null;
-  const status=document.getElementById('o-status').value||'ativa';
+  // v1.47.96: segunda camada de segurança (a 1ª é o select Status ficar disabled em tela) —
+  // mesmo que o valor lido do select venha errado por algum motivo, força o Status a bater
+  // com o tipo da fase quando ela for concluida/cancelada, igual o trigger faz no banco.
+  const faseEscolhida = faseId ? faseObra(faseId) : null;
+  const statusTravado = faseEscolhida && (faseEscolhida.tipo==='concluida'||faseEscolhida.tipo==='cancelada');
+  const status = statusTravado ? faseEscolhida.tipo : (document.getElementById('o-status').value||'ativa');
   const concluidaEmInput = document.getElementById('o-concluida-em')?.value || null;
   if(id){
     const o=db.obras.find(x=>x.id===id);
