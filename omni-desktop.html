@@ -1337,11 +1337,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.85';
+const APP_VERSION = '1.47.86';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.86',
+    data: '15/07/2026',
+    itens: [
+      'Ajuda Contextual: adicionado conteúdo pra tela Configurações do Sistema (botão ❓ do topo) — não tinha nenhum ainda. Cobre Logotipo, Alíquotas de Tributos, Dados da Empresa e a nova seção Classes de Garantia.',
+    ]
+  },
   {
     versao: '1.47.85',
     data: '15/07/2026',
@@ -10618,13 +10625,6 @@ const AJUDA_CONTEUDO = {
     titulo: 'Estoque — Painel (Acompanhamento)',
     html: `<p>Kanban por obra cruzando compras (SRM) com uso em O.S. — mostra o que foi comprado pra cada obra e em quais Ordens de Serviço já foi consumido. Puramente informativo, sem cadastro próprio.</p>`
   },
-  'gerais': {
-    titulo: 'Configurações do Sistema',
-    html: `
-      <p>Logotipo (aparece no topo e na tela de login), dados cadastrais da empresa (usados nos PDFs, ex.: Instrução para Emissão de NF) e as alíquotas de tributos.</p>
-      <h5>Alíquotas de Tributos (Produto/Serviço)</h5>
-      <p>Separadas porque produto e serviço costumam ter tributação diferente (ICMS × ISS). Usadas em 2 lugares: a "Previsão de Impostos" de cada Espelho de Faturamento individual, e o relatório agregado "Previsão de Tributos" (Faturamento).</p>`
-  },
   'auditoria': {
     titulo: 'Auditoria & Logs',
     html: `<p>Histórico de todas as ações relevantes do sistema (criar/editar/excluir), com usuário, data e descrição — não dá pra apagar manualmente, só expira sozinho conforme o prazo de "Retenção" configurado no topo (em dias). Use os filtros de busca/período pra investigar algo específico (ex.: "quem excluiu esse cartão?").</p>`
@@ -10651,6 +10651,19 @@ const AJUDA_CONTEUDO = {
   'usuarios': {
     titulo: 'Usuários',
     html: `<p>Cadastro de quem acessa o sistema — cada usuário pertence a um Grupo de Acesso (define o que ele pode ver/editar) e, opcionalmente, uma Função (só informativo). Usuário inativo não consegue mais logar, mas continua aparecendo no histórico de tudo que já fez.</p>`
+  },
+  'gerais': {
+    titulo: 'Configurações do Sistema',
+    html: `
+      <h5>Logotipo da Empresa</h5>
+      <p>Aparece no topo do sistema e na tela de login. PNG ou JPG, redimensionado automaticamente.</p>
+      <h5>Alíquotas de Tributos</h5>
+      <p>Produto (ICMS) e Serviço (ISS), usadas em Faturamento → Guias de Recolhimento pra calcular a Previsão de Impostos de cada Espelho (valor de produto/serviço × alíquota correspondente).</p>
+      <h5>Dados da Empresa</h5>
+      <p>Razão social, CNPJ, contato e endereço — usados nos PDFs gerados pelo sistema (propostas, espelhos de NF, instrução de faturamento).</p>
+      <h5>Classes de Garantia</h5>
+      <p>Cadastro dos prazos de garantia disponíveis (ex.: "Garantia 12 meses" = 12 meses) — edite nome, meses e ordem direto na tabela. Usadas em dois lugares: no Catálogo de Estoque, pra marcar quais produtos têm controle de garantia; e na aba Garantias do Cartão CRM, onde o prazo da classe soma com a data da NF de compra (via SRM) pra calcular até quando vai a garantia de cada item instalado na obra.</p>
+      <p style="font-size:12px;color:var(--muted)">Excluir uma classe em uso não apaga os produtos vinculados — eles só ficam sem classe definida até você escolher outra.</p>`
   }
 };
 
