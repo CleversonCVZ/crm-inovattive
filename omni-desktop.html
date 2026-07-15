@@ -965,6 +965,15 @@
         </table>
         <button class="btn sm" id="btn-nova-garantia-classe" style="margin-top:8px" onclick="novaGarantiaClasse()">+ Nova Classe</button>
       </div>
+      <div class="config-card">
+        <h3>Garantia de Serviços</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Prazos usados na aba Garantias do Cartão CRM — Garantia da Obra conta a partir da data em que a obra foi marcada Concluída; Garantia de O.S. Avulsa conta a partir do Término Real de cada O.S. Avulsa fechada depois da obra concluída.</p>
+        <div class="form-row">
+          <div><label>Obra concluída (meses)</label><input id="emp-garantia-obra" type="number" step="1" min="0"></div>
+          <div><label>O.S. Avulsa (meses)</label><input id="emp-garantia-os-avulsa" type="number" step="1" min="0"></div>
+        </div>
+        <button class="btn sm" style="margin-top:6px" onclick="salvarGarantiaServicos()">Salvar prazos</button>
+      </div>
     </div>
   </div>
 
@@ -1337,11 +1346,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.90';
+const APP_VERSION = '1.47.91';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.91',
+    data: '15/07/2026',
+    itens: [
+      'Garantias: nova "Garantia de Serviços", separada da garantia de produtos — 2 prazos globais em Configurações do Sistema (Obra concluída / O.S. Avulsa, em meses). Obra ganhou o campo "Concluída em" (autopreenchido na 1ª vez que o Status vira Concluída, editável depois).',
+      'Aba Garantias do Cartão CRM ganhou 2 seções novas, além da lista de produtos: "🔧 Garantia de Serviços da Obra" (vencimento = data de conclusão + prazo) e "🔧 Garantia de O.S. Avulsas" (cada O.S. Avulsa fechada depois da obra concluída, com vencimento = Término Real + prazo). Só aparecem se a obra estiver concluída com a data preenchida; recalculadas ao vivo junto com o resto da aba.',
+    ]
+  },
   {
     versao: '1.47.90',
     data: '15/07/2026',
@@ -2952,6 +2969,8 @@ function load(){
   // (dado local pré-migração), usa ela como valor inicial das duas novas.
   if(!('aliquotaTributosProduto' in db.empresa)) db.empresa.aliquotaTributosProduto = db.empresa.aliquotaTributos!=null ? db.empresa.aliquotaTributos : 6;
   if(!('aliquotaTributosServico' in db.empresa)) db.empresa.aliquotaTributosServico = db.empresa.aliquotaTributos!=null ? db.empresa.aliquotaTributos : 6;
+  if(!('garantiaServicoObraMeses' in db.empresa)) db.empresa.garantiaServicoObraMeses = 12;
+  if(!('garantiaServicoOsAvulsaMeses' in db.empresa)) db.empresa.garantiaServicoOsAvulsaMeses = 12;
   // grupos de acesso (RBAC) + migração do modelo antigo papel/telas por usuário
   if(!Array.isArray(db.grupos) || !db.grupos.length){
     db.grupos = [
@@ -2990,7 +3009,7 @@ function load(){
     }
   });
   if(!Array.isArray(db.obras)) db.obras=[];
-  db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; });
+  db.obras.forEach(o=>{ if(!o.status) o.status='ativa'; if(!('faseId' in o)) o.faseId=null; if(!('concluidaEm' in o)) o.concluidaEm=null; });
   if(!Array.isArray(db.cardContatos))    db.cardContatos=[];
   if(!Array.isArray(db.recebimentos))    db.recebimentos=[];
   db.recebimentos.forEach(r=>{
@@ -3274,7 +3293,9 @@ async function carregarConfigSupabase(){
         site:empresa.data.site||'', endereco:empresa.data.endereco || {cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:'',uf:''},
         logRetencaoDias: empresa.data.log_retencao_dias || 90,
         aliquotaTributosProduto: empresa.data.aliquota_tributos_produto!=null ? Number(empresa.data.aliquota_tributos_produto) : 6,
-        aliquotaTributosServico: empresa.data.aliquota_tributos_servico!=null ? Number(empresa.data.aliquota_tributos_servico) : 6
+        aliquotaTributosServico: empresa.data.aliquota_tributos_servico!=null ? Number(empresa.data.aliquota_tributos_servico) : 6,
+        garantiaServicoObraMeses: empresa.data.garantia_servico_obra_meses!=null ? Number(empresa.data.garantia_servico_obra_meses) : 12,
+        garantiaServicoOsAvulsaMeses: empresa.data.garantia_servico_os_avulsa_meses!=null ? Number(empresa.data.garantia_servico_os_avulsa_meses) : 12
       };
     }
     saveLocal(); // só persiste localmente — não dispara sync de volta ao Supabase
@@ -3343,6 +3364,7 @@ async function carregarDadosSupabase(){
         id:o.id, clienteId:o.cliente_id, nome:o.nome,
         faseId: o.fase_id || null,
         status: o.status || 'ativa',
+        concluidaEm: o.concluida_em ? o.concluida_em.slice(0,10) : null,
         endereco: (o.endereco && Object.keys(o.endereco).length) ? o.endereco : enderecoVazio(''),
         outrosCustos: Array.isArray(o.outros_custos) ? o.outros_custos : []
       }));
@@ -3746,7 +3768,9 @@ function syncConfigSupabase(){
       tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
       endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90,
       aliquota_tributos_produto: e.aliquotaTributosProduto!=null?e.aliquotaTributosProduto:6,
-      aliquota_tributos_servico: e.aliquotaTributosServico!=null?e.aliquotaTributosServico:6
+      aliquota_tributos_servico: e.aliquotaTributosServico!=null?e.aliquotaTributosServico:6,
+      garantia_servico_obra_meses: e.garantiaServicoObraMeses!=null?e.garantiaServicoObraMeses:12,
+      garantia_servico_os_avulsa_meses: e.garantiaServicoOsAvulsaMeses!=null?e.garantiaServicoOsAvulsaMeses:12
     }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
   }, 800);
 }
@@ -3770,7 +3794,8 @@ function syncDadosSupabase(){
     }));
     await sincronizarTabela('obras', db.obras, o=>({
       id:o.id, cliente_id:Number(o.clienteId)||null, nome:o.nome,
-      fase_id:Number(o.faseId)||null, status:o.status||'ativa', endereco:o.endereco||{}
+      fase_id:Number(o.faseId)||null, status:o.status||'ativa', endereco:o.endereco||{},
+      concluida_em:o.concluidaEm||null
     }));
     await sincronizarTabela('cards', db.cards, c=>({
       id:c.id, num:c.num, cliente_id:Number(c.clienteId)||null, obra_id:Number(c.obraId)||null, origem_id:Number(c.origemId)||null,
@@ -5494,6 +5519,10 @@ function renderGerais(){
   const elAliqS = document.getElementById('emp-aliquota-servico');
   if(elAliqP && document.activeElement!==elAliqP) elAliqP.value = String(e.aliquotaTributosProduto??6).replace('.',',');
   if(elAliqS && document.activeElement!==elAliqS) elAliqS.value = String(e.aliquotaTributosServico??6).replace('.',',');
+  const elGarObra = document.getElementById('emp-garantia-obra');
+  const elGarOS   = document.getElementById('emp-garantia-os-avulsa');
+  if(elGarObra && document.activeElement!==elGarObra) elGarObra.value = e.garantiaServicoObraMeses??12;
+  if(elGarOS && document.activeElement!==elGarOS) elGarOS.value = e.garantiaServicoOsAvulsaMeses??12;
   const prev = document.getElementById('logo-preview');
   prev.innerHTML = e.logo ? `<img src="${e.logo}" alt="Logotipo">` : '<span class="sem-logo">Nenhum logotipo enviado</span>';
   document.getElementById('logo-remover').style.display = e.logo ? '' : 'none';
@@ -10098,6 +10127,21 @@ function salvarAliquotasTributos(){
   if(msg){ msg.textContent='✓ Alíquotas salvas'; setTimeout(()=>{ msg.textContent=''; }, 2000); }
 }
 
+function salvarGarantiaServicos(){
+  if(!podeEditarTela(usuarioAtual,'gerais')){ alert('Sem permissão para alterar a garantia de serviços.'); return; }
+  const elObra = document.getElementById('emp-garantia-obra');
+  const elOS   = document.getElementById('emp-garantia-os-avulsa');
+  const mesesObra = Math.max(0, parseInt(elObra.value)||0);
+  const mesesOS   = Math.max(0, parseInt(elOS.value)||0);
+  db.empresa = db.empresa || {};
+  db.empresa.garantiaServicoObraMeses = mesesObra;
+  db.empresa.garantiaServicoOsAvulsaMeses = mesesOS;
+  save();
+  registrarLog('config','config',null,`Garantia de serviços alterada: Obra ${mesesObra} meses / O.S. Avulsa ${mesesOS} meses`);
+  const msg=document.getElementById('emp-msg');
+  if(msg){ msg.textContent='✓ Prazos de garantia salvos'; setTimeout(()=>{ msg.textContent=''; }, 2000); }
+}
+
 /* ================= CLIENTES ================= */
 /* classificarCliente(clienteId):
    Determina o "selo" exibido na ficha de cada cliente. As regras de negócio são:
@@ -10328,7 +10372,11 @@ const AJUDA_CONTEUDO = {
           <h5>Itens vencidos continuam aparecendo</h5>
           <p>A lista nunca esconde item — garantia vencida some o selo verde "✅ Em garantia" e vira "⚠️ Vencida" em vermelho, mas o produto continua na lista pra consulta.</p>
           <h5>Cálculo sempre ao vivo</h5>
-          <p>Nada fica numa tabela própria — a cada abertura da aba (ou clique em Atualizar) o sistema relê SRM/Estoque na hora. Se a classe de garantia do produto mudar depois da compra, a próxima abertura já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>`
+          <p>Nada fica numa tabela própria — a cada abertura da aba (ou clique em Atualizar) o sistema relê SRM/Estoque na hora. Se a classe de garantia do produto mudar depois da compra, a próxima abertura já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>
+          <h5>Garantia de Serviços da Obra</h5>
+          <p>Só aparece quando a obra vinculada está com Status "Concluída" e tem a data "Concluída em" preenchida (campo no cadastro da obra, autopreenchido na primeira vez que o status vira Concluída, mas editável). O vencimento = data de conclusão + prazo do campo "Obra concluída (meses)" em Configurações do Sistema → Garantia de Serviços.</p>
+          <h5>Garantia de O.S. Avulsas (pós-obra)</h5>
+          <p>Lista cada O.S. Avulsa desta obra que foi fechada DEPOIS da data de conclusão da obra (atendimento pós-entrega). O vencimento de cada uma = Término Real da O.S. + prazo do campo "O.S. Avulsa (meses)" em Configurações do Sistema → Garantia de Serviços. O.S. Avulsa fechada durante a obra (antes da conclusão) não entra aqui — já está coberta pela garantia geral da obra.</p>`
       }
     }
   },
@@ -10744,7 +10792,9 @@ const AJUDA_CONTEUDO = {
       <p>Razão social, CNPJ, contato e endereço — usados nos PDFs gerados pelo sistema (propostas, espelhos de NF, instrução de faturamento).</p>
       <h5>Classes de Garantia</h5>
       <p>Cadastro dos prazos de garantia disponíveis (ex.: "Garantia 12 meses" = 12 meses) — edite nome, meses e ordem direto na tabela. Usadas em dois lugares: no Catálogo de Estoque, pra marcar quais produtos têm controle de garantia; e na aba Garantias do Cartão CRM, onde o prazo da classe soma com a data da NF de compra (via SRM) pra calcular até quando vai a garantia de cada item instalado na obra.</p>
-      <p style="font-size:12px;color:var(--muted)">Excluir uma classe em uso não apaga os produtos vinculados — eles só ficam sem classe definida até você escolher outra.</p>`
+      <p style="font-size:12px;color:var(--muted)">Excluir uma classe em uso não apaga os produtos vinculados — eles só ficam sem classe definida até você escolher outra.</p>
+      <h5>Garantia de Serviços</h5>
+      <p>Dois prazos globais, em meses, separados da garantia de produtos acima: "Obra concluída" (conta a partir da data em que a obra foi marcada Concluída) e "O.S. Avulsa" (conta a partir do Término Real de cada O.S. Avulsa fechada depois da obra concluída — atendimento pós-entrega). Aparecem calculados na aba Garantias do Cartão CRM. Prazo 0 desativa a respectiva seção (some da aba).</p>`
   }
 };
 
@@ -15834,26 +15884,27 @@ function abaOSCartaoHTML(c){
    produtos instalados fisicamente pertencem à obra como um todo — ver
    memória do feature. Itens vencidos continuam aparecendo (badge vermelho
    "⚠️ Vencida"), nunca somem da lista. */
+function _garantiaStatusBadge(dataFim, semDataMsg){
+  if(!dataFim) return `<span style="color:var(--muted)">${semDataMsg||'— sem data —'}</span>`;
+  const hoje = localDia(0);
+  return dataFim >= hoje
+    ? `<span style="color:#2e7d32;font-weight:600">✅ Em garantia</span>`
+    : `<span style="color:#c62828;font-weight:600">⚠️ Vencida</span>`;
+}
+
 function _garantiasTabelaHTML(itens){
   if(!itens.length){
     return `<div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Nenhum produto com controle de garantia encontrado nas compras desta obra.</div>`;
   }
-  const hoje = localDia(0);
-  const linhas = itens.map(it=>{
-    let statusHtml;
-    if(!it.dataFim) statusHtml = `<span style="color:var(--muted)">— sem data de NF —</span>`;
-    else if(it.dataFim >= hoje) statusHtml = `<span style="color:#2e7d32;font-weight:600">✅ Em garantia</span>`;
-    else statusHtml = `<span style="color:#c62828;font-weight:600">⚠️ Vencida</span>`;
-    return `<tr>
+  const linhas = itens.map(it=>`<tr>
       <td style="padding:6px 10px;font-weight:600">${escHtml(it.produtoNome)}</td>
       <td style="padding:6px 10px;text-align:center">${fmtNum(it.quantidade)}</td>
       <td style="padding:6px 10px">${it.nfNumero?escHtml(String(it.nfNumero)):'—'}</td>
       <td style="padding:6px 10px">${it.nfData?fmtDia2(it.nfData):'—'}</td>
       <td style="padding:6px 10px">${escHtml(it.classeNome)} (${it.meses}m)</td>
       <td style="padding:6px 10px">${it.dataFim?fmtDia2(it.dataFim):'—'}</td>
-      <td style="padding:6px 10px">${statusHtml}</td>
-    </tr>`;
-  }).join('');
+      <td style="padding:6px 10px">${_garantiaStatusBadge(it.dataFim,'— sem data de NF —')}</td>
+    </tr>`).join('');
   return `
     <table class="lista">
       <thead><tr>
@@ -15869,6 +15920,73 @@ function _garantiasTabelaHTML(itens){
     </table>`;
 }
 
+/* v1.47.91: Garantia de Serviços — dois prazos globais (Config. Sistema) que não
+   dependem de compra nenhuma no SRM: um cobre a obra como um todo a partir da
+   data em que ela foi marcada Concluída, o outro cobre cada O.S. Avulsa fechada
+   DEPOIS dessa data (atendimento pós-obra). O.S. Avulsa fechada durante a obra
+   (antes da conclusão) não entra aqui — já está coberta pela garantia geral. */
+function garantiaServicoObraInfo(obra){
+  if(!obra || obra.status!=='concluida' || !obra.concluidaEm) return null;
+  const meses = Number(db.empresa?.garantiaServicoObraMeses)||0;
+  if(!meses) return null;
+  return {concluidaEm:obra.concluidaEm, meses, dataFim: somarMesesData(obra.concluidaEm, meses)};
+}
+
+function _garantiaServicoObraHTML(obra){
+  const info = garantiaServicoObraInfo(obra);
+  if(!info) return '';
+  return `
+    <div class="config-card" style="margin-bottom:14px;padding:14px 16px">
+      <h3 style="font-size:14px;margin-bottom:8px">🔧 Garantia de Serviços da Obra</h3>
+      <p style="font-size:13px;margin:0">Obra concluída em <b>${fmtDia2(info.concluidaEm)}</b> · prazo de <b>${info.meses} meses</b> · vence em <b>${fmtDia2(info.dataFim)}</b> — ${_garantiaStatusBadge(info.dataFim)}</p>
+    </div>`;
+}
+
+function itensGarantiaOSAvulsa(obra){
+  if(!obra || obra.status!=='concluida' || !obra.concluidaEm) return [];
+  const meses = Number(db.empresa?.garantiaServicoOsAvulsaMeses)||0;
+  if(!meses) return [];
+  return (db.ordensServico||[])
+    .filter(o=>o.obraId===obra.id && o.tipo==='avulsa' && o.fechada && o.dataTermino && o.dataTermino>=obra.concluidaEm)
+    .map(o=>({numero:o.numero, titulo:o.titulo||'', dataTermino:o.dataTermino, meses, dataFim: somarMesesData(o.dataTermino, meses)}))
+    .sort((a,b)=> (b.dataFim||'').localeCompare(a.dataFim||''));
+}
+
+function _garantiaOSAvulsaHTML(itens){
+  if(!itens.length) return '';
+  const linhas = itens.map(it=>`<tr>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(it.numero)}</td>
+      <td style="padding:6px 10px">${escHtml(it.titulo||'—')}</td>
+      <td style="padding:6px 10px">${fmtDia2(it.dataTermino)}</td>
+      <td style="padding:6px 10px">${it.meses}m</td>
+      <td style="padding:6px 10px">${fmtDia2(it.dataFim)}</td>
+      <td style="padding:6px 10px">${_garantiaStatusBadge(it.dataFim)}</td>
+    </tr>`).join('');
+  return `
+    <div style="margin-bottom:14px">
+      <h3 style="font-size:14px;margin-bottom:8px">🔧 Garantia de O.S. Avulsas (pós-obra)</h3>
+      <table class="lista">
+        <thead><tr>
+          <th style="width:110px">O.S.</th>
+          <th>Título</th>
+          <th style="width:130px">Término Real</th>
+          <th style="width:70px">Prazo</th>
+          <th style="width:100px">Vencimento</th>
+          <th style="width:130px">Status</th>
+        </tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>`;
+}
+
+function _garantiasConteudoHTML(c, obra){
+  const servicoObraHTML = _garantiaServicoObraHTML(obra);
+  const osAvulsaHTML = _garantiaOSAvulsaHTML(itensGarantiaOSAvulsa(obra));
+  const produtosHTML = _garantiasTabelaHTML(itensGarantiaDaObra(c.obraId));
+  const temExtra = !!(servicoObraHTML || osAvulsaHTML);
+  return `${servicoObraHTML}${osAvulsaHTML}${temExtra?'<h3 style="font-size:14px;margin-bottom:8px">🛡️ Produtos em Garantia</h3>':''}${produtosHTML}`;
+}
+
 function abaGarantiasCartaoHTML(c){
   if(!c.obraId){
     return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
@@ -15877,12 +15995,13 @@ function abaGarantiasCartaoHTML(c){
       <div style="font-size:13px;margin-top:6px">Vincule uma obra a este cartão (aba Dados) pra poder ver os itens em garantia.</div>
     </div>`;
   }
+  const obra = db.obras.find(o=>o.id===c.obraId);
   return `
     <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
       <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id}, this)">🔄 Atualizar</button>
-      <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM) pra esta obra — vencimento calculado a partir da data da NF de compra. Recalculado sempre que a aba é aberta.</span>
+      <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM), garantia de serviços da obra (se concluída) e das O.S. Avulsas pós-obra. Recalculado sempre que a aba é aberta.</span>
     </div>
-    <div id="garantias-resultado">${_garantiasTabelaHTML(itensGarantiaDaObra(c.obraId))}</div>`;
+    <div id="garantias-resultado">${_garantiasConteudoHTML(c, obra)}</div>`;
 }
 
 function buscarItensGarantiaCartao(cardId, btn){
@@ -15890,7 +16009,8 @@ function buscarItensGarantiaCartao(cardId, btn){
   const resultEl = document.getElementById('garantias-resultado');
   if(!c || !resultEl) return;
   if(btn) btnSalvando(btn, 'Atualizando…');
-  resultEl.innerHTML = _garantiasTabelaHTML(itensGarantiaDaObra(c.obraId));
+  const obra = db.obras.find(o=>o.id===c.obraId);
+  resultEl.innerHTML = _garantiasConteudoHTML(c, obra);
   if(btn) btnSalvo(btn, '✔ Atualizado');
 }
 
@@ -20503,9 +20623,14 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div><label>Fase da obra</label><select id="o-fase" style="width:100%" onchange="_sincronizarStatusPelaFaseObra(this)"><option value="">— sem fase —</option>${fasesOpts}</select></div>
-      <div><label>Status</label><select id="o-status" style="width:100%">${statusOpts}</select></div>
+      <div><label>Status</label><select id="o-status" style="width:100%" onchange="toggleCampoConcluidaEmObra(this)">${statusOpts}</select></div>
     </div>
     <p style="font-size:11px;color:var(--muted);margin:2px 0 0">Escolher uma fase "Concluída" ou "Abandonada" já sugere o Status correspondente — pode trocar manualmente antes de salvar.</p>
+    <div id="o-concluida-wrap" style="display:${(o?o.status||'ativa':'ativa')==='concluida'?'':'none'}">
+      <label>Concluída em</label>
+      <input id="o-concluida-em" type="date" value="${o?.concluidaEm||''}">
+      <p style="font-size:11px;color:var(--muted);margin:2px 0 10px">Usada na aba Garantias do Cartão CRM pra calcular a garantia de serviços da obra. Preenchida automaticamente na primeira vez que o status virar Concluída — pode ajustar manualmente.</p>
+    </div>
     ${camposEndereco(o?o.endereco:null, 'o', 'Endereço da Obra', clienteId)}
     <div class="actions" style="justify-content:space-between">
       <div></div>
@@ -20530,7 +20655,24 @@ function _sincronizarStatusPelaFaseObra(selFase){
   const fase = faseId ? faseObra(faseId) : null;
   const selStatus = document.getElementById('o-status');
   if(!selStatus || !fase || !fase.tipo) return;
-  if(fase.tipo==='concluida' || fase.tipo==='cancelada') selStatus.value = fase.tipo;
+  if(fase.tipo==='concluida' || fase.tipo==='cancelada'){
+    selStatus.value = fase.tipo;
+    toggleCampoConcluidaEmObra(selStatus);
+  }
+}
+
+/* v1.47.91: mostra/esconde o campo "Concluída em" (usado na aba Garantias pra
+   calcular a garantia de serviços) conforme o Status escolhido — e pré-preenche
+   com hoje na primeira vez que vira Concluída, sem sobrescrever se já tinha data. */
+function toggleCampoConcluidaEmObra(selStatus){
+  const wrap = document.getElementById('o-concluida-wrap');
+  if(!wrap) return;
+  const ehConcluida = selStatus.value==='concluida';
+  wrap.style.display = ehConcluida ? '' : 'none';
+  if(ehConcluida){
+    const inp = document.getElementById('o-concluida-em');
+    if(inp && !inp.value) inp.value = localDia(0);
+  }
 }
 
 /* ── CRUD de Outros Contatos do Cartão CRM ──────────────────────────────── */
@@ -20736,12 +20878,15 @@ async function salvarObra(id, clienteId, returnCardId=null){
   const end=lerEndereco('o');
   const faseId=+document.getElementById('o-fase').value||null;
   const status=document.getElementById('o-status').value||'ativa';
+  const concluidaEmInput = document.getElementById('o-concluida-em')?.value || null;
   if(id){
     const o=db.obras.find(x=>x.id===id);
     o.nome=nome; o.endereco=end; o.faseId=faseId; o.status=status;
+    if(status==='concluida') o.concluidaEm = concluidaEmInput || o.concluidaEm || localDia(0);
     registrarLog('editar', 'obra', id, `Obra editada: "${nome}" — fase: ${faseId||'sem'}, status: ${status}`);
   } else {
-    const novaObra={id: await proximoIdSeguro('obras', db.obras), clienteId, nome, faseId, status, endereco:end};
+    const concluidaEm = status==='concluida' ? (concluidaEmInput || localDia(0)) : null;
+    const novaObra={id: await proximoIdSeguro('obras', db.obras), clienteId, nome, faseId, status, concluidaEm, endereco:end};
     db.obras.push(novaObra);
     registrarLog('criar', 'obra', novaObra.id, `Nova obra criada: "${nome}" (cliente: "${cliente(clienteId).nome}")`);
   }
