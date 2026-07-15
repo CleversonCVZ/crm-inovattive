@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.97';
+const APP_VERSION = '1.47.98';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.98',
+    data: '15/07/2026',
+    itens: [
+      'Grupos de Acesso: nova restrição "Ver apenas as próprias Obras" — quando marcada, o usuário só vê obras com pelo menos uma O.S. em que consta como responsável ou técnico (mesmo critério de "Ver apenas as próprias O.S.", só que aplicado à obra inteira). Vale nas duas telas de Obras (Acompanhamento e lista) e também no app mobile.',
+    ]
+  },
   {
     versao: '1.47.97',
     data: '15/07/2026',
@@ -3039,6 +3046,8 @@ function load(){
     if(!('filtrarOS' in g)) g.filtrarOS = false;
     // filtrarPropostas: true = o grupo só enxerga propostas do cartão CRM em que consta como responsável
     if(!('filtrarPropostas' in g)) g.filtrarPropostas = false;
+    // filtrarObras: true = o grupo só enxerga obras com pelo menos uma OS em que consta como responsável ou técnico
+    if(!('filtrarObras' in g)) g.filtrarObras = false;
   });
   const gAdmin = db.grupos.find(g=>g.admin);
   db.usuarios.forEach(u=>{
@@ -3323,7 +3332,7 @@ async function carregarConfigSupabase(){
            em telas[]; isso só refina o que pode ser feito dentro de uma tela já visível).
            Tela ausente no mapa = 'excluir' (acesso total), ver nivelTela(). */
         telasNivel: g.telas_nivel||{},
-        fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, filtrarPropostas:!!g.filtrar_propostas, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico,
+        fasesPermitidas:g.fases_permitidas??null, filtrarOS:!!g.filtrar_os, filtrarPropostas:!!g.filtrar_propostas, filtrarObras:!!g.filtrar_obras, acessoComercial:!!g.acesso_comercial, acessoTecnico:!!g.acesso_tecnico,
         /* notificacoesCategorias: quais das 5 categorias de notificação o grupo recebe.
            null = sem restrição configurada ainda = recebe todas (comportamento padrão até
            o admin salvar o grupo de novo com as checkboxes da nova seção "Notificações"). */
@@ -3805,7 +3814,7 @@ function syncConfigSupabase(){
     sincronizarTabela('estoque_categorias', db.estoqueCats||[], c=>({id:c.id, nome:c.nome, cor:c.cor, ordem:c.ordem}));
     sincronizarTabela('origens', db.origens, o=>({id:o.id, nome:o.nome}));
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
-    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, filtrar_propostas:!!g.filtrarPropostas, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico, notificacoes_categorias:g.notificacoesCategorias??null}));
+    sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, filtrar_propostas:!!g.filtrarPropostas, filtrar_obras:!!g.filtrarObras, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico, notificacoes_categorias:g.notificacoesCategorias??null}));
     const e = db.empresa||{};
     sb.from('empresa').upsert({
       id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
@@ -21344,6 +21353,13 @@ function formGrupo(g){
                 <span style="font-size:11px;color:var(--muted)">O usuário só vê propostas do cartão CRM em que consta como responsável.</span>
               </span>
             </label>
+            <label class="perm-item" style="gap:8px;margin-top:8px">
+              <input type="checkbox" id="ck-filtrar-obras" ${g&&g.filtrarObras?'checked':''}>
+              <span>
+                <b>Ver apenas as próprias Obras</b><br>
+                <span style="font-size:11px;color:var(--muted)">O usuário só vê obras com pelo menos uma OS em que consta como responsável ou técnico. Vale no desktop e no app mobile.</span>
+              </span>
+            </label>
           </div>
         </div>
         <div>
@@ -21457,6 +21473,7 @@ async function salvarGrupo(id){
   const fasesPermitidas=restringirFases?[...document.querySelectorAll('.ck-gfase:checked')].map(c=>Number(c.value)):null;
   const filtrarOS=document.getElementById('ck-filtrar-os')?.checked||false;
   const filtrarPropostas=document.getElementById('ck-filtrar-propostas')?.checked||false;
+  const filtrarObras=document.getElementById('ck-filtrar-obras')?.checked||false;
   const acessoComercial=document.getElementById('ck-acesso-comercial')?.checked||false;
   const acessoTecnico=document.getElementById('ck-acesso-tecnico')?.checked||false;
   const notificacoesCategorias=[...document.querySelectorAll('.ck-gnotif:checked')].map(c=>c.value);
@@ -21464,17 +21481,17 @@ async function salvarGrupo(id){
   if(id){
     const g=db.grupos.find(x=>x.id===id);
     g.nome=nome;
-    if(!g.admin){ g.telas=telas; g.telasNivel=telasNivel; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.filtrarPropostas=filtrarPropostas; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; g.notificacoesCategorias=notificacoesCategorias; }
+    if(!g.admin){ g.telas=telas; g.telasNivel=telasNivel; g.recursos=recursos; g.recursosEditar=recursosEditar; g.fasesPermitidas=fasesPermitidas; g.filtrarOS=filtrarOS; g.filtrarPropostas=filtrarPropostas; g.filtrarObras=filtrarObras; g.acessoComercial=acessoComercial; g.acessoTecnico=acessoTecnico; g.notificacoesCategorias=notificacoesCategorias; }
     row=g;
     registrarLog('editar','grupo',id,`Grupo editado: "${nome}"`);
   } else {
-    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,telasNivel,recursos,recursosEditar,fasesPermitidas,filtrarOS,filtrarPropostas,acessoComercial,acessoTecnico,notificacoesCategorias};
+    const ng={id:await proximoIdSeguro('grupos',db.grupos),nome,admin:false,telas,telasNivel,recursos,recursosEditar,fasesPermitidas,filtrarOS,filtrarPropostas,filtrarObras,acessoComercial,acessoTecnico,notificacoesCategorias};
     db.grupos.push(ng);
     row=ng;
     registrarLog('criar','grupo',ng.id,`Novo grupo criado: "${nome}"`);
   }
   try{
-    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],telas_nivel:row.telasNivel||{},recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,filtrar_propostas:!!row.filtrarPropostas,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico,notificacoes_categorias:row.notificacoesCategorias??null});
+    const {error}=await sb.from('grupos').upsert({id:row.id,nome:row.nome,admin:!!row.admin,telas:row.telas||[],telas_nivel:row.telasNivel||{},recursos:row.recursos||[],recursos_editar:row.recursosEditar||[],fases_permitidas:row.fasesPermitidas??null,filtrar_os:!!row.filtrarOS,filtrar_propostas:!!row.filtrarPropostas,filtrar_obras:!!row.filtrarObras,acesso_comercial:!!row.acessoComercial,acesso_tecnico:!!row.acessoTecnico,notificacoes_categorias:row.notificacoesCategorias??null});
     if(error) throw error;
     await _delay;
   }catch(e){
@@ -21544,6 +21561,25 @@ function propostasDoCartaoVisiveis(c){
   const g = grupoDe(usuarioAtual);
   if(g.admin || !g.filtrarPropostas) return true;
   return c.responsavelId === usuarioAtual.id;
+}
+
+/* obraVisivelParaUsuario(obra):
+   Retorna true se o usuário logado tem permissão para ver esta obra.
+   Se o grupo do usuário tiver filtrarObras === true (e não for admin), a obra só é
+   visível se houver pelo menos uma OS vinculada a ela (obraId) em que o usuário conste
+   como responsável ou técnico. Checa responsável/técnico diretamente (não reusa
+   osVisivelParaUsuario) porque esse critério deve valer independente do flag filtrarOS
+   estar ligado ou não — são duas restrições independentes, podem ser configuradas
+   separadamente por grupo. Vale tanto no desktop quanto no app mobile (omni-mobile.html
+   tem uma cópia desta mesma função). */
+function obraVisivelParaUsuario(obra){
+  if(!usuarioAtual) return false;
+  const g = grupoDe(usuarioAtual);
+  if(g.admin || !g.filtrarObras) return true; // admin ou sem restrição: vê tudo
+  return (db.ordensServico||[]).some(os=>
+    os.obraId===obra.id &&
+    (os.responsavelId===usuarioAtual.id || (os.tecnicos||[]).some(t=>t.usuarioId===usuarioAtual.id))
+  );
 }
 
 function renderOSLista(){
@@ -21652,13 +21688,14 @@ function renderObrasLista(){
     if(cidadeAtual) selCidade.value = cidadeAtual;
   }
 
-  // stats globais
-  const nAtiva     = db.obras.filter(o=>(o.status||'ativa')==='ativa').length;
-  const nPausada   = db.obras.filter(o=>o.status==='pausada').length;
-  const nConcluida = db.obras.filter(o=>o.status==='concluida').length;
-  const valorTotal = db.obras.reduce((s,o)=>s+db.propostas.filter(p=>p.obraId===o.id&&p.status==='aprovada').reduce((ss,p)=>ss+(p.valor||0),0),0);
+  // stats globais — respeitam a mesma restrição de visibilidade (filtrarObras) da lista abaixo
+  const obrasVisiveis = db.obras.filter(obraVisivelParaUsuario);
+  const nAtiva     = obrasVisiveis.filter(o=>(o.status||'ativa')==='ativa').length;
+  const nPausada   = obrasVisiveis.filter(o=>o.status==='pausada').length;
+  const nConcluida = obrasVisiveis.filter(o=>o.status==='concluida').length;
+  const valorTotal = obrasVisiveis.reduce((s,o)=>s+db.propostas.filter(p=>p.obraId===o.id&&p.status==='aprovada').reduce((ss,p)=>ss+(p.valor||0),0),0);
   if(st) st.innerHTML=`
-    <div class="stat"><div class="n">${db.obras.length}</div><div class="l">Total de Obras</div></div>
+    <div class="stat"><div class="n">${obrasVisiveis.length}</div><div class="l">Total de Obras</div></div>
     <div class="stat"><div class="n" style="color:#1d8348">${nAtiva}</div><div class="l">🟢 Ativas</div></div>
     <div class="stat"><div class="n" style="color:#b7950b">${nPausada}</div><div class="l">🟡 Pausadas</div></div>
     <div class="stat"><div class="n" style="color:#2e86c1">${nConcluida}</div><div class="l">✅ Concluídas</div></div>
@@ -21666,6 +21703,7 @@ function renderObrasLista(){
 
   // filtrar
   let lista = db.obras.filter(o=>{
+    if(!obraVisivelParaUsuario(o)) return false; // restrição por grupo
     if(t && !(o.nome+' '+(cliente(o.clienteId)?.nome||'')).toLowerCase().includes(t)) return false;
     if(filtroStatus && (o.status||'ativa')!==filtroStatus) return false;
     if(filtroFase   && String(o.faseId)!==filtroFase) return false;
@@ -21733,6 +21771,7 @@ function renderObrasPainel(){
   const t = termoBusca();
 
   const lista = (db.obras||[]).filter(o=>{
+    if(!obraVisivelParaUsuario(o)) return false; // restrição por grupo
     if(filtroStatus && (o.status||'ativa') !== filtroStatus) return false;
     if(t){
       const cli = cliente(o.clienteId)?.nome||'';
