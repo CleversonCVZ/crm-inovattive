@@ -1348,11 +1348,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.93';
+const APP_VERSION = '1.47.94';
 const APP_VERSION_DATE = '15/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.94',
+    data: '15/07/2026',
+    itens: [
+      'Ajuda Contextual: tela Obras — Acompanhamento (❓ no topo) ganhou 2 explicações — por que um card não abre ao clicar (obra sem Cartão CRM vinculado) e a diferença entre a coluna "Concluída" da visualização por fase e o campo Status da obra (podem ficar dessincronizados).',
+    ]
+  },
   {
     versao: '1.47.93',
     data: '15/07/2026',
@@ -10424,7 +10431,11 @@ const AJUDA_CONTEUDO = {
   },
   'obras-painel': {
     titulo: 'Obras — Acompanhamento',
-    html: `<p>Kanban das obras em andamento. Visualizações: por fase (etapa física da obra), por status (ativa/pausada), por cidade, ou concluídas/abandonadas (arquivo). Cada card representa uma Obra — a mesma entidade acessada pela aba "Obra" do Cartão CRM correspondente.</p>`
+    html: `<p>Kanban das obras em andamento. Visualizações: por fase (etapa física da obra), por status (ativa/pausada), por cidade, ou concluídas/abandonadas (arquivo). Cada card representa uma Obra — a mesma entidade acessada pela aba "Obra" do Cartão CRM correspondente.</p>
+      <h5>Por que alguns cards não abrem ao clicar</h5>
+      <p>O clique no card leva direto pra aba "Obra" do Cartão CRM vinculado — só que uma Obra pode existir sem nenhum Cartão CRM associado (ex.: cadastro antigo, ou obra criada solta). Nesse caso o card fica sem ação de clique (cursor normal, nada acontece). Pra resolver, cadastre um Cartão CRM vinculado a essa obra, ou exclua a obra pelo cadastro de Obras se ela não for mais necessária.</p>
+      <h5>Coluna "Concluída" na visualização por fase vs. campo Status</h5>
+      <p>Essa visualização agrupa pela FASE atual da obra, não pelo campo Status — os dois são independentes no cadastro (ver aba Informações da obra). Se a fase for "Concluída" mas o Status ainda estiver em "Ativa" (dado dessincronizado), a obra aparece na coluna Concluída aqui mas não conta como concluída em outras telas que filtram por Status (nem habilita a Garantia de Serviços, que depende do Status = Concluída — ver Configurações do Sistema → Garantia de Serviços). Se notar essa divergência, corrija o Status da obra pra ficar igual à fase.</p>`
   },
   'obras-fases': {
     titulo: 'Obras — Fases',
