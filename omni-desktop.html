@@ -1347,11 +1347,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.104';
-const APP_VERSION_DATE = '15/07/2026';
+const APP_VERSION = '1.47.105';
+const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.105',
+    data: '16/07/2026',
+    itens: [
+      'Aba Garantias do Cartão CRM: produtos comprados direto pelo cliente (SRM marcado "Cliente paga diretamente") agora também aparecem, com o selo "🏠 Cliente" — antes só apareciam compras lançadas no estoque da empresa, deixando de fora materiais que o cliente adquire por conta própria mas que ainda precisamos rastrear a garantia.',
+    ]
+  },
   {
     versao: '1.47.104',
     data: '15/07/2026',
@@ -6580,9 +6587,45 @@ function itensGarantiaDaObra(obraId){
       quantidade: m.quantidade,
       nfNumero, nfData,
       classeNome: classe.nome, meses: classe.meses,
-      dataFim: nfData ? somarMesesData(nfData, classe.meses) : null
+      dataFim: nfData ? somarMesesData(nfData, classe.meses) : null,
+      origemCliente: false
     });
   });
+
+  /* v1.47.93: compras marcadas "pagamentoResponsavel='cliente'" no SRM (cliente
+     paga direto) nunca passam por "Lançar no Estoque" — a trava é proposital
+     (não é custo/estoque da empresa, ver comentário no botão em abrirEditarSRM),
+     então nunca viram estoqueMov e ficavam invisíveis aqui, mesmo quando o produto
+     da NF bate com um item do catálogo marcado pra controle de garantia (caso real:
+     Patricia Loja de Embalagens, SRM #4, câmeras/switch Ubiquiti compradas direto
+     pela cliente). Casamento pelo mesmo matchProdutoEstoque() usado no botão
+     "Cadastrar no Catálogo" da tela do SRM (nome fiscal exato, senão NCM único).
+     Item sem correspondência no catálogo é ignorado aqui de propósito — o caminho
+     pra resolver isso é cadastrar o produto (com garantia marcada) pelo botão
+     "📦 Cadastrar no Catálogo" do próprio SRM, não um aviso duplicado nesta aba. */
+  const srmObraCliente = (db.cardsSRM||[]).filter(c=>c.obraId===obraId && c.pagamentoResponsavel==='cliente');
+  srmObraCliente.forEach(c=>{
+    const cots = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===c.id && Array.isArray(x.nfItens) && x.nfItens.length);
+    cots.forEach(cot=>{
+      cot.nfItens.forEach(it=>{
+        const produto = matchProdutoEstoque(it);
+        if(!produto || !produto.garantiaAtiva) return;
+        const classe = garantiaClasse(produto.garantiaClasseId);
+        if(!classe) return;
+        // segurança: não duplica se esse item também tiver virado estoqueMov por algum motivo
+        if(movs.some(m=>m.srmCotacaoId===cot.id && m.produtoId===produto.id)) return;
+        itens.push({
+          produtoNome: produto.nome,
+          quantidade: it.qCom||0,
+          nfNumero: cot.nfNumero, nfData: cot.nfData,
+          classeNome: classe.nome, meses: classe.meses,
+          dataFim: cot.nfData ? somarMesesData(cot.nfData, classe.meses) : null,
+          origemCliente: true
+        });
+      });
+    });
+  });
+
   return itens.sort((a,b)=> (b.dataFim||'').localeCompare(a.dataFim||''));
 }
 
@@ -10468,6 +10511,8 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Garantias',
         html: `
           <p>A lista carrega sozinha ao abrir a aba — procura, na obra vinculada a este cartão, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto. O botão "🔄 Atualizar" só é necessário se algo mudou (nova compra, troca de classe) enquanto essa aba já estava aberta.</p>
+          <h5>Compra direta pelo cliente (badge 🏠 Cliente)</h5>
+          <p>Quando o SRM está marcado "Cliente paga diretamente", o botão "Lançar no Estoque" fica travado de propósito (não é material/custo da empresa) — mas se o item da NF bater (nome fiscal/NCM) com um produto do catálogo marcado pra garantia, ele aparece aqui mesmo assim, com o selo "🏠 Cliente", pra não perder o controle do prazo. Item sem correspondência no catálogo não aparece — o caminho pra resolver é cadastrar o produto (com garantia marcada) pelo botão "📦 Cadastrar no Catálogo" na tela do próprio SRM.</p>
           <h5>Por que é por obra, não só por este cartão</h5>
           <p>Uma obra pode ter mais de um Cartão CRM ao longo do tempo — mas os produtos instalados pertencem fisicamente à obra, não a um cartão específico. Por isso a busca sempre traz TODOS os itens em garantia da obra, mesmo que a compra tenha entrado por outro cartão.</p>
           <h5>Itens vencidos continuam aparecendo</h5>
@@ -16011,7 +16056,7 @@ function _garantiasTabelaHTML(itens){
     return `<div class="empty" style="padding:30px 10px;text-align:center;color:var(--muted)">Nenhum produto com controle de garantia encontrado nas compras desta obra.</div>`;
   }
   const linhas = itens.map(it=>`<tr>
-      <td style="padding:6px 10px;font-weight:600">${escHtml(it.produtoNome)}</td>
+      <td style="padding:6px 10px;font-weight:600">${escHtml(it.produtoNome)}${it.origemCliente?` <span style="font-size:10px;font-weight:700;color:#e65100;background:#fff3e0;padding:1px 6px;border-radius:8px;margin-left:4px" title="Comprado direto pelo cliente — não é material/custo da empresa">🏠 Cliente</span>`:''}</td>
       <td style="padding:6px 10px;text-align:center">${fmtNum(it.quantidade)}</td>
       <td style="padding:6px 10px">${it.nfNumero?escHtml(String(it.nfNumero)):'—'}</td>
       <td style="padding:6px 10px">${it.nfData?fmtDia2(it.nfData):'—'}</td>
@@ -16113,7 +16158,7 @@ function abaGarantiasCartaoHTML(c){
   return `
     <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
       <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id}, this)">🔄 Atualizar</button>
-      <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM), garantia de serviços da obra (se concluída) e das O.S. Avulsas pós-obra. Recalculado sempre que a aba é aberta.</span>
+      <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM, inclusive direto pelo cliente 🏠), garantia de serviços da obra (se concluída) e das O.S. Avulsas pós-obra. Recalculado sempre que a aba é aberta.</span>
     </div>
     <div id="garantias-resultado">${_garantiasConteudoHTML(c, obra)}</div>`;
 }
