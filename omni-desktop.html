@@ -377,6 +377,9 @@
   .audit-acao.pagar{background:#fff3e0;color:#e65100} /* v1.47.108 */
   .audit-acao.receber{background:#e8f5e9;color:#2e7d32} /* v1.47.108 */
   .audit-acao.senha{background:#fce4ec;color:#ad1457} /* v1.47.109 */
+  .audit-acao.saida{background:#efebe9;color:#4e342e} /* v1.47.110 */
+  .audit-acao.liberar_reserva{background:#e0f7fa;color:#00695c} /* v1.47.110 */
+  .audit-acao.lancar_estoque{background:#ede7f6;color:#4527a0} /* v1.47.110 */
   .audit-vazio{padding:40px;text-align:center;color:var(--muted);font-size:14px}
   #audit-total{font-size:12.5px;color:var(--muted);margin-top:10px}
 </style>
@@ -1350,11 +1353,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.109';
+const APP_VERSION = '1.47.110';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.110',
+    data: '16/07/2026',
+    itens: [
+      'Auditoria de Logs: cobertura de Estoque (saída manual, liberar reserva, criar/editar produto do catálogo, lançar estoque a partir do SRM, cadastrar produto no catálogo via SRM) e SRM (excluir cotação, excluir/remover anexos e XML/PDF da NF, salvar correspondências, pagar/editar/excluir Conta a Pagar do SRM, adicionar/remover item do Espelho de Faturamento) — nenhuma dessas ações gerava log antes.',
+    ]
+  },
   {
     versao: '1.47.109',
     data: '16/07/2026',
@@ -7324,6 +7334,8 @@ async function excluirCotacaoSRM(cotId, srmId){
   db.srmCotacoes = (db.srmCotacoes||[]).filter(x=>x.id!==cotId);
   await excluirDoSupabase('srm_cotacoes', cotId);
   save();
+  const _card=(db.cardsSRM||[]).find(c=>c.id===srmId); // v1.47.110
+  registrarLog('excluir','srm',srmId,`Cotação excluída do SRM #${_card?.num||srmId}${cot?.nfNumero?' (NF '+cot.nfNumero+')':''}`);
   abrirEditarSRM(srmId,'propostas');
 }
 
@@ -7334,6 +7346,7 @@ async function excluirArquivoCotacaoSRM(cotId, srmId, arqId, arqPath){
   cot.arquivos=(cot.arquivos||[]).filter(a=>a.id!==arqId);
   await sb.from('srm_cotacoes').update({arquivos:cot.arquivos}).eq('id',cotId);
   save();
+  registrarLog('excluir','srm',srmId,`Arquivo removido de uma cotação do SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}`); // v1.47.110
   abrirEditarSRM(srmId,'propostas');
 }
 
@@ -7859,6 +7872,7 @@ async function removerXmlNfSRM(cotId, srmId){
     nf_itens_origem:null,
     estoque_lancado:false, estoque_lancado_em:null
   }).eq('id',cotId);
+  registrarLog('excluir','srm',srmId,`XML da NF-e removido de uma cotação do SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId} — dados importados e lançamento de estoque vinculado foram apagados`); // v1.47.110
   save(); abrirEditarSRM(srmId,'pedidos');
 }
 
@@ -7884,6 +7898,7 @@ async function removerPdfNfSRM(cotId, srmId){
     });
   }
   await sb.from('srm_cotacoes').update(dbUpdate).eq('id',cotId);
+  registrarLog('excluir','srm',srmId,`PDF DANFE removido de uma cotação do SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}${!temXml?' — dados importados e lançamento de estoque vinculado também foram apagados':''}`); // v1.47.110
   save(); abrirEditarSRM(srmId,'pedidos');
 }
 
@@ -8058,6 +8073,7 @@ async function salvarCorrespondenciasNF(cotId, srmId){
   const {error}=await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+(error.message||error)); return; }
   save();
+  registrarLog('editar','srm',srmId,`Correspondências item×proposta salvas numa cotação do SRM #${srm.num}`); // v1.47.110
   if(btn){ btn.textContent='✓ Salvo!'; }
   setTimeout(()=>abrirEditarSRM(srmId,'pedidos'), 700);
 }
@@ -8373,6 +8389,7 @@ async function confirmarPagamentoSRM(cpId, srmId){
     }
   }
   save(); renderContasPagar(); renderFinPainel();
+  registrarLog('pagar','conta_pagar',cpId,`Pagamento confirmado (SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}): ${p.descricao} — ${fmtMoney(p.valor)}`); // v1.47.110
   abrirEditarSRM(srmId,'financeiro');
 }
 
@@ -8380,6 +8397,7 @@ async function confirmarPagamentoSRM(cpId, srmId){
  *  (padrão cascade delete movimentações: origemTipo='contas_pagar', origemId=cpId). */
 async function excluirCPdoSRM(cpId, srmId){
   if(!confirm('Excluir esta conta a pagar?')) return;
+  const p = (db.contasPagar||[]).find(x=>x.id===cpId); // v1.47.110: guarda antes de remover, pro log
   // remove movimentações vinculadas antes de excluir a CP
   const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cpId));
   for(const m of movsVinculadas){
@@ -8389,6 +8407,7 @@ async function excluirCPdoSRM(cpId, srmId){
   db.contasPagar = (db.contasPagar||[]).filter(x=>x.id!==cpId);
   await excluirDoSupabase('contas_pagar', cpId);
   save(); renderContasPagar(); renderFinPainel();
+  registrarLog('excluir','conta_pagar',cpId,`Conta a Pagar excluída (SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}): ${p?.descricao||'?'} — ${fmtMoney(p?.valor||0)}`); // v1.47.110
   abrirEditarSRM(srmId,'financeiro');
 }
 
@@ -8487,6 +8506,7 @@ async function salvarEdicaoCPdoSRM(cpId, srmId){
       observacao:p.observacao||null
     }).eq('id',cpId);
     save(); renderContasPagar(); renderFinPainel();
+    registrarLog('editar','conta_pagar',cpId,`Conta a Pagar editada (SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}): ${p.descricao} — ${fmtMoney(p.valor)}`); // v1.47.110
     abrirEditarSRM(srmId,'financeiro');
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); }
 }
@@ -8788,6 +8808,7 @@ async function adicionarItemFaturamentoMaterial(nfId, cardId, osId, propostaId, 
     if(error){ alert('Erro ao adicionar item: '+error.message); return; }
     db.faturamentoItens.push(novo);
     save();
+    registrarLog('criar','nota_fiscal',nfId,`Item de produto adicionado ao Espelho #${nfId}: ${novo.descricao} (${fmtNum(novo.quantidade)})`); // v1.47.110
     const nf = (db.notasFiscais||[]).find(x=>x.id===nfId);
     if(nf) await sincronizarProvisaoImpostoEspelho(nf);
     abrirEspelhoNF(nfId, 'produtos');
@@ -8813,6 +8834,7 @@ async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propost
     if(error){ alert('Erro ao adicionar item: '+error.message); return; }
     db.faturamentoItens.push(novo);
     save();
+    registrarLog('criar','nota_fiscal',nfId,`Item de serviço adicionado ao Espelho #${nfId}: ${novo.descricao} (${fmtNum(novo.quantidade)})`); // v1.47.110
     const nf2 = (db.notasFiscais||[]).find(x=>x.id===nfId);
     if(nf2) await sincronizarProvisaoImpostoEspelho(nf2);
     abrirEspelhoNF(nfId, 'servicos');
@@ -8821,9 +8843,11 @@ async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propost
 
 async function removerItemFaturamento(itemId, nfId, tipo){
   if(!confirm('Remover este item do espelho? Ele volta a ficar disponível pra faturar depois.')) return;
+  const _itemRem = (db.faturamentoItens||[]).find(x=>x.id===itemId); // v1.47.110
   await sb.from('faturamento_itens').delete().eq('id', itemId);
   db.faturamentoItens = (db.faturamentoItens||[]).filter(x=>x.id!==itemId);
   save();
+  registrarLog('excluir','nota_fiscal',nfId,`Item removido do Espelho #${nfId}: ${_itemRem?_itemRem.descricao:itemId}`); // v1.47.110
   const nf = (db.notasFiscais||[]).find(x=>x.id===nfId);
   if(nf) await sincronizarProvisaoImpostoEspelho(nf);
   abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
@@ -22744,6 +22768,9 @@ async function confirmarSaidaEstoque(){
   btnSalvando(btn);
   const ids = await debitarEstoque(produtoId, obraId, qtd, {osId:null, observacao:obs||null, data});
   if(!ids.length){ btnRestaurar(btn); return; }
+  const _prodNome = (db.estoqueProdutos||[]).find(p=>p.id===produtoId)?.nome||produtoId; // v1.47.110
+  const _obraNome = obraId ? (db.obras||[]).find(o=>o.id===obraId)?.nome : null;
+  registrarLog('saida','estoque',produtoId,`Saída manual de estoque: ${_prodNome} — ${fmtNum(qtd)}${_obraNome?' (obra: '+_obraNome+')':''}`);
   fecharModal();
   renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes();
 }
@@ -22810,6 +22837,8 @@ async function confirmarLiberarReserva(produtoId, obraOrigemId){
   const {data, error} = await sb.from('estoque_movimentacoes').insert(linhas).select();
   if(error){ btnRestaurar(btn); alert('Erro ao liberar reserva: '+error.message); return; }
   (data||[]).forEach(_pushMovLocal);
+  const _prodNomeLR = (db.estoqueProdutos||[]).find(p=>p.id===produtoId)?.nome||produtoId; // v1.47.110
+  registrarLog('liberar_reserva','estoque',produtoId,`Reserva liberada: ${_prodNomeLR} — ${fmtNum(qtd)} (${obraOrigem?obraOrigem.nome:'—'} → ${obraDestino?obraDestino.nome:'Estoque geral'})`);
   fecharModal();
   renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes();
 }
@@ -22848,11 +22877,13 @@ async function salvarProdutoEstoque(){
     if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     const p=(db.estoqueProdutos||[]).find(x=>x.id===id);
     if(p){ Object.assign(p,{nome:payload.nome,nomeFiscal:payload.nome_fiscal,ncm:payload.ncm,unidade:payload.unidade,descricao:payload.descricao||'',ativo:payload.ativo,categoriaId:catIdRaw,garantiaAtiva,garantiaClasseId:garantiaClasseIdRaw}); }
+    registrarLog('editar','estoque_produto',id,`Produto do catálogo editado: "${nome}"`); // v1.47.110
   } else {
     const {data,error}=await sb.from('estoque_produtos').insert(payload).select().single();
     if(error){ alert('Erro ao salvar: '+error.message); if(btn){ btn.disabled=false; btn.textContent='Salvar'; } return; }
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push({id:data.id,nome:data.nome,nomeFiscal:data.nome_fiscal||null,ncm:data.ncm||null,unidade:data.unidade||'un',descricao:data.descricao||'',ativo:data.ativo!==false,categoriaId:data.categoria_id||null,criadoEm:data.criado_em||'',garantiaAtiva:!!data.garantia_ativa,garantiaClasseId:data.garantia_classe_id||null});
+    registrarLog('criar','estoque_produto',data.id,`Novo produto criado no catálogo: "${nome}"`); // v1.47.110
   }
   renderEstoqueCatalogo(); renderEstoqueAlmoxarifado();
   // v1.47.36: editar um produto existente não fecha mais (só confirma que salvou);
@@ -23097,6 +23128,9 @@ async function confirmarLancarEstoque(){
   }));
   cot.estoqueLancado=true; cot.estoqueLancadoEm=agora;
 
+  // v1.47.110
+  registrarLog('lancar_estoque','srm',srmId,`Estoque lançado a partir do SRM #${card?.num||srmId}: ${movRows.length} item(ns)${novosProdutos.length?`, ${novosProdutos.length} produto(s) novo(s) no catálogo`:''}`);
+
   fecharLancarEstoque();
   renderEstoqueAlmoxarifado(); renderEstoqueCatalogo(); renderEstoqueMovimentacoes();
   /* Re-renderizar a aba Pedido Aprovado do SRM para mostrar badge "✅ Lançado" */
@@ -23161,6 +23195,7 @@ async function confirmarCadastrarCatalogo(){
 
   const btn=document.getElementById('btn-confirmar-catalogo');
   if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  let _qtdCadastrados=0; // v1.47.110
 
   for(let idx=0;idx<(cot.nfItens||[]).length;idx++){
     const chk=document.getElementById(`cat-inc-${idx}`);
@@ -23187,10 +23222,16 @@ async function confirmarCadastrarCatalogo(){
     if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
     db.estoqueProdutos.push(novoProd);
     cot.nfItens[idx].catalogoRevisado=true;
+    _qtdCadastrados++;
   }
 
   const {error:cotErr}=await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
   if(cotErr){ console.error('Erro ao salvar nf_itens:',cotErr.message); }
+
+  if(_qtdCadastrados){
+    const _card=(db.cardsSRM||[]).find(c=>c.id===cot.cardSrmId); // v1.47.110
+    registrarLog('criar','estoque_produto',null,`${_qtdCadastrados} produto(s) cadastrado(s) no catálogo a partir do SRM #${_card?.num||srmId} (sem lançar estoque)`);
+  }
 
   fecharCadastrarCatalogo();
   renderEstoqueCatalogo();
