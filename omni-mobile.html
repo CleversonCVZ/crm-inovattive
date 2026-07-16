@@ -423,9 +423,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.24';
+const APP_VERSION = '1.0.25';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.25',
+    data: '16/07/2026',
+    itens: [
+      'Proposta: detalhe ganha seção Arquivos com botão pra abrir o PDF direto no celular (ou baixar, no caso de Excel), sem precisar entrar no desktop.',
+    ]
+  },
   {
     versao: '1.0.24',
     data: '16/07/2026',
@@ -671,6 +678,25 @@ async function carregarLinksArquivosProjeto(){
     else { el.textContent='⚠ erro ao carregar'; }
   }
 }
+/* v1.0.25: arquivos de propostas (proposta_arquivos, PDF/Excel gerados/anexados no
+   desktop) ficam no bucket 'propostas', PRIVADO — mesmo padrão de signed URL do
+   bucket 'os-arquivos' acima, mas em função/atributo separados pra não misturar com
+   os arquivos de Projeto da Obra. */
+async function signedUrlArquivoProposta(path){
+  try{
+    const {data, error} = await sb.storage.from('propostas').createSignedUrl(path, 3600);
+    if(error || !data) return '';
+    return data.signedUrl;
+  }catch(e){ return ''; }
+}
+async function carregarLinksArquivosProposta(){
+  const els=[...document.querySelectorAll('#sheet-body a[data-prop-arq-path]')];
+  for(const el of els){
+    const url=await signedUrlArquivoProposta(el.dataset.propArqPath);
+    if(url){ el.href=url; el.classList.remove('arq-carregando'); }
+    else { el.textContent='⚠ erro ao carregar'; }
+  }
+}
 function fmtData(iso){
   if(!iso) return '—';
   const d = new Date(iso+'T00:00:00');
@@ -850,6 +876,10 @@ async function carregarDados(){
       sb.from('fases_crm').select('id,nome,cor,tipo,ordem').order('ordem').then(r=>{db.fases=r.data||[];}),
       sb.from('propostas').select('id,numero,card_id,cliente_id,obra_id,status,valor,data_emissao,fase_id,aditivo').order('id',{ascending:false}).then(r=>{db.propostas=r.data||[];}),
       sb.from('fases_proposta').select('id,nome,cor,tipo').then(r=>{db.fasesProposta=r.data||[];}),
+      // v1.0.25: arquivos anexados/gerados da proposta (PDF/Excel) — mesma tabela do
+      // desktop (proposta_arquivos), agrupada por proposta_id depois do Promise.all,
+      // igual ao padrão já usado pra card_historico logo abaixo.
+      sb.from('proposta_arquivos').select('id,proposta_id,nome,storage_path').then(r=>{db._propArquivos=r.data||[];}),
       sb.from('card_historico').select('card_id,data,texto').order('data',{ascending:false,nullsFirst:false}).then(r=>{
         // v1.0.2: "historico" NÃO é coluna da tabela cards (nunca foi — vinha de um select
         // inválido que quebrava a query inteira e zerava db.cards). O histórico de verdade
@@ -891,6 +921,16 @@ async function carregarDados(){
       porCard[h.card_id].push({data:h.data?h.data.slice(0,16):null, texto:h.texto});
     });
     db.cards.forEach(c=>{ c.historico = porCard[c.id] || []; });
+  }
+
+  // v1.0.25: agrupa proposta_arquivos (carregado à parte) em db.propostas[i].arquivos[].
+  if(db._propArquivos && db._propArquivos.length && db.propostas && db.propostas.length){
+    const porProp = {};
+    db._propArquivos.forEach(a=>{
+      if(!porProp[a.proposta_id]) porProp[a.proposta_id]=[];
+      porProp[a.proposta_id].push({id:a.id, nome:a.nome, path:a.storage_path});
+    });
+    db.propostas.forEach(p=>{ p.arquivos = porProp[p.id] || []; });
   }
 }
 
@@ -1252,13 +1292,36 @@ function abrirProposta(id){
   const p=db.propostas.find(x=>x.id===id);
   if(!p) return;
   const cl=db.clientes.find(c=>c.id===p.cliente_id);
-  const html=`
+  let html=`
     <div class="info-row"><span class="lbl">Número</span><span class="val">${esc(p.numero)}${p.aditivo?' (Aditivo)':''}</span></div>
     <div class="info-row"><span class="lbl">Cliente</span><span class="val">${esc(cl?.nome||'—')}</span></div>
     <div class="info-row"><span class="lbl">Status</span><span class="val">${badge(propStatusEfetivo(p),STATUS_PROP)}</span></div>
     <div class="info-row"><span class="lbl">Valor</span><span class="val" style="color:var(--green);font-size:18px">${fmtMoney(p.valor)}</span></div>
     <div class="info-row"><span class="lbl">Emissão</span><span class="val">${fmtData(p.data_emissao)}</span></div>`;
+
+  // v1.0.25: arquivos da proposta (PDF/Excel) — abrir/visualizar direto no mobile,
+  // sem precisar entrar no desktop. PDF ganha botão "Abrir" (visualização em nova
+  // aba), demais arquivos ganham "Baixar" (mesmo critério do desktop em baixarArquivo).
+  const arqs=p.arquivos||[];
+  html+=`<div class="section-title">Arquivos (${arqs.length})</div>`;
+  if(arqs.length){
+    html+=arqs.map(a=>{
+      const isPdf=(a.nome||'').toLowerCase().endsWith('.pdf');
+      const path=(a.path||'').replace(/"/g,'&quot;');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)">
+        <span style="flex-shrink:0">${isPdf?'📄':'📊'}</span>
+        <span style="flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nome||'arquivo')}</span>
+        <a class="arq-carregando" data-prop-arq-path="${path}" href="#" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none" onclick="return this.classList.contains('arq-carregando')?false:true">
+          <button class="btn btn-neutral btn-sm">${isPdf?'👁 Abrir':'⬇ Baixar'}</button>
+        </a>
+      </div>`;
+    }).join('');
+  } else {
+    html+='<p style="font-size:13px;color:var(--muted)">Nenhum arquivo anexado.</p>';
+  }
+
   abrirSheet(`Proposta ${p.numero}`,html);
+  if(arqs.length) carregarLinksArquivosProposta();
 }
 
 /* ===== OS ===== */
