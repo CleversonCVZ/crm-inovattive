@@ -376,6 +376,7 @@
   .audit-acao.config{background:#f1f8e9;color:#558b2f}
   .audit-acao.pagar{background:#fff3e0;color:#e65100} /* v1.47.108 */
   .audit-acao.receber{background:#e8f5e9;color:#2e7d32} /* v1.47.108 */
+  .audit-acao.senha{background:#fce4ec;color:#ad1457} /* v1.47.109 */
   .audit-vazio{padding:40px;text-align:center;color:var(--muted);font-size:14px}
   #audit-total{font-size:12.5px;color:var(--muted);margin-top:10px}
 </style>
@@ -1349,11 +1350,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.108';
+const APP_VERSION = '1.47.109';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.109',
+    data: '16/07/2026',
+    itens: [
+      'Auditoria de Logs: definição de senha no primeiro acesso/recuperação (tela "Defina sua senha") agora também é registrada — antes só a troca de senha feita dentro do próprio perfil gerava log.',
+    ]
+  },
   {
     versao: '1.47.108',
     data: '16/07/2026',
@@ -5827,6 +5835,7 @@ async function salvarDefinirSenha(){
   if(s1!==s2){ erro.textContent='As senhas não coincidem.'; return; }
   const {error} = await sb.auth.updateUser({password:s1});
   if(error){ erro.textContent='Erro: '+error.message; return; }
+  registrarLog('senha','usuario',usuarioAtual?.id,`Senha definida/alterada: ${usuarioAtual?.nome}`); // v1.47.109
   fecharModal();
   alert(`Senha cadastrada com sucesso!\nVocê já está conectado como ${usuarioAtual.nome}.`);
 }
