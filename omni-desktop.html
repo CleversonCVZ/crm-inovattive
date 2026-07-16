@@ -1339,7 +1339,10 @@
     <label>E-mail</label>
     <input id="lg-login" type="email" autocomplete="username">
     <label>Senha</label>
-    <input id="lg-senha" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')fazerLogin()">
+    <div style="position:relative">
+      <input id="lg-senha" type="password" autocomplete="current-password" style="width:100%;padding-right:38px" onkeydown="if(event.key==='Enter')fazerLogin()">
+      <button type="button" class="btn sm neutral" style="position:absolute;right:2px;top:50%;transform:translateY(-50%);padding:2px 6px" onclick="toggleInputSenha('lg-senha')" title="Mostrar/ocultar senha" tabindex="-1">👁</button>
+    </div>
     <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
     <div id="lg-erro" class="lg-erro"></div>
     <button class="btn primary" id="lg-btn" style="width:100%;margin-top:16px;padding:12px;font-size:15px" onclick="fazerLogin()">Entrar</button>
@@ -1353,11 +1356,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.111';
+const APP_VERSION = '1.47.112';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.112',
+    data: '16/07/2026',
+    itens: [
+      'Tela de login: botão "👁" no campo de senha pra mostrar/ocultar o que foi digitado.',
+    ]
+  },
   {
     versao: '1.47.111',
     data: '16/07/2026',

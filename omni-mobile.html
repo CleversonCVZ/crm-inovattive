@@ -243,7 +243,10 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
     </div>
     <div class="field">
       <label>Senha</label>
-      <input id="l-senha" type="password" placeholder="••••••••" autocomplete="current-password">
+      <div style="position:relative">
+        <input id="l-senha" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;padding-right:40px">
+        <button type="button" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:17px;line-height:1;padding:6px;cursor:pointer" onclick="toggleInputSenha('l-senha')" title="Mostrar/ocultar senha" tabindex="-1">👁</button>
+      </div>
     </div>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);margin:2px 0 14px;cursor:pointer">
       <input id="l-manter" type="checkbox" checked style="width:16px;height:16px;margin:0">
@@ -429,9 +432,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.28';
+const APP_VERSION = '1.0.29';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.29',
+    data: '16/07/2026',
+    itens: [
+      'Tela de login: botão "👁" no campo de senha pra mostrar/ocultar o que foi digitado.',
+    ]
+  },
   {
     versao: '1.0.28',
     data: '16/07/2026',
@@ -845,6 +855,14 @@ function badge(status, map){
    sessionStorage (que dura só enquanto a aba/PWA fica aberta). Em iniciar(), se a flag for '0'
    e o marcador de sessionStorage não estiver presente, é sinal de que o app foi reaberto do
    zero — força logout e volta pra tela de login, em vez de restaurar a sessão salva. */
+// v1.0.29: "olhinho" pra mostrar/ocultar a senha digitada (mesmo padrão já usado
+// no desktop, ex. campo de senha de equipamento).
+function toggleInputSenha(inputId){
+  const el = document.getElementById(inputId);
+  if(!el) return;
+  el.type = el.type==='password' ? 'text' : 'password';
+}
+
 async function login(){
   const email=document.getElementById('l-email').value.trim();
   const senha=document.getElementById('l-senha').value;
