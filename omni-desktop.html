@@ -374,6 +374,8 @@
   .audit-acao.marcar_perdida{background:#fce4ec;color:#880e4f}
   .audit-acao.reativar{background:#e0f2f1;color:#004d40}
   .audit-acao.config{background:#f1f8e9;color:#558b2f}
+  .audit-acao.pagar{background:#fff3e0;color:#e65100} /* v1.47.108 */
+  .audit-acao.receber{background:#e8f5e9;color:#2e7d32} /* v1.47.108 */
   .audit-vazio{padding:40px;text-align:center;color:var(--muted);font-size:14px}
   #audit-total{font-size:12.5px;color:var(--muted);margin-top:10px}
 </style>
@@ -1347,11 +1349,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.107';
+const APP_VERSION = '1.47.108';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.108',
+    data: '16/07/2026',
+    itens: [
+      'Auditoria de Logs: módulo Financeiro passa a registrar as ações que ainda não gravavam log — criar/editar/excluir Conta Corrente, lançamentos (criar/editar/excluir), criar/editar/excluir Conta a Pagar, confirmar pagamento, criar/editar/excluir parcela a Receber e confirmar recebimento.',
+    ]
+  },
   {
     versao: '1.47.107',
     data: '16/07/2026',
@@ -13636,6 +13645,7 @@ async function salvarEdicaoContaCorrente(id){
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
   Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
   save();
+  registrarLog('editar','conta_corrente',id,`Conta corrente editada: "${nome}"`); // v1.47.108
   await _delay;
   btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   renderContasCorrente();
@@ -13659,6 +13669,7 @@ async function excluirContaCorrente(id){
       if(error) throw new Error(error.message);
       db.contasCorrente = (db.contasCorrente||[]).filter(x=>x.id!==id);
       save();
+      registrarLog('excluir','conta_corrente',id,`Conta corrente excluída: "${c.nome}"`); // v1.47.108
       fecharModal();
       renderContasCorrente();
     }
@@ -13696,6 +13707,7 @@ async function salvarNovaContaCorrente(){
   db.contasCorrente = db.contasCorrente || [];
   db.contasCorrente.push(row);
   save();
+  registrarLog('criar','conta_corrente',id,`Nova conta corrente criada: "${nome}"`); // v1.47.108
   await _delay;
   fecharModal();
   renderContasCorrente();
@@ -13857,6 +13869,8 @@ async function salvarLancamentoManual(contaId){
   }
 
   save();
+  const contaNome = (db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId; // v1.47.108
+  registrarLog('criar','movimentacao',id,`Lançamento manual (${tipo}) em "${contaNome}": ${descricao} — ${fmtMoney(valor)}`);
   await _delay;
   fecharModal();
   renderContasCorrente();
@@ -14133,6 +14147,7 @@ async function salvarEdicaoMovimentacao(id, contaId){
   m.tipo = tipo; m.valor = valor; m.descricao = descricao;
   m.dataMovimento = data; m.centroCustoId = ccId; m.obraId = obraId;
   save();
+  registrarLog('editar','movimentacao',id,`Lançamento editado em "${_cc?.nome||contaId}": ${descricao} — ${fmtMoney(valor)}`); // v1.47.108
   await _delay;
   renderContasCorrente(); // atualiza saldo na tela principal
   btnSalvo(btn); // v1.47.36: não fecha/navega mais — só confirma que salvou
@@ -14146,9 +14161,11 @@ async function excluirMovimentacao(id, contaId){
     return;
   }
   if(!confirm('Excluir este lançamento?')) return;
+  const m = (db.movimentacoes||[]).find(x=>x.id===id); // v1.47.108: guarda antes de remover, pro log
   await excluirDoSupabase('movimentacoes_financeiras', id);
   db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
   save();
+  registrarLog('excluir','movimentacao',id,`Lançamento excluído de "${_cc?.nome||contaId}": ${m?.descricao||'?'} — ${fmtMoney(m?.valor||0)}`);
   renderContasCorrente(); // atualiza saldo na tela principal
   fecharModal();
   abrirMovimentacoesContaCorrente(contaId);
@@ -14961,6 +14978,7 @@ async function salvarNovaContaPagar(){
   db.contasPagar = db.contasPagar || [];
   db.contasPagar.push(row);
   save();
+  registrarLog('criar','conta_pagar',id,`Nova Conta a Pagar: ${descricao} — ${fmtMoney(valor)}`); // v1.47.108
   await _delay;
   fecharModal();
   renderContasPagar();
@@ -15092,6 +15110,7 @@ async function salvarEdicaoContaPagar(id){
   p.dataVencimento=dataVenc; p.status=novoStatus; p.condicao=condicao;
   p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
   save();
+  registrarLog('editar','conta_pagar',id,`Conta a Pagar editada: ${descricao} — ${fmtMoney(valor)}`); // v1.47.108
   await _delay;
   btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   renderContasPagar();
@@ -15197,6 +15216,7 @@ async function confirmarPagamentoConta(id){
   }
 
   save();
+  registrarLog('pagar','conta_pagar',id,`Pagamento confirmado: ${p.descricao}${_forn?' — '+_forn.nome:''} — ${fmtMoney(valorPago)} (conta: ${(db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId})`); // v1.47.108
   await _delay;
   renderContasCorrente(); // atualiza saldo nas contas correntes
   fecharModal();
@@ -15221,7 +15241,9 @@ async function excluirContaPagar(id){
   db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(id)));
   await excluirDoSupabase('contas_pagar', id);
   db.contasPagar = db.contasPagar.filter(x=>x.id!==id);
-  save(); renderContasPagar(); renderFinPainel();
+  save();
+  registrarLog('excluir','conta_pagar',id,`Conta a Pagar excluída: ${p.descricao} — ${fmtMoney(p.valor)} (status era: ${p.status})`); // v1.47.108
+  renderContasPagar(); renderFinPainel();
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -16438,6 +16460,7 @@ async function salvarNovaParcelaReceber(cardId){
   if(eNovo){ btnRestaurar(btn); alert('Erro ao salvar: '+eNovo.message); return; }
   db.recebimentos.push(novo);
   saveLocal();
+  registrarLog('criar','parcela_receber',novo.id,`Nova parcela a Receber (Cartão #${cardId}): ${desc} — ${fmtMoney(valor)}`); // v1.47.108
   await _delay;
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
@@ -16532,6 +16555,7 @@ async function salvarEdicaoParcelaReceber(id, cardId){
     r.dataVencimento = tipo==='fixo' ? (document.getElementById('er-data').value||null) : null;
     r.condicao       = tipo==='condicional' ? (document.getElementById('er-cond').value.trim()||null) : null;
     await Promise.all([save(), _delay]);
+    registrarLog('editar','parcela_receber',id,`Parcela a Receber editada (Cartão #${cardId}): ${r.descricao} — ${fmtMoney(r.valor)}`); // v1.47.108
     btnSalvo(btn); // v1.47.36: não fecha/navega mais — só confirma que salvou
   } catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+e.message); }
 }
@@ -16673,6 +16697,7 @@ async function confirmarParcelaRecebida(id, cardId){
   }
 
   save();
+  registrarLog('receber','parcela_receber',id,`Recebimento${quitado?'':' parcial'} confirmado (Cartão #${cardId}): ${r.descricao} — ${fmtMoney(valorInformado)}${quitado?'':` (restante: ${fmtMoney(r.valor-novoValorPago)})`}`); // v1.47.108
   await _delay;
   fecharModal();
   abrirEditarCartao(cardId,'financeiro');
@@ -16696,7 +16721,9 @@ async function excluirParcelaReceber(id, cardId){
   db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='recebimento' && Number(m.origemId)===Number(id)));
   await excluirDoSupabase('financeiro_recebimentos', id);
   db.recebimentos = db.recebimentos.filter(x=>x.id!==id);
-  save(); renderFinPainel();
+  save();
+  registrarLog('excluir','parcela_receber',id,`Parcela a Receber excluída (Cartão #${cardId}): ${r.descricao} — ${fmtMoney(r.valor)} (status era: ${r.status})`); // v1.47.108
+  renderFinPainel();
   abrirEditarCartao(cardId,'financeiro');
 }
 
