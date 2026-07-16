@@ -1347,11 +1347,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.105';
+const APP_VERSION = '1.47.106';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.106',
+    data: '16/07/2026',
+    itens: [
+      'Corrigido: a coluna "Compras" na lista de Obras mostrava um número congelado desde antes da compra passar a ser feita pelo SRM (v1.47.15) — nada mais escrevia na tabela antiga usada ali. Agora conta os Cards SRM vinculados à obra, batendo com o que a aba Obra→Compras do Cartão já mostra.',
+    ]
+  },
   {
     versao: '1.47.105',
     data: '16/07/2026',
@@ -21854,7 +21861,11 @@ function renderObrasLista(){
     const osAbertas = osObra.filter(os=>!os.fechada).length;
     const propAprov = db.propostas.filter(p=>p.obraId===o.id && p.status==='aprovada');
     const valorAprov= propAprov.reduce((s,p)=>s+(p.valor||0),0);
-    const nCompras  = (db.obraCompras||[]).filter(c=>c.obraId===o.id).length;
+    // v1.47.106: contagem real de Compras via SRM (cardsSRMDaObra) — antes contava
+    // db.obraCompras, tabela legada de antes da v1.47.15/16 ("Obra→Compras virou
+    // visualização do SRM"); nada mais escreve nessa tabela desde então, então a
+    // coluna ficava sempre com o número antigo, congelado, ignorando compras novas.
+    const nCompras  = cardsSRMDaObra(o.id).length;
     const st_txt    = o.status||'ativa';
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
