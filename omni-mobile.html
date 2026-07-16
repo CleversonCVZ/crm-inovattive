@@ -253,6 +253,9 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
       Manter conectado
     </label>
     <button class="btn-login" onclick="login()">Entrar</button>
+    <!-- v1.0.30: só aparece se o aparelho suportar Face ID/Touch ID/digital
+         (feature-detect em iniciarLoginBiometria(), roda ao carregar a página). -->
+    <button id="btn-login-bio" type="button" class="btn-login" style="display:none;background:transparent;color:var(--accent);border:1.5px solid var(--accent);margin-top:8px" onclick="loginComBiometria()">🔓 Entrar com biometria</button>
     <div class="login-err" id="login-err"></div>
   </div>
   <div id="login-versao" style="font-size:12px;color:#ffffffaa;margin-top:18px"></div>
@@ -388,6 +391,11 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
           <span class="txt" id="perfil-novidades-txt">Novidades</span>
           <span class="chevron">›</span>
         </div>
+        <div class="perfil-item" id="perfil-item-biometria" style="cursor:pointer;display:none" onclick="abrirBiometriaPerfil()">
+          <span class="ico">🔐</span>
+          <span class="txt">Login por biometria</span>
+          <span class="chevron">›</span>
+        </div>
         <div class="perfil-item" style="cursor:pointer;color:var(--red)" onclick="logout()">
           <span class="ico">🚪</span>
           <span class="txt" style="color:var(--red)">Sair</span>
@@ -432,9 +440,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.29';
+const APP_VERSION = '1.0.30';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.30',
+    data: '16/07/2026',
+    itens: [
+      'Login por biometria (Face ID/Touch ID/digital): ative em Perfil → Login por biometria e entre sem digitar a senha. Depende do administrador ativar Passkeys no painel do Supabase.',
+    ]
+  },
   {
     versao: '1.0.29',
     data: '16/07/2026',
@@ -661,7 +676,11 @@ document.getElementById('login-versao').textContent = 'v'+APP_VERSION;
 /* ===== SUPABASE ===== */
 const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// v1.0.30: experimental.passkey habilita os métodos de biometria (Face ID/Touch ID/
+// digital) do supabase-js — precisa desse flag além de ligar "Passkeys" no Dashboard.
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { experimental: { passkey: true } }
+});
 
 /* v1.0.28: equivalente do registrarLog() do desktop — mesma tabela audit_logs,
    mesma assinatura (acao, entidade, entidade_id, descricao). Fire-and-forget
@@ -1073,6 +1092,51 @@ function mostrarLogin(){
   document.getElementById('app').classList.remove('visible');
   const chk=document.getElementById('l-manter');
   if(chk) chk.checked = localStorage.getItem('omniMobileManterConectado')!=='0';
+  atualizarBotaoBiometriaLogin();
+}
+
+/* ===== BIOMETRIA (Face ID / Touch ID / digital) — v1.0.30 =====
+   Usa o suporte nativo a Passkeys (WebAuthn) do Supabase Auth (beta, lançado
+   05/2026): o celular guarda um par de chaves atrás da biometria, o Supabase só
+   guarda a chave pública. Precisa estar habilitado no Dashboard (Authentication →
+   Passkeys) — sem isso, signInWithPasskey()/registerPasskey() retornam erro
+   'passkey_disabled' e a gente trata como indisponível. */
+async function suportaBiometria(){
+  try{
+    return !!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
+  }catch(e){ return false; }
+}
+
+async function atualizarBotaoBiometriaLogin(){
+  const btn=document.getElementById('btn-login-bio');
+  if(!btn) return;
+  btn.style.display = (await suportaBiometria()) ? 'block' : 'none';
+}
+
+async function loginComBiometria(){
+  const err=document.getElementById('login-err');
+  err.textContent='';
+  const btn=document.getElementById('btn-login-bio');
+  const oriTxt=btn.textContent;
+  btn.textContent='Aguardando biometria...'; btn.disabled=true;
+  try{
+    const {data,error} = await sb.auth.signInWithPasskey();
+    btn.textContent=oriTxt; btn.disabled=false;
+    if(error){
+      if(error.code==='passkey_disabled') err.textContent='Login por biometria ainda não foi ativado neste sistema.';
+      else if(error.code==='webauthn_credential_not_found') err.textContent='Nenhuma biometria cadastrada neste aparelho. Entre com e-mail/senha e ative em Perfil.';
+      else err.textContent='Não foi possível entrar com biometria. Tente e-mail e senha.';
+      return;
+    }
+    localStorage.setItem('omniMobileManterConectado','1');
+    sessionStorage.setItem('omniMobileSessaoAberta','1');
+    await iniciar();
+    registrarLog('login','usuario',usuario?.id,'Login por biometria via app mobile'); // v1.0.30
+  }catch(e){
+    // usuário cancelou o prompt do sistema (Face ID/digital), ou navegador sem suporte real
+    btn.textContent=oriTxt; btn.disabled=false;
+    err.textContent='Biometria cancelada.';
+  }
 }
 
 /* ===== HOME ===== */
@@ -2136,6 +2200,63 @@ function atualizarPerfil(){
   const lastSeen=localStorage.getItem('omniMobileLastVersionSeen');
   const novTxt=document.getElementById('perfil-novidades-txt');
   if(novTxt) novTxt.innerHTML = lastSeen!==APP_VERSION ? 'Novidades <span style="color:var(--red)">●</span>' : 'Novidades';
+
+  // v1.0.30: item "Login por biometria" só aparece se o aparelho suportar Face ID/Touch ID/digital.
+  suportaBiometria().then(ok=>{
+    const it=document.getElementById('perfil-item-biometria');
+    if(it) it.style.display = ok ? 'flex' : 'none';
+  });
+}
+
+/* ===== Gerenciar biometria (Perfil) — v1.0.30 ===== */
+async function abrirBiometriaPerfil(){
+  abrirSheet('🔐 Login por biometria', `
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      Ative pra entrar no OMNI Mobile usando Face ID, digital ou o desbloqueio do seu aparelho, sem digitar a senha toda vez.
+    </p>
+    <div id="bio-lista">Carregando...</div>
+    <button class="btn-login" style="margin-top:16px" onclick="registrarBiometria()">+ Ativar neste aparelho</button>
+  `);
+  await carregarListaBiometria();
+}
+
+async function carregarListaBiometria(){
+  const el=document.getElementById('bio-lista');
+  if(!el) return;
+  const {data,error}=await sb.auth.passkey.list();
+  if(error){ el.innerHTML='<div style="font-size:13px;color:var(--muted)">Não foi possível carregar.</div>'; return; }
+  if(!data||!data.length){ el.innerHTML='<div style="font-size:13px;color:var(--muted)">Nenhum aparelho ativado ainda.</div>'; return; }
+  el.innerHTML = data.map(p=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:14px;font-weight:600">${esc(p.friendly_name||'Aparelho')}</div>
+        <div style="font-size:11.5px;color:var(--muted)">Ativado em ${fmtData(p.created_at.slice(0,10))}</div>
+      </div>
+      <button type="button" style="background:none;border:1.5px solid var(--red);color:var(--red);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;flex-shrink:0" onclick="removerBiometria('${p.id}')">Remover</button>
+    </div>
+  `).join('');
+}
+
+async function registrarBiometria(){
+  if(!(await suportaBiometria())){ alert('Este aparelho/navegador não suporta biometria.'); return; }
+  const {data,error} = await sb.auth.registerPasskey();
+  if(error){
+    if(error.code==='passkey_disabled') alert('Login por biometria ainda não foi ativado neste sistema. Fale com o administrador.');
+    else alert('Não foi possível ativar: '+error.message);
+    return;
+  }
+  registrarLog('senha','usuario',usuario?.id,`Login por biometria ativado num aparelho (${data.friendly_name||'aparelho'})`); // v1.0.30
+  toast('Biometria ativada ✓');
+  await carregarListaBiometria();
+}
+
+async function removerBiometria(passkeyId){
+  if(!confirm('Remover a biometria deste aparelho? Você vai precisar de e-mail e senha pra entrar de novo.')) return;
+  const {error} = await sb.auth.passkey.delete({passkeyId});
+  if(error){ alert('Erro ao remover: '+error.message); return; }
+  registrarLog('senha','usuario',usuario?.id,'Login por biometria removido de um aparelho'); // v1.0.30
+  toast('Removida ✓');
+  await carregarListaBiometria();
 }
 
 /* ===== Changelog / Novidades (mesmo padrão do omni-desktop.html) ===== */
