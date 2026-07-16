@@ -79,6 +79,9 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
 .search-bar{margin:0 16px 12px;display:flex;align-items:center;background:#fff;border-radius:12px;border:1.5px solid var(--border);overflow:hidden;box-shadow:var(--shadow)}
 .search-bar input{flex:1;border:none;padding:11px 14px;font-size:14px;outline:none;background:transparent}
 .search-bar span{padding:0 12px;color:var(--muted);font-size:18px}
+/* v1.0.26: "X" de limpar busca — mesmo padding/cor do ícone de lupa, só some/aparece
+   via JS (display) conforme o campo tem texto ou não. */
+.search-clear{cursor:pointer;font-size:16px!important;display:none}
 
 .card{background:var(--card);border-radius:var(--radius);margin:0 16px 12px;box-shadow:var(--shadow);overflow:hidden;cursor:pointer;transition:transform .1s,box-shadow .1s}
 .card:active{transform:scale(.98);box-shadow:none}
@@ -286,7 +289,8 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
     <div class="screen" id="screen-crm">
       <div class="search-bar" style="margin:12px 16px">
         <span>🔍</span>
-        <input id="crm-busca" placeholder="Buscar cliente..." oninput="renderClientes()">
+        <input id="crm-busca" placeholder="Buscar cliente..." oninput="toggleBuscaClear(this);renderClientes()">
+        <span class="search-clear" id="crm-busca-x" onclick="limparBusca('crm-busca',renderClientes)">✕</span>
       </div>
       <div class="filter-row">
         <div class="filter-tag active" data-f="ativos" onclick="setCrmFiltro(this)">Ativos</div>
@@ -299,7 +303,8 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
     <div class="screen" id="screen-propostas">
       <div class="search-bar" style="margin:12px 16px">
         <span>🔍</span>
-        <input id="prop-busca" placeholder="Buscar proposta..." oninput="renderPropostas()">
+        <input id="prop-busca" placeholder="Buscar proposta..." oninput="toggleBuscaClear(this);renderPropostas()">
+        <span class="search-clear" id="prop-busca-x" onclick="limparBusca('prop-busca',renderPropostas)">✕</span>
       </div>
       <div class="filter-row">
         <div class="filter-tag active" data-f="" onclick="setPropFiltro(this)">Todas</div>
@@ -337,7 +342,8 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
     <div class="screen" id="screen-obras">
       <div class="search-bar" style="margin:12px 16px">
         <span>🔍</span>
-        <input id="obra-busca" placeholder="Buscar obra..." oninput="renderObras()">
+        <input id="obra-busca" placeholder="Buscar obra..." oninput="toggleBuscaClear(this);renderObras()">
+        <span class="search-clear" id="obra-busca-x" onclick="limparBusca('obra-busca',renderObras)">✕</span>
       </div>
       <div class="filter-row">
         <div class="filter-tag active" data-f="ativa" onclick="setObraFiltro(this)">Ativas</div>
@@ -423,9 +429,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.25';
+const APP_VERSION = '1.0.26';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.26',
+    data: '16/07/2026',
+    itens: [
+      'Barras de busca (CRM, Propostas, Obras) ganham um "X" pra limpar o texto digitado rapidinho.',
+    ]
+  },
   {
     versao: '1.0.25',
     data: '16/07/2026',
@@ -645,6 +658,21 @@ let db = {
 };
 
 /* ===== UTILS ===== */
+/* v1.0.26: "X" de limpar busca — usado nas 3 barras de pesquisa (CRM/Propostas/Obras).
+   toggleBuscaClear() é chamado tanto no oninput do campo quanto no início de cada
+   render*() (assim o "X" reflete o valor certo mesmo trocando de aba sem digitar
+   nada de novo, já que o input não é recriado ao navegar entre telas). */
+function toggleBuscaClear(input){
+  const x=document.getElementById(input.id+'-x');
+  if(x) x.style.display = input.value ? '' : 'none';
+}
+function limparBusca(inputId, renderFn){
+  const el=document.getElementById(inputId);
+  if(!el) return;
+  el.value='';
+  toggleBuscaClear(el);
+  if(renderFn) renderFn();
+}
 /* v1.0.6: bucket das fotos do Diário da O.S. — 'os-diario-imagens' é PÚBLICO (mesmo
    bucket que o desktop já usa pra essa mesma finalidade), diferente de 'os-arquivos'
    (privado, onde o mobile estava enviando por engano — por isso as fotos apareciam
@@ -1078,7 +1106,9 @@ function setCrmFiltro(el){
   renderClientes();
 }
 function renderClientes(){
-  const busca=(document.getElementById('crm-busca')?.value||'').toLowerCase();
+  const buscaEl=document.getElementById('crm-busca');
+  if(buscaEl) toggleBuscaClear(buscaEl);
+  const busca=(buscaEl?.value||'').toLowerCase();
   let lista=db.clientes||[];
   if(crmFiltro==='ativos') lista=lista.filter(c=>c.ativo!==false);
   if(busca) lista=lista.filter(c=>(c.nome||'').toLowerCase().includes(busca)||(c.cidade||'').toLowerCase().includes(busca));
@@ -1253,7 +1283,9 @@ function cardVisivelParaUsuario(c){
 }
 
 function renderPropostas(){
-  const busca=(document.getElementById('prop-busca')?.value||'').toLowerCase();
+  const propBuscaEl=document.getElementById('prop-busca');
+  if(propBuscaEl) toggleBuscaClear(propBuscaEl);
+  const busca=(propBuscaEl?.value||'').toLowerCase();
   let lista=(db.propostas||[]).filter(propostaVisivelParaUsuario);
   if(propFiltro) lista=lista.filter(p=>propStatusEfetivo(p)===propFiltro);
   if(busca) lista=lista.filter(p=>{
@@ -1888,7 +1920,9 @@ function setObraOrdenacao(el){
   renderObras();
 }
 function renderObras(){
-  const busca=(document.getElementById('obra-busca')?.value||'').toLowerCase();
+  const obraBuscaEl=document.getElementById('obra-busca');
+  if(obraBuscaEl) toggleBuscaClear(obraBuscaEl);
+  const busca=(obraBuscaEl?.value||'').toLowerCase();
   let lista=(db.obras||[]).filter(obraVisivelParaUsuario);
   if(obraFiltro==='ativa') lista=lista.filter(o=>o.status==='ativa');
   else if(obraFiltro==='concluida') lista=lista.filter(o=>o.status==='concluida');
