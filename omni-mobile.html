@@ -324,6 +324,12 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
         <div class="filter-tag" data-f="abertas" onclick="setOsFiltro(this)">Em aberto</div>
         <div class="filter-tag" data-f="todas" onclick="setOsFiltro(this)">Todas</div>
       </div>
+      <div class="filter-row" id="os-sort-row">
+        <div class="filter-tag active" data-s="data" onclick="setOsOrdenacao(this)">🕓 Mais próximas</div>
+        <div class="filter-tag" data-s="distante" onclick="setOsOrdenacao(this)">🕓 Mais distantes</div>
+        <div class="filter-tag" data-s="az" onclick="setOsOrdenacao(this)">🔤 Cliente A-Z</div>
+        <div class="filter-tag" data-s="za" onclick="setOsOrdenacao(this)">🔤 Cliente Z-A</div>
+      </div>
       <div id="os-list"></div>
     </div>
 
@@ -337,6 +343,12 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
         <div class="filter-tag active" data-f="ativa" onclick="setObraFiltro(this)">Ativas</div>
         <div class="filter-tag" data-f="concluida" onclick="setObraFiltro(this)">Concluídas</div>
         <div class="filter-tag" data-f="todas" onclick="setObraFiltro(this)">Todas</div>
+      </div>
+      <div class="filter-row" id="obra-sort-row">
+        <div class="filter-tag active" data-s="nome-az" onclick="setObraOrdenacao(this)">🔤 Nome A-Z</div>
+        <div class="filter-tag" data-s="nome-za" onclick="setObraOrdenacao(this)">🔤 Nome Z-A</div>
+        <div class="filter-tag" data-s="cliente-az" onclick="setObraOrdenacao(this)">🔤 Cliente A-Z</div>
+        <div class="filter-tag" data-s="cliente-za" onclick="setObraOrdenacao(this)">🔤 Cliente Z-A</div>
       </div>
       <div id="obras-list"></div>
     </div>
@@ -411,9 +423,18 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.23';
+const APP_VERSION = '1.0.24';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.24',
+    data: '16/07/2026',
+    itens: [
+      'Obras ganha ordenação: Nome A-Z (padrão), Nome Z-A, Cliente A-Z e Cliente Z-A.',
+      'O.S. ganha ordenação: além de "Mais próximas" (padrão), agora dá pra ordenar por "Mais distantes" e por Cliente A-Z / Z-A.',
+      'Home: os cards de O.S. em "Recente" agora mostram o nome do cliente também.',
+    ]
+  },
   {
     versao: '1.0.23',
     data: '16/07/2026',
@@ -994,6 +1015,7 @@ function renderHome(){
             <div style="flex:1">
               <div style="font-size:12px;color:var(--muted)">OS ${esc(o.numero)} · ${o.data_agend?fmtData(o.data_agend):'Sem data'}</div>
               <div style="font-weight:700;margin-top:2px">${esc(o.titulo||cl?.nome||'S/título')}</div>
+              ${cl?`<div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(cl.nome)}</div>`:''}
             </div>
             ${o.fechada?'<span class="badge badge-gray">Fechada</span>':'<span class="badge badge-orange">Aberta</span>'}
           </div>
@@ -1242,9 +1264,23 @@ function abrirProposta(id){
 /* ===== OS ===== */
 let osFiltro='hoje';
 function setOsFiltro(el){
-  document.querySelectorAll('#screen-os .filter-tag').forEach(t=>t.classList.remove('active'));
+  // v1.0.24: escopo restrito à 1ª filter-row (período) — mesma lição do Propostas
+  // (v1.0.23): usar closest('.filter-row') e não a tela inteira, senão zera a
+  // ordenação da 2ª linha (#os-sort-row) toda vez que troca o filtro de período.
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   osFiltro=el.dataset.f;
+  renderOS();
+}
+/* v1.0.24: ordenação da lista de O.S., pedida por cleverson junto com Obras (mesmo
+   padrão de Propostas v1.0.23) — por padrão continua "Mais próximas" (data_agend
+   ascendente, comportamento de sempre), com opção de inverter ou ordenar por nome
+   do cliente. */
+let osOrdenacao='data';
+function setOsOrdenacao(el){
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  osOrdenacao=el.dataset.s;
   renderOS();
 }
 function renderOS(){
@@ -1259,7 +1295,13 @@ function renderOS(){
   else if(osFiltro==='semana') lista=lista.filter(o=>o.data_agend>=semIniStr&&o.data_agend<=semFimStr);
   else if(osFiltro==='abertas') lista=lista.filter(o=>!o.fechada);
 
-  lista=lista.sort((a,b)=>(a.data_agend||'').localeCompare(b.data_agend||''));
+  const nomeCliOS = o => (db.clientes.find(c=>c.id===o.cliente_id)?.nome||'').toLowerCase();
+  lista=lista.slice().sort((a,b)=>{
+    if(osOrdenacao==='az') return nomeCliOS(a).localeCompare(nomeCliOS(b),'pt-BR');
+    if(osOrdenacao==='za') return nomeCliOS(b).localeCompare(nomeCliOS(a),'pt-BR');
+    if(osOrdenacao==='distante') return (b.data_agend||'').localeCompare(a.data_agend||'');
+    return (a.data_agend||'').localeCompare(b.data_agend||''); // 'data' (padrão): mais próximas primeiro
+  });
 
   const el=document.getElementById('os-list');
   if(!lista.length){
@@ -1766,9 +1808,20 @@ async function salvarHistoricoAvulsa(osId){
 /* ===== OBRAS ===== */
 let obraFiltro='ativa';
 function setObraFiltro(el){
-  document.querySelectorAll('#screen-obras .filter-tag').forEach(t=>t.classList.remove('active'));
+  // v1.0.24: mesmo fix de escopo do setOsFiltro/setPropFiltro — closest('.filter-row').
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   obraFiltro=el.dataset.f;
+  renderObras();
+}
+/* v1.0.24: ordenação da lista de Obras (não tinha nenhuma antes, ordem era a de
+   chegada do banco) — Nome A-Z é o padrão por ser o mais fácil de achar uma obra
+   específica numa lista longa. */
+let obraOrdenacao='nome-az';
+function setObraOrdenacao(el){
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  obraOrdenacao=el.dataset.s;
   renderObras();
 }
 function renderObras(){
@@ -1777,6 +1830,13 @@ function renderObras(){
   if(obraFiltro==='ativa') lista=lista.filter(o=>o.status==='ativa');
   else if(obraFiltro==='concluida') lista=lista.filter(o=>o.status==='concluida');
   if(busca) lista=lista.filter(o=>(o.nome||'').toLowerCase().includes(busca)||(o.cidade||'').toLowerCase().includes(busca));
+  const nomeCliObra = o => (db.clientes.find(c=>c.id===o.cliente_id)?.nome||'').toLowerCase();
+  lista=lista.slice().sort((a,b)=>{
+    if(obraOrdenacao==='nome-za') return (b.nome||'').toLowerCase().localeCompare((a.nome||'').toLowerCase(),'pt-BR');
+    if(obraOrdenacao==='cliente-az') return nomeCliObra(a).localeCompare(nomeCliObra(b),'pt-BR');
+    if(obraOrdenacao==='cliente-za') return nomeCliObra(b).localeCompare(nomeCliObra(a),'pt-BR');
+    return (a.nome||'').toLowerCase().localeCompare((b.nome||'').toLowerCase(),'pt-BR'); // 'nome-az' (padrão)
+  });
   const el=document.getElementById('obras-list');
   if(!lista.length){el.innerHTML=`<div class="empty-state"><div class="ico">🏗</div><p>Nenhuma obra encontrada.</p></div>`;return;}
   el.innerHTML=lista.slice(0,40).map(o=>{
