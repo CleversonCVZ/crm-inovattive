@@ -429,9 +429,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.27';
+const APP_VERSION = '1.0.28';
 const APP_VERSION_DATE = '16/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.28',
+    data: '16/07/2026',
+    itens: [
+      'Auditoria de Logs: o app mobile passa a registrar no log de auditoria as ações feitas por aqui (check-in/checkout, encerrar O.S., pendências, Diário/fotos, Histórico da Avulsa) — antes nenhuma ação do celular deixava rastro.',
+    ]
+  },
   {
     versao: '1.0.27',
     data: '16/07/2026',
@@ -645,6 +652,21 @@ document.getElementById('login-versao').textContent = 'v'+APP_VERSION;
 const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* v1.0.28: equivalente do registrarLog() do desktop — mesma tabela audit_logs,
+   mesma assinatura (acao, entidade, entidade_id, descricao). Fire-and-forget
+   (não bloqueia o fluxo, só loga erro no console). Antes disso o mobile não
+   gravava NENHUMA ação no log de auditoria — achado da auditoria de 16/07/2026. */
+function registrarLog(acao, entidade, entidade_id, descricao){
+  if(!usuario) return;
+  sb.from('audit_logs').insert({
+    user_id: usuario.id,
+    user_nome: usuario.nome,
+    acao, entidade,
+    entidade_id: entidade_id!=null ? String(entidade_id) : null,
+    descricao
+  }).then(({error})=>{ if(error) console.error('Erro ao registrar log:', error); });
+}
 
 /* ===== STATE ===== */
 let usuario = null;   // {id, nome, grupoId, admin, fotoUrl}
@@ -1627,6 +1649,7 @@ async function fazerCheckin(osId){
   if(error){alert('Erro check-in: '+error.message);return;}
   const o=db.os.find(x=>Number(x.id)===id);
   if(o) o.data_inicio=now;
+  registrarLog('checkin','os',id,`Check-in registrado na O.S. ${o?.numero||id} via app mobile`); // v1.0.28
   toast('Check-in registrado ✓');
   abrirOS(id);
 }
@@ -1638,6 +1661,7 @@ async function fazerCheckout(osId){
   if(error){alert('Erro checkout: '+error.message);return;}
   const o=db.os.find(x=>Number(x.id)===id);
   if(o) o.data_termino=now;
+  registrarLog('checkout','os',id,`Checkout registrado na O.S. ${o?.numero||id} via app mobile`); // v1.0.28
   toast('Saída registrada ✓');
   abrirOS(id);
 }
@@ -1666,6 +1690,7 @@ async function fecharOS(osId){
   const {error}=await sb.from('ordens_servico').update({fase_id:faseRev.id}).eq('id',id);
   if(error){alert('Erro ao enviar para revisão: '+error.message);return;}
   o.fase_id=faseRev.id;
+  registrarLog('editar','os',id,`O.S. ${o.numero} enviada para Revisão Interna via app mobile`); // v1.0.28
 
   // Notifica a empresa (categoria "tecnica" — grupos técnicos/supervisão veem no sininho do desktop)
   const cl=db.clientes.find(c=>c.id===o.cliente_id);
@@ -1702,21 +1727,27 @@ async function adicionarPendOSExec(osId){
   const o=db.os.find(x=>x.id===osId);
   if(!o.pendencias) o.pendencias=[];
   o.pendencias.push({id:crypto.randomUUID(), texto:txt, resolvida:false, origem, osDestinoId:null, transferida:false});
-  if(await _salvarPendenciasOS(osId)){ toast('Pendência adicionada ✓'); abrirOS(osId); }
+  if(await _salvarPendenciasOS(osId)){
+    registrarLog('criar','os',osId,`Pendência adicionada à O.S. ${o.numero} via app mobile: ${txt}`); // v1.0.28
+    toast('Pendência adicionada ✓'); abrirOS(osId);
+  }
 }
 
 async function togglePendOSExec(osId, idx, valor){
   const o=db.os.find(x=>x.id===osId);
   if(o.pendencias[idx]) o.pendencias[idx].resolvida=valor;
   await _salvarPendenciasOS(osId);
+  registrarLog('editar','os',osId,`Pendência ${valor?'marcada como resolvida':'reaberta'} na O.S. ${o.numero} via app mobile${o.pendencias[idx]?': '+o.pendencias[idx].texto:''}`); // v1.0.28
   abrirOS(osId);
 }
 
 async function removerPendOSExec(osId, idx){
   if(!confirm('Remover esta pendência?')) return;
   const o=db.os.find(x=>x.id===osId);
+  const _pendRem=o.pendencias[idx]; // v1.0.28
   o.pendencias.splice(idx,1);
   await _salvarPendenciasOS(osId);
+  registrarLog('excluir','os',osId,`Pendência removida da O.S. ${o.numero} via app mobile${_pendRem?': '+_pendRem.texto:''}`); // v1.0.28
   abrirOS(osId);
 }
 
@@ -1744,7 +1775,10 @@ async function salvarEdicaoPendOSExec(osId, idx){
   const o=db.os.find(x=>x.id===osId);
   o.pendencias[idx].texto=txt;
   o.pendencias[idx].origem=origem;
-  if(await _salvarPendenciasOS(osId)){ toast('Pendência atualizada ✓'); abrirOS(osId); }
+  if(await _salvarPendenciasOS(osId)){
+    registrarLog('editar','os',osId,`Pendência editada na O.S. ${o.numero} via app mobile: ${txt}`); // v1.0.28
+    toast('Pendência atualizada ✓'); abrirOS(osId);
+  }
 }
 
 function abrirTransferirPend(osId, idx){
@@ -1778,6 +1812,7 @@ async function confirmarTransferirPend(osId, idx){
   const {error:e1}=await sb.from('ordens_servico').update({pendencias:osDest.pendencias}).eq('id',destId);
   const {error:e2}=await sb.from('ordens_servico').update({pendencias:osOrig.pendencias}).eq('id',osId);
   if(e1||e2){ alert('Erro ao transferir: '+(e1||e2).message); return; }
+  registrarLog('editar','os',osId,`Pendência transferida de ${osOrig.numero} → ${osDest.numero} via app mobile: "${p.texto}"`); // v1.0.28
   toast('Pendência transferida ✓');
   abrirOS(osId);
 }
@@ -1789,21 +1824,27 @@ async function adicionarPendOS(osId){
   const o=db.os.find(x=>x.id===osId);
   if(!o.pendencias) o.pendencias=[];
   o.pendencias.push({id:crypto.randomUUID(), texto:txt, resolvida:false, origem:'empresa', osDestinoId:null, transferida:false});
-  if(await _salvarPendenciasOS(osId)){ toast('Pendência adicionada ✓'); abrirOS(osId); }
+  if(await _salvarPendenciasOS(osId)){
+    registrarLog('criar','os',osId,`Pendência adicionada à O.S. ${o.numero} via app mobile: ${txt}`); // v1.0.28
+    toast('Pendência adicionada ✓'); abrirOS(osId);
+  }
 }
 
 async function togglePendOS(osId, idx, valor){
   const o=db.os.find(x=>x.id===osId);
   if(o.pendencias[idx]) o.pendencias[idx].resolvida=valor;
   await _salvarPendenciasOS(osId);
+  registrarLog('editar','os',osId,`Pendência ${valor?'marcada como resolvida':'reaberta'} na O.S. ${o.numero} via app mobile${o.pendencias[idx]?': '+o.pendencias[idx].texto:''}`); // v1.0.28
   abrirOS(osId);
 }
 
 async function removerPendOS(osId, idx){
   if(!confirm('Remover esta pendência?')) return;
   const o=db.os.find(x=>x.id===osId);
+  const _pendRem=o.pendencias[idx]; // v1.0.28
   o.pendencias.splice(idx,1);
   await _salvarPendenciasOS(osId);
+  registrarLog('excluir','os',osId,`Pendência removida da O.S. ${o.numero} via app mobile${_pendRem?': '+_pendRem.texto:''}`); // v1.0.28
   abrirOS(osId);
 }
 
@@ -1858,6 +1899,8 @@ async function salvarDiario(osId){
     if(error) throw error;
     db.osDiario.push(row);
     _fotoFiles=[];
+    const _osDiario=db.os.find(x=>x.id===osId); // v1.0.28
+    registrarLog('criar','os',osId,`Registro de Diário adicionado na O.S. ${_osDiario?.numero||osId} via app mobile${enviadas.length?` (${enviadas.length} foto(s))`:''}`);
     toast('Diário salvo ✓');
     abrirOS(osId);
   } catch(e){
@@ -1879,6 +1922,8 @@ async function excluirFotoDiario(osId, diaId, idx){
   if(error){ alert('Erro ao excluir foto: '+error.message); return; }
   if(img.path) sb.storage.from('os-diario-imagens').remove([img.path]).then(({error:e2})=>{ if(e2) console.error('Erro ao remover arquivo:', e2); });
   d.imagens=novasImgs;
+  const _osFoto=db.os.find(x=>x.id===osId); // v1.0.28
+  registrarLog('excluir','os',osId,`Foto do Diário removida na O.S. ${_osFoto?.numero||osId} via app mobile`);
   toast('Foto excluída ✓');
   abrirOS(osId);
 }
@@ -1903,6 +1948,7 @@ async function salvarHistoricoAvulsa(osId){
     const {error}=await sb.from('ordens_servico').update({historico:novoHistorico}).eq('id',osId);
     if(error) throw error;
     o.historico=novoHistorico;
+    registrarLog('historico','os',osId,`Histórico adicionado na O.S. ${o.numero} via app mobile`); // v1.0.28
     toast('Histórico salvo ✓');
     abrirOS(osId);
   } catch(e){
