@@ -1347,11 +1347,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.106';
+const APP_VERSION = '1.47.107';
 const APP_VERSION_DATE = '16/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.107',
+    data: '16/07/2026',
+    itens: [
+      'PDF da O.S. (Execução/Obra, Projeto e Avulsa) ganha o campo "Endereço da Obra", pra equipe de campo achar o local sem precisar abrir o sistema.',
+    ]
+  },
   {
     versao: '1.47.106',
     data: '16/07/2026',
@@ -17207,11 +17214,11 @@ async function exportarPDFOSExecucao(osId, modo='download'){
 
   // ── GRID INFO ────────────────────────────────────────────
   const col1=M, col2=W/2+4;
-  const drawField = (label, value, x, yy) => {
+  const drawField = (label, value, x, yy, w=(W/2)-M-4) => {
     doc.setFontSize(7); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor);
     doc.text(label.toUpperCase(), x, yy);
     doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(25,25,25);
-    const lines = doc.splitTextToSize(value||'—', (W/2)-M-4);
+    const lines = doc.splitTextToSize(value||'—', w);
     doc.text(lines, x, yy+5);
     return lines.length;
   };
@@ -17219,6 +17226,11 @@ async function exportarPDFOSExecucao(osId, modo='download'){
   const r1=drawField('Obra / Projeto', obra?obra.nome:'—', col1, y);
   const r2=drawField('Cliente', cliente?cliente.nome:'—', col2, y);
   y += Math.max(r1,r2)*5 + 6;
+
+  // v1.47.107: endereço da obra no PDF — pedido do cleverson pra facilitar a
+  // localização do local de atendimento sem precisar abrir o sistema.
+  const rEnd=drawField('Endereço da Obra', obra?(resumoEnd(obra.endereco)||'—'):'—', col1, y, lineW);
+  y += rEnd*5 + 6;
 
   const r3=drawField('Responsável Principal', resp?resp.nome:'—', col1, y);
   const r4=drawField('Agendamento', fmtDate(os.dataAgend), col2, y);
@@ -18237,11 +18249,11 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
 
   // ── CAMPOS INFO (grid 2 colunas) ──────────────────────────
   const col1=M, col2=W/2+4;
-  const drawField = (label, value, x, yy) => {
+  const drawField = (label, value, x, yy, w=(W/2)-M-4) => {
     doc.setFontSize(7); doc.setFont(undefined,'normal'); doc.setTextColor(...labelColor);
     doc.text(label.toUpperCase(), x, yy);
     doc.setFontSize(10); doc.setFont(undefined,'bold'); doc.setTextColor(25,25,25);
-    const lines = doc.splitTextToSize(value||'—', (W/2)-M-4);
+    const lines = doc.splitTextToSize(value||'—', w);
     doc.text(lines, x, yy+5);
     return lines.length;
   };
@@ -18250,6 +18262,13 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
   const r1 = drawField('Obra / Projeto', obra?obra.nome:'—', col1, y);
   const r2 = drawField('Cliente', cliente?cliente.nome:'—', col2, y);
   y += Math.max(r1,r2)*5 + 6;
+
+  // v1.47.107: endereço da obra no PDF — só aparece se essa O.S. Avulsa estiver
+  // vinculada a uma obra (nem toda Avulsa tem, ex.: atendimento pontual sem obra).
+  if(obra){
+    const rEnd = drawField('Endereço da Obra', resumoEnd(obra.endereco)||'—', col1, y, lineW);
+    y += rEnd*5 + 6;
+  }
 
   const r3 = drawField('Responsável', resp?resp.nome:'—', col1, y);
   const r4 = drawField('Agendamento', fmtDate(os.dataAgend), col2, y);
