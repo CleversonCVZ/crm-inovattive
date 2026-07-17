@@ -300,7 +300,14 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
       </div>
       <div class="filter-row">
         <div class="filter-tag active" data-f="ativos" onclick="setCrmFiltro(this)">Ativos</div>
+        <div class="filter-tag" data-f="encerrados" onclick="setCrmFiltro(this)">Encerrados</div>
         <div class="filter-tag" data-f="todos" onclick="setCrmFiltro(this)">Todos</div>
+      </div>
+      <div class="filter-row" id="crm-sort-row">
+        <div class="filter-tag active" data-s="nome-az" onclick="setCrmOrdenacao(this)">🔤 Nome A-Z</div>
+        <div class="filter-tag" data-s="nome-za" onclick="setCrmOrdenacao(this)">🔤 Nome Z-A</div>
+        <div class="filter-tag" data-s="recente" onclick="setCrmOrdenacao(this)">🕓 Mais recentes</div>
+        <div class="filter-tag" data-s="antigo" onclick="setCrmOrdenacao(this)">🕓 Mais antigos</div>
       </div>
       <div id="crm-list"></div>
     </div>
@@ -440,9 +447,18 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.30';
-const APP_VERSION_DATE = '16/07/2026';
+const APP_VERSION = '1.0.31';
+const APP_VERSION_DATE = '17/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.31',
+    data: '17/07/2026',
+    itens: [
+      'Corrigido: filtro Ativos/Todos do CRM não filtrava nada (mostravam sempre a mesma lista completa).',
+      'CRM ganha filtro Ativos/Encerrados/Todos e ordenação (Nome A-Z, Nome Z-A, Mais recentes, Mais antigos), igual O.S./Obras/Propostas.',
+      'Corrigido: telefone do cliente não aparecia na lista/detalhe do CRM (e por isso os botões Ligar/WhatsApp nunca apareciam).',
+    ]
+  },
   {
     versao: '1.0.30',
     data: '16/07/2026',
@@ -1215,32 +1231,65 @@ function renderHome(){
 /* ===== CRM ===== */
 let crmFiltro='ativos';
 function setCrmFiltro(el){
-  document.querySelectorAll('#screen-crm .filter-tag').forEach(t=>t.classList.remove('active'));
+  // v1.0.31: escopo restrito à 1ª filter-row (status) — mesmo fix já aplicado em
+  // Propostas/O.S./Obras (v1.0.23/24): a tela ganhou uma 2ª filter-row (ordenação)
+  // e o seletor genérico '#screen-crm .filter-tag' pegava as duas linhas, zerando
+  // a ordenação escolhida toda vez que trocava o filtro de status.
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
   crmFiltro=el.dataset.f;
   renderClientes();
+}
+/* v1.0.31: ordenação da lista de Clientes (Nome A-Z padrão, Nome Z-A, Mais
+   recentes/antigos). A tabela clientes não tem coluna de data de cadastro, então
+   "recente/antigo" usa o id (bigint sequencial do banco) como proxy da ordem de
+   criação — mesmo approach de outras telas que não tinham ordenação nenhuma antes. */
+let crmOrdenacao='nome-az';
+function setCrmOrdenacao(el){
+  el.closest('.filter-row').querySelectorAll('.filter-tag').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  crmOrdenacao=el.dataset.s;
+  renderClientes();
+}
+/* v1.0.31: crmFiltro 'ativos'/'todos' nunca filtrava nada de verdade — o código
+   olhava c.ativo, campo que não existe na tabela clientes (select('*') sempre
+   trazia undefined, e undefined!==false é true), então "Ativos" sempre mostrava
+   a lista inteira, igual "Todos". Critério novo, baseado no mesmo cálculo de
+   "abertos" que já alimentava o badge de cards de cada cliente: Encerrado = tem
+   pelo menos 1 card e todos estão em fase perdido/concluído; Ativo = todo o
+   resto (inclui quem ainda não tem nenhum card, como prospect/lead). */
+function clienteAbertos(clienteId){
+  const cards=(db.cards||[]).filter(x=>x.cliente_id===clienteId);
+  const abertos=cards.filter(x=>{const f=db.fases.find(f=>f.id===x.fase_id);return f&&f.tipo!=='perdido'&&f.tipo!=='concluido';}).length;
+  return {total:cards.length, abertos};
 }
 function renderClientes(){
   const buscaEl=document.getElementById('crm-busca');
   if(buscaEl) toggleBuscaClear(buscaEl);
   const busca=(buscaEl?.value||'').toLowerCase();
   let lista=db.clientes||[];
-  if(crmFiltro==='ativos') lista=lista.filter(c=>c.ativo!==false);
+  if(crmFiltro==='ativos') lista=lista.filter(c=>{const {total,abertos}=clienteAbertos(c.id); return total===0||abertos>0;});
+  else if(crmFiltro==='encerrados') lista=lista.filter(c=>{const {total,abertos}=clienteAbertos(c.id); return total>0&&abertos===0;});
   if(busca) lista=lista.filter(c=>(c.nome||'').toLowerCase().includes(busca)||(c.cidade||'').toLowerCase().includes(busca));
+  lista=lista.slice().sort((a,b)=>{
+    if(crmOrdenacao==='nome-za') return (b.nome||'').toLowerCase().localeCompare((a.nome||'').toLowerCase(),'pt-BR');
+    if(crmOrdenacao==='recente') return (b.id||0)-(a.id||0);
+    if(crmOrdenacao==='antigo') return (a.id||0)-(b.id||0);
+    return (a.nome||'').toLowerCase().localeCompare((b.nome||'').toLowerCase(),'pt-BR'); // 'nome-az' (padrão)
+  });
   const el=document.getElementById('crm-list');
   if(!lista.length){el.innerHTML=`<div class="empty-state"><div class="ico">👥</div><p>Nenhum cliente encontrado.</p></div>`;return;}
   el.innerHTML=lista.slice(0,60).map(c=>{
     // v1.0.17: badge da LISTA de clientes mostra o total real de cards, sem filtro
     // de filtrarCards (mesmo critério do desktop) — só a lista individual de cards
     // dentro do cliente (abrirCliente) continua restrita.
-    const cards=(db.cards||[]).filter(x=>x.cliente_id===c.id);
-    const abertos=cards.filter(x=>{const f=db.fases.find(f=>f.id===x.fase_id);return f&&f.tipo!=='perdido'&&f.tipo!=='concluido';}).length;
+    const {abertos}=clienteAbertos(c.id);
     return `<div class="card" onclick="abrirCliente(${c.id})">
       <div class="card-header">
         <div style="width:42px;height:42px;border-radius:21px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;flex-shrink:0">${(c.nome||'?')[0].toUpperCase()}</div>
         <div class="card-meta" style="flex:1">
           <div class="card-title">${esc(c.nome)}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(c.cidade||'—')}${c.telefone?' · '+esc(c.telefone):''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${esc(c.cidade||'—')}${c.tel?' · '+esc(c.tel):''}</div>
         </div>
         ${abertos>0?`<span class="badge badge-blue">${abertos} card${abertos>1?'s':''}</span>`:''}
       </div>
@@ -1264,7 +1313,7 @@ function abrirCliente(id){
   const props=propsTotal.filter(propostaVisivelParaUsuario);
 
   let html=`
-    <div class="info-row"><span class="lbl">Telefone</span><span class="val">${esc(c.telefone||'—')}</span></div>
+    <div class="info-row"><span class="lbl">Telefone</span><span class="val">${esc(c.tel||'—')}</span></div>
     <div class="info-row"><span class="lbl">E-mail</span><span class="val">${esc(c.email||'—')}</span></div>
     <div class="info-row"><span class="lbl">Cidade</span><span class="val">${esc(c.cidade||'—')}</span></div>
     <div class="section-title">Cards CRM (${cardsTotal.length})</div>`;
@@ -1304,10 +1353,10 @@ function abrirCliente(id){
     // proposta" (seria enganoso), só o número já contado no título acima.
   }
 
-  const tel=c.telefone?c.telefone.replace(/\D/g,''):'';
+  const tel=c.tel?c.tel.replace(/\D/g,''):'';
   abrirSheet(`Cliente — ${c.nome}`, html,
     tel?`<a href="tel:${tel}" style="flex:1;display:inline-flex"><button class="btn btn-success" style="flex:1">📞 Ligar</button></a>`:'',
-    c.telefone?`<a href="https://wa.me/55${tel}" target="_blank" style="flex:1;display:inline-flex"><button class="btn btn-primary" style="flex:1;background:#25d366">💬 WhatsApp</button></a>`:''
+    c.tel?`<a href="https://wa.me/55${tel}" target="_blank" style="flex:1;display:inline-flex"><button class="btn btn-primary" style="flex:1;background:#25d366">💬 WhatsApp</button></a>`:''
   );
 }
 
