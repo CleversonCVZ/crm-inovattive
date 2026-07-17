@@ -1359,11 +1359,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.113';
-const APP_VERSION_DATE = '16/07/2026';
+const APP_VERSION = '1.47.114';
+const APP_VERSION_DATE = '17/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.114',
+    data: '17/07/2026',
+    itens: [
+      'Obra → Resultado Aparente → Retiradas do Lucro: ao registrar uma retirada, o sistema pergunta se você quer lançar esse mesmo valor no Contas a Pagar como Pró-Labore (Obra já vinculada). Se pular na hora, dá pra lançar depois pelo botão "📋 → C.P." ao lado da retirada.',
+    ]
+  },
   {
     versao: '1.47.113',
     data: '16/07/2026',
@@ -3636,6 +3643,7 @@ async function carregarDadosSupabase(){
         valor:Number(r.valor)||0,
         descricao:r.descricao||'',
         status:r.status||'registrada',
+        cpId:r.cp_id||null,
         criadoEm:r.created_at||''
       }));
     if(cardContatos.data)
@@ -10623,6 +10631,12 @@ const AJUDA_CONTEUDO = {
       <h5>Onde a baixa acontece</h5>
       <p>Lançar aqui como C.P. só cria a pendência — confirmar o pagamento de verdade (debitar de uma conta corrente) sempre acontece na tela normal de Contas a Pagar, nunca por aqui. Um lançamento já vinculado a uma C.P. mostra "✅ Lançado C.P." em vez do botão.</p>`
   },
+  'lancar-retirada-cp': {
+    titulo: 'Lançar Retirada como Conta a Pagar',
+    html: `
+      <p>Toda vez que uma Retirada do Lucro é registrada (aba Obra → Resultado Aparente), o sistema pergunta se você quer lançar esse mesmo valor como Conta a Pagar (Pró-Labore), com a Obra já vinculada. Se você disser "Pular" na hora, ainda dá pra lançar depois clicando no botão "📋 → C.P." ao lado da retirada, na lista.</p>
+      <p>Igual ao Custo M.Obra: lançar aqui só cria a pendência em Contas a Pagar — confirmar o pagamento de verdade acontece na tela normal de Contas a Pagar. Uma retirada já vinculada mostra "✅ Lançado C.P." em vez do botão.</p>`
+  },
   'prop-painel': {
     titulo: 'Propostas — Acompanhamento',
     html: `<p>Kanban das propostas emitidas, arrastando entre as fases da proposta. Cada proposta pertence a um Cartão CRM — as ações de emitir/aprovar acontecem na aba Propostas Emitidas/Proposta Aprovada do próprio cartão, aqui é só acompanhamento visual. Visualizações: por fase, aprovadas, perdidas/abandonadas ou por validade (data limite antes de vencer).</p>`
@@ -15596,14 +15610,24 @@ function abaObraResultadoAparente(c, ob){
       const fmtDt         = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
 
       const linhasRet = retiradas.length
-        ? retiradas.map(r => `
+        ? retiradas.map(r => {
+            // v1.47.114: mesmo padrão do "📋 → C.P." já usado em Custo M.Obra — deixa
+            // lançar (ou já ver que foi lançada) a retirada como Conta a Pagar (Pró-Labore).
+            const cpBtn = r.cpId
+              ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>`
+              : (podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')
+                  ? `<button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarRetiradaComoCP(${r.id},${ob.id},${c.id})">📋 → C.P.</button>`
+                  : '');
+            return `
           <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
             <span style="color:var(--muted);white-space:nowrap;min-width:80px">${fmtDt(r.data)}</span>
             <span style="flex:1;color:var(--text)">${r.descricao||'—'}</span>
             <span style="font-weight:700;color:#dc2626;white-space:nowrap">− ${fmtR(r.valor)}</span>
+            ${cpBtn}
             ${podeEditar?`<button onclick="excluirRetirada(${r.id},${ob.id},${c.id})"
               style="background:none;border:none;cursor:pointer;font-size:14px;padding:0 2px;color:var(--muted)" title="Excluir">🗑</button>`:''}
-          </div>`).join('')
+          </div>`;
+          }).join('')
         : `<div style="color:var(--muted);font-size:13px;padding:8px 0">Nenhuma retirada registrada</div>`;
 
       return `
@@ -15842,7 +15866,17 @@ async function adicionarRetirada(obraId, cardId){
   }).select().single();
   if(error){ alert('Erro ao salvar retirada: '+error.message); return; }
   if(!Array.isArray(db.obraRetiradas)) db.obraRetiradas=[];
-  db.obraRetiradas.push({id:row.id, obraId, data:data, valor, descricao:desc, status:'registrada', criadoEm:row.created_at||''});
+  db.obraRetiradas.push({id:row.id, obraId, data:data, valor, descricao:desc, status:'registrada', cpId:null, criadoEm:row.created_at||''});
+
+  // v1.47.114: pergunta se quer já lançar essa retirada como Conta a Pagar (Pró-Labore)
+  // — mesma ideia do "📋 → C.P." de Custo M.Obra, só que oferecido logo depois de
+  // registrar em vez de precisar voltar e clicar num botão separado.
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar') &&
+     confirm(`Retirada de ${fmtR(valor)} registrada. Deseja lançar esse valor também no Contas a Pagar como Pró-Labore?`)){
+    abrirLancarRetiradaComoCP(row.id, obraId, cardId);
+    return;
+  }
   const c  = db.cards.find(x=>x.id===cardId);
   const ob = db.obras.find(x=>x.id===obraId);
   const el = document.getElementById('obra-content-'+cardId);
@@ -15850,7 +15884,9 @@ async function adicionarRetirada(obraId, cardId){
 }
 
 async function excluirRetirada(retId, obraId, cardId){
-  if(!confirm('Excluir esta retirada?')) return;
+  const ret = (db.obraRetiradas||[]).find(x=>x.id===retId);
+  if(ret?.cpId && !confirm('Esta retirada já está vinculada a uma Conta a Pagar (não será excluída automaticamente). Excluir mesmo assim?')) return;
+  if(!ret?.cpId && !confirm('Excluir esta retirada?')) return;
   const {error} = await sb.from('obra_retiradas').delete().eq('id', retId);
   if(error){ alert('Erro ao excluir: '+error.message); return; }
   db.obraRetiradas = (db.obraRetiradas||[]).filter(x=>x.id!==retId);
@@ -15858,6 +15894,95 @@ async function excluirRetirada(retId, obraId, cardId){
   const ob = db.obras.find(x=>x.id===obraId);
   const el = document.getElementById('obra-content-'+cardId);
   if(el) el.innerHTML = abaObraResultadoAparente(c, ob);
+}
+
+/** v1.47.114: lança uma retirada de lucro/pró-labore como Conta a Pagar pendente
+    (dar baixa fica pra tela normal de Contas a Pagar, mesmo padrão do "📋 → C.P."
+    já usado em Custo M.Obra — ver confirmarLancarMOComoCP acima). */
+function abrirLancarRetiradaComoCP(retId, obraId, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
+  const ret  = (db.obraRetiradas||[]).find(x=>x.id===retId);
+  const ob   = (db.obras||[]).find(o=>o.id===obraId);
+  if(!ret) return;
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDt= d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const hoje = localDia(0);
+  const ccPL = (db.centrosCusto||[]).find(cc=>cc.nome==='Pró-Labore');
+  const ccOpts = (db.centrosCusto||[]).map(cc=>`<option value="${cc.id}" ${ccPL&&cc.id===ccPL.id?'selected':''}>${escHtml(cc.nome)}</option>`).join('');
+  contextoAjuda.modal='lancar-retirada-cp'; contextoAjuda.aba=null; _refreshAjudaSeAberta();
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">📋 Lançar Retirada como Conta a Pagar</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
+        <div style="font-size:12px;color:var(--muted)">🏗️ Obra: <b>${escHtml(ob?ob.nome:'—')}</b></div>
+        <div style="font-size:12px;color:var(--muted)">📅 Retirada de ${fmtDt(ret.data)}</div>
+        <div style="font-weight:600">${escHtml(ret.descricao||'Retirada de lucro')}</div>
+        <div style="font-size:13px;color:#dc2626;font-weight:700">${fmtR(ret.valor)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data de Vencimento *</div>
+        <input id="lret-venc" type="date" class="input" value="${hoje}">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
+        <select id="lret-cc" class="input">
+          <option value="">— nenhum —</option>
+          ${ccOpts}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
+        <input id="lret-obs" type="text" class="input" placeholder="Opcional…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'obras')">Pular</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarLancarRetiradaComoCP(${retId},${obraId},${cardId})">Lançar C.P.</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarLancarRetiradaComoCP(retId, obraId, cardId){
+  const ret = (db.obraRetiradas||[]).find(x=>x.id===retId);
+  if(!ret) return;
+  const venc = document.getElementById('lret-venc').value;
+  const ccId = parseInt(document.getElementById('lret-cc').value)||null;
+  const obs  = (document.getElementById('lret-obs').value||'').trim();
+  if(!venc){ alert('Informe a data de vencimento.'); return; }
+
+  const ob = (db.obras||[]).find(o=>o.id===obraId);
+  const descricaoCP = `Retirada de lucro — ${ob?ob.nome:'Obra'}${ret.descricao?' — '+ret.descricao:''}`;
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  const novoId = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+  const payload = {
+    id: novoId,
+    descricao: descricaoCP,
+    valor: ret.valor,
+    data_vencimento: venc,
+    centro_custo_id: ccId,
+    obra_id: obraId,
+    status: 'pendente',
+    observacao: obs||null
+  };
+  const {data:cp, error:errCP} = await sb.from('contas_pagar').insert(payload).select().single();
+  if(errCP){ btnRestaurar(btn); alert('Erro ao criar C.P.: '+errCP.message); return; }
+
+  const {error:errRet} = await sb.from('obra_retiradas').update({cp_id:cp.id}).eq('id',retId);
+  if(errRet){ btnRestaurar(btn); alert('C.P. criado mas erro ao vincular na retirada: '+errRet.message); return; }
+  ret.cpId = cp.id;
+
+  db.contasPagar = db.contasPagar||[];
+  db.contasPagar.push({id:cp.id, descricao:descricaoCP, fornecedorId:null, valor:ret.valor,
+    dataVencimento:venc, dataPagamento:null, status:'pendente', condicao:null,
+    centroCustoId:ccId, obraId:obraId, osId:null, contaId:null, observacao:obs||null,
+    criadoEm:cp.created_at||''});
+
+  abrirEditarCartao(cardId,'obras');
 }
 
 // Preview com lixeira para inputs de arquivo múltiplo (propostas)
