@@ -1359,11 +1359,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.117';
+const APP_VERSION = '1.47.118';
 const APP_VERSION_DATE = '20/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.118',
+    data: '20/07/2026',
+    itens: [
+      'Aba Obra → Outros Custos: itens já "✅ Efetivado" ganharam o botão "📋 → C.P." pra lançar direto no Contas a Pagar (Frete, Alimentação etc.), com a Obra já vinculada — mesmo padrão do Custo M.Obra e da Retirada do Lucro. Itens em "⏳ Estimativa" não mostram o botão. Centro de Custo é escolhido manualmente (sem pré-seleção, já que essa tela não tem um de-para fixo com os Centros de Custo).',
+      'Ajuda contextual atualizada com o texto "Pular"→"← Voltar" esquecido no fix da v1.47.116, e novo texto pro mini-modal de Outros Custos.',
+    ]
+  },
   {
     versao: '1.47.117',
     data: '20/07/2026',
@@ -10656,8 +10664,14 @@ const AJUDA_CONTEUDO = {
   'lancar-retirada-cp': {
     titulo: 'Lançar Retirada como Conta a Pagar',
     html: `
-      <p>Toda vez que uma Retirada do Lucro é registrada (aba Obra → Resultado Aparente), o sistema pergunta se você quer lançar esse mesmo valor como Conta a Pagar (Pró-Labore), com a Obra já vinculada. Se você disser "Pular" na hora, ainda dá pra lançar depois clicando no botão "📋 → C.P." ao lado da retirada, na lista.</p>
+      <p>Toda vez que uma Retirada do Lucro é registrada (aba Obra → Resultado Aparente), o sistema pergunta se você quer lançar esse mesmo valor como Conta a Pagar (Pró-Labore), com a Obra já vinculada. Se você clicar em "← Voltar" nesta tela, ainda dá pra lançar depois clicando no botão "📋 → C.P." ao lado da retirada, na lista.</p>
       <p>Igual ao Custo M.Obra: lançar aqui só cria a pendência em Contas a Pagar — confirmar o pagamento de verdade acontece na tela normal de Contas a Pagar. Uma retirada já vinculada mostra "✅ Lançado C.P." em vez do botão.</p>`
+  },
+  'lancar-outro-custo-cp': {
+    titulo: 'Lançar Outro Custo como Conta a Pagar',
+    html: `
+      <p>Itens da lista "Outros Custos" (Frete, Alimentação, Material etc.) já marcados como "✅ Efetivado" podem ser lançados como Conta a Pagar pendente pelo botão "📋 → C.P." — itens ainda em "⏳ Estimativa" não mostram esse botão, porque ainda não são um gasto decidido.</p>
+      <p>Diferente de Custo M.Obra e Retirada do Lucro, aqui o Centro de Custo não vem pré-selecionado — as categorias dessa tela (Frete, Alimentação etc.) não têm um Centro de Custo fixo correspondente, então você escolhe manualmente a cada lançamento. A Obra já vem sempre vinculada. Igual às outras: lançar aqui só cria a pendência, a baixa acontece na tela normal de Contas a Pagar.</p>`
   },
   'prop-painel': {
     titulo: 'Propostas — Acompanhamento',
@@ -15740,6 +15754,14 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
     const statusBadge = cu.status==='efetivado'
       ? `<span style="background:#e8f5e9;color:#2e7d32;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700">✅ Efetivado</span>`
       : `<span style="background:#fff8e1;color:#f57f17;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700">⏳ Estimativa</span>`;
+    // v1.47.118: só itens já "Efetivado" podem virar Conta a Pagar (Estimativa ainda não é um gasto real)
+    const cpBtn = cu.status!=='efetivado' ? '' : (
+      cu.cpId
+        ? `<span style="font-size:10px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 7px;font-weight:600;white-space:nowrap;margin-right:4px">✅ Lançado C.P.</span>`
+        : (podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')
+            ? `<button class="btn sm neutral" style="font-size:11px;padding:2px 7px;white-space:nowrap;margin-right:4px" onclick="abrirLancarOutroCustoComoCP('${cu.id}',${ob.id},${c.id})">📋 → C.P.</button>`
+            : '')
+    );
     return `
       <tr style="border-bottom:1px solid var(--border)">
         <td style="padding:8px 4px;font-size:12px;white-space:nowrap">${fmtDt(cu.data)}</td>
@@ -15748,7 +15770,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
         <td style="padding:8px 4px;text-align:right;font-size:13px;font-weight:700;white-space:nowrap;${cu.status==='efetivado'?'color:#2e7d32':'color:#f57f17'}">${fmtR(cu.valor)}</td>
         <td style="padding:8px 4px">${statusBadge}</td>
         <td style="padding:8px 4px;white-space:nowrap">
-          ${podeEditar?`<button class="icon-btn" title="Editar" onclick="abrirEdicaoOutroCusto('${cu.id}',${ob.id},${c.id})">✏️</button>
+          ${cpBtn}${podeEditar?`<button class="icon-btn" title="Editar" onclick="abrirEdicaoOutroCusto('${cu.id}',${ob.id},${c.id})">✏️</button>
           <button class="icon-btn del" title="Excluir" onclick="excluirOutroCusto('${cu.id}',${ob.id},${c.id})">🗑</button>`:''}
         </td>
       </tr>`;
@@ -15799,7 +15821,7 @@ function abaObraOutrosCustos(c, ob, editandoId=null){
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Descrição</th>
             <th style="text-align:right;padding:7px 4px;font-size:11px;color:var(--muted)">Valor</th>
             <th style="text-align:left;padding:7px 4px;font-size:11px;color:var(--muted)">Status</th>
-            <th style="width:70px"></th>
+            <th style="width:170px"></th>
           </tr>
         </thead>
         <tbody>${linhas}</tbody>
@@ -15866,14 +15888,115 @@ async function salvarEdicaoOutroCusto(custoId, obraId, cardId){
 }
 
 async function excluirOutroCusto(custoId, obraId, cardId){
-  if(!confirm('Excluir este lançamento?')) return;
   const ob = db.obras.find(x=>x.id===obraId);
+  const cuAlvo = (ob?.outrosCustos||[]).find(x=>x.id===custoId);
+  if(cuAlvo?.cpId && !confirm('Este lançamento já está vinculado a uma Conta a Pagar (não será excluída automaticamente). Excluir mesmo assim?')) return;
+  if(!cuAlvo?.cpId && !confirm('Excluir este lançamento?')) return;
   ob.outrosCustos = ob.outrosCustos.filter(x=>x.id!==custoId);
   await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
   save();
   const c  = db.cards.find(x=>x.id===cardId);
   const el = document.getElementById('obra-content-'+cardId);
   if(el) el.innerHTML = abaObraOutrosCustos(c, ob);
+}
+
+/** v1.47.118: lança um "Outro Custo" da obra (Frete, Alimentação etc.) já "Efetivado" como
+ *  Conta a Pagar pendente — mesmo padrão do "📋 → C.P." já usado em Custo M.Obra/Retirada do
+ *  Lucro, com uma diferença combinada com cleverson: como as categorias dessa tela (Frete/
+ *  Alimentação/Material/Outros) não têm um Centro de Custo correspondente pré-definido, o
+ *  combo aqui vem SEM pré-seleção — o usuário escolhe manualmente a cada lançamento. */
+function abrirLancarOutroCustoComoCP(custoId, obraId, cardId){
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
+  const ob = (db.obras||[]).find(o=>o.id===obraId);
+  const cu = (ob?.outrosCustos||[]).find(x=>x.id===custoId);
+  if(!ob || !cu) return;
+  const cats = (db.catOutrosCustos||[]).length
+    ? db.catOutrosCustos
+    : [{id:1,nome:'Frete',emoji:'🚚'},{id:2,nome:'Alimentação',emoji:'🍽'},{id:3,nome:'Material',emoji:'🔧'},{id:4,nome:'Outros',emoji:'📦'}];
+  const catLabel = cat => { const c=cats.find(x=>String(x.id)===String(cat)||x.nome===cat); return c ? `${c.emoji} ${c.nome}` : cat||'—'; };
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDt= d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const hoje = localDia(0);
+  const ccOpts = (db.centrosCusto||[]).map(cc=>`<option value="${cc.id}">${escHtml(cc.nome)}</option>`).join('');
+  contextoAjuda.modal='lancar-outro-custo-cp'; contextoAjuda.aba=null; _refreshAjudaSeAberta();
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">📋 Lançar Outro Custo como Conta a Pagar</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:grid;gap:4px">
+        <div style="font-size:12px;color:var(--muted)">🏗️ Obra: <b>${escHtml(ob.nome)}</b></div>
+        <div style="font-size:12px;color:var(--muted)">📅 ${fmtDt(cu.data)} · ${catLabel(cu.categoria)}</div>
+        <div style="font-weight:600">${escHtml(cu.descricao||'Outro custo')}</div>
+        <div style="font-size:13px;color:#dc2626;font-weight:700">${fmtR(cu.valor)}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Data de Vencimento *</div>
+        <input id="loc-venc" type="date" class="input" value="${hoje}">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Centro de Custo</div>
+        <select id="loc-cc" class="input">
+          <option value="">— nenhum —</option>
+          ${ccOpts}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
+        <input id="loc-obs" type="text" class="input" placeholder="Opcional…">
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEditarCartao(${cardId},'obras')">← Voltar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarLancarOutroCustoComoCP('${custoId}',${obraId},${cardId})">Lançar C.P.</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarLancarOutroCustoComoCP(custoId, obraId, cardId){
+  const ob = (db.obras||[]).find(o=>o.id===obraId);
+  const cu = (ob?.outrosCustos||[]).find(x=>x.id===custoId);
+  if(!ob || !cu) return;
+  const venc = document.getElementById('loc-venc').value;
+  const ccId = parseInt(document.getElementById('loc-cc').value)||null;
+  const obs  = (document.getElementById('loc-obs').value||'').trim();
+  if(!venc){ alert('Informe a data de vencimento.'); return; }
+
+  const cats = (db.catOutrosCustos||[]).length
+    ? db.catOutrosCustos
+    : [{id:1,nome:'Frete',emoji:'🚚'},{id:2,nome:'Alimentação',emoji:'🍽'},{id:3,nome:'Material',emoji:'🔧'},{id:4,nome:'Outros',emoji:'📦'}];
+  const cat = cats.find(x=>String(x.id)===String(cu.categoria)||x.nome===cu.categoria);
+  const catNome = cat ? cat.nome : (cu.categoria||'Outros');
+  const descricaoCP = `${catNome} — ${ob.nome}${cu.descricao?' — '+cu.descricao:''}`;
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  const novoId = await proximoIdSeguro('contas_pagar', db.contasPagar||[]);
+  const payload = {
+    id: novoId,
+    descricao: descricaoCP,
+    valor: cu.valor,
+    data_vencimento: venc,
+    centro_custo_id: ccId,
+    obra_id: obraId,
+    status: 'pendente',
+    observacao: obs||null
+  };
+  const {data:cp, error:errCP} = await sb.from('contas_pagar').insert(payload).select().single();
+  if(errCP){ btnRestaurar(btn); alert('Erro ao criar C.P.: '+errCP.message); return; }
+
+  cu.cpId = cp.id;
+  const {error:errOC} = await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  if(errOC){ btnRestaurar(btn); alert('C.P. criado mas erro ao vincular no lançamento: '+errOC.message); return; }
+
+  db.contasPagar = db.contasPagar||[];
+  db.contasPagar.push({id:cp.id, descricao:descricaoCP, fornecedorId:null, valor:cu.valor,
+    dataVencimento:venc, dataPagamento:null, status:'pendente', condicao:null,
+    centroCustoId:ccId, obraId:obraId, osId:null, contaId:null, observacao:obs||null,
+    criadoEm:cp.created_at||''});
+
+  abrirEditarCartao(cardId,'obras');
 }
 
 /* ================= RETIRADAS DA OBRA ================= */
