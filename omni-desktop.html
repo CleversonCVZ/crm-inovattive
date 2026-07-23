@@ -892,6 +892,7 @@
       <select id="cp-filtro-status" class="vista-sel" onchange="renderContasPagar()">
         <option value="">Todos os status</option>
         <option value="pendente">Pendentes</option>
+        <option value="parcial">Parciais</option>
         <option value="vencido">Vencidas</option>
         <option value="pago">Pagas</option>
       </select>
@@ -1359,11 +1360,21 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.119';
-const APP_VERSION_DATE = '21/07/2026';
+const APP_VERSION = '1.47.121';
+const APP_VERSION_DATE = '23/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.121',
+    data: '23/07/2026',
+    itens: [
+      'Contas a Pagar: agora aceita pagamento parcial/adiantamento, igual já funcionava em Contas a Receber. Ao confirmar um pagamento, dá pra informar um valor menor que o total (ex.: um adiantamento) — a conta fica "🔶 Parcial" mostrando quanto já foi pago e quanto falta, e continua na lista até quitar. Histórico completo de todos os pagamentos parciais feitos.',
+      'O botão "✔ Pagar" da aba Financeiro do Card SRM agora usa esse mesmo fluxo (antes tinha uma versão própria, mais simples, que não sabia lidar com pagamento parcial e podia contar valor errado se a conta já tivesse um adiantamento).',
+      'Telas que mostram status de Contas a Pagar (lista principal, Painel Financeiro por fornecedor, aba Financeiro do SRM, aba Pagamentos do Fornecedor, Guias de Recolhimento) atualizadas pra mostrar "Parcial" corretamente nos totais, filtros e badges.',
+      'Excluir uma Conta a Pagar que já tem pagamento(s) parcial(is) agora avisa antes, mostrando quanto já foi pago.',
+    ]
+  },
   {
     versao: '1.47.119',
     data: '21/07/2026',
@@ -3525,11 +3536,13 @@ async function carregarConfigSupabase(){
    - os_tecnicos, os_diario → agrupados por os_id → db.ordensServico[i].tecnicos/diario
    - financeiro_recebimentos_pagamentos → agrupados por recebimento_id → db.recebimentos[i].pagamentos[]
      (histórico de pagamentos parciais de uma parcela a receber — v1.45.0)
+   - contas_pagar_pagamentos → agrupados por conta_pagar_id → db.contasPagar[i].pagamentos[]
+     (histórico de pagamentos parciais/adiantamentos de uma Conta a Pagar — v1.47.120, mesmo padrão)
    Qualquer campo snake_case do banco vira camelCase no JS (ex.: fase_id → faseId).
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes, guiasTributosRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, pagamentosCP, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes, guiasTributosRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -3554,6 +3567,7 @@ async function carregarDadosSupabase(){
       sb.from('contas_correntes').select('*').order('id'),
       sb.from('movimentacoes_financeiras').select('*').order('data_movimento', {ascending:false}),
       sb.from('contas_pagar').select('*').order('data_vencimento', {ascending:true}),
+      sb.from('contas_pagar_pagamentos').select('*').order('data'),
       sb.from('fornecedores').select('*').order('nome'),
       sb.from('fornecedor_contatos').select('*').order('id'),
       sb.from('os_custos').select('*').order('created_at', {ascending:false}),
@@ -3774,10 +3788,11 @@ async function carregarDadosSupabase(){
         contaDestinoId:m.conta_destino_id||null,
         criadoEm:m.created_at||''
       }));
-    if(contasPagar.data)
+    if(contasPagar.data){
       db.contasPagar = contasPagar.data.map(p=>({
         id:p.id, descricao:p.descricao||'', fornecedorId:p.fornecedor_id||null,
         valor:Number(p.valor)||0,
+        valorPago:Number(p.valor_pago)||0,
         dataVencimento:p.data_vencimento ? p.data_vencimento.slice(0,10) : null,
         dataPagamento:p.data_pagamento ? p.data_pagamento.slice(0,10) : null,
         status:p.status||'pendente',
@@ -3790,8 +3805,16 @@ async function carregarDadosSupabase(){
         observacao:p.observacao||'',
         recorrenteId:p.recorrente_id||null,
         guiaTributosId:p.guia_tributos_id||null,
-        criadoEm:p.created_at||''
+        criadoEm:p.created_at||'',
+        pagamentos:[]
       }));
+      // v1.47.120: histórico de pagamentos parciais (contas_pagar_pagamentos), mesmo padrão
+      // já usado em financeiro_recebimentos_pagamentos (ver comentário no topo desta função)
+      if(pagamentosCP.data) pagamentosCP.data.forEach(pg=>{
+        const cp = db.contasPagar.find(x=>x.id===pg.conta_pagar_id);
+        if(cp) cp.pagamentos.push({id:pg.id, data:pg.data ? pg.data.slice(0,10) : '', valor:Number(pg.valor)||0, contaId:pg.conta_id, movimentacaoId:pg.movimentacao_id});
+      });
+    }
     if(fornecedores.data)
       db.fornecedores = fornecedores.data.map(f=>({
         id:f.id, nome:f.nome||'', nomeFantasia:f.nome_fantasia||'', cnpjCpf:f.cnpj_cpf||'',
@@ -4392,8 +4415,10 @@ function _finPainelCP(statsEl, corpoEl, periodo){
   const lista = [...pendentes, ...pagas];
 
   const totTotal       = lista.reduce((s,p)=>s+p.valor,0);
-  const totPago        = lista.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
-  const totPendente    = lista.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor,0);
+  // v1.47.121: pago/pendente agora somam pelo valorPago real (cobre parcial), não só status==='pago'
+  const totPago        = lista.reduce((s,p)=>s+(p.valorPago||0),0);
+  const totPendente    = lista.reduce((s,p)=>s+Math.max(p.valor-(p.valorPago||0),0),0);
+  const totParcial     = lista.filter(p=>p.status==='parcial').reduce((s,p)=>s+p.valor,0);
   const totCondicional = lista.filter(p=>p.status!=='pago' && !!p.condicao).reduce((s,p)=>s+p.valor,0);
   const hoje           = localDia(0);
   const totVencido     = lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor,0);
@@ -4403,6 +4428,7 @@ function _finPainelCP(statsEl, corpoEl, periodo){
     <div class="stat"><div class="n" style="color:#b71c1c">${fmtMoney(totTotal)||'R$ 0,00'}</div><div class="l">Total (pago + pendente)</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">✅ ${labelPago}</div></div>
     <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">⏳ Pendente (todos)</div></div>
+    ${totParcial?`<div class="stat"><div class="n" style="color:#b45309">${fmtMoney(totParcial)}</div><div class="l">🔶 Parciais</div></div>`:''}
     ${totCondicional?`<div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totCondicional)}</div><div class="l">⏳ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencido</div></div>`:''}`;
 
@@ -4415,11 +4441,10 @@ function _finPainelCP(statsEl, corpoEl, periodo){
     if(!mapaForn[fId]) mapaForn[fId]={total:0,pago:0,pendente:0,vencido:0,n:0};
     mapaForn[fId].total+=p.valor;
     mapaForn[fId].n++;
-    if(p.status==='pago') mapaForn[fId].pago+=p.valor;
-    else{
-      mapaForn[fId].pendente+=p.valor;
-      if(p.dataVencimento&&p.dataVencimento<hoje) mapaForn[fId].vencido+=p.valor;
-    }
+    // v1.47.121: pago/pendente por fornecedor também considera valorPago (cobre parcial)
+    mapaForn[fId].pago += (p.valorPago||0);
+    mapaForn[fId].pendente += Math.max(p.valor-(p.valorPago||0),0);
+    if(p.status!=='pago' && p.dataVencimento && p.dataVencimento<hoje) mapaForn[fId].vencido+=p.valor;
   });
 
   const fornLinhas=Object.entries(mapaForn).map(([idStr,v])=>{
@@ -8176,13 +8201,14 @@ function abaFinanceiroSRMHTML(c){
   // Cenário B: nós pagamos — layout espelho do financeiro CRM
   const cps  = (db.contasPagar||[]).filter(p=>p.cardSrmId===c.id).sort((a,b)=>(a.dataVencimento||'').localeCompare(b.dataVencimento||''));
   const hoje = localDia(0);
-  const totPago     = cps.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
+  // v1.47.121: soma pelo valorPago real (cobre pagamento parcial), não só status==='pago'
+  const totPago     = cps.reduce((s,p)=>s+(p.valorPago||0),0);
   const totalCP     = cps.reduce((s,p)=>s+p.valor,0);
   const vencidas    = cps.filter(p=>p.status!=='pago' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
-  // "A Pagar" = restante do valor de referência (se houver), senão soma das CPs pendentes
+  // "A Pagar" = restante do valor de referência (se houver), senão soma do restante das CPs não quitadas
   const cotSelFin   = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
   const valRefFin   = cotSelFin ? (cotSelFin.nfValorTotal != null ? cotSelFin.nfValorTotal : (cotSelFin.valor||0)) : 0;
-  const totPendente = valRefFin > 0 ? Math.max(0, valRefFin - totPago) : cps.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor,0);
+  const totPendente = valRefFin > 0 ? Math.max(0, valRefFin - totPago) : cps.reduce((s,p)=>s+Math.max(p.valor-(p.valorPago||0),0),0);
 
   // Bloco de referência: cotação selecionada ou valor NF importada
   const cotSel = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
@@ -8223,16 +8249,19 @@ function abaFinanceiroSRMHTML(c){
         const cc    = (db.centrosCusto||[]).find(x=>x.id===p.centroCustoId);
         const obra  = (db.obras||[]).find(o=>o.id===p.obraId);
         const pago  = p.status==='pago';
-        const cond  = !pago && !!p.condicao;
-        const venc  = !pago && !cond && p.dataVencimento && p.dataVencimento<hoje;
+        const parcial = p.status==='parcial';
+        const cond  = !pago && !parcial && !!p.condicao;
+        const venc  = !pago && !parcial && !cond && p.dataVencimento && p.dataVencimento<hoje;
         const conta = pago && p.contaId ? (db.contasCorrente||[]).find(x=>x.id===p.contaId) : null;
+        const restanteRow = Math.max(p.valor-(p.valorPago||0),0);
         const statusBadge = pago
           ? `<span style="color:#2e7d32;font-weight:700">✔ Pago${p.dataPagamento?' em '+fmtDia2(p.dataPagamento):''}${conta?' via '+escHtml(conta.nome):''}</span>`
+          : parcial ? `<span style="color:#b45309;font-weight:700">🔶 Parcial: ${fmtMoney(p.valorPago)} de ${fmtMoney(p.valor)} — falta ${fmtMoney(restanteRow)}</span>`
           : cond ? `<span style="color:#1565c0">⏳ ${escHtml(p.condicao)}</span>`
           : venc  ? `<span style="color:#c62828;font-weight:700">⚠ Vencida (${fmtDia2(p.dataVencimento)})</span>`
           : `<span style="color:#e65100">⏳ Venc: ${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</span>`;
         return `
-          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${pago?'#f1f8e9':'#fff'}">
+          <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:${pago?'#f1f8e9':parcial?'#fffbeb':'#fff'}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
               <div style="flex:1">
                 <div style="font-weight:700;font-size:14px">${fmtMoney(p.valor)} <span style="font-size:12px;font-weight:400;color:var(--muted)">— ${escHtml(p.descricao)}</span></div>
@@ -8240,7 +8269,7 @@ function abaFinanceiroSRMHTML(c){
                 <div style="font-size:12px;margin-top:3px">${statusBadge}</div>
               </div>
               <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                ${!pago&&podeUsar(usuarioAtual,'fin-contas-pagar-pagar')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="pagarCPdoSRM(${p.id},${c.id})">✔ Pagar</button>`:''}
+                ${!pago&&podeUsar(usuarioAtual,'fin-contas-pagar-pagar')?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="pagarCPdoSRM(${p.id},${c.id})">${parcial?'✔ Pagar restante':'✔ Pagar'}</button>`:''}
                 ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn" onclick="editarCPdoSRM(${p.id},${c.id})" title="Editar">✏️</button>`:''}
                 ${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn del" onclick="excluirCPdoSRM(${p.id},${c.id})" title="Excluir">🗑</button>`:''}
               </div>
@@ -8403,78 +8432,24 @@ async function salvarNovaCPSRM(srmId){
 }
 
 /** Abre o modal de confirmação de pagamento de uma CP vinculada ao SRM.
- *  Verifica permissão fin-contas-pagar-pagar antes de abrir. */
-async function pagarCPdoSRM(cpId, srmId){
-  if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamento.'); return; }
-  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
-  const hoje = localDia(0);
-  const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo!==false);
-  const contaOpts = contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('');
-  contextoAjuda.modal='confirmar-pagamento'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
-  abrirModal(`
-    <div class="modal-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-      <h3 style="margin:0">✅ Confirmar Pagamento</h3>
-      ${ajudaBtnModalHTML()}
-    </div>
-    <div class="modal-body" style="display:grid;gap:14px">
-      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b> — <b style="color:#e65100">${fmtMoney(p.valor)}</b></p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Data de pagamento *
-          <input id="cprap-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
-        </label>
-        <label>Debitar em *
-          <select id="cprap-conta" class="input" style="margin-top:4px">
-            <option value="">— selecione a conta —</option>
-            ${contaOpts}
-          </select>
-        </label>
-      </div>
-      ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada. <a href="#" onclick="fecharModal();ativarView('fin-contas-correntes')">Cadastrar agora</a>.</p>`:''}
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoSRM(${cpId},${srmId})">Confirmar pagamento</button>
-    </div>`);
-}
-
-/** Efetiva o pagamento: marca a CP como 'pago', registra dataPagamento e
- *  cria movimentação de saída na conta corrente selecionada. Recarrega a aba Financeiro. */
-async function confirmarPagamentoSRM(cpId, srmId){
-  const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
-  const data   = (document.getElementById('cprap-data')||{}).value;
-  const contaId= parseInt(document.getElementById('cprap-conta')?.value)||null;
-  if(!data){ alert('Informe a data do pagamento.'); return; }
-  // Escreve no Supabase ANTES de atualizar o cache local
-  const {error:ePagar} = await sb.from('contas_pagar').update({status:'pago', data_pagamento:data, conta_id:contaId||null}).eq('id',cpId);
-  if(ePagar){ alert('Erro ao confirmar pagamento: '+ePagar.message); return; }
-  p.status='pago'; p.dataPagamento=data; p.contaId=contaId;
-  // registra movimentação de saída na conta corrente escolhida
-  if(contaId){
-    const movId = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
-    const mov = {id:movId, contaId, tipo:'saida', valor:p.valor,
-      descricao:p.descricao||'Pagamento SRM', dataMovimento:data,
-      centroCustoId:p.centroCustoId||null, origemTipo:'contas_pagar', origemId:cpId,
-      contaDestinoId:null, criadoEm:new Date().toISOString()};
-    const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
-      id:movId, conta_id:contaId, tipo:'saida', valor:p.valor,
-      descricao:mov.descricao, data_movimento:data,
-      centro_custo_id:p.centroCustoId||null, origem_tipo:'contas_pagar', origem_id:cpId
-    });
-    if(!eMov){
-      db.movimentacoes = db.movimentacoes||[];
-      db.movimentacoes.push(mov);
-    }
-  }
-  save(); renderContasPagar(); renderFinPainel();
-  registrarLog('pagar','conta_pagar',cpId,`Pagamento confirmado (SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}): ${p.descricao} — ${fmtMoney(p.valor)}`); // v1.47.110
-  abrirEditarSRM(srmId,'financeiro');
+ *  v1.47.121: passou a reaproveitar o MESMO modal/lógica de abrirPagarConta (Contas a Pagar
+ *  normal) em vez de ter seu modal e função de confirmação próprios — a versão antiga
+ *  (confirmarPagamentoSRM) sempre marcava a CP como 'pago' pelo valor CHEIO, ignorando
+ *  qualquer valorPago já existente; agora que existe pagamento parcial, isso teria gerado
+ *  dupla-contagem/perda de histórico numa CP já parcialmente paga por outra tela. */
+function pagarCPdoSRM(cpId, srmId){
+  abrirPagarConta(cpId, srmId);
 }
 
 /** Exclui uma CP vinculada ao SRM e remove a movimentação financeira correspondente
  *  (padrão cascade delete movimentações: origemTipo='contas_pagar', origemId=cpId). */
 async function excluirCPdoSRM(cpId, srmId){
-  if(!confirm('Excluir esta conta a pagar?')) return;
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); // v1.47.110: guarda antes de remover, pro log
+  // v1.47.121: avisa quando já tem pagamento(s) parcial(is) registrado(s), mesmo padrão de excluirContaPagar
+  const msgConfirm = (p&&p.status==='parcial')
+    ? `"${p.descricao}" já tem pagamento(s) parcial(is) registrado(s) (${fmtMoney(p.valorPago||0)} de ${fmtMoney(p.valor)}). Excluir mesmo assim?\n\nAs movimentações desses pagamentos na conta corrente também serão removidas.`
+    : 'Excluir esta conta a pagar?';
+  if(!confirm(msgConfirm)) return;
   // remove movimentações vinculadas antes de excluir a CP
   const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(cpId));
   for(const m of movsVinculadas){
@@ -8499,6 +8474,7 @@ function editarCPdoSRM(cpId, srmId){
   const mostrarObra = ccSel && ccSel.slug==='material_obra';
   abrirModal(`
     <h3>Editar Conta a Pagar — SRM #${srm?srm.num:'?'}</h3>
+    ${p.status==='parcial'?`<p style="margin:0 0 10px;font-size:13px;color:#b45309">🔶 Pagamento parcial: já pago <b>${fmtMoney(p.valorPago)}</b> de ${fmtMoney(p.valor)} — falta ${fmtMoney(Math.max(p.valor-(p.valorPago||0),0))}.</p>`:''}
     <div class="form-row">
       <div><label>Descrição</label><input id="ecp-desc" value="${escHtml(p.descricao||'')}"></div>
       <div><label>Valor (R$)</label><input id="ecp-valor" type="text" inputmode="decimal" value="${fmtMoney(p.valor)}" oninput="mascaraMoeda(this)"></div>
@@ -10230,7 +10206,7 @@ function renderGuiasTributos(){
     return `<tr style="cursor:pointer" onclick="abrirEditarGuiaTributos(${g.id})">
       <td>
         <div style="font-weight:600;font-size:14px">Guia #${g.id}${g.numero?' · Nº '+escHtml(g.numero):''}${g.dataRecebimento?' — recebida em '+fmtDia2(g.dataRecebimento):''}</div>
-        ${cp?`<div style="font-size:11px;color:var(--muted)">Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':'pendente'})</div>`:''}
+        ${cp?`<div style="font-size:11px;color:var(--muted)">Conta a Pagar #${cp.id} (${cp.status==='pago'?'paga':cp.status==='parcial'?`parcial — falta ${fmtMoney(Math.max(cp.valor-(cp.valorPago||0),0))}`:'pendente'})</div>`:''}
         ${g.observacoes?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(g.observacoes)}</div>`:''}
       </td>
       <td style="text-align:center;font-size:13px">${espelhos.length}</td>
@@ -10351,7 +10327,8 @@ async function excluirGuiaTributos(id){
   const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
   const espelhos = (db.notasFiscais||[]).filter(n=>n.guiaTributosId===id);
   const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
-  const avisoPaga = (cp&&cp.status==='pago') ? '\n\nA Conta a Pagar já estava paga — a movimentação na conta corrente também será removida.' : '';
+  const avisoPaga = (cp&&cp.status==='pago') ? '\n\nA Conta a Pagar já estava paga — a movimentação na conta corrente também será removida.'
+    : (cp&&cp.status==='parcial') ? `\n\nA Conta a Pagar já tinha pagamento(s) parcial(is) registrado(s) (${fmtMoney(cp.valorPago||0)}) — essas movimentações na conta corrente também serão removidas.` : '';
   if(!confirm(`Excluir a Guia #${id}? ${espelhos.length} Espelho(s) vinculado(s) voltam a ficar disponíveis pra outra guia, e a Conta a Pagar gerada será removida.${avisoPaga}`)) return;
 
   for(const nf of espelhos){
@@ -10919,11 +10896,11 @@ const AJUDA_CONTEUDO = {
   },
   'fin-contas-pagar': {
     titulo: 'Contas a Pagar',
-    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui.</p>`
+    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Cada conta pode estar Pendente, Parcial (pagou uma parte, ex.: um adiantamento) ou Paga (quitada). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui.</p>`
   },
   'confirmar-pagamento': {
     titulo: 'Confirmar Pagamento',
-    html: `<p>É o único jeito de "dar baixa" numa Conta a Pagar, não importa de onde ela veio (lançada aqui, gerada pelo SRM, pelo Custo M.Obra do Cartão CRM, por uma Recorrente ou por uma Guia de Recolhimento). O valor vem pré-preenchido com o previsto, mas é editável — útil pra contas de valor variável (ex.: recorrente que muda todo mês). Confirmar cria automaticamente uma saída na conta corrente escolhida em "Debitar de", refletindo no saldo dela imediatamente.</p>`
+    html: `<p>É o único jeito de "dar baixa" numa Conta a Pagar, não importa de onde ela veio (lançada aqui, gerada pelo SRM, pelo Custo M.Obra do Cartão CRM, por uma Recorrente ou por uma Guia de Recolhimento) — inclusive o botão "✔ Pagar" da aba Financeiro do Card SRM abre este mesmo modal. Mostra Total, Já pago e Falta quando a conta já teve algum pagamento parcial. O campo "Valor pago agora" vem pré-preenchido com o restante, mas é editável: se pagar menos que o restante (um adiantamento), a conta fica <b>Parcial</b> e continua na lista pra receber o próximo pagamento depois; se pagar o total, vira <b>Pago</b>. Pra corrigir o valor TOTAL previsto (veio diferente do esperado), use "Editar" em vez daqui. Cada confirmação cria uma saída na conta corrente escolhida em "Debitar de" (só do valor pago naquela vez) e fica registrada no histórico de pagamentos da conta.</p>`
   },
   'fin-contas-receber': {
     titulo: 'Contas a Receber',
@@ -14744,12 +14721,14 @@ function _abaFornecedorPedidos(fornId){
   const STATUS_STYLE = {
     pendente: 'background:#fef9c3;color:#92400e',
     vencido:  'background:#fee2e2;color:#dc2626',
+    parcial:  'background:#fef3c7;color:#b45309',
     pago:     'background:#dcfce7;color:#16a34a'
   };
-  const STATUS_LABEL = {pendente:'Pendente', vencido:'⚠ Vencida', pago:'✅ Pago'};
+  const STATUS_LABEL = {pendente:'Pendente', vencido:'⚠ Vencida', parcial:'🔶 Parcial', pago:'✅ Pago'};
 
-  const totalPago    = pagamentos.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor,0);
-  const totalPendente= pagamentos.filter(p=>p.status!=='pago').reduce((s,p)=>s+p.valor,0);
+  // v1.47.121: soma pelo valorPago real (cobre parcial), não só status==='pago'
+  const totalPago    = pagamentos.reduce((s,p)=>s+(p.valorPago||0),0);
+  const totalPendente= pagamentos.reduce((s,p)=>s+Math.max(p.valor-(p.valorPago||0),0),0);
 
   return `
     <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
@@ -14768,10 +14747,11 @@ function _abaFornecedorPedidos(fornId){
       <tbody>
         ${pagamentos.map(p=>{
           const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
-          return `<tr style="background:${p.status==='pago'?'#f0fdf4':p.status==='vencido'?'#fff1f2':'#fffbeb'}">
+          return `<tr style="background:${p.status==='pago'?'#f0fdf4':p.status==='parcial'?'#fffbeb':p.status==='vencido'?'#fff1f2':'#fffbeb'}">
             <td>
               <div style="font-weight:600;font-size:13px">${escHtml(p.descricao)}</div>
               ${cc?`<div style="font-size:11px;color:var(--muted)">${escHtml(cc.nome)}</div>`:''}
+              ${p.status==='parcial'?`<div style="font-size:11px;color:#b45309">Pago ${fmtMoney(p.valorPago)} · falta ${fmtMoney(Math.max(p.valor-(p.valorPago||0),0))}</div>`:''}
             </td>
             <td style="font-size:13px">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
             <td style="text-align:right;font-weight:700;font-size:13px">${fmtMoney(p.valor)}</td>
@@ -14876,15 +14856,18 @@ function renderContasPagar(){
   }
 
   // Stats — sempre sobre tudo, sem filtro
+  // v1.47.121: Pago/Pendente somam pelo valorPago real (cobre parcial), não só status==='pago'
   const totGeral       = todas.reduce((s,p)=>s+p.valor, 0);
-  const totPago        = todas.filter(p=>p.status==='pago').reduce((s,p)=>s+p.valor, 0);
-  const totPendente    = todas.filter(p=>p.status==='pendente'||p.status==='vencido').reduce((s,p)=>s+p.valor, 0);
+  const totPago        = todas.reduce((s,p)=>s+(p.valorPago||0), 0);
+  const totPendente    = todas.reduce((s,p)=>s+Math.max(p.valor-(p.valorPago||0),0), 0);
+  const totParcial     = todas.filter(p=>p.status==='parcial').reduce((s,p)=>s+p.valor, 0);
   const totCondicional = todas.filter(p=>p.status!=='pago' && !!p.condicao).reduce((s,p)=>s+p.valor, 0);
   const totVencido     = todas.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje).reduce((s,p)=>s+p.valor, 0);
   if(statsEl) statsEl.innerHTML=`
     <div class="stat"><div class="n">${fmtMoney(totGeral)||'R$ 0,00'}</div><div class="l">A Pagar</div></div>
     <div class="stat"><div class="n" style="color:#2e7d32">${fmtMoney(totPago)||'R$ 0,00'}</div><div class="l">Pago</div></div>
     <div class="stat"><div class="n" style="color:#e65100">${fmtMoney(totPendente)||'R$ 0,00'}</div><div class="l">Pendente</div></div>
+    ${totParcial?`<div class="stat"><div class="n" style="color:#b45309">${fmtMoney(totParcial)}</div><div class="l">🔶 Parciais</div></div>`:''}
     ${totCondicional?`<div class="stat"><div class="n" style="color:#1565c0">${fmtMoney(totCondicional)}</div><div class="l">⏸ Condicional</div></div>`:''}
     ${totVencido?`<div class="stat"><div class="n" style="color:#c62828">${fmtMoney(totVencido)}</div><div class="l">⚠ Vencida</div></div>`:''}`;
 
@@ -14894,8 +14877,9 @@ function renderContasPagar(){
   const fBusca  = termoBusca();
 
   let lista = todas.slice().sort((a,b)=>{
-    // Status é apenas pendente/pago. "Condicional" é tipo (p.condicao preenchido), não status.
-    // Ordem: pendentes com data primeiro, condicionais (sem data) depois, pagos por último.
+    // Status: pendente/parcial/pago. "Condicional" é tipo (p.condicao preenchido), não status.
+    // Ordem: pendentes/parciais com data primeiro, condicionais (sem data) depois, pagos por último.
+    // v1.47.121: parcial entra junto de pendente (ord 0) — ainda em aberto, precisa de atenção.
     const ord = p => p.status==='pago' ? 2 : (p.condicao ? 1 : 0);
     if(ord(a)!==ord(b)) return ord(a)-ord(b);
     if(a.status==='pago'){
@@ -14906,8 +14890,9 @@ function renderContasPagar(){
     return (a.dataVencimento||'').localeCompare(b.dataVencimento||'');
   });
 
-  if(fStatus==='vencido')      lista=lista.filter(p=>p.status==='pendente' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
+  if(fStatus==='vencido')      lista=lista.filter(p=>p.status!=='pago' && !p.condicao && p.dataVencimento && p.dataVencimento<hoje);
   else if(fStatus==='pendente') lista=lista.filter(p=>p.status==='pendente'); // inclui condicionais (são pendentes sem data)
+  else if(fStatus==='parcial') lista=lista.filter(p=>p.status==='parcial');
   else if(fStatus==='pago')    lista=lista.filter(p=>p.status==='pago');
   if(fCC)    lista=lista.filter(p=>String(p.centroCustoId)===fCC);
   if(fBusca) lista=lista.filter(p=>{
@@ -14928,28 +14913,33 @@ function renderContasPagar(){
     const cc    = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra  = (db.obras||[]).find(o=>o.id===p.obraId);
     const pago  = p.status==='pago';
-    const cond  = !pago && !!p.condicao; // condicional = pendente sem data de vencimento
-    const vencida = !pago && !cond && p.dataVencimento && p.dataVencimento<hoje;
+    const parcial = p.status==='parcial';
+    const cond  = !pago && !parcial && !!p.condicao; // condicional = pendente sem data de vencimento
+    const vencida = !pago && !parcial && !cond && p.dataVencimento && p.dataVencimento<hoje;
+    const restanteRow = Math.max(p.valor-(p.valorPago||0),0);
 
     const statusBadge = pago
       ? `<span style="color:#2e7d32;font-weight:700">✔ Pago</span>`
-      : cond
-        ? `<span style="color:#e65100">⏳ Pendente</span>`
-        : vencida
-          ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
-          : `<span style="color:#e65100">⏳ Pendente</span>`;
+      : parcial
+        ? `<span style="color:#b45309;font-weight:700">🔶 Parcial</span>`
+        : cond
+          ? `<span style="color:#e65100">⏳ Pendente</span>`
+          : vencida
+            ? `<span style="color:#c62828;font-weight:700">⚠ Vencida</span>`
+            : `<span style="color:#e65100">⏳ Pendente</span>`;
 
     const vencLabel = cond
       ? `<span style="font-size:11px;color:var(--muted)">${escHtml(p.condicao||'—')}</span>`
       : (p.dataVencimento ? fmtDia2(p.dataVencimento) : '—');
 
-    return `<tr style="${pago?'opacity:.7':''}cursor:pointer" onclick="abrirEditarContaPagar(${p.id})">
+    return `<tr style="${pago?'opacity:.7':''}${parcial?'background:#fffbeb':''}cursor:pointer" onclick="abrirEditarContaPagar(${p.id})">
       <td style="font-size:13px">${forn?escHtml(forn.nome):'—'}</td>
       <td>
         <div style="font-weight:600;font-size:14px">
           ${p.recorrenteId?`<span title="Gerada automaticamente — recorrente" style="color:var(--muted);font-size:11px;margin-right:4px">🔄</span>`:''}${escHtml(p.descricao)}
         </div>
         ${p.observacao?`<div style="font-size:11px;color:var(--muted);font-style:italic">${escHtml(p.observacao)}</div>`:''}
+        ${parcial?`<div style="font-size:11px;color:#b45309;margin-top:2px">Pago ${fmtMoney(p.valorPago)} · falta ${fmtMoney(restanteRow)}</div>`:''}
       </td>
       <td style="font-size:12px;color:var(--muted)">${cc?escHtml(cc.nome):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${obra?escHtml(obra.nome):'—'}</td>
@@ -14957,7 +14947,7 @@ function renderContasPagar(){
       <td style="font-size:12px">${vencLabel}</td>
       <td>${statusBadge}${pago&&p.dataPagamento?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${fmtDia2(p.dataPagamento)}</div>`:''}</td>
       <td style="white-space:nowrap;text-align:right">
-        ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();abrirPagarConta(${p.id})">✔</button>`:''}
+        ${!pago?`<button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();abrirPagarConta(${p.id})">${parcial?'✔ Restante':'✔'}</button>`:''}
         <button class="icon-btn" onclick="event.stopPropagation();abrirEditarContaPagar(${p.id})" title="Editar">↗</button>
       </td>
     </tr>`;
@@ -15121,6 +15111,7 @@ function abrirEditarContaPagar(id){
 
   abrirModal(`
     <h3>${escHtml(p.descricao)}</h3>
+    ${p.status==='parcial'?`<p style="margin:0 0 10px;font-size:13px;color:#b45309">🔶 Pagamento parcial: já pago <b>${fmtMoney(p.valorPago)}</b> de ${fmtMoney(p.valor)} — falta ${fmtMoney(Math.max(p.valor-(p.valorPago||0),0))}. Alterar o "Valor" aqui muda o valor TOTAL previsto, não afeta o que já foi pago.</p>`:''}
     <div class="aba-corpo" style="display:grid;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Descrição *
@@ -15181,7 +15172,7 @@ function abrirEditarContaPagar(id){
     </div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
-        ${p.status!=='pago'?`<button class="btn primary" onclick="fecharModal();abrirPagarConta(${id})">✅ Pagar</button>`:''}
+        ${p.status!=='pago'?`<button class="btn primary" onclick="fecharModal();abrirPagarConta(${id})">✅ ${p.status==='parcial'?'Pagar restante':'Pagar'}</button>`:''}
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn danger" onclick="excluirContaPagar(${id})">Excluir</button>
@@ -15213,8 +15204,10 @@ async function salvarEdicaoContaPagar(id){
   if(!ccId){ alert('Selecione o centro de custo.'); return; }
   if(ccSel&&ccSel.slug==='material_obra'&&!obraId){ alert('Selecione a obra para este lançamento de Material de Obra.'); return; }
 
-  // Preserva status=pago se já pago; caso contrário sempre pendente (condicional é tipo, não status)
-  const novoStatus = p.status==='pago' ? 'pago' : 'pendente';
+  // Preserva status=pago/parcial; caso contrário sempre pendente (condicional é tipo, não status)
+  // v1.47.121: antes resetava 'parcial' pra 'pendente' ao salvar uma edição — perdia o rastro
+  // de que já havia pagamento(s) parcial(is) registrado(s) (valorPago continua intacto).
+  const novoStatus = (p.status==='pago'||p.status==='parcial') ? p.status : 'pendente';
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -15238,16 +15231,25 @@ async function salvarEdicaoContaPagar(id){
   renderContasPagar();
 }
 
-/** Abre modal de confirmação de pagamento */
-function abrirPagarConta(id){
+/** Abre modal de confirmação de pagamento (v1.47.120: suporta pagamento parcial/adiantamento,
+ *  mesmo padrão de marcarParcelaRecebida/confirmarParcelaRecebida do Contas a Receber). Corrigir
+ *  o valor TOTAL da conta (valor previsto errado) não é mais feito aqui — usar "Editar".
+ *  v1.47.121: também é chamada por pagarCPdoSRM (CP vinculada a um Card SRM) — srmId opcional
+ *  faz o "Confirmar pagamento" voltar pro card do SRM em vez da lista de Contas a Pagar,
+ *  unificando os dois fluxos (antes o SRM tinha sua própria versão sem suporte a parcial). */
+function abrirPagarConta(id, srmId){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-pagar')){ alert('Sem permissão para registrar pagamentos.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const hoje = localDia(0);
+  const restante = Math.max(p.valor - (p.valorPago||0), 0);
   const contasAtivas = (db.contasCorrente||[]).filter(c=>c.ativo);
   const contasOpts = contasAtivas.length
     ? contasAtivas.map(c=>`<option value="${c.id}">${escHtml(c.nome)}${c.banco?' — '+c.banco:''}</option>`).join('')
     : '<option value="">— nenhuma conta cadastrada —</option>';
+
+  const historicoHTML = (p.pagamentos||[]).length ? `
+    <div style="font-size:12px;color:var(--muted)">Pagamentos anteriores: ${p.pagamentos.map(pg=>`${fmtMoney(pg.valor)} em ${fmtDia2(pg.data)}`).join(' · ')}</div>` : '';
 
   contextoAjuda.modal='confirmar-pagamento'; contextoAjuda.aba=null; _refreshAjudaSeAberta(); // v1.47.82
   abrirModal(`
@@ -15256,11 +15258,15 @@ function abrirPagarConta(id){
       ${ajudaBtnModalHTML()}
     </div>
     <div class="modal-body" style="display:grid;gap:14px">
-      <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?' — '+escHtml(f.nome):''})()}</p>
+      <div>
+        <p style="margin:0">Conta: <b>${escHtml(p.descricao)}</b>${(()=>{const f=(db.fornecedores||[]).find(x=>x.id===p.fornecedorId);return f?' — '+escHtml(f.nome):''})()}</p>
+        <p style="margin:4px 0 0;font-size:13px">Total: <b>${fmtMoney(p.valor)}</b>${(p.valorPago||0)>0?` · Já pago: <b style="color:#16a34a">${fmtMoney(p.valorPago)}</b> · Falta: <b style="color:#e65100">${fmtMoney(restante)}</b>`:''}</p>
+        ${historicoHTML}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <label>Valor (R$) *
+        <label>Valor pago agora (R$) *
           <input id="pp-valor" type="text" inputmode="decimal" class="input" style="margin-top:4px;font-size:18px;font-weight:700;color:#dc2626"
-            value="${(p.valor||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)">
+            value="${fmtMoney(restante).replace('R$','').trim()}" oninput="mascaraMoeda(this)">
         </label>
         <label>Data do pagamento *
           <input id="pp-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
@@ -15272,55 +15278,76 @@ function abrirPagarConta(id){
           ${contasOpts}
         </select>
       </label>
-      <p style="margin:0;font-size:11px;color:var(--muted);font-style:italic">O valor vem pré-preenchido com o previsto — corrija aqui se o valor real cobrado for diferente (ex.: contas com valor variável).</p>
+      <p style="font-size:11.5px;color:var(--muted);margin:0">Se o valor pago for menor que o restante (ex.: um adiantamento), a conta fica marcada como <b>Parcial</b> e continua na lista pra registrar o próximo pagamento depois. Pra corrigir o valor TOTAL previsto (ex.: veio diferente do esperado), use "Editar" em vez daqui.</p>
       ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma conta corrente cadastrada.</p>`:''}
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="fecharModal()">Cancelar</button>
-      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoConta(${id})">Confirmar pagamento</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoConta(${id}${srmId?','+srmId:''})">Confirmar pagamento</button>
     </div>`);
 }
 
-/** Confirma pagamento: atualiza status e cria movimentação de saída */
-async function confirmarPagamentoConta(id){
+/**
+ * Confirma o pagamento (total ou parcial/adiantamento) de uma Conta a Pagar — v1.47.120,
+ * mesmo padrão de confirmarParcelaRecebida (Contas a Receber):
+ * 1. Soma o valor informado a valorPago; se atingir o valor total (tolerância de centavos),
+ *    status vira "pago"; senão vira "parcial" e a conta continua na lista pra registrar
+ *    o próximo pagamento depois.
+ * 2. Cria movimentação de SAÍDA na conta escolhida (só do valor pago agora, não o total).
+ * 3. Registra o pagamento no histórico (contas_pagar_pagamentos), permitindo vários
+ *    adiantamentos ao longo do tempo até quitar.
+ * 4. O hook que marca uma Guia de Recolhimento vinculada como paga só dispara quando a
+ *    conta realmente quita (status vira "pago"), nunca num adiantamento parcial.
+ * v1.47.121: srmId opcional — quando presente (CP paga a partir da aba Financeiro do Card
+ * SRM, via pagarCPdoSRM), volta pro card do SRM no final em vez de renderContasPagar().
+ */
+async function confirmarPagamentoConta(id, srmId){
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const dataPagamento = document.getElementById('pp-data').value;
   const contaId = parseInt(document.getElementById('pp-conta').value) || null;
-  const valorPago = lerMoeda('pp-valor');
+  const valorInformado = lerMoeda('pp-valor');
 
   if(!dataPagamento){ alert('Informe a data do pagamento.'); return; }
   if(!contaId){ alert('Selecione a conta corrente a debitar.'); return; }
-  if(!valorPago){ alert('Informe o valor pago.'); return; }
+  if(!valorInformado){ alert('Informe o valor pago.'); return; }
+  const restante = Math.max(p.valor - (p.valorPago||0), 0);
+  if(valorInformado > restante + 0.01){ alert(`O valor informado (${fmtMoney(valorInformado)}) é maior que o restante desta conta (${fmtMoney(restante)}).`); return; }
 
   const btn = btnModalPrimario();
   btnSalvando(btn, 'Confirmando…');
   const _delay = new Promise(r=>setTimeout(r,800));
 
-  // Atualiza conta a pagar (valor também é atualizado, caso tenha sido corrigido nesse passo)
+  const novoValorPago = (p.valorPago||0) + valorInformado;
+  const quitado = novoValorPago >= p.valor - 0.01;
+  const novoStatus = quitado ? 'pago' : 'parcial';
+  const novaDataPagamento = quitado ? dataPagamento : p.dataPagamento;
+
+  // Atualiza conta a pagar — valor TOTAL não muda mais por aqui (corrigir é só via Editar)
   const {error:ePagar} = await sb.from('contas_pagar').update({
-    status:'pago', data_pagamento:dataPagamento, conta_id:contaId, valor:valorPago
+    status:novoStatus, valor_pago:novoValorPago, data_pagamento:novaDataPagamento, conta_id:contaId
   }).eq('id', id);
   if(ePagar){ btnRestaurar(btn); alert('Erro ao confirmar: '+ePagar.message); return; }
 
-  p.status='pago'; p.dataPagamento=dataPagamento; p.contaId=contaId; p.valor=valorPago;
+  p.status=novoStatus; p.valorPago=novoValorPago; p.dataPagamento=novaDataPagamento; p.contaId=contaId;
 
-  // Cria movimentação de saída na conta corrente, já com o valor corrigido
-  const cc = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
+  // Cria movimentação de saída na conta corrente, só do valor pago agora
   const _forn = (db.fornecedores||[]).find(x=>x.id===p.fornecedorId);
-  const descMov = `Pagamento: ${p.descricao}${_forn?' — '+_forn.nome:''}`;
+  const descMov = `Pagamento: ${p.descricao}${_forn?' — '+_forn.nome:''}${quitado?'':' (parcial)'}`;
   const idMov = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
   const {error:eMov} = await sb.from('movimentacoes_financeiras').insert({
-    id:idMov, conta_id:contaId, tipo:'saida', valor:valorPago,
+    id:idMov, conta_id:contaId, tipo:'saida', valor:valorInformado,
     descricao:descMov, data_movimento:dataPagamento,
     centro_custo_id:p.centroCustoId||null,
     origem_tipo:'contas_pagar', origem_id:id,
     conta_destino_id:null
   });
+  let movimentacaoId = null;
   if(!eMov){
+    movimentacaoId = idMov;
     db.movimentacoes = db.movimentacoes || [];
     db.movimentacoes.push({
-      id:idMov, contaId, tipo:'saida', valor:valorPago,
+      id:idMov, contaId, tipo:'saida', valor:valorInformado,
       descricao:descMov, dataMovimento:dataPagamento,
       centroCustoId:p.centroCustoId||null,
       origemTipo:'contas_pagar', origemId:id,
@@ -15328,8 +15355,20 @@ async function confirmarPagamentoConta(id){
     });
   }
 
+  // Registra este pagamento no histórico da conta (permite vários parciais no tempo)
+  const idPag = await proximoIdSeguro('contas_pagar_pagamentos', (db.contasPagar||[]).flatMap(x=>x.pagamentos||[]));
+  const {error:ePag} = await sb.from('contas_pagar_pagamentos').insert({
+    id: idPag, conta_pagar_id: id, data: dataPagamento, valor: valorInformado,
+    conta_id: contaId, movimentacao_id: movimentacaoId
+  });
+  if(!ePag){
+    p.pagamentos = p.pagamentos || [];
+    p.pagamentos.push({id:idPag, data:dataPagamento, valor:valorInformado, contaId, movimentacaoId});
+  }
+
   // v1.47.61: se essa Conta a Pagar veio de uma Guia de Recolhimento, marca a guia como paga
-  if(p.guiaTributosId){
+  // — v1.47.120: só quando a conta realmente QUITA, nunca num adiantamento parcial
+  if(quitado && p.guiaTributosId){
     const {error:eGuia} = await sb.from('guias_tributos').update({status:'paga'}).eq('id', p.guiaTributosId);
     if(!eGuia){
       const g = (db.guiasTributos||[]).find(x=>x.id===p.guiaTributosId);
@@ -15338,11 +15377,12 @@ async function confirmarPagamentoConta(id){
   }
 
   save();
-  registrarLog('pagar','conta_pagar',id,`Pagamento confirmado: ${p.descricao}${_forn?' — '+_forn.nome:''} — ${fmtMoney(valorPago)} (conta: ${(db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId})`); // v1.47.108
+  registrarLog('pagar','conta_pagar',id,`Pagamento${quitado?'':' parcial'} confirmado: ${p.descricao}${_forn?' — '+_forn.nome:''} — ${fmtMoney(valorInformado)}${quitado?'':` (restante: ${fmtMoney(p.valor-novoValorPago)})`} (conta: ${(db.contasCorrente||[]).find(x=>x.id===contaId)?.nome||contaId})`); // v1.47.108
   await _delay;
   renderContasCorrente(); // atualiza saldo nas contas correntes
   fecharModal();
-  renderContasPagar();
+  if(srmId){ abrirEditarSRM(srmId,'financeiro'); renderContasPagar(); } // volta pro card SRM de onde veio
+  else{ renderContasPagar(); }
 }
 
 /** Exclui uma conta a pagar */
@@ -15352,6 +15392,10 @@ async function excluirContaPagar(id){
   if(!p) return;
   if(p.status==='pago'){
     if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nA movimentação na conta corrente também será removida.`)) return;
+  } else if(p.status==='parcial'){
+    // v1.47.121: avisa que já existe(m) pagamento(s) parcial(is) registrado(s) — excluir a CP
+    // remove também essas movimentações da conta corrente (e o histórico, via cascade no banco).
+    if(!confirm(`"${p.descricao}" já tem pagamento(s) parcial(is) registrado(s) (${fmtMoney(p.valorPago||0)} de ${fmtMoney(p.valor)}). Excluir mesmo assim?\n\nAs movimentações desses pagamentos na conta corrente também serão removidas.`)) return;
   } else {
     if(!confirm(`Excluir "${p.descricao}"?`)) return;
   }
