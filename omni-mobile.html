@@ -1305,6 +1305,9 @@ function renderClientes(){
   }).join('');
 }
 
+// Sheet de detalhe do Cliente no mobile — dados de contato + listas de Cards CRM e
+// Propostas do cliente (contagem total visível a todos, detalhe individual restrito
+// por cardVisivelParaUsuario/propostaVisivelParaUsuario).
 function abrirCliente(id){
   const c=db.clientes.find(x=>x.id===id);
   if(!c) return;
@@ -1600,6 +1603,10 @@ function renderOS(){
   }).join('');
 }
 
+/* Abre o sheet de detalhe da O.S. no mobile — cabeçalho (cliente/obra/status),
+ * check-in/checkout, diário de obra (mais recente primeiro), pendências e ações de
+ * encerrar/mover fase. Contraparte simplificada, somente-leitura na maior parte,
+ * de abrirVerOS/abrirVerOSExecucao do desktop. */
 function abrirOS(id){
   const o=db.os.find(x=>x.id===id);
   if(!o) return;
@@ -2148,6 +2155,9 @@ function renderObras(){
   }).join('');
 }
 
+// Sheet de detalhe da Obra no mobile — dados, O.S. vinculadas, diário agregado das
+// O.S., contatos e "Projetos" (arquivos_projeto das O.S. de tipo projeto). Leitura;
+// cadastro/edição de obra continuam só no desktop.
 function abrirObra(id){
   const o=db.obras.find(x=>x.id===id);
   if(!o) return;

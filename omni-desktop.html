@@ -17271,6 +17271,10 @@ async function salvarNovaOS(cardId){
   save(); renderAll(); abrirEditarCartao(cardId, 'os');
 }
 
+/* Modal de detalhe da O.S. tipo Projeto (PRJ). Tipos 'execucao' e 'avulsa' são
+ * desviados logo abaixo pras suas próprias funções (abrirVerOSExecucao/
+ * abrirVerOSAvulsa) — o restante deste corpo é específico do fluxo de Projeto:
+ * itens da proposta aprovada, upload de arquivos de Arquiteto/Projeto e histórico. */
 function abrirVerOS(osId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(os.tipo === 'execucao'){ abrirVerOSExecucao(osId, cardId); return; }
@@ -17806,6 +17810,11 @@ async function exportarPDFOSExecucao(osId, modo='download'){
   }
 }
 
+/* Modal de detalhe da O.S. tipo Execução (OBR) — abas Geral, Equipe, Itens
+ * (alocação de itens da proposta aprovada por O.S., com saldo compartilhado entre
+ * todas as O.S. do cartão), Diário de obra, Pendências e Custo M.O. Navegação
+ * entre abas é feita re-chamando esta mesma função com `aba` diferente (ver
+ * tabBtn); cada bloco de conteúdo abaixo é montado pelo `if(aba===...)` correspondente. */
 function abrirVerOSExecucao(osId, cardId, aba='geral'){
   const os   = db.ordensServico.find(x=>x.id===osId); if(!os) return;
   const podeEditar = podeEditarRecurso(usuarioAtual,'aba-os');
@@ -22369,6 +22378,8 @@ function renderOSLista(){
   });
 }
 
+// Lista global de Obras (tabela com filtros de status/fase/cidade/busca + ordenação) —
+// repopula os <select> de filtro a partir dos dados carregados antes de desenhar a tabela.
 function renderObrasLista(){
   const tb = document.getElementById('obras-lista-tbody'); if(!tb) return;
   const st = document.getElementById('ob-stats');
