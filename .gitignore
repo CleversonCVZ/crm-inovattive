@@ -6,6 +6,13 @@
 *.pptx
 *.csv
 
+# Imagens/anexos soltos na pasta do projeto (fotos, prints, WhatsApp) — não são
+# parte do app, ficam só localmente
+*.png
+*.jpg
+*.jpeg
+*.xml
+
 # Sistema operacional
 .DS_Store
 Thumbs.db
