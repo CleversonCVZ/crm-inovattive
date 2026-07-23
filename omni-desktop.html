@@ -11080,9 +11080,10 @@ const AJUDA_CONTEUDO = {
      fechar o modal (fecharModal), modal/aba voltam pra null.
    `AJUDA_CONTEUDO` é a fonte do texto: chave = mesmo id de tela (TELAS) ou o nome
    do modal (ex.: 'srm-card'); cada entrada tem `titulo`+`html`, e opcionalmente
-   `abas: {idDaAba: {titulo, html}}` pra conteúdo mais específico por aba. Escopo
-   inicial (piloto): SRM, Faturamento (Espelhos de NF) e Estoque — as demais telas
-   caem no aviso "ainda não escrevi a ajuda desta tela". */
+   `abas: {idDaAba: {titulo, html}}` pra conteúdo mais específico por aba. Cobertura
+   (23/07/2026): todas as telas de TELAS e todos os modais que setam contextoAjuda.modal
+   têm entrada aqui — o aviso "ainda não escrevi a ajuda desta tela" é só um fallback
+   de segurança pra telas/modais novos que ainda não ganharam texto. */
 let contextoAjuda = {tela:null, modal:null, aba:null};
 
 function _refreshAjudaSeAberta(){
