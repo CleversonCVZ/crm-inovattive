@@ -1360,11 +1360,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.123';
+const APP_VERSION = '1.47.124';
 const APP_VERSION_DATE = '23/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.124',
+    data: '23/07/2026',
+    itens: [
+      'Limpeza interna: o app parou de carregar e sincronizar as tabelas obra_compras/obra_nfs a cada abertura/salvamento — elas foram substituídas pelos Cards do SRM na v1.47.15/16 e não alimentam mais nenhuma tela, então continuavam sendo lidas/gravadas à toa. Os dados antigos continuam no banco, só não são mais tocados pelo app. Sem efeito visível pra você — só menos consultas por carregamento/salvamento.',
+      'Segurança: removida uma política do Supabase que permitia a qualquer usuário logado listar todas as fotos do Diário de Obra de todas as obras de uma vez (em vez de só abrir as fotos de uma O.S. específica pela tela). O app nunca usou essa listagem, então não muda nada no uso normal.',
+    ]
+  },
   {
     versao: '1.47.123',
     data: '23/07/2026',
@@ -3156,9 +3164,11 @@ const ORIGENS_SEED = ['JÁ É CLIENTE','Arquiteto','Empreiteiro','Vendedor','Goo
      db.ordensServico   — ordens de serviço (avaliação, projeto, execução)
      db.obraContatos    — contatos por obra (arquiteto, empreiteiro, etc.)
      db.obraEquipamentos — equipamentos/senhas por obra
-     db.obraCompras     — pedidos de compra por obra
-     db.obraNfs         — notas fiscais vinculadas a compras
      db.obraRetiradas   — retiradas do lucro por obra
+     (db.obraCompras/db.obraNfs existiam antes da v1.47.15/16 — "Obra→Compras" virou
+     visualização dos Cards SRM. As tabelas obra_compras/obra_nfs continuam no banco
+     com o histórico antigo, mas o app parou de carregar/sincronizar essas duas —
+     nada mais lê nem escreve nelas desde então.)
      db.downloadCategorias / downloadArquivos — área de downloads compartilhados */
 let db;
 let usuarioAtual = null; // objeto do usuário logado; null = ninguém logado
@@ -3273,8 +3283,6 @@ function load(){
   if(!Array.isArray(db.osCustos))          db.osCustos=[];
   if(!Array.isArray(db.obraContatos))    db.obraContatos=[];
   if(!Array.isArray(db.obraEquipamentos)) db.obraEquipamentos=[];
-  if(!Array.isArray(db.obraCompras))    db.obraCompras=[];
-  if(!Array.isArray(db.obraNfs))        db.obraNfs=[];
   if(!Array.isArray(db.obraRetiradas))  db.obraRetiradas=[];
   if(!Array.isArray(db.notasFiscais))   db.notasFiscais=[];
   if(!Array.isArray(db.faturamentoItens)) db.faturamentoItens=[];
@@ -3556,7 +3564,7 @@ async function carregarConfigSupabase(){
    Chamada apenas uma vez, durante o login (em entrarComSessao). */
 async function carregarDadosSupabase(){
   try{
-    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, obraCompras, obraNfs, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, pagamentosCP, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes, guiasTributosRes] = await Promise.all([
+    const [clientes, obras, cards, historico, propostas, propItens, propArqs, ordensServico, cardContatos, obraContatos, obraEquipamentos, dlCats, dlArqs, osTecnicos, osDiario, obraRetiradas, recebimentos, pagamentosReceb, centrosCusto, contasCorrente, movimentacoes, contasPagar, pagamentosCP, fornecedores, fornecedorContatos, osCustos, contasRecorrentes, cardsSRMRes, srmCotacoesRes, estoqueProdutosRes, estoqueMovRes, notasFiscaisRes, faturamentoItensRes, guiasTributosRes] = await Promise.all([
       sb.from('clientes').select('*').order('id'),
       sb.from('obras').select('*').order('id'),
       sb.from('cards').select('*').order('id'),
@@ -3568,8 +3576,8 @@ async function carregarDadosSupabase(){
       sb.from('card_contatos').select('*').order('id'),
       sb.from('obra_contatos').select('*').order('id'),
       sb.from('obra_equipamentos').select('*').order('id'),
-      sb.from('obra_compras').select('*').order('id'),
-      sb.from('obra_nfs').select('*').order('id'),
+      // v1.47.124: obra_compras/obra_nfs não são mais carregadas — ver comentário
+      // em db.obraRetiradas acima. As tabelas continuam no banco, só não são lidas aqui.
       sb.from('download_categorias').select('*').order('ordem'),
       sb.from('download_arquivos').select('*').order('criado_em', {ascending:false}),
       sb.from('os_tecnicos').select('*').order('id'),
@@ -3723,23 +3731,6 @@ async function carregarDadosSupabase(){
       db.obraEquipamentos = obraEquipamentos.data.map(e=>({
         id:e.id, obraId:e.obra_id, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
         arquivos: Array.isArray(e.arquivos) ? e.arquivos : []
-      }));
-    if(obraCompras.data)
-      db.obraCompras = obraCompras.data.map(c=>({
-        id:c.id, obraId:c.obra_id, cardId:c.card_id,
-        fornecedor:c.fornecedor||'', numeroPedido:c.numero_pedido||'',
-        dataPedido:c.data_pedido ? c.data_pedido.slice(0,10) : '',
-        valorPedido:c.valor_pedido!=null ? Number(c.valor_pedido) : null,
-        descricao:c.descricao||'', status:c.status||'pendente',
-        pdfPath:c.pdf_path||'', pdfNome:c.pdf_nome||''
-      }));
-    if(obraNfs.data)
-      db.obraNfs = obraNfs.data.map(n=>({
-        id:n.id, compraId:n.compra_id, obraId:n.obra_id,
-        numeroNf:n.numero_nf||'', fornecedor:n.fornecedor||'',
-        valorNf:n.valor_nf!=null ? Number(n.valor_nf) : null,
-        dataNf:n.data_nf ? n.data_nf.slice(0,10) : '',
-        pdfPath:n.pdf_path||'', pdfNome:n.pdf_nome||''
       }));
     if(dlCats.data)
       db.downloadCategorias = dlCats.data.map(c=>({id:c.id, nome:c.nome, ordem:c.ordem||0}));
@@ -4078,19 +4069,7 @@ function syncDadosSupabase(){
       id:e.id, obra_id:Number(e.obraId)||null, equipamento:e.equipamento, login:e.login||'', senha:e.senha||'', observacao:e.observacao||'',
       arquivos: e.arquivos||[]
     }));
-    await sincronizarTabela('obra_compras', db.obraCompras||[], c=>({
-      id:c.id, obra_id:Number(c.obraId)||null, card_id:Number(c.cardId)||null,
-      fornecedor:c.fornecedor||'', numero_pedido:c.numeroPedido||'',
-      data_pedido:toISO(c.dataPedido)||null, valor_pedido:c.valorPedido!=null?c.valorPedido:null,
-      descricao:c.descricao||'', status:c.status||'pendente',
-      pdf_path:c.pdfPath||'', pdf_nome:c.pdfNome||''
-    }));
-    await sincronizarTabela('obra_nfs', db.obraNfs||[], n=>({
-      id:n.id, compra_id:Number(n.compraId)||null, obra_id:Number(n.obraId)||null,
-      numero_nf:n.numeroNf||'', fornecedor:n.fornecedor||'',
-      valor_nf:n.valorNf!=null?n.valorNf:null, data_nf:toISO(n.dataNf)||null,
-      pdf_path:n.pdfPath||'', pdf_nome:n.pdfNome||''
-    }));
+    // v1.47.124: sync de obra_compras/obra_nfs removido — ver nota em db.obraRetiradas.
     await sincronizarTabela('ordens_servico', db.ordensServico||[], o=>({
       id:o.id, numero:o.numero, card_id:Number(o.cardId)||null, cliente_id:Number(o.clienteId)||null, obra_id:Number(o.obraId)||null,
       tipo:o.tipo||'avaliacao', fase_id:Number(o.faseId)||null, fase_obra_id:Number(o.faseObraId)||null, titulo:o.titulo||'',
