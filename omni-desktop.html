@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.122';
+const APP_VERSION = '1.47.123';
 const APP_VERSION_DATE = '23/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.123',
+    data: '23/07/2026',
+    itens: [
+      'Contas Correntes → Lançamento manual: campo "Centro de Custo" (e "Obra") agora só aparece quando o tipo é "Saída" — Centro de Custo é uma classificação de gasto (Custos Fixos/Variáveis), não se aplica a Entrada nem a Transferência, e já era ignorado no relatório de Centros de Custo mesmo quando preenchido numa entrada.',
+    ]
+  },
   {
     versao: '1.47.122',
     data: '23/07/2026',
@@ -10897,7 +10904,7 @@ const AJUDA_CONTEUDO = {
       <h5>Tipos de conta</h5>
       <p><b>Corrente/Caixa Interno:</b> saldo simples, soma e subtrai normalmente. <b>Cartão de Crédito:</b> funciona ao contrário — "Fatura Inicial" é uma dívida (mostrada negativa), gastos aumentam a fatura em aberto, pagamentos da fatura reduzem; use "Fechamento"/"Vencimento" só como referência de data, o sistema não fecha fatura sozinho.</p>
       <h5>📋 Extrato × ＋ Lançar</h5>
-      <p>Extrato é a lista completa de movimentações da conta (filtrável por tipo) — clique numa linha pra editar/excluir aquele lançamento específico. "＋ Lançar" cria um lançamento manual novo (entrada, saída ou transferência para outra conta). Lançamentos que vieram de outra tela (pagamento de Conta a Pagar, recebimento de Conta a Receber, previsão de imposto de um Espelho etc.) também aparecem aqui, mas alguns campos ficam travados pra edição — mexer neles direto no extrato desalinharia com a tela de origem.</p>
+      <p>Extrato é a lista completa de movimentações da conta (filtrável por tipo) — clique numa linha pra editar/excluir aquele lançamento específico. "＋ Lançar" cria um lançamento manual novo (entrada, saída ou transferência para outra conta). Lançamentos que vieram de outra tela (pagamento de Conta a Pagar, recebimento de Conta a Receber, previsão de imposto de um Espelho etc.) também aparecem aqui, mas alguns campos ficam travados pra edição — mexer neles direto no extrato desalinharia com a tela de origem. Centro de Custo (e Obra) só aparecem numa "Saída" — é uma classificação de gasto (Custos Fixos/Variáveis), não existe pro lado de receita, por isso some em Entrada e Transferência.</p>
       <h5>🔒 Conta de Sistema</h5>
       <p>Classificação pra contas de controle interno que não são dinheiro "mexível" no dia a dia — hoje só "Provisão de Impostos" (acumula a previsão de imposto a pagar dos Espelhos de Faturamento, ver Guias de Recolhimento) e "Migração Sistema junho 2026" (saldo de abertura trazido do sistema anterior). Contas marcadas assim escondem o botão "＋ Lançar" e bloqueiam editar/excluir lançamentos (aqui, no Extrato e nos atalhos de edição) pra quem não tiver a permissão "Contas Correntes — Lançar/Editar/Excluir em Contas de Sistema", configurável em Grupos de Acesso. Ver o Extrato continua liberado normalmente pra quem já acessa Contas Correntes — só a escrita é travada.</p>`
   },
@@ -13894,21 +13901,26 @@ function abrirLancamentoManual(contaId){
       <button class="btn primary" data-btn-salvar onclick="salvarLancamentoManual(${contaId})">Lançar</button>
     </div>`;
   abrirModal(html, 'cartao');
+  toggleTransfDestino(); // v1.47.123: tipo padrão é "entrada" — aplica o esconde de CC/Obra já na abertura
 }
 
 /** Mostra/oculta o campo de conta destino quando tipo = transferência.
  *  v1.47.10: transferência entre contas próprias não é um gasto/receita categorizável —
  *  o próprio salvarLancamentoManual já zera o centro de custo do lado de entrada (destino)
  *  numa transferência; o campo Centro de Custo (e Obra, que só aparece dependendo dele)
- *  também some da tela nesse caso, pra não sugerir uma categorização que não faz sentido. */
+ *  também some da tela nesse caso, pra não sugerir uma categorização que não faz sentido.
+ *  v1.47.123: mesma lógica agora vale pra "Entrada" — Centro de Custo é uma classificação
+ *  de GASTO (Custos Fixos/Variáveis), não existe pro lado de receita; o único relatório que
+ *  soma por Centro de Custo já ignorava lançamentos de entrada mesmo quando tinham um CC
+ *  marcado, então o campo nunca fazia nada além de confundir. */
 function toggleTransfDestino(){
   const tipo = document.getElementById('lm-tipo').value;
   const wrap = document.getElementById('lm-destino-wrap');
   if(wrap) wrap.style.display = tipo==='transferencia' ? '' : 'none';
   const ccWrap = document.getElementById('lm-cc-wrap');
-  if(ccWrap) ccWrap.style.display = tipo==='transferencia' ? 'none' : '';
+  if(ccWrap) ccWrap.style.display = (tipo==='transferencia'||tipo==='entrada') ? 'none' : '';
   const obraRow = document.getElementById('lm-obra-row');
-  if(tipo==='transferencia' && obraRow) obraRow.style.display = 'none';
+  if((tipo==='transferencia'||tipo==='entrada') && obraRow) obraRow.style.display = 'none';
 }
 
 /** Persiste lançamento manual */
@@ -13918,9 +13930,11 @@ async function salvarLancamentoManual(contaId){
   const valor     = parseFloat(valorStr.replace(/\./g,'').replace(',','.')) || 0;
   const data      = document.getElementById('lm-data').value;
   const descricao = (document.getElementById('lm-descricao').value||'').trim();
-  const ccId      = tipo==='transferencia' ? null : (parseInt(document.getElementById('lm-cc').value) || null);
+  // v1.47.123: Centro de Custo/Obra não se aplicam a Entrada (nem a Transferência) — campo já
+  // some da tela nesses casos (toggleTransfDestino), mas força null aqui também por segurança.
+  const ccId      = (tipo==='transferencia'||tipo==='entrada') ? null : (parseInt(document.getElementById('lm-cc').value) || null);
   const ccSel     = (db.centrosCusto||[]).find(x=>x.id===ccId);
-  const obraId    = (tipo!=='transferencia' && _ccVinculaObra(ccSel)) ? (parseInt(document.getElementById('lm-obra').value)||null) : null;
+  const obraId    = (tipo!=='transferencia' && tipo!=='entrada' && _ccVinculaObra(ccSel)) ? (parseInt(document.getElementById('lm-obra').value)||null) : null;
   const destinoId = tipo==='transferencia'
     ? (parseInt(document.getElementById('lm-destino').value) || null)
     : null;
