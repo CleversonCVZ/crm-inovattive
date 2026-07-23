@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.124';
+const APP_VERSION = '1.47.125';
 const APP_VERSION_DATE = '23/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.125',
+    data: '23/07/2026',
+    itens: [
+      'Log de atividades: várias ações que gravavam no banco sem deixar rastro no histórico de atividades agora ficam registradas — lançar Mão de Obra/Retirada/Outro Custo como Conta a Pagar, criar/editar/excluir Outros Custos e Custo de M.O. de obra, criar/excluir Centro de Custo, criar/editar/excluir Fornecedor e seus contatos, criar/excluir Custo de O.S. Avulsa, excluir/editar legenda de imagem do Diário de Execução, e editar descrição de arquivo em Downloads. Sem efeito visível na tela — só passam a aparecer no histórico de auditoria.',
+    ]
+  },
   {
     versao: '1.47.124',
     data: '23/07/2026',
@@ -5011,6 +5018,7 @@ async function salvarDescDlArquivo(id){
   const {error} = await sb.from('download_arquivos').update({descricao:desc}).eq('id',id);
   if(error){ alert('Erro: '+error.message); return; }
   arq.descricao = desc;
+  registrarLog('editar', 'download_arquivo', id, `Descrição do arquivo "${arq.nome||''}" editada`);
   fecharModal();
   if(_dlCatAtiva) renderDlArquivos(_dlCatAtiva);
 }
@@ -12594,6 +12602,7 @@ async function adicionarMOOS(osId, cardId, tipo='tecnico'){
   }
   os.custoMO.tecnicos.push(item);
   await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
+  registrarLog('criar','os_custo_mo', osId, `Custo M.Obra lançado na O.S. ${os.numero}: ${fmtMoney(item.valor)} (${item.tipo})`);
   save(); abrirSeletorMOOS(osId, cardId, tipo);
 }
 
@@ -12603,6 +12612,7 @@ async function removerMOOS(osId, idx, cardId, tipoSel='tecnico'){
   if(item?.cpId && !confirm('Este lançamento já está vinculado a uma Conta a Pagar (não será excluída automaticamente). Remover mesmo assim?')) return;
   os.custoMO.tecnicos.splice(idx,1);
   await sb.from('ordens_servico').update({custo_mo:os.custoMO}).eq('id',osId);
+  registrarLog('excluir','os_custo_mo', osId, `Custo M.Obra removido da O.S. ${os.numero}: ${fmtMoney(item?.valor)}`);
   save(); abrirSeletorMOOS(osId, cardId, tipoSel);
 }
 
@@ -12696,6 +12706,7 @@ async function confirmarLancarMOComoCP(osId, idx, cardId){
     centroCustoId:ccId, obraId:os.obraId||null, osId, status:'pendente',
     observacao:obs||'', dataPagamento:null, criadoEm:cp.created_at||''
   });
+  registrarLog('criar','conta_pagar', cp.id, `Conta a Pagar criada a partir de Custo M.Obra: "${descricaoCP}" — ${fmtMoney(cp.valor)}`);
   save();
   fecharModal();
   abrirSeletorMOOS(osId, cardId, 'fornecedor');
@@ -13385,6 +13396,7 @@ async function salvarNovoCentroCusto(){
     if(error) throw error;
   }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
   db.centrosCusto.push(novo);
+  registrarLog('criar','centro_custo', novo.id, `Centro de Custo criado: "${novo.nome}" (${novo.tipo})`);
   saveLocal();
   fecharModal();
   renderCentrosCusto();
@@ -13402,6 +13414,7 @@ async function excluirCentroCusto(id){
   if(!confirm(`Excluir "${c.nome}"? Esta ação não pode ser desfeita.`)) return;
   await excluirDoSupabase('centros_custo', id);
   db.centrosCusto = db.centrosCusto.filter(x=>x.id!==id);
+  registrarLog('excluir','centro_custo', id, `Centro de Custo excluído: "${c.nome}"`);
   save();
   renderCentrosCusto();
 }
@@ -14572,6 +14585,7 @@ async function adicionarContatoFornecedor(fornId){
   const row = {id, fornecedorId:fornId, nome, cargo, telefone, email, criadoEm:new Date().toISOString()};
   db.fornecedorContatos = db.fornecedorContatos||[];
   db.fornecedorContatos.push(row);
+  registrarLog('criar','fornecedor_contato', id, `Contato adicionado ao fornecedor #${fornId}: "${nome}"`);
   save();
   abrirEditarFornecedor(fornId, 'contatos');
 }
@@ -14611,6 +14625,7 @@ async function salvarEdicaoContatoFornecedor(ctId, fornId){
   }).eq('id', ctId);
   if(error){ alert('Erro ao salvar: '+error.message); return; }
   ct.nome=nome; ct.cargo=cargo; ct.telefone=telefone; ct.email=email;
+  registrarLog('editar','fornecedor_contato', ctId, `Contato do fornecedor #${fornId} editado: "${nome}"`);
   save();
   abrirEditarFornecedor(fornId, 'contatos');
 }
@@ -14618,8 +14633,10 @@ async function salvarEdicaoContatoFornecedor(ctId, fornId){
 /** Exclui contato do fornecedor */
 async function excluirContatoFornecedor(ctId, fornId){
   if(!confirm('Remover este contato?')) return;
+  const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
   await excluirDoSupabase('fornecedor_contatos', ctId);
   db.fornecedorContatos = (db.fornecedorContatos||[]).filter(x=>x.id!==ctId);
+  registrarLog('excluir','fornecedor_contato', ctId, `Contato removido do fornecedor #${fornId}: "${ct?.nome||ctId}"`);
   save();
   abrirEditarFornecedor(fornId, 'contatos');
 }
@@ -14687,6 +14704,7 @@ async function salvarNovoFornecedor(callbackSelectId=null){
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
   db.fornecedores = db.fornecedores||[];
   db.fornecedores.push(row);
+  registrarLog('criar','fornecedor', id, `Fornecedor criado: "${d.nome}"`);
   save();
   await _delay;
   // Se chamado de dentro de outro modal (contas a pagar), atualiza o select e fecha
@@ -14827,6 +14845,7 @@ async function excluirFornecedor(id){
   if(!confirm(`Excluir o fornecedor "${f.nome}"?`)) return;
   await excluirDoSupabase('fornecedores', id);
   db.fornecedores = db.fornecedores.filter(x=>x.id!==id);
+  registrarLog('excluir','fornecedor', id, `Fornecedor excluído: "${f.nome}"`);
   save();
   renderFornecedores();
 }
@@ -15911,6 +15930,8 @@ async function adicionarOutroCusto(obraId, cardId){
     status:     document.getElementById('oc-status')?.value || 'efetivado'
   });
   await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  const _oc = ob.outrosCustos[ob.outrosCustos.length-1];
+  registrarLog('criar','obra_outro_custo', _oc.id, `Outro Custo lançado em "${ob.nome}": "${_oc.descricao}" — ${fmtMoney(_oc.valor)}`);
   save();
   const c = db.cards.find(x=>x.id===cardId);
   const el = document.getElementById('obra-content-'+cardId);
@@ -15937,6 +15958,7 @@ async function salvarEdicaoOutroCusto(custoId, obraId, cardId){
   cu.valor     = lerMoeda('oc-edit-valor');
   cu.status    = document.getElementById('oc-edit-status')?.value || 'efetivado';
   await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  registrarLog('editar','obra_outro_custo', cu.id, `Outro Custo editado em "${ob.nome}": "${cu.descricao}" — ${fmtMoney(cu.valor)}`);
   save();
   const c  = db.cards.find(x=>x.id===cardId);
   const el = document.getElementById('obra-content-'+cardId);
@@ -15950,6 +15972,7 @@ async function excluirOutroCusto(custoId, obraId, cardId){
   if(!cuAlvo?.cpId && !confirm('Excluir este lançamento?')) return;
   ob.outrosCustos = ob.outrosCustos.filter(x=>x.id!==custoId);
   await sb.from('obras').update({outros_custos: ob.outrosCustos}).eq('id', obraId);
+  registrarLog('excluir','obra_outro_custo', custoId, `Outro Custo excluído em "${ob.nome}": "${cuAlvo?.descricao||custoId}" — ${fmtMoney(cuAlvo?.valor)}`);
   save();
   const c  = db.cards.find(x=>x.id===cardId);
   const el = document.getElementById('obra-content-'+cardId);
@@ -16051,6 +16074,7 @@ async function confirmarLancarOutroCustoComoCP(custoId, obraId, cardId){
     dataVencimento:venc, dataPagamento:null, status:'pendente', condicao:null,
     centroCustoId:ccId, obraId:obraId, osId:null, contaId:null, observacao:obs||null,
     criadoEm:cp.created_at||''});
+  registrarLog('criar','conta_pagar', cp.id, `Conta a Pagar criada a partir de Outros Custos: "${descricaoCP}" — ${fmtMoney(cu.valor)}`);
 
   abrirEditarCartao(cardId,'obras');
 }
@@ -16068,6 +16092,7 @@ async function adicionarRetirada(obraId, cardId){
   if(error){ alert('Erro ao salvar retirada: '+error.message); return; }
   if(!Array.isArray(db.obraRetiradas)) db.obraRetiradas=[];
   db.obraRetiradas.push({id:row.id, obraId, data:data, valor, descricao:desc, status:'registrada', cpId:null, criadoEm:row.created_at||''});
+  registrarLog('criar','obra_retirada', row.id, `Retirada do Lucro registrada: ${fmtR(valor)}${desc?' — '+desc:''}`);
 
   // v1.47.114: pergunta se quer já lançar essa retirada como Conta a Pagar (Pró-Labore)
   // — mesma ideia do "📋 → C.P." de Custo M.Obra, só que oferecido logo depois de
@@ -16182,6 +16207,7 @@ async function confirmarLancarRetiradaComoCP(retId, obraId, cardId){
     dataVencimento:venc, dataPagamento:null, status:'pendente', condicao:null,
     centroCustoId:ccId, obraId:obraId, osId:null, contaId:null, observacao:obs||null,
     criadoEm:cp.created_at||''});
+  registrarLog('criar','conta_pagar', cp.id, `Conta a Pagar criada a partir de Retirada do Lucro: "${descricaoCP}" — ${fmtMoney(ret.valor)}`);
 
   abrirEditarCartao(cardId,'obras');
 }
@@ -18488,13 +18514,16 @@ async function adicionarOSCusto(osId, cardId){
     centroCustoId:inserted.centro_custo_id?Number(inserted.centro_custo_id):null,
     cpId:null, criadoEm:inserted.created_at||''
   });
+  registrarLog('criar', 'os_custo', inserted.id, `Custo "${inserted.descricao}" (R$ ${Number(inserted.valor)||0}) lançado na O.S. Avulsa #${osId}`);
   abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
 async function excluirOSCusto(custoId, osId, cardId){
   if(!confirm('Remover este custo?')) return;
+  const custo = (db.osCustos||[]).find(c=>c.id===custoId);
   await excluirDoSupabase('os_custos', custoId);
   db.osCustos = (db.osCustos||[]).filter(c=>c.id!==custoId);
+  registrarLog('excluir', 'os_custo', custoId, `Custo "${custo?.descricao||''}" removido da O.S. Avulsa #${osId}`);
   save();
   abrirVerOSAvulsa(osId, cardId, 'custos');
 }
@@ -18696,6 +18725,7 @@ async function confirmarLancarResultadoOSAvulsaComoCP(osId, cardId){
     dataVencimento:venc, dataPagamento:null, status:'pendente', condicao:null,
     centroCustoId:ccId, obraId:null, osId:osId, contaId:null, observacao:obs||null,
     criadoEm:cp.created_at||''});
+  registrarLog('criar','conta_pagar', cp.id, `Conta a Pagar criada a partir do Resultado da O.S. Avulsa ${os.numero}: ${fmtMoney(resultado)}`);
 
   save();
   fecharModal();
@@ -19479,6 +19509,7 @@ async function excluirImagemDiario(osId, diaId, imgIdx, cardId){
   if(img?.path) await sb.storage.from('os-diario-imagens').remove([img.path]);
   d.imagens.splice(imgIdx, 1);
   await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  registrarLog('excluir', 'os_diario', diaId, `Imagem removida do diário de execução da O.S. #${osId}`);
   save(); abrirVerOSExecucao(osId, cardId, 'diario');
 }
 
@@ -19505,6 +19536,7 @@ async function salvarLegendaImagemDiario(osId, diaId, imgIdx, cardId){
   const d   = (os.diario||[]).find(x=>x.id===diaId);
   d.imagens[imgIdx].descricao = leg;
   await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  registrarLog('editar', 'os_diario', diaId, `Legenda de imagem editada no diário de execução da O.S. #${osId}`);
   save();
   setTimeout(()=>{ abrirVerOSExecucao(osId, cardId, 'diario'); }, 400);
 }
