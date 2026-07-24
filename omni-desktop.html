@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.125';
-const APP_VERSION_DATE = '23/07/2026';
+const APP_VERSION = '1.47.126';
+const APP_VERSION_DATE = '24/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.126',
+    data: '24/07/2026',
+    itens: [
+      'Financeiro → Contas a Receber: a tela agora sempre abre sem filtro (Status "Todos" e Tipo "Qualquer tipo"). Antes, se você deixasse um filtro selecionado (ex.: "Vencidos"), ele ficava marcado e era reaplicado sozinho da próxima vez que a tela era aberta, dando a impressão de vir travada numa data fixa.',
+    ]
+  },
   {
     versao: '1.47.125',
     data: '23/07/2026',
@@ -6203,7 +6210,14 @@ function ativarView(viewId){
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
   if(viewId==='fin-painel')          renderCCPainel();
   if(viewId==='fin-recorrentes')     renderRecorrentes();
-  if(viewId==='fin-contas-receber') renderFinanceiroPainel();
+  if(viewId==='fin-contas-receber'){
+    // v1.47.126: sempre reabre sem filtro (o <select> mantinha o valor da visita
+    // anterior, então "Vencidos"/"Data fixa" ficava "grudado" dando a impressão
+    // de a tela vir filtrada sozinha por data).
+    const fs=document.getElementById('fin-filtro-status'); if(fs) fs.value='';
+    const ft=document.getElementById('fin-filtro-tipo');   if(ft) ft.value='';
+    renderFinanceiroPainel();
+  }
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-fornecedores')    renderFornecedores();
