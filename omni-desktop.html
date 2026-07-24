@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.126';
+const APP_VERSION = '1.47.127';
 const APP_VERSION_DATE = '24/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.127',
+    data: '24/07/2026',
+    itens: [
+      'Mesma correção da v1.47.126 (filtro que ficava "grudado" de uma visita pra outra) aplicada em mais 15 telas: Auditoria, Financeiro — Acompanhamento, Contas Recorrentes, Fornecedores, Estoque (Movimentações e Catálogo), Contas a Pagar, Guias de Recolhimento, Clientes/Prospects, Obras (Lista e Painel), O.S. (Lista e Painel), Propostas e SRM — Painel. Todas voltam a abrir com o filtro no padrão de fábrica, mesmo que você tenha filtrado algo numa visita anterior. Os seletores de "visualização" que já eram salvos de propósito (Kanban, O.S./Obras/Faturamento/Propostas/Estoque — Painel) continuam lembrando sua última escolha, como sempre funcionou.',
+    ]
+  },
   {
     versao: '1.47.126',
     data: '24/07/2026',
@@ -6205,11 +6212,35 @@ function ativarView(viewId){
   contextoAjuda = {tela:viewId, modal:null, aba:null};
   _refreshAjudaSeAberta();
   if(viewId==='gerais') renderGerais();
-  if(viewId==='auditoria') carregarLogs();
+  // v1.47.127: bloco abaixo reseta os filtros de select/input de cada tela-lista
+  // ANTES de renderizar — o app é SPA de painéis escondidos/mostrados (nunca
+  // destrói o DOM ao trocar de view), então sem isso o <select> mantinha o valor
+  // que ficou marcado numa visita anterior e "grudava" (ex.: usuário filtrou
+  // "Vencidas" em Contas a Pagar, saiu, voltou dias depois — a tela abria
+  // filtrada de novo, parecendo travada, sem ele lembrar de ter mexido em nada).
+  // Cada reset volta pro valor default do próprio <option> do HTML daquele
+  // select, não necessariamente "" — ex.: forn-filtro-status nasce em "ativo".
+  // Não mexe nos seletores de "vista" que já são persistidos de propósito via
+  // localStorage (mudarVistaObrasPainel/mudarVistaOSPainel/mudarVistaFatPainel/
+  // mudarVistaPropostas/'vista' do Kanban/estoquePainelVista) — esses continuam
+  // lembrando a última visualização escolhida entre sessões, por design.
+  if(viewId==='auditoria'){
+    const ab=document.getElementById('audit-busca'); if(ab) ab.value='';
+    const ad=document.getElementById('audit-de');    if(ad) ad.value='';
+    const at=document.getElementById('audit-ate');   if(at) at.value='';
+    carregarLogs();
+  }
   if(viewId==='downloads') renderDownloads();
   if(viewId==='cat-outros-custos') renderCatOutrosCustos();
-  if(viewId==='fin-painel')          renderCCPainel();
-  if(viewId==='fin-recorrentes')     renderRecorrentes();
+  if(viewId==='fin-painel'){
+    const fv=document.getElementById('finpainel-vista');   if(fv) fv.value='cc';
+    const fp=document.getElementById('finpainel-periodo'); if(fp) fp.value='mes';
+    renderCCPainel();
+  }
+  if(viewId==='fin-recorrentes'){
+    const rs=document.getElementById('rec-filtro-status'); if(rs) rs.value='';
+    renderRecorrentes();
+  }
   if(viewId==='fin-contas-receber'){
     // v1.47.126: sempre reabre sem filtro (o <select> mantinha o valor da visita
     // anterior, então "Vencidos"/"Data fixa" ficava "grudado" dando a impressão
@@ -6220,17 +6251,63 @@ function ativarView(viewId){
   }
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
-  if(viewId==='fin-fornecedores')    renderFornecedores();
+  if(viewId==='fin-fornecedores'){
+    const fst=document.getElementById('forn-filtro-status'); if(fst) fst.value='ativo';
+    renderFornecedores();
+  }
   if(viewId==='estoque-painel')        renderEstoquePainel();
   if(viewId==='estoque-categorias')    renderEstoqueCategorias();
   if(viewId==='estoque-almoxarifado')  renderEstoqueAlmoxarifado();
-  if(viewId==='estoque-movimentacoes') renderEstoqueMovimentacoes();
-  if(viewId==='estoque-catalogo')      renderEstoqueCatalogo();
-  if(viewId==='fin-contas-pagar')    renderContasPagar();
+  if(viewId==='estoque-movimentacoes'){
+    const ep=document.getElementById('emov-filtro-produto');   if(ep) ep.value='';
+    const et=document.getElementById('emov-filtro-tipo');      if(et) et.value='';
+    const eper=document.getElementById('emov-filtro-periodo'); if(eper) eper.value='';
+    renderEstoqueMovimentacoes();
+  }
+  if(viewId==='estoque-catalogo'){
+    const cc=document.getElementById('cat-filtro-categoria'); if(cc) cc.value='';
+    renderEstoqueCatalogo();
+  }
+  if(viewId==='fin-contas-pagar'){
+    const cps=document.getElementById('cp-filtro-status'); if(cps) cps.value='';
+    const cpc=document.getElementById('cp-filtro-cc');     if(cpc) cpc.value='';
+    renderContasPagar();
+  }
   if(viewId==='fat-painel')    renderFatPainel();
   if(viewId==='fat-fases')     renderFatFases();
   if(viewId==='fat-espelhos')  renderFatEspelhos();
-  if(viewId==='fat-tributos')  renderFatTributos();
+  if(viewId==='fat-tributos'){
+    const fgp=document.getElementById('fat-guias-periodo'); if(fgp) fgp.value='tudo';
+    renderFatTributos();
+  }
+  if(viewId==='clientes'){
+    const clt=document.getElementById('cli-filtro-tipo');   if(clt) clt.value='';
+    const clc=document.getElementById('cli-filtro-cidade'); if(clc) clc.value='';
+  }
+  if(viewId==='obras-lista'){
+    const obs=document.getElementById('ob-filtro-status'); if(obs) obs.value='';
+    const obf=document.getElementById('ob-filtro-fase');   if(obf) obf.value='';
+    const obc=document.getElementById('ob-filtro-cidade'); if(obc) obc.value='';
+  }
+  if(viewId==='os-lista'){
+    const ost=document.getElementById('os-filtro-tipo');   if(ost) ost.value='';
+    const osf=document.getElementById('os-filtro-fase');   if(osf) osf.value='';
+    const oss=document.getElementById('os-filtro-status'); if(oss) oss.value='';
+  }
+  if(viewId==='propostas'){
+    const pps=document.getElementById('prop-filtro-status');  if(pps) pps.value='';
+    const ppf=document.getElementById('prop-filtro-fase');    if(ppf) ppf.value='';
+    const ppp=document.getElementById('prop-filtro-periodo'); if(ppp) ppp.value='';
+  }
+  if(viewId==='obras-painel'){
+    const obps=document.getElementById('obras-painel-status'); if(obps) obps.value='';
+  }
+  if(viewId==='os-painel'){
+    const ospt=document.getElementById('os-painel-tipo'); if(ospt) ospt.value='';
+  }
+  if(viewId==='srm-painel'){
+    const sv=document.getElementById('srm-vista'); if(sv) sv.value='fases';
+  }
   if(usuarioAtual) renderSidebar(); // atualiza highlight do botão Downloads quando necessário
   renderAll();
 }
