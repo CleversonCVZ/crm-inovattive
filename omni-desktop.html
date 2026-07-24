@@ -857,10 +857,10 @@
     <div class="bar">
       <h2>Fornecedores</h2>
       <div class="spacer"></div>
-      <select id="forn-filtro-status" class="input" style="font-size:13px" onchange="renderFornecedores()">
+      <select id="forn-filtro-status" class="vista-sel" onchange="renderFornecedores()">
+        <option value="todos">Todos</option>
         <option value="ativo">Ativos</option>
         <option value="inativo">Inativos</option>
-        <option value="todos">Todos</option>
       </select>
       <button class="btn primary" onclick="abrirNovoFornecedor()">＋ Novo Fornecedor</button>
     </div>
@@ -1228,7 +1228,7 @@
     <div class="bar">
       <h2>Estoque — Catálogo de Produtos</h2>
       <div class="spacer"></div>
-      <select id="cat-filtro-categoria" class="input" style="font-size:13px" onchange="renderEstoqueCatalogo()">
+      <select id="cat-filtro-categoria" class="vista-sel" onchange="renderEstoqueCatalogo()">
         <option value="">Todas as categorias</option>
       </select>
       <button class="btn primary" id="btn-novo-produto-catalogo" onclick="abrirNovoProdutoEstoque()">＋ Novo Produto</button>
@@ -1360,11 +1360,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.127';
+const APP_VERSION = '1.47.128';
 const APP_VERSION_DATE = '24/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.128',
+    data: '24/07/2026',
+    itens: [
+      'Controle de Propostas: números dos cartões de resumo (Emitidas em aberto, Aprovadas, Perdidas/Abandonadas) agora têm cor, igual ao padrão das outras telas financeiras.',
+      'Fornecedores e Estoque → Catálogo: o combo de filtro (Status / Categoria) estava usando o estilo nativo do navegador em vez do visual padrão do app (fundo diferente das outras telas). Corrigido pra usar o mesmo estilo dos demais filtros.',
+      'Fornecedores: no combo de Status, "Todos" agora é a primeira opção da lista, igual às outras telas com filtro de status.',
+    ]
+  },
   {
     versao: '1.47.127',
     data: '24/07/2026',
@@ -21108,9 +21117,9 @@ function renderPropostas(){
   const aprovadas_g= propostasVisiveis.filter(p=>p.status==='aprovada');
   const perdidas_g = propostasVisiveis.filter(p=>p.status==='emitida' && propostaPerdida(p));
   if(st) st.innerHTML=`
-    <div class="stat"><div class="n">${abertas_g.length}</div><div class="l">Emitidas em aberto</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(abertas_g))||'R$ 0,00'}</div></div>
-    <div class="stat"><div class="n">${aprovadas_g.length}</div><div class="l">Aprovadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(aprovadas_g))||'R$ 0,00'}</div></div>
-    <div class="stat"><div class="n">${perdidas_g.length}</div><div class="l">Perdidas/Abandonadas</div><div style="font-size:12.5px;font-weight:700">${fmtMoney(soma(perdidas_g))||'R$ 0,00'}</div></div>`;
+    <div class="stat"><div class="n" style="color:#e65100">${abertas_g.length}</div><div class="l">Emitidas em aberto</div><div style="font-size:12.5px;font-weight:700;color:#e65100">${fmtMoney(soma(abertas_g))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n" style="color:#2e7d32">${aprovadas_g.length}</div><div class="l">Aprovadas</div><div style="font-size:12.5px;font-weight:700;color:#2e7d32">${fmtMoney(soma(aprovadas_g))||'R$ 0,00'}</div></div>
+    <div class="stat"><div class="n" style="color:#c62828">${perdidas_g.length}</div><div class="l">Perdidas/Abandonadas</div><div style="font-size:12.5px;font-weight:700;color:#c62828">${fmtMoney(soma(perdidas_g))||'R$ 0,00'}</div></div>`;
 
   // filtrar
   let lista=db.propostas.filter(p=>{
