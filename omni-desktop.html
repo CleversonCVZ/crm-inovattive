@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.128';
-const APP_VERSION_DATE = '24/07/2026';
+const APP_VERSION = '1.47.129';
+const APP_VERSION_DATE = '28/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.129',
+    data: '28/07/2026',
+    itens: [
+      'Corrigido bug no botão "Registrar Retirada" (aba Obra do Cartão CRM) que fazia o clique parecer que "não fazia nada": a retirada era salva no banco normalmente, mas a tela travava logo em seguida sem avisar, então não atualizava — dando a impressão de que era preciso clicar de novo. Efeito colateral corrigido junto: o botão agora usa a cor verde padrão do app (estava com uma classe CSS errada, sem efeito prático além da cor).',
+    ]
+  },
   {
     versao: '1.47.128',
     data: '24/07/2026',
@@ -15881,7 +15888,7 @@ function abaObraResultadoAparente(c, ob){
           <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:3px">Descrição (opcional)</label>
           <input id="ret-desc" type="text" class="input-field" placeholder="Ex: Adiantamento sócio, 13º técnico…" style="width:100%">
         </div>
-        <button class="btn btn-primary" style="width:100%" onclick="adicionarRetirada(${ob.id},${c.id})">Registrar Retirada</button>
+        <button class="btn primary" style="width:100%" onclick="adicionarRetirada(${ob.id},${c.id})">Registrar Retirada</button>
       </div>`:''}`;
     })()}
   `;
@@ -16193,12 +16200,18 @@ async function adicionarRetirada(obraId, cardId){
   if(error){ alert('Erro ao salvar retirada: '+error.message); return; }
   if(!Array.isArray(db.obraRetiradas)) db.obraRetiradas=[];
   db.obraRetiradas.push({id:row.id, obraId, data:data, valor, descricao:desc, status:'registrada', cpId:null, criadoEm:row.created_at||''});
+  // v1.47.129: fmtR precisa ser declarado ANTES de ser usado — estava depois da
+  // linha de registrarLog() que já usa fmtR(valor), disparando "Cannot access
+  // 'fmtR' before initialization" (const não é hoisted). A retirada era salva
+  // no banco normalmente, mas a função quebrava logo em seguida, silenciosamente
+  // (sem alert — é uma exceção síncrona dentro de função async, sem try/catch),
+  // então a tela nunca re-renderizava e parecia que o botão "não fazia nada".
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   registrarLog('criar','obra_retirada', row.id, `Retirada do Lucro registrada: ${fmtR(valor)}${desc?' — '+desc:''}`);
 
   // v1.47.114: pergunta se quer já lançar essa retirada como Conta a Pagar (Pró-Labore)
   // — mesma ideia do "📋 → C.P." de Custo M.Obra, só que oferecido logo depois de
   // registrar em vez de precisar voltar e clicar num botão separado.
-  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
   if(podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar') &&
      confirm(`Retirada de ${fmtR(valor)} registrada. Deseja lançar esse valor também no Contas a Pagar como Pró-Labore?`)){
     abrirLancarRetiradaComoCP(row.id, obraId, cardId);
