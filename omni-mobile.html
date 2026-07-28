@@ -448,9 +448,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.33';
-const APP_VERSION_DATE = '23/07/2026';
+const APP_VERSION = '1.0.34';
+const APP_VERSION_DATE = '24/07/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.34',
+    data: '24/07/2026',
+    itens: [
+      'O.S. Avulsa ganhou upload de fotos do serviço executado (Câmera/Galeria), na tela de detalhe da O.S. — mesmo recurso que já existia na versão desktop e que ainda não tinha chegado no mobile. Diferente do "Diário" (que é só de O.S. de Execução/Projeto), essa nova seção "Fotos" é a mesma que a aba "📷 Fotos" do desktop mostra pra O.S. Avulsa.',
+    ]
+  },
   {
     versao: '1.0.33',
     data: '23/07/2026',
@@ -1020,7 +1027,7 @@ async function carregarDados(){
   if(grupo.acessoTecnico || grupo.admin){
     promises.push(
       sb.from('obras').select('*').order('id',{ascending:false}).then(r=>{db.obras=r.data||[];}),
-      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico,fase_id,arquivos_projeto,pendencias').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[], pendencias:Array.isArray(o.pendencias)?o.pendencias:[]}));}),
+      sb.from('ordens_servico').select('id,numero,card_id,cliente_id,obra_id,tipo,titulo,responsavel_id,data_agend,data_inicio,data_termino,fechada,instrucoes,descricao_chamado,historico,fase_id,arquivos_projeto,pendencias,imagens').order('data_agend',{ascending:false}).then(r=>{db.os=(r.data||[]).map(o=>({...o, historico:Array.isArray(o.historico)?o.historico:[], pendencias:Array.isArray(o.pendencias)?o.pendencias:[], imagens:Array.isArray(o.imagens)?o.imagens:[]}));}), // v1.0.34: +imagens (Fotos da O.S. Avulsa)
       sb.from('os_diario').select('*').order('data',{ascending:false}).then(r=>{db.osDiario=r.data||[];}),
       sb.from('os_tecnicos').select('*').then(r=>{db.osTecnicos=r.data||[];}),
       // v1.0.5: fases da O.S. (mesma tabela do desktop) — precisa pra achar a fase "Revisão
@@ -1719,7 +1726,7 @@ function abrirOS(id){
           <textarea id="diary-txt" placeholder="Descreva o que foi feito..." rows="3"></textarea>
         </div>
         <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
-          <button class="btn btn-primary btn-sm" style="flex:none" onclick="salvarHistoricoAvulsa(${o.id})">Salvar</button>
+          <button class="btn btn-primary btn-sm" id="btn-salvar-historico-avulsa" style="flex:none" onclick="salvarHistoricoAvulsa(${o.id})">Salvar</button>
         </div>
       </div>`;
     }
@@ -1730,6 +1737,36 @@ function abrirOS(id){
       </div>`).join('');
     } else if(o.fechada){
       html+='<p style="font-size:13px;color:var(--muted)">Nenhum registro no histórico.</p>';
+    }
+
+    // Fotos (v1.0.34): O.S. Avulsa ganha upload de fotos do serviço executado —
+    // mesmo recurso que já existia no desktop (aba "📷 Fotos" de abrirVerOSAvulsa,
+    // coluna ordens_servico.imagens + bucket PRIVADO 'os-imagens'), só que nunca
+    // tinha sido portado pro mobile. Não é o Diário (os_diario/'os-diario-imagens',
+    // esse sim público e exclusivo de Execução/Projeto, ver bloco abaixo) — os dois
+    // convivem separados igual no desktop.
+    const fotosAv=(o.imagens||[]);
+    html+=`<div class="section-title">Fotos (${fotosAv.length})</div>`;
+    if(!o.fechada){
+      html+=`<div style="background:#f0f4ff;border-radius:12px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="avulsa-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="previewFotoOSAvulsa(this)">
+          <input type="file" id="avulsa-foto-gal" accept="image/*" multiple style="display:none" onchange="previewFotoOSAvulsa(this)">
+          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('avulsa-foto-cam').click()">📷 Câmera</button>
+          <button class="btn btn-neutral btn-sm" style="flex:none" onclick="document.getElementById('avulsa-foto-gal').click()">🖼 Galeria</button>
+          <button class="btn btn-primary btn-sm" id="btn-enviar-fotos-avulsa" style="flex:none;margin-left:auto" onclick="salvarFotosOSAvulsa(${o.id})">Enviar</button>
+        </div>
+        <div id="avulsa-foto-preview" style="display:flex;gap:6px;overflow-x:auto;margin-top:8px"></div>
+      </div>`;
+    }
+    if(fotosAv.length){
+      html+=`<div class="diary-imgs">${fotosAv.map((img,i)=>`
+        <div style="position:relative">
+          <img data-os-img-lazy data-path="${esc(img.path)}" src="" style="background:#f0f0f0;min-height:52px" onclick="if(this.src)abrirImgPreview(this.src)">
+          ${!o.fechada?`<button onclick="event.stopPropagation();excluirFotoOSAvulsa(${o.id},${i})" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#e53935;color:#fff;border:2px solid #fff;font-size:12px;line-height:1;cursor:pointer;padding:0">✕</button>`:''}
+        </div>`).join('')}</div>`;
+    } else if(o.fechada){
+      html+='<p style="font-size:13px;color:var(--muted)">Nenhuma foto registrada.</p>';
     }
   } else {
     html+=`<div class="section-title">Diário (${diario.length})</div>`;
@@ -1843,6 +1880,7 @@ function abrirOS(id){
      <button class="btn btn-success" onclick="fecharOS(${o.id})" style="flex:1">📋 Enviar p/ Revisão</button>`;
 
   abrirSheet(`OS ${o.numero}`, html, footerBtns);
+  if(o.tipo==='avulsa' && (o.imagens||[]).length) carregarImagensOSAvulsaPrivadas(); // v1.0.34
   window._osAtualId=id;
 }
 
@@ -2132,6 +2170,96 @@ async function excluirFotoDiario(osId, diaId, idx){
   abrirOS(osId);
 }
 
+/* ===== FOTOS DA O.S. AVULSA (v1.0.34) =====
+   Mesmo recurso da aba "📷 Fotos" do desktop: coluna ordens_servico.imagens
+   (jsonb [{id,nome,path,descricao}]) + bucket PRIVADO 'os-imagens' — diferente
+   do 'os-diario-imagens' do Diário (público, exclusivo de Execução/Projeto).
+   Como o bucket é privado, getPublicUrl() nunca funciona — precisa de signed
+   URL (createSignedUrl), igual ao padrão já usado em signedUrlArquivoOS() pro
+   bucket 'os-arquivos'. As <img> entram sem src (data-os-img-lazy + data-path)
+   e são preenchidas depois que o sheet já está no DOM, via
+   carregarImagensOSAvulsaPrivadas() — mesmo truque de carregarImagensOSPrivadas()
+   no desktop. */
+let _fotoFilesAvulsa=[];
+function previewFotoOSAvulsa(input){
+  const files=[...(input.files||[])];
+  if(!files.length) return;
+  const prev=document.getElementById('avulsa-foto-preview');
+  files.forEach(file=>{
+    _fotoFilesAvulsa.push(file);
+    const url=URL.createObjectURL(file);
+    if(prev){
+      const img=document.createElement('img');
+      img.src=url;
+      img.style.cssText='width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0';
+      prev.appendChild(img);
+    }
+  });
+  input.value='';
+}
+
+const _signedUrlCacheOSImg={};
+async function signedUrlOSImagem(path){
+  const cached=_signedUrlCacheOSImg[path];
+  if(cached && cached.exp>Date.now()) return cached.url;
+  try{
+    const {data, error}=await sb.storage.from('os-imagens').createSignedUrl(path, 3600);
+    if(error || !data?.signedUrl) return '';
+    _signedUrlCacheOSImg[path]={url:data.signedUrl, exp:Date.now()+55*60*1000};
+    return data.signedUrl;
+  }catch(e){ return ''; }
+}
+async function carregarImagensOSAvulsaPrivadas(){
+  const imgs=[...document.querySelectorAll('#sheet-body img[data-os-img-lazy]')];
+  for(const img of imgs){
+    const url=await signedUrlOSImagem(img.dataset.path);
+    if(url) img.src=url;
+  }
+}
+
+async function salvarFotosOSAvulsa(osId){
+  if(!_fotoFilesAvulsa.length){ toast('Selecione ao menos uma foto.'); return; }
+  const o=db.os.find(x=>x.id===osId);
+  const btn=document.getElementById('btn-enviar-fotos-avulsa');
+  const oriTxt=btn?.textContent;
+  if(btn){ btn.textContent='Enviando...'; btn.disabled=true; }
+  if(!o.imagens) o.imagens=[];
+  let enviadas=0;
+  for(const f of _fotoFilesAvulsa){
+    const ext=(f.name.split('.').pop()||'jpg').toLowerCase();
+    const path=`os/${osId}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+    const {error}=await sb.storage.from('os-imagens').upload(path, f);
+    if(error){ console.error('Erro no upload da foto:', error); continue; }
+    o.imagens.push({id:crypto.randomUUID(), nome:f.name, path, descricao:''});
+    enviadas++;
+  }
+  _fotoFilesAvulsa=[];
+  if(!enviadas){
+    toast('Erro ao enviar foto(s).');
+    if(btn){ btn.textContent=oriTxt; btn.disabled=false; }
+    return;
+  }
+  const {error:upErr}=await sb.from('ordens_servico').update({imagens:o.imagens}).eq('id',osId);
+  if(upErr){ toast('Erro ao salvar: '+upErr.message); return; }
+  registrarLog('upload','os',osId,`${enviadas} foto(s) adicionada(s) à O.S. ${o.numero} via app mobile`);
+  toast('Foto(s) enviada(s) ✓');
+  abrirOS(osId);
+}
+
+async function excluirFotoOSAvulsa(osId, idx){
+  if(!confirm('Remover esta foto?')) return;
+  const o=db.os.find(x=>x.id===osId);
+  const img=(o.imagens||[])[idx];
+  if(!img) return;
+  if(img.path) await sb.storage.from('os-imagens').remove([img.path]);
+  o.imagens=(o.imagens||[]).filter((_,i)=>i!==idx);
+  const {error}=await sb.from('ordens_servico').update({imagens:o.imagens}).eq('id',osId);
+  if(error){ alert('Erro ao excluir foto: '+error.message); return; }
+  registrarLog('excluir','os',osId,`Foto removida da O.S. ${o.numero} via app mobile`);
+  toast('Foto excluída ✓');
+  abrirOS(osId);
+}
+
 /* v1.0.4: equivalente do adicionarHistOS() do desktop, pra O.S. Avulsa — grava direto na
    coluna ordens_servico.historico (JSONB), sem foto (o desktop também não suporta foto
    por entrada de histórico, só no Diário de Execução/Projeto). */
@@ -2139,7 +2267,7 @@ async function salvarHistoricoAvulsa(osId){
   const txt=(document.getElementById('diary-txt')?.value||'').trim();
   if(!txt){toast('Escreva algo.');return;}
 
-  const btn=document.querySelector('#sheet-body .btn-primary');
+  const btn=document.getElementById('btn-salvar-historico-avulsa');
   const oriTxt=btn?.textContent;
   if(btn){btn.textContent='Salvando...';btn.disabled=true;}
 
