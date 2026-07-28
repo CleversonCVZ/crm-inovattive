@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.130';
+const APP_VERSION = '1.47.131';
 const APP_VERSION_DATE = '28/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.131',
+    data: '28/07/2026',
+    itens: [
+      'Tela "Estoque — [Obra]": um item removido de uma O.S. continuava aparecendo pra sempre como "Usado em [O.S.]", mesmo depois de desalocado — porque desalocar não apaga a baixa original (segue o mesmo princípio de nunca apagar movimentação, só ajustar), só que a tela não estava descontando esse ajuste. Agora calcula o saldo líquido por O.S. e só mostra como "usado" quando realmente ainda está consumido.',
+    ]
+  },
   {
     versao: '1.47.130',
     data: '28/07/2026',
@@ -12427,11 +12434,19 @@ function abrirEstoqueObraModal(obraId){
   const usoDoItem = (it) => {
     const prod = matchProdutoEstoque(it);
     if(!prod) return '<span style="color:var(--muted);font-size:11px">não catalogado ainda</span>';
-    const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===prod.id && m.obraId===obraId && m.tipo==='saida' && m.osId);
+    // v1.47.131: estornarEstoque() nunca apaga a saída original ao desalocar um item
+    // de uma O.S. — cria uma ENTRADA de ajuste com o mesmo os_id (mesmo princípio de
+    // nunca apagar movimentação, só o de sempre no app). Antes esta lista só olhava
+    // saídas, então um item removido da O.S. continuava aparecendo como "usado em"
+    // pra sempre. Agora calcula o líquido por O.S. (saída − entradas de ajuste com o
+    // mesmo os_id) e só mostra a O.S. se ainda sobrar saldo consumido de verdade.
+    const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===prod.id && m.obraId===obraId && m.osId);
     if(!movs.length) return '<span style="color:var(--muted);font-size:11px">ainda não usado</span>';
     const porOS = {};
-    movs.forEach(m=>{ porOS[m.osId]=(porOS[m.osId]||0)+(m.quantidade||0); });
-    return Object.entries(porOS).map(([osId,qtd])=>{
+    movs.forEach(m=>{ porOS[m.osId]=(porOS[m.osId]||0)+(m.tipo==='saida'?(m.quantidade||0):-(m.quantidade||0)); });
+    const usados = Object.entries(porOS).filter(([,qtd])=>qtd>0.0001);
+    if(!usados.length) return '<span style="color:var(--muted);font-size:11px">ainda não usado</span>';
+    return usados.map(([osId,qtd])=>{
       const os = (db.ordensServico||[]).find(x=>x.id===+osId);
       return `${os?escHtml(os.numero):'O.S. #'+osId} (${fmtNum(qtd)})`;
     }).join(', ');
