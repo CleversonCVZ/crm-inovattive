@@ -1360,11 +1360,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.129';
+const APP_VERSION = '1.47.130';
 const APP_VERSION_DATE = '28/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.130',
+    data: '28/07/2026',
+    itens: [
+      'SRM → Lançar Itens da NF no Estoque: quando o código fiscal (NCM) de um item bate com mais de um produto do catálogo, agora aparece um aviso laranja e uma confirmação extra antes de criar um produto novo — isso evitava duplicar cadastros de produtos parecidos (ex.: mesma controladora em revisões de hardware diferentes) sem perceber.',
+      'SRM → Remover XML da NF: se o material já tiver sido baixado numa O.S., o aviso agora avisa explicitamente que o estoque desse produto vai ficar negativo ao remover — antes o aviso não mencionava esse risco.',
+    ]
+  },
   {
     versao: '1.47.129',
     data: '28/07/2026',
@@ -8064,7 +8072,22 @@ async function baixarPdfNfSRM(path, nome){
 
 /* Remove XML: limpa xml fields + dados da NF (usuário pode re-extrair do PDF manualmente) */
 async function removerXmlNfSRM(cotId, srmId){
-  if(!confirm('Remover o XML da NF-e? Os dados importados e o lançamento de estoque vinculado serão apagados.')) return;
+  // v1.47.130: a baixa de estoque numa O.S. (debitarEstoque) não grava srm_cotacao_id
+  // — ou seja, remover aqui só apaga a ENTRADA (linhas com srm_cotacao_id=cotId), mas
+  // se o material já foi consumido numa O.S. depois, a SAÍDA correspondente fica órfã
+  // e o saldo desse produto vai ficar negativo, silenciosamente. Calcula isso antes de
+  // perguntar, pra avisar de verdade em vez de só um confirm() genérico.
+  const entradasDestaCot = (db.estoqueMov||[]).filter(m=>m.srmCotacaoId===cotId && m.tipo==='entrada');
+  const produtosAfetados = [...new Set(entradasDestaCot.map(m=>m.produtoId))].map(pid=>{
+    const prod = (db.estoqueProdutos||[]).find(p=>p.id===pid);
+    const entradaQtd = entradasDestaCot.filter(m=>m.produtoId===pid).reduce((s,m)=>s+(m.quantidade||0),0);
+    const saldoAtual = (db.estoqueMov||[]).filter(m=>m.produtoId===pid).reduce((s,m)=>s+(m.tipo==='entrada'?(m.quantidade||0):-(m.quantidade||0)),0);
+    return {nome:prod?prod.nome:'produto #'+pid, ficariaNegativo:(saldoAtual-entradaQtd)<0};
+  }).filter(p=>p.ficariaNegativo);
+  const avisoExtra = produtosAfetados.length
+    ? `\n\n⚠ ATENÇÃO: ${produtosAfetados.map(p=>p.nome).join(', ')} já ${produtosAfetados.length>1?'foram consumidos':'foi consumido'} numa O.S. — remover essa entrada vai deixar o saldo do estoque negativo, sem corrigir sozinho depois.`
+    : '';
+  if(!confirm(`Remover o XML da NF-e? Os dados importados e o lançamento de estoque vinculado serão apagados.${avisoExtra}`)) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.xmlNfPath) await sb.storage.from('srm-nfs').remove([cot.xmlNfPath]);
   // Remover movimentações de estoque vinculadas
@@ -23619,6 +23642,14 @@ function abrirLancarEstoque(cotId, srmId){
   const linhas=cot.nfItens.map((it,idx)=>{
     const produtos=db.estoqueProdutos||[];
     const autoMatch=matchProdutoEstoque(it);
+    // v1.47.130: quando matchProdutoEstoque() devolve null porque o NCM bate com MAIS
+    // DE UM produto ativo (ambíguo — ver comentário de matchProdutoEstoque acima), o
+    // select ficava em "— Criar novo produto —" sem nenhum aviso, e já aconteceu 2x de
+    // alguém confirmar sem perceber, criando um produto duplicado no catálogo (ver
+    // histórico do produto id 22/27, NCM 85371020 compartilhado por 4 produtos). Agora
+    // mostra um aviso visível + destaca o select em laranja nesse caso específico.
+    const candidatosNCM = it.NCM ? produtos.filter(p=>p.ativo && p.ncm===it.NCM) : [];
+    const ncmAmbiguo = !autoMatch && candidatosNCM.length>1;
     const opts=produtos.filter(p=>p.ativo).map(p=>`<option value="${p.id}" ${autoMatch&&autoMatch.id===p.id?'selected':''}>${escHtml(p.nome)}${p.ncm?` (NCM ${p.ncm})`:''}</option>`).join('');
     return `
       <div style="padding:8px 0;border-bottom:1px solid var(--border)">
@@ -23627,8 +23658,9 @@ function abrirLancarEstoque(cotId, srmId){
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(it.xProd)}">${escHtml(it.xProd)}</div>
             <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${it.NCM?`NCM ${it.NCM} · `:''}${fmtNum(it.qCom)} ${it.uCom} · ${fmtMoney(it.vUnCom)}/un</div>
+            ${ncmAmbiguo?`<div style="background:#fff3e0;color:#e65100;font-size:11px;font-weight:600;padding:5px 8px;border-radius:6px;margin-bottom:6px">⚠ ${candidatosNCM.length} produtos do catálogo têm esse mesmo NCM (${it.NCM}) — confira abaixo se algum já é este item antes de criar um novo, pra não duplicar o cadastro.</div>`:''}
             <div id="est-row-${idx}" style="display:grid;grid-template-columns:1fr 90px;gap:6px;align-items:end">
-              <select id="est-prod-${idx}" style="font-size:12px">
+              <select id="est-prod-${idx}" data-ncm-ambiguo="${ncmAmbiguo?'1':'0'}" style="font-size:12px${ncmAmbiguo?';border:1.5px solid #e65100':''}">
                 <option value="">— Criar novo produto —</option>
                 ${opts}
               </select>
@@ -23710,6 +23742,14 @@ async function confirmarLancarEstoque(){
 
     if(!produtoId){
       /* criar novo produto */
+      // v1.47.130: se o select ficou em "Criar novo produto" por causa de NCM ambíguo
+      // (não por falta real de correspondência), confirma explicitamente antes de criar
+      // — evita duplicar cadastro por alguém não reparar no aviso da tela anterior.
+      const selEl=document.getElementById(`est-prod-${idx}`);
+      if(selEl?.dataset.ncmAmbiguo==='1'){
+        const ok=confirm(`O item "${it.xProd}" tem o mesmo NCM de outro(s) produto(s) já cadastrado(s) no catálogo.\n\nTem certeza que quer criar um produto NOVO em vez de selecionar um existente?`);
+        if(!ok) return;
+      }
       const nomeNovo=(document.getElementById(`est-nome-${idx}`)?.value||'').trim();
       if(!nomeNovo){ alert(`Item "${it.xProd}": informe o nome comercial do produto.`); return; }
       const nomeFiscalNovo = normalizarNomeProduto(it.xProd)||null;
