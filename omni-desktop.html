@@ -1370,7 +1370,7 @@ const CHANGELOG = [
     data: '29/07/2026',
     itens: [
       'Material "Cliente paga diretamente" (SRM) com obra vinculada agora pode ser lançado no estoque normalmente — reservado só pra essa obra, do mesmo jeito que compra da empresa. Antes ficava travado de propósito e nunca virava movimentação real, então nunca dava pra saber em qual O.S. foi usado. Continua sem gerar Conta a Pagar e sem entrar no Resultado Aparente (isso é decidido só por quem paga, nunca mudou). Botão "Lançar no Estoque" agora também é mais claro: mostra "Lançar no Estoque da Obra" quando há obra vinculada e "Lançar no Estoque Geral" quando não há.',
-      'Aba "Itens" da O.S. de Obra: itens marcados "Cliente fornece" agora também podem ser vinculados ao catálogo de estoque e baixar do estoque reservado da obra quando alocados — antes eram sempre ignorados pela baixa de estoque, mesmo quando o material tinha sido comprado e controlado por nós via SRM (caso comum: cliente paga o fornecedor, mas quem compra/recebe/controla o material é a empresa). A legenda no item alocado agora reflete isso corretamente.',
+      'Aba "Itens" da O.S. de Obra: itens marcados "Cliente fornece" agora também podem ser vinculados ao catálogo de estoque e baixar do estoque da obra quando alocados — antes eram sempre ignorados pela baixa de estoque, mesmo quando o material tinha sido comprado e controlado por nós via SRM (caso comum: cliente paga o fornecedor, mas quem compra/recebe/controla o material é a empresa). Itens já alocados antes dessa versão (sem vínculo com o catálogo) agora mostram um link "🔗 vincular ao catálogo pra baixar do estoque da obra" — clique nele pra vincular sem precisar remover e readicionar o item.',
     ]
   },
   {
@@ -19436,9 +19436,9 @@ function abrirSeletorItensOS(osId, cardId){
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
           <div style="flex:1">
             <span style="font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
-            ${cf && os.tipo==='execucao' ? (reg.produtoEstoqueId
-              ? `<div style="font-size:11px;color:#0369a1;margin-top:1px">💳 baixa do estoque reservado da obra (cliente paga)</div>`
-              : `<div style="font-size:11px;color:var(--muted);margin-top:1px">🚫 não baixa do nosso estoque</div>`) : ''}
+            ${cf && os.tipo==='execucao' && reg.categoria==='produto' ? (reg.produtoEstoqueId
+              ? `<div style="font-size:11px;color:#0369a1;margin-top:1px">💳 baixa no estoque da obra (cliente paga)</div>`
+              : `<div style="font-size:11px;margin-top:1px"><a href="#" onclick="event.preventDefault();abrirVincularProdutoEstoque(${osId},${cardId},${reg.propostaId},${reg.idx},${reg.qtdOS})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔗 vincular ao catálogo pra baixar do estoque da obra</a></div>`) : ''}
           </div>
           <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
           <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
