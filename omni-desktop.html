@@ -1360,11 +1360,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.131';
-const APP_VERSION_DATE = '28/07/2026';
+const APP_VERSION = '1.47.132';
+const APP_VERSION_DATE = '29/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.132',
+    data: '29/07/2026',
+    itens: [
+      'Material "Cliente paga diretamente" (SRM) com obra vinculada agora pode ser lançado no estoque normalmente — reservado só pra essa obra, do mesmo jeito que compra da empresa. Antes ficava travado de propósito e nunca virava movimentação real, então nunca dava pra saber em qual O.S. foi usado. Continua sem gerar Conta a Pagar e sem entrar no Resultado Aparente (isso é decidido só por quem paga, nunca mudou). Botão "Lançar no Estoque" agora também é mais claro: mostra "Lançar no Estoque da Obra" quando há obra vinculada e "Lançar no Estoque Geral" quando não há.',
+      'Aba "Itens" da O.S. de Obra: itens marcados "Cliente fornece" agora também podem ser vinculados ao catálogo de estoque e baixar do estoque reservado da obra quando alocados — antes eram sempre ignorados pela baixa de estoque, mesmo quando o material tinha sido comprado e controlado por nós via SRM (caso comum: cliente paga o fornecedor, mas quem compra/recebe/controla o material é a empresa). A legenda no item alocado agora reflete isso corretamente.',
+    ]
+  },
   {
     versao: '1.47.131',
     data: '28/07/2026',
@@ -7948,27 +7956,40 @@ function abaPedidoAprovadoSRMHTML(c){
        automática da O.S. (aba Itens) debitava do estoque geral sem nenhuma entrada
        correspondente, deixando saldo negativo/fantasma). faturaDireta continua
        existindo só pra decidir se o item entra ou não no Espelho de Faturamento
-       (a NF de venda pro cliente não é nossa nesse regime). */
+       (a NF de venda pro cliente não é nossa nesse regime).
+       v1.47.132: também liberado pra "Cliente paga diretamente" QUANDO há obra
+       vinculada — "quem paga" (financeiro: Conta a Pagar/Resultado Aparente, ambos
+       continuam gatilhados só por pagamentoResponsavel, sem nenhuma relação com
+       estoqueMov) é uma pergunta diferente de "quem controla o material" (nós,
+       via SRM, mesmo que o cliente pague o fornecedor). Sem obra vinculada continua
+       travado — não existe "estoque geral" de material que não é nosso e não tem
+       destino certo. confirmarLancarEstoque() já é agnóstico a pagamentoResponsavel
+       (só grava obra_id/srm_cotacao_id), não precisou mudar nada lá. Texto do botão
+       fica dinâmico pra deixar claro que material de "cliente paga" nunca vira
+       estoque geral, só reserva da obra. */
     let btnEstoque;
+    const rotuloLancar = c.obraId ? '🏭 Lançar no Estoque da Obra' : '🏭 Lançar no Estoque Geral';
     if(cot.estoqueLancado){
       btnEstoque=`<span style="background:#2e7d32;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:5px">✅ Lançado no Estoque${cot.estoqueLancadoEm?` <span style="font-weight:400;font-size:11px;opacity:.85">em ${fmtDia2(cot.estoqueLancadoEm.slice(0,10))}</span>`:''}</span>`;
-    } else if(c.pagamentoResponsavel!=='empresa'){
-      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Pagamento de responsabilidade do cliente — não entra no estoque da empresa">🏭 Lançar no Estoque</button>`;
+    } else if(c.pagamentoResponsavel!=='empresa' && !c.obraId){
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Pagamento de responsabilidade do cliente e sem obra vinculada — não há onde reservar esse material">🏭 Lançar no Estoque</button>`;
     } else if(!cot.nfItens||!cot.nfItens.length){
-      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Importe o XML da NF antes de lançar no estoque">🏭 Lançar no Estoque</button>`;
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Importe o XML da NF antes de lançar no estoque">${rotuloLancar}</button>`;
     } else {
-      btnEstoque=`<button class="btn primary" onclick="abrirLancarEstoque(${cot.id},${c.id})">🏭 Lançar no Estoque</button>`;
+      const tituloBtn = c.pagamentoResponsavel!=='empresa' ? 'Cliente paga o fornecedor, mas o material fica reservado pra esta obra e a baixa acontece pela O.S. — não gera Conta a Pagar nem entra no Resultado Aparente' : '';
+      btnEstoque=`<button class="btn primary" onclick="abrirLancarEstoque(${cot.id},${c.id})"${tituloBtn?` title="${tituloBtn}"`:''}>${rotuloLancar}</button>`;
     }
 
-    /* Botão "Cadastrar no Catálogo": para compras que NÃO passam pelo estoque
-       (pagas pelo cliente — obra vinculada não entra mais aqui desde v1.47.57,
-       ver comentário acima) — cadastra só a ficha do produto (nome/NCM/unidade)
-       no catálogo de estoque_produtos, sem lançar quantidade nem movimentação.
-       Checagem é por item (não pela cotação inteira): mesmo que a cotação já
-       tenha sido parcialmente lançada no estoque (itens desmarcados no modal
-       "Lançar no Estoque" nunca ganham produto no catálogo), os itens que ainda
-       não batem com nenhum produto existente continuam elegíveis aqui. */
-    const semEstoque = c.pagamentoResponsavel!=='empresa';
+    /* Botão "Cadastrar no Catálogo": para compras que NÃO passam pelo estoque de
+       verdade — cliente paga E sem obra vinculada (v1.47.132: com obra vinculada
+       passou a usar o fluxo normal de "Lançar no Estoque da Obra" acima, então saiu
+       daqui). Cadastra só a ficha do produto (nome/NCM/unidade) no catálogo de
+       estoque_produtos, sem lançar quantidade nem movimentação. Checagem é por item
+       (não pela cotação inteira): mesmo que a cotação já tenha sido parcialmente
+       lançada no estoque (itens desmarcados no modal "Lançar no Estoque" nunca
+       ganham produto no catálogo), os itens que ainda não batem com nenhum produto
+       existente continuam elegíveis aqui. */
+    const semEstoque = c.pagamentoResponsavel!=='empresa' && !c.obraId;
     const itensParaCatalogar = semEstoque ? cot.nfItens.filter(it=>!it.catalogoRevisado && !matchProdutoEstoque(it)) : [];
     const btnCatalogo = itensParaCatalogar.length
       ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
@@ -10930,7 +10951,7 @@ const AJUDA_CONTEUDO = {
         html: `
           <h5>Responsável pelo pagamento</h5>
           <p><b>🏢 Nós pagamos:</b> gera Conta a Pagar normalmente (aba Financeiro), o custo entra no Resultado Aparente da obra.</p>
-          <p><b>👤 Cliente paga diretamente:</b> o dinheiro nunca passa pela empresa — nenhuma Conta a Pagar é criada, o material NÃO entra em estoque (fica só o histórico/ficha do produto), e o valor não conta no Resultado Aparente. Aparece com o selo "💳 Cliente paga direto".</p>
+          <p><b>👤 Cliente paga diretamente:</b> o dinheiro nunca passa pela empresa — nenhuma Conta a Pagar é criada e o valor não conta no Resultado Aparente, mesmo que o item entre em estoque (isso é decidido só por essa flag, não por ter movimentação de estoque ou não). Aparece com o selo "💳 Cliente paga direto". Se o card tem obra vinculada, o material ainda entra em estoque normalmente — reservado só pra essa obra ("Lançar no Estoque da Obra"), pra dar pra rastrear em qual O.S. foi usado; sem obra vinculada, não há onde reservar e o material fica só com a ficha no catálogo (ver "Cadastrar no Catálogo" abaixo).</p>
           <h5>🧾 Fornecedor emite a NF de venda direto ao cliente final</h5>
           <p>Só aparece quando o card tem obra vinculada. Marque quando: nós pagamos o fornecedor normalmente, colocamos o material em estoque e controlamos o uso via O.S. — mas quem fatura a VENDA desse material pro cliente final é o próprio fornecedor, direto, a preço de custo (sem markup nosso). O material entra em estoque e é reservado pra obra normalmente, do mesmo jeito que qualquer outra compra vinculada a obra — a única diferença prática é que os itens desse produto, nessa obra, somem da lista de "disponíveis pra adicionar" no Espelho de Faturamento, porque a NF fiscal deles não é nossa.</p>
           <h5>Concluído / Cancelado</h5>
@@ -10947,12 +10968,13 @@ const AJUDA_CONTEUDO = {
         html: `
           <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois). Itens digitados manualmente podem ser corrigidos depois no botão "✏️ Editar Itens" (some assim que "Lançar no Estoque" já foi confirmado, pra não desincronizar do que já virou movimentação real); itens de XML/PDF são fiéis ao documento fiscal — pra corrigi-los, o caminho é remover e reimportar.</p>
           <h5>Lançar no Estoque</h5>
-          <p>Disponível sempre que a NF já tem itens (XML, PDF ou cadastro manual) e somos nós que pagamos (🏢 empresa) — com ou sem obra vinculada. São 3 situações possíveis:</p>
-          <p><b>1. Sem obra vinculada (compra pro almoxarifado):</b> a entrada fica no estoque geral, disponível pra qualquer obra puxar depois.</p>
-          <p><b>2. Com obra vinculada:</b> a entrada já reserva o saldo pra aquela obra específica — só uma O.S. daquela obra consegue puxar esse material como reservado.</p>
-          <p><b>3. Com obra vinculada e "🧾 Fatura direta" marcado:</b> funciona igual à situação 2 (reserva pra obra normalmente), a única diferença é que esse material fica de fora do Espelho de Faturamento — porque a NF de venda pro cliente não é nossa.</p>
+          <p>Disponível sempre que a NF já tem itens (XML, PDF ou cadastro manual). São 4 situações possíveis (texto do botão muda pra indicar qual):</p>
+          <p><b>1. Empresa paga, sem obra vinculada (compra pro almoxarifado) — "Lançar no Estoque Geral":</b> a entrada fica no estoque geral, disponível pra qualquer obra puxar depois.</p>
+          <p><b>2. Empresa paga, com obra vinculada — "Lançar no Estoque da Obra":</b> a entrada já reserva o saldo pra aquela obra específica — só uma O.S. daquela obra consegue puxar esse material como reservado.</p>
+          <p><b>3. Empresa paga, com obra vinculada e "🧾 Fatura direta" marcado — "Lançar no Estoque da Obra":</b> funciona igual à situação 2 (reserva pra obra normalmente), a única diferença é que esse material fica de fora do Espelho de Faturamento — porque a NF de venda pro cliente não é nossa.</p>
+          <p><b>4. Cliente paga direto, com obra vinculada — "Lançar no Estoque da Obra":</b> mesmo mecanismo da situação 2 (entrada reservada só pra essa obra, rastreável por O.S.), mas continua sem gerar Conta a Pagar e sem entrar no Resultado Aparente, porque "quem paga" e "quem controla o material" são perguntas independentes. Sem obra vinculada, essa opção fica travada — não existe "estoque geral" de material que não é nosso.</p>
           <h5>Cadastrar no Catálogo</h5>
-          <p>Aparece só quando o material NÃO vai passar por estoque de verdade — caso do cliente pagando direto o fornecedor. Cadastra só a ficha do produto (nome/NCM/unidade), sem quantidade nem movimentação, pra ajudar o catálogo a crescer e futuros matches automáticos funcionarem melhor.</p>`
+          <p>Aparece só quando o material NÃO vai passar por estoque de verdade — cliente paga direto E sem obra vinculada. Cadastra só a ficha do produto (nome/NCM/unidade), sem quantidade nem movimentação, pra ajudar o catálogo a crescer e futuros matches automáticos funcionarem melhor.</p>`
       },
       financeiro: {
         titulo: 'Aba Financeiro',
@@ -19263,19 +19285,22 @@ async function removerTecnicoOS(osId, tecId, cardId){
   save(); abrirVerOSExecucao(osId, cardId, 'equipe');
 }
 
-/* v1.47.0: só itens de O.S. de Obra (Execução), categoria produto e que NÃO sejam
-   fornecimento do cliente baixam estoque — e só se já tiverem um produtoEstoqueId
-   casado com o catálogo (ver abrirVincularProdutoEstoque). Sempre que a quantidade
-   muda, estorna tudo que já tinha sido baixado pra esse registro (nunca apaga
-   movimentação, só cria estornos — mesmo princípio de auditoria do resto do app) e
-   refaz do zero com a quantidade nova, pra nunca ficar com saldo dessincronizado. */
+/* v1.47.0: só itens de O.S. de Obra (Execução) e categoria produto baixam estoque —
+   e só se já tiverem um produtoEstoqueId casado com o catálogo (ver
+   abrirVincularProdutoEstoque). Sempre que a quantidade muda, estorna tudo que já
+   tinha sido baixado pra esse registro (nunca apaga movimentação, só cria estornos —
+   mesmo princípio de auditoria do resto do app) e refaz do zero com a quantidade
+   nova, pra nunca ficar com saldo dessincronizado.
+   v1.47.132: removida a exclusão de itens clienteFornece (ver comentário em
+   adicionarItemSit) — o que decide se baixa é só ter produtoEstoqueId vinculado, não
+   quem é responsável pelo pagamento. */
 async function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os.itensTrabalho) os.itensTrabalho=[];
   const todosItens = _itensPropostasAprovadas(cardId);
   const it = todosItens.find(x=>x.propostaId===propostaId && x.idx===idx);
   const existente = os.itensTrabalho.find(m=>m.propostaId===propostaId && m.idx===idx);
-  const elegivelEstoque = os.tipo==='execucao' && it?.categoria==='produto' && !it?.clienteFornece && it?.produtoEstoqueId;
+  const elegivelEstoque = os.tipo==='execucao' && it?.categoria==='produto' && it?.produtoEstoqueId;
 
   if(elegivelEstoque && existente?.estoqueMovIds?.length){
     await estornarEstoque(existente.estoqueMovIds, `Ajuste de alocação — O.S. ${os.numero}`);
@@ -19411,7 +19436,9 @@ function abrirSeletorItensOS(osId, cardId){
         <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
           <div style="flex:1">
             <span style="font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
-            ${cf && os.tipo==='execucao' ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">🚫 não baixa do nosso estoque</div>` : ''}
+            ${cf && os.tipo==='execucao' ? (reg.produtoEstoqueId
+              ? `<div style="font-size:11px;color:#0369a1;margin-top:1px">💳 baixa do estoque reservado da obra (cliente paga)</div>`
+              : `<div style="font-size:11px;color:var(--muted);margin-top:1px">🚫 não baixa do nosso estoque</div>`) : ''}
           </div>
           <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
           <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
@@ -19461,9 +19488,16 @@ async function adicionarItemSit(osId, cardId){
   if(!it){ alert('Item não encontrado.'); return; }
 
   // v1.47.0: item elegível pra baixa de estoque (só O.S. de Obra/Execução, categoria
-  // produto, não-clienteFornece) e ainda sem produto do catálogo casado — pede pra
-  // vincular antes de adicionar de fato.
-  const elegivelEstoque = os.tipo==='execucao' && it.categoria==='produto' && !it.clienteFornece;
+  // produto) e ainda sem produto do catálogo casado — pede pra vincular antes de
+  // adicionar de fato.
+  // v1.47.132: removida a exclusão de itens clienteFornece — "cliente fornece" hoje
+  // cobre tanto material que o cliente traz pronto (nunca passa pelo nosso controle,
+  // não tem produtoEstoqueId pra vincular mesmo) quanto material que o cliente paga
+  // mas nós compramos/gerenciamos via SRM com obra vinculada (esse SIM entra em
+  // estoque reservado da obra, ver abrirEditarSRM). Achar produto quando não é nem
+  // fatura direta continua exigindo vínculo manual, então não muda nada pro primeiro
+  // caso — só libera o segundo.
+  const elegivelEstoque = os.tipo==='execucao' && it.categoria==='produto';
   if(elegivelEstoque && !it.produtoEstoqueId){
     abrirVincularProdutoEstoque(osId, cardId, it.propostaId, it.idx, qtd);
     return;
