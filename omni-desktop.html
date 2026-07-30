@@ -1365,11 +1365,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.144';
+const APP_VERSION = '1.47.145';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.145',
+    data: '30/07/2026',
+    itens: [
+      'Tela "Vincular ao Catálogo de Estoque": removido o aviso discreto "Esse item na verdade é um kit...?" que aparecia em TODO item vinculado, mesmo sem nenhuma evidência de ser kit — virava ruído em item comum. Agora o aviso de kit só aparece quando há evidência real (proposta marca "Kit" no Tipo, ou o SRM já mostra 2+ produtos diferentes comprados pra essa linha).',
+    ]
+  },
   {
     versao: '1.47.144',
     data: '30/07/2026',
@@ -19746,13 +19753,20 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
     marcadoKit ? 'a proposta marca essa linha como "Kit"' : null,
     kitDetectado.length>1 ? `já corresponde a ${kitDetectado.length} produtos diferentes comprados no SRM` : null
   ].filter(Boolean).join(' e ');
+  // v1.47.145: antes, sem NENHUMA evidência de kit (nem tag "Kit" no tipo, nem 2+
+  // produtos correspondidos no SRM), ainda aparecia um linkzinho discreto perguntando
+  // "isso não seria um kit?" em toda tela de vincular — virou ruído repetido em todo
+  // item comum. Removido: agora só mostra aviso quando existe evidência real. A partir
+  // de agora as propostas já sobem com "Kit" marcado na coluna Tipo quando for o caso,
+  // então esse cenário de ambiguidade deve ficar raro (só propostas antigas, anteriores
+  // a esse hábito, ou o caso raro em que nem quem emitiu sabia que viraria kit).
   const avisoKit = kitProvavel
     ? `<div style="background:#fff3e0;border:1.5px solid #f9a825;border-radius:8px;padding:10px 12px">
         <div style="font-size:12px;font-weight:700;color:#e65100;margin-bottom:2px">⚠ Essa linha provavelmente é um kit — ${motivos}</div>
         <div style="font-size:12px;color:#7a4a00;margin-bottom:8px">Vincular a só 1 produto aqui não vai representar o que foi comprado de verdade.</div>
         <a href="#" onclick="event.preventDefault();abrirDividirItemKit(${osId},${cardId},${propostaId},${idx},${qtd})" class="btn primary" style="display:inline-block;text-decoration:none">🔀 Dividir em produtos individuais${kitDetectado.length>1?` (${kitDetectado.length} sugeridos)`:''}</a>
       </div>`
-    : `<div style="font-size:12px"><a href="#" onclick="event.preventDefault();abrirDividirItemKit(${osId},${cardId},${propostaId},${idx},${qtd})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔀 Esse item na verdade é um kit com vários produtos? Dividir aqui</a></div>`;
+    : '';
   abrirModal(`
     <h3>📦 Vincular ao Catálogo de Estoque</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
