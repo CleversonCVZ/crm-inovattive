@@ -1365,11 +1365,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.143';
+const APP_VERSION = '1.47.144';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.144',
+    data: '30/07/2026',
+    itens: [
+      'Correção de divisão de kit: o agrupamento (produto pai + filhos indentados) e o botão ✏️ pra corrigir uma divisão errada agora aparecem também na aba "📦 Itens" — antes só existiam na aba "🏗 Fornecimento do Cliente", então um kit que a Inovattive fornece (não o cliente) ficava sem essa visualização e sem jeito de corrigir pela tela.',
+    ]
+  },
   {
     versao: '1.47.143',
     data: '30/07/2026',
@@ -10983,7 +10990,7 @@ const AJUDA_CONTEUDO = {
           <h5>🔗 Vincular ao Catálogo de Estoque</h5>
           <p>Antes da primeira baixa de um item de produto, o sistema pede pra casar a descrição da proposta com um produto do Catálogo (só é perguntado uma vez por item — depois fica lembrado). Sem esse vínculo não tem como saber o que baixar do estoque.</p>
           <h5>🎁 Kit de materiais</h5>
-          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto só mostra o que já tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Se nenhum produto aparecer no combo, é sinal de que a compra ainda não foi lançada no SRM pra essa obra — resolva lá primeiro, o sistema não mostra o catálogo inteiro como alternativa. Errou algo na hora de dividir? Na aba "🏗 Fornecimento do Cliente" desta mesma tela, kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda.</p>`
+          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto só mostra o que já tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Se nenhum produto aparecer no combo, é sinal de que a compra ainda não foi lançada no SRM pra essa obra — resolva lá primeiro, o sistema não mostra o catálogo inteiro como alternativa. Errou algo na hora de dividir? Kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda. Isso aparece tanto na aba "📦 Itens" (kit que nós fornecemos, dentro dos itens já alocados nesta O.S.) quanto na aba "🏗 Fornecimento do Cliente" (kit que o cliente fornece).</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -19539,7 +19546,7 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
             const kitAindaNaoDividido = !temFilhos && /KIT/i.test(pai.tipo||'');
             const linhaPai = `
             <tr style="${pai._nesta>0?'background:rgba(255,160,0,.15)':''}">
-              <td style="padding:5px 8px;font-weight:600">${temFilhos?'🎁 ':''}${pai.descricao||pai.item}${kitAindaNaoDividido?` <span style="font-size:10px;color:#e65100;font-weight:400">(kit, ainda não dividido)</span>`:''}${temFilhos?` <button class="icon-btn" title="Corrigir divisão desse kit" style="font-size:11px;padding:1px 5px" onclick="abrirEditarDivisaoKit(${osId},${cardId},${pai.propostaId},${pai.idx})">✏️</button>`:''}</td>
+              <td style="padding:5px 8px;font-weight:600">${temFilhos?'🎁 ':''}${pai.descricao||pai.item}${kitAindaNaoDividido?` <span style="font-size:10px;color:#e65100;font-weight:400">(kit, ainda não dividido)</span>`:''}${temFilhos?` <button class="icon-btn" title="Corrigir divisão desse kit" style="font-size:11px;padding:1px 5px" onclick="abrirEditarDivisaoKit(${osId},${cardId},${pai.propostaId},${pai.idx},'cliente')">✏️</button>`:''}</td>
               <td style="text-align:center;padding:5px 8px;color:#555">${pai.qtd||0} ${pai.tipo||'un'}</td>
               <td style="text-align:center;padding:5px 8px;font-weight:700;color:${pai._nesta>0?'#2e7d32':'#bbb'}">${pai._nesta>0?pai._nesta+' '+(pai.tipo||'un'):'—'}</td>
               <td style="text-align:center;padding:5px 8px;color:${pai.saldo>0?'#1976d2':'#bbb'}">${pai.saldo>0?pai.saldo+' '+(pai.tipo||'un'):'—'}</td>
@@ -19579,20 +19586,38 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
 
     <label style="font-weight:700;font-size:13px">Itens alocados nesta O.S.</label>
     <div id="sit-lista" style="margin-top:8px;min-height:40px">
-      ${alocados.length ? alocados.map(reg=>{
-        const itOrig = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
-        const cf = itOrig?.clienteFornece || reg.clienteFornece;
-        return `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
-          <div style="flex:1">
-            <span style="font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
-            ${cf && os.tipo==='execucao' && reg.categoria==='produto' ? (reg.produtoEstoqueId
-              ? `<div style="font-size:11px;color:#0369a1;margin-top:1px">💳 baixa no estoque da obra (cliente paga)</div>`
-              : `<div style="font-size:11px;margin-top:1px"><a href="#" onclick="event.preventDefault();abrirVincularProdutoEstoque(${osId},${cardId},${reg.propostaId},${reg.idx},${reg.qtdOS})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔗 vincular ao catálogo pra baixar do estoque da obra</a></div>`) : ''}
-          </div>
-          <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
-          <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
-        </div>`;}).join('')
+      ${alocados.length ? (()=>{
+        // v1.47.144: agrupa kit+filhos aqui também (não só na aba "Fornecimento do
+        // Cliente") — sem isso, um kit "nós fornecemos" dividido aparecia com os
+        // filhos soltos, sem indicar que pertencem ao mesmo kit, e sem jeito de
+        // reabrir a divisão pra corrigir (o ✏️ só existia na outra aba, que só lista
+        // itens clienteFornece). A lógica de agrupar/corrigir já é genérica por baixo
+        // (kitPaiIdx), só faltava expor aqui também.
+        const _kitJaRenderizado = new Set();
+        return alocados.map(reg=>{
+          const itOrig = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===reg.idx);
+          const cf = itOrig?.clienteFornece || reg.clienteFornece;
+          const kitKey = itOrig?.kitPaiIdx!=null ? reg.propostaId+'_'+itOrig.kitPaiIdx : null;
+          let header = '';
+          if(kitKey && !_kitJaRenderizado.has(kitKey)){
+            _kitJaRenderizado.add(kitKey);
+            const pai = todosItens.find(x=>x.propostaId===reg.propostaId && x.idx===itOrig.kitPaiIdx);
+            header = `<div style="padding:8px 0 2px;font-size:13px;font-weight:700;color:#555">🎁 ${escHtml(pai?.descricao||pai?.item||'Kit')} <button class="icon-btn" title="Corrigir divisão desse kit" style="font-size:11px;padding:1px 5px" onclick="abrirEditarDivisaoKit(${osId},${cardId},${reg.propostaId},${itOrig.kitPaiIdx},'itens')">✏️</button></div>`;
+          }
+          return header + `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);${kitKey?'margin-left:18px;':''}${cf?'background:#fff8e1;padding-left:6px;border-radius:4px':''}">
+            ${kitKey?'<span style="color:#999;font-size:12px">↳</span>':''}
+            <div style="flex:1">
+              <span style="font-size:13px;font-weight:600">${reg._desc}${cf?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px">CLIENTE FORNECE</span>`:''}</span>
+              ${cf && os.tipo==='execucao' && reg.categoria==='produto' ? (reg.produtoEstoqueId
+                ? `<div style="font-size:11px;color:#0369a1;margin-top:1px">💳 baixa no estoque da obra (cliente paga)</div>`
+                : `<div style="font-size:11px;margin-top:1px"><a href="#" onclick="event.preventDefault();abrirVincularProdutoEstoque(${osId},${cardId},${reg.propostaId},${reg.idx},${reg.qtdOS})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔗 vincular ao catálogo pra baixar do estoque da obra</a></div>`) : ''}
+            </div>
+            <span style="font-size:14px;font-weight:700;color:#26a69a;white-space:nowrap">${reg.qtdOS} ${reg._tipo}</span>
+            <button class="icon-btn del" title="Remover" onclick="removerItemSit(${osId},'${reg.propostaId}_${reg.idx}',${reg.propostaId},${reg.idx},${cardId})">✖</button>
+          </div>`;
+        }).join('');
+      })()
       : `<div style="font-size:13px;color:var(--muted);padding:8px 0">Nenhum item adicionado ainda.</div>`}
     </div>`;
 
@@ -19997,14 +20022,17 @@ function _qtdAlocadaEmOSKit(propostaId, idx){
   }, 0);
 }
 
-function abrirEditarDivisaoKit(osId, cardId, propostaId, idxOriginal){
+function abrirEditarDivisaoKit(osId, cardId, propostaId, idxOriginal, aba='cliente'){
   const p = db.propostas.find(x=>x.id===propostaId);
   const itOriginal = p?.itens?.[idxOriginal];
   if(!itOriginal){ alert('Item não encontrado.'); return; }
   const card = (db.cards||[]).find(c=>c.id===cardId);
   const filhos = p.itens.map((it,i)=>({...it,_idx:i})).filter(it=>it.kitPaiIdx===idxOriginal);
   if(!filhos.length){ alert('Essa linha ainda não foi dividida em produtos individuais.'); return; }
-  _editarKitCtx = {osId, cardId, propostaId, idxOriginal, obraId: card?.obraId||null, descricaoOriginal: itOriginal.descricao||itOriginal.item||''};
+  // v1.47.144: guarda de qual aba veio (itens/cliente) pra voltar pro lugar certo —
+  // antes sempre voltava pra "cliente", que fica sem sentido quando o kit corrigido
+  // é "nós fornecemos" (não aparece naquela aba).
+  _editarKitCtx = {osId, cardId, propostaId, idxOriginal, obraId: card?.obraId||null, descricaoOriginal: itOriginal.descricao||itOriginal.item||'', aba};
   _editarKitLinhas = filhos.map(f=>({
     _origIdx: f._idx, produtoId: f.produtoEstoqueId||null, qtd: f.qtd, valor: f.total,
     jaAlocado: _qtdAlocadaEmOSKit(propostaId, f._idx)
@@ -20067,7 +20095,7 @@ function _renderEditarDivisaoKitModal(){
       <div id="edk-soma" style="font-size:12px;color:var(--muted)">Soma das linhas: ${fmtMoney(somaLinhas)}</div>
     </div>
     <div class="actions rodape-cartao">
-      <button class="btn neutral" onclick="_editarKitCtx=null;_editarKitLinhas=[];abrirSeletorItensOS(${ctx.osId},${ctx.cardId},'cliente')">← Cancelar</button>
+      <button class="btn neutral" onclick="_editarKitCtx=null;_editarKitLinhas=[];abrirSeletorItensOS(${ctx.osId},${ctx.cardId},'${ctx.aba||'cliente'}')">← Cancelar</button>
       <button class="btn primary" data-btn-salvar onclick="confirmarEditarDivisaoKit()">Salvar Correção</button>
     </div>`, 'cartao');
 }
@@ -20149,10 +20177,10 @@ async function confirmarEditarDivisaoKit(){
   registrarLog('editar','proposta',ctx.propostaId,`Divisão do kit "${ctx.descricaoOriginal}" corrigida manualmente pela tela.`);
   save();
 
-  const {osId, cardId} = ctx;
+  const {osId, cardId, aba} = ctx;
   _editarKitCtx = null; _editarKitLinhas = [];
   fecharModal();
-  abrirSeletorItensOS(osId, cardId, 'cliente');
+  abrirSeletorItensOS(osId, cardId, aba||'cliente');
 }
 
 /* id da entrada de diário atualmente em edição (null = nenhuma) — ids do os_diario são
