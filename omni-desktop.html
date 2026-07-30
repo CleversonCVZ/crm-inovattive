@@ -1360,11 +1360,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.135';
+const APP_VERSION = '1.47.137';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.137',
+    data: '30/07/2026',
+    itens: [
+      'Kit de materiais na proposta: agora a coluna "Tipo" do Excel de importação aceita "Kit" além de Produto/Serviço — quando marcada, o item ganha um selo "🎁 KIT" na lista de Itens Contratados da proposta, e na tela de Itens da O.S. o aviso de "provável kit" (com o atalho pra dividir em produtos individuais) aparece direto, sem precisar esperar a correspondência do SRM. 7 itens de propostas antigas com "kit de materiais" na descrição já foram marcados retroativamente.',
+    ]
+  },
+  {
+    versao: '1.47.136',
+    data: '30/07/2026',
+    itens: [
+      'Vincular ao Catálogo de Estoque: como não existe uma marcação de "isso é um kit" na proposta (é só texto livre), o link "🔀 Dividir em produtos individuais" (v1.47.135) continua aparecendo sempre como opção — mas agora, quando a correspondência do SRM já revela que aquela linha corresponde a 2 ou mais produtos diferentes já comprados, aparece um aviso destacado sugerindo a divisão em vez do link discreto, deixando bem mais visível quando realmente é o caso.',
+    ]
+  },
   {
     versao: '1.47.135',
     data: '30/07/2026',
@@ -5518,7 +5532,7 @@ function itensContratadosHTML(p, podeEditar=true){
         <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th><th title="Fornecimento de terceiros — cliente providencia">🏗 Cliente</th></tr></thead>
         <tbody>${p.itens.map((i,idx)=>`
           <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}" style="${i.clienteFornece?'background:#fff8e1':''}">
-            <td>${i.item}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}</td>
+            <td>${i.item}${/KIT/i.test(i.tipo||'')?` <span title="Esse item representa um kit de vários produtos — ao dar baixa numa O.S. use 'Dividir em produtos individuais'" style="font-size:10px;background:#e65100;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">🎁 KIT</span>`:''}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}</td>
             <td>${i.qtd==null?'':i.qtd}</td>
             <td>${i.unit==null?'':fmtMoney(i.unit)}</td><td>${i.total==null?'':fmtMoney(i.total)}</td>
             <td>${i.tipo}</td>
@@ -19587,6 +19601,27 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
   if(!it){ alert('Item não encontrado.'); return; }
   const sugestao = matchProdutoEstoquePorNome(it.descricao||it.item);
   const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  // v1.47.136: não há flag dedicada "isso é um kit", mas há 2 sinais possíveis —
+  // v1.47.137: o campo `tipo` da proposta (coluna "Tipo" na importação de Excel)
+  // já é um sinal explícito quando o próprio Cleverson escreve "Kit" ali (disponível
+  // desde a emissão da proposta, antes até de comprar) — e a correspondência do SRM
+  // continua sendo o sinal indireto (só existe depois da compra revisada). Qualquer
+  // um dos dois já basta pra destacar o aviso; sem nenhum dos dois, o link discreto
+  // continua disponível, porque nesse caso o sistema realmente não tem como saber. */
+  const marcadoKit = /KIT/i.test(it.tipo||'');
+  const kitDetectado = _detectarProdutosKit(cardId, propostaId, it);
+  const kitProvavel = marcadoKit || kitDetectado.length>1;
+  const motivos = [
+    marcadoKit ? 'a proposta marca essa linha como "Kit"' : null,
+    kitDetectado.length>1 ? `já corresponde a ${kitDetectado.length} produtos diferentes comprados no SRM` : null
+  ].filter(Boolean).join(' e ');
+  const avisoKit = kitProvavel
+    ? `<div style="background:#fff3e0;border:1.5px solid #f9a825;border-radius:8px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:700;color:#e65100;margin-bottom:2px">⚠ Essa linha provavelmente é um kit — ${motivos}</div>
+        <div style="font-size:12px;color:#7a4a00;margin-bottom:8px">Vincular a só 1 produto aqui não vai representar o que foi comprado de verdade.</div>
+        <a href="#" onclick="event.preventDefault();abrirDividirItemKit(${osId},${cardId},${propostaId},${idx},${qtd})" class="btn primary" style="display:inline-block;text-decoration:none">🔀 Dividir em produtos individuais${kitDetectado.length>1?` (${kitDetectado.length} sugeridos)`:''}</a>
+      </div>`
+    : `<div style="font-size:12px"><a href="#" onclick="event.preventDefault();abrirDividirItemKit(${osId},${cardId},${propostaId},${idx},${qtd})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔀 Esse item na verdade é um kit com vários produtos? Dividir aqui</a></div>`;
   abrirModal(`
     <h3>📦 Vincular ao Catálogo de Estoque</h3>
     <div class="aba-corpo" style="display:grid;gap:12px">
@@ -19595,6 +19630,7 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
         <div style="font-weight:600">${escHtml(it.descricao||it.item)}</div>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:0">Esse item baixa do estoque quando alocado numa O.S. de Obra. Confirme a qual produto do catálogo ele corresponde — só é perguntado uma vez por item de proposta.</p>
+      ${avisoKit}
       ${produtos.length ? `
       <div>
         <label>Produto do catálogo *</label>
@@ -19603,7 +19639,6 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
           ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
         </select>
       </div>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">Nenhum produto cadastrado no catálogo ainda. Cadastre em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui pra vincular.</div>`}
-      <div style="font-size:12px"><a href="#" onclick="event.preventDefault();abrirDividirItemKit(${osId},${cardId},${propostaId},${idx},${qtd})" style="color:#e65100;font-weight:600;text-decoration:underline;cursor:pointer">🔀 Esse item na verdade é um kit com vários produtos? Dividir aqui</a></div>
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="abrirSeletorItensOS(${osId},${cardId})">← Cancelar</button>
@@ -19678,11 +19713,7 @@ function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
   const p = db.propostas.find(x=>x.id===propostaId);
   const it = p?.itens?.[idx];
   if(!it){ alert('Item não encontrado.'); return; }
-  {
-  }
-  const linhas = Object.entries(sugeridos).map(([produtoId,v])=>({
-    produtoId:+produtoId, qtd:v.qtd, valor:Math.round(v.valor*100)/100
-  }));
+  const linhas = _detectarProdutosKit(cardId, propostaId, it);
   if(!linhas.length) linhas.push({produtoId:null, qtd:null, valor:null});
 
   _dividirKitCtx = {osId, cardId, propostaId, idx, qtd, totalOriginal: it.total||0, descricaoOriginal: it.descricao||it.item||''};
