@@ -1360,11 +1360,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.141';
+const APP_VERSION = '1.47.142';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.142',
+    data: '30/07/2026',
+    itens: [
+      'Corrigir divisão de kit: se a quantidade/valor/produto de uma linha resultante de "Dividir em Produtos Individuais" saiu errada, agora dá pra corrigir direto pela tela — na aba "🏗 Fornecimento do Cliente" (Itens da O.S.), kits já divididos aparecem agrupados (produto pai + filhos indentados abaixo) com um ✏️ que reabre a divisão pra edição. Linha que já tem baixa de estoque numa O.S. fica travada (produto fixo, quantidade não pode cair abaixo do já alocado) — antes só dava pra corrigir pedindo ajuda direto no banco.',
+      'Combo "Produto do catálogo" (ao dividir ou corrigir um kit) agora prioriza produtos com saldo de estoque naquela obra, em vez de listar o catálogo inteiro sem critério — reduz o risco de escolher o produto errado. Se nenhum produto tiver saldo ainda (obra sem compra lançada), cai pro catálogo completo.',
+    ]
+  },
   {
     versao: '1.47.141',
     data: '30/07/2026',
@@ -3788,7 +3796,8 @@ async function carregarDadosSupabase(){
             item:it.item||'', descricao:it.descricao||'', qtd:Number(it.qtd)||0,
             unit:Number(it.unit)||0, total:Number(it.total)||0, tipo:it.tipo||'', categoria:it.categoria||'',
             clienteFornece: !!it.cliente_fornece,
-            produtoEstoqueId: it.produto_estoque_id!=null ? Number(it.produto_estoque_id) : null
+            produtoEstoqueId: it.produto_estoque_id!=null ? Number(it.produto_estoque_id) : null,
+            kitPaiIdx: it.kit_pai_idx!=null ? Number(it.kit_pai_idx) : null
           });
         });
       }
@@ -4340,7 +4349,8 @@ async function sincronizarItensProposta(propostaId){
       proposta_id:propostaId, item:it.item||'', descricao:it.descricao||'', qtd:it.qtd||0,
       unit:it.unit||0, total:it.total||0, tipo:it.tipo||'', categoria:it.categoria||'',
       cliente_fornece: !!it.clienteFornece,
-      produto_estoque_id: it.produtoEstoqueId||null
+      produto_estoque_id: it.produtoEstoqueId||null,
+      kit_pai_idx: it.kitPaiIdx??null
     }));
     if(rows.length){
       const {error:errIns} = await sb.from('proposta_itens').insert(rows);
@@ -10959,7 +10969,7 @@ const AJUDA_CONTEUDO = {
           <h5>🔗 Vincular ao Catálogo de Estoque</h5>
           <p>Antes da primeira baixa de um item de produto, o sistema pede pra casar a descrição da proposta com um produto do Catálogo (só é perguntado uma vez por item — depois fica lembrado). Sem esse vínculo não tem como saber o que baixar do estoque.</p>
           <h5>🎁 Kit de materiais</h5>
-          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o sistema já sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível.</p>`
+          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto já filtra só o que tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Errou algo na hora de dividir? Na aba "🏗 Fornecimento do Cliente" desta mesma tela, kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda.</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -19470,6 +19480,28 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
     return {...it, _nesta: nesta, saldo};
   });
 
+  // v1.47.142: agrupa kit + filhos (via kitPaiIdx) em sequência, filho logo depois do
+  // pai — antes a divisão espalhava os filhos no fim da lista (ordem de inserção no
+  // array), longe do kit que os originou, dificultando enxergar a relação entre eles.
+  const itensClienteAgrupados = [];
+  const _jaAgrupado = new Set();
+  itensCliente.forEach(it=>{
+    const key = it.propostaId+'_'+it.idx;
+    if(_jaAgrupado.has(key) || it.kitPaiIdx!=null) return; // filhos entram junto do pai, abaixo
+    const filhos = itensCliente.filter(f=>f.kitPaiIdx===it.idx && f.propostaId===it.propostaId);
+    filhos.forEach(f=>_jaAgrupado.add(f.propostaId+'_'+f.idx));
+    _jaAgrupado.add(key);
+    itensClienteAgrupados.push({pai: it, filhos});
+  });
+  // segurança: filho cujo pai por algum motivo não está nessa aba (não deveria
+  // acontecer, já que clienteFornece é herdado do pai) — trata como item solto.
+  itensCliente.forEach(it=>{
+    const key = it.propostaId+'_'+it.idx;
+    if(_jaAgrupado.has(key)) return;
+    _jaAgrupado.add(key);
+    itensClienteAgrupados.push({pai: it, filhos: []});
+  });
+
   // v1.47.141: painéis divididos em 2 abas (antes ficavam empilhados na mesma tela,
   // exigindo rolar bastante em O.S. com muitos itens) — comportamento idêntico ao de
   // antes, só reorganizado visualmente.
@@ -19488,13 +19520,25 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
           </tr>
         </thead>
         <tbody>
-          ${itensCliente.map(it=>`
-          <tr style="${it._nesta>0?'background:rgba(255,160,0,.15)':''}">
-            <td style="padding:5px 8px;font-weight:600">${it.descricao||it.item}</td>
-            <td style="text-align:center;padding:5px 8px;color:#555">${it.qtd||0} ${it.tipo||'un'}</td>
-            <td style="text-align:center;padding:5px 8px;font-weight:700;color:${it._nesta>0?'#2e7d32':'#bbb'}">${it._nesta>0?it._nesta+' '+(it.tipo||'un'):'—'}</td>
-            <td style="text-align:center;padding:5px 8px;color:${it.saldo>0?'#1976d2':'#bbb'}">${it.saldo>0?it.saldo+' '+(it.tipo||'un'):'—'}</td>
-          </tr>`).join('')}
+          ${itensClienteAgrupados.map(({pai,filhos})=>{
+            const temFilhos = filhos.length>0;
+            const kitAindaNaoDividido = !temFilhos && /KIT/i.test(pai.tipo||'');
+            const linhaPai = `
+            <tr style="${pai._nesta>0?'background:rgba(255,160,0,.15)':''}">
+              <td style="padding:5px 8px;font-weight:600">${temFilhos?'🎁 ':''}${pai.descricao||pai.item}${kitAindaNaoDividido?` <span style="font-size:10px;color:#e65100;font-weight:400">(kit, ainda não dividido)</span>`:''}${temFilhos?` <button class="icon-btn" title="Corrigir divisão desse kit" style="font-size:11px;padding:1px 5px" onclick="abrirEditarDivisaoKit(${osId},${cardId},${pai.propostaId},${pai.idx})">✏️</button>`:''}</td>
+              <td style="text-align:center;padding:5px 8px;color:#555">${pai.qtd||0} ${pai.tipo||'un'}</td>
+              <td style="text-align:center;padding:5px 8px;font-weight:700;color:${pai._nesta>0?'#2e7d32':'#bbb'}">${pai._nesta>0?pai._nesta+' '+(pai.tipo||'un'):'—'}</td>
+              <td style="text-align:center;padding:5px 8px;color:${pai.saldo>0?'#1976d2':'#bbb'}">${pai.saldo>0?pai.saldo+' '+(pai.tipo||'un'):'—'}</td>
+            </tr>`;
+            const linhasFilhos = filhos.map(f=>`
+            <tr style="${f._nesta>0?'background:rgba(255,160,0,.15)':'background:#fffdf6'}">
+              <td style="padding:5px 8px 5px 26px;color:#555">↳ ${f.descricao||f.item}</td>
+              <td style="text-align:center;padding:5px 8px;color:#555">${f.qtd||0} ${f.tipo||'un'}</td>
+              <td style="text-align:center;padding:5px 8px;font-weight:700;color:${f._nesta>0?'#2e7d32':'#bbb'}">${f._nesta>0?f._nesta+' '+(f.tipo||'un'):'—'}</td>
+              <td style="text-align:center;padding:5px 8px;color:${f.saldo>0?'#1976d2':'#bbb'}">${f.saldo>0?f.saldo+' '+(f.tipo||'un'):'—'}</td>
+            </tr>`).join('');
+            return linhaPai + linhasFilhos;
+          }).join('')}
         </tbody>
       </table>` : `<div class="empty" style="padding:24px 0">Nenhum item de fornecimento do cliente nesta proposta.</div>`;
 
@@ -19756,14 +19800,33 @@ function _detectarProdutosKit(cardId, propostaId, it){
   }));
 }
 
+/** v1.47.142: catálogo pra escolha manual de produto (na divisão de kit e na edição
+ *  de uma divisão já feita) — em vez de listar TODO o catálogo sem critério, prioriza
+ *  o que já tem saldo de estoque nessa obra (reservado dela + estoque geral), porque
+ *  é isso que realisticamente pode ter sido comprado/corresponded pra ela. Se nada
+ *  tiver saldo (obra sem nenhuma compra lançada ainda), cai pro catálogo completo —
+ *  senão o combo ficaria vazio e travaria quem ainda não comprou nada. */
+function _produtosComSaldoObra(obraId){
+  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).map(p=>({
+    ...p,
+    _saldoObra: obraId ? saldoProdutoObra(p.id, obraId) : 0,
+    _saldoGeral: saldoProdutoObra(p.id, null)
+  }));
+  const comSaldo = produtos.filter(p=>(p._saldoObra + p._saldoGeral) > 0.0001)
+    .sort((a,b)=>b._saldoObra-a._saldoObra || a.nome.localeCompare(b.nome,'pt-BR'));
+  if(comSaldo.length) return {lista: comSaldo, restrito: true};
+  return {lista: produtos.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')), restrito: false};
+}
+
 function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
   const p = db.propostas.find(x=>x.id===propostaId);
   const it = p?.itens?.[idx];
   if(!it){ alert('Item não encontrado.'); return; }
+  const card = (db.cards||[]).find(c=>c.id===cardId);
   const linhas = _detectarProdutosKit(cardId, propostaId, it);
   if(!linhas.length) linhas.push({produtoId:null, qtd:null, valor:null});
 
-  _dividirKitCtx = {osId, cardId, propostaId, idx, qtd, totalOriginal: it.total||0, descricaoOriginal: it.descricao||it.item||''};
+  _dividirKitCtx = {osId, cardId, propostaId, idx, qtd, obraId: card?.obraId||null, totalOriginal: it.total||0, descricaoOriginal: it.descricao||it.item||''};
   _dividirKitLinhas = linhas;
   _renderDividirKitModal();
 }
@@ -19771,17 +19834,21 @@ function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
 function _renderDividirKitModal(){
   const ctx = _dividirKitCtx;
   if(!ctx) return;
-  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const {lista: produtos, restrito} = _produtosComSaldoObra(ctx.obraId);
   const somaLinhas = _dividirKitLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
   const bateTotal = Math.abs(somaLinhas - (ctx.totalOriginal||0)) < 0.01;
   const temSugestao = _dividirKitLinhas.some(l=>l.produtoId);
+  const optLabel = pr => {
+    const saldo = (pr._saldoObra||0) + (pr._saldoGeral||0);
+    return restrito ? `${escHtml(pr.nome)} (saldo: ${fmtNum(saldo)})` : escHtml(pr.nome);
+  };
   const linhasHTML = _dividirKitLinhas.map((l,i)=>`
     <div style="display:grid;grid-template-columns:1fr 90px 120px 32px;gap:6px;align-items:end;margin-bottom:8px">
       <div>
         ${i===0?'<label>Produto do catálogo</label>':''}
         <select onchange="_dividirKitAtualizarLinha(${i},'produtoId',this.value?+this.value:null)">
           <option value="">— Selecione —</option>
-          ${produtos.map(pr=>`<option value="${pr.id}" ${l.produtoId===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
+          ${produtos.map(pr=>`<option value="${pr.id}" ${l.produtoId===pr.id?'selected':''}>${optLabel(pr)}</option>`).join('')}
         </select>
       </div>
       <div>
@@ -19804,6 +19871,7 @@ function _renderDividirKitModal(){
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Total contratado: ${fmtMoney(ctx.totalOriginal)}</div>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:0">Cada linha abaixo vira um item novo da proposta, já vinculado ao produto do catálogo — a linha original é zerada (não apagada, pra manter os outros itens no lugar). ${temSugestao ? 'Já sugeri os produtos com base nas compras já correspondidas no SRM pra essa linha — confira e ajuste se precisar.' : 'Não achei nenhuma compra do SRM correspondida a essa linha ainda — preencha manualmente.'}</p>
+      ${restrito ? `<div style="font-size:11px;color:var(--muted)">📦 O combo abaixo já filtra só produtos com saldo de estoque nessa obra (reservado dela + estoque geral) — reduz o risco de escolher o produto errado. Não achou o que precisa? Pode ser que ainda não tenha sido comprado/lançado no estoque.</div>` : `<div style="font-size:11px;color:#e65100">⚠ Nenhum produto do catálogo tem saldo de estoque pra essa obra ainda — mostrando o catálogo completo.</div>`}
       <div>${linhasHTML}</div>
       <button class="btn" style="width:fit-content" onclick="_dividirKitAddLinha()">＋ Adicionar produto</button>
       <div id="dvk-soma" style="font-size:12px;${bateTotal?'color:#2e7d32':'color:#e65100'}">Soma das linhas: ${fmtMoney(somaLinhas)} ${bateTotal?'✓ bate com o total original':'— diferente do total original, pode ajustar os valores acima'}</div>
@@ -19879,7 +19947,9 @@ async function confirmarDividirItemKit(){
       qtd, unit: qtd?Math.round((valor/qtd)*10000)/10000:0, total: valor,
       tipo: tipoFilho, categoria: categoriaOriginal||'produto',
       clienteFornece: !!clienteForneceOriginal,
-      produtoEstoqueId: l.produtoId
+      produtoEstoqueId: l.produtoId,
+      kitPaiIdx: ctx.idx // v1.47.142: liga o filho de volta à linha original do kit —
+                          // usado pra agrupar/indentar na tela e pra reabrir edição depois
     });
   });
 
@@ -19891,6 +19961,174 @@ async function confirmarDividirItemKit(){
   _dividirKitCtx = null; _dividirKitLinhas = [];
   fecharModal();
   abrirSeletorItensOS(osId, cardId);
+}
+
+/* ---- v1.47.142: corrigir uma divisão de kit já feita ----
+   Reabre a mesma UI da divisão, mas pré-preenchida com os filhos REAIS que já existem
+   (achados via kitPaiIdx, não uma nova sugestão do SRM) — evita duplicar linhas. Cada
+   linha que já tem baixa de estoque em alguma O.S. fica travada (produto fixo, Qtd não
+   pode cair abaixo do já alocado), pelo mesmo motivo da trava equivalente que existia
+   no botão de edição genérica removido — aqui é seguro porque o escopo é só as linhas
+   de UM kit específico, não a proposta inteira. */
+let _editarKitCtx = null;    // {osId, cardId, propostaId, idxOriginal, obraId, descricaoOriginal}
+let _editarKitLinhas = [];   // [{_origIdx, produtoId, qtd, valor, jaAlocado}]
+
+function _qtdAlocadaEmOSKit(propostaId, idx){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  if(!p) return 0;
+  return (db.ordensServico||[]).filter(o=>o.cardId===p.cardId).reduce((s,o)=>{
+    const reg = (o.itensTrabalho||[]).find(m=>m.propostaId===propostaId && m.idx===idx);
+    return s + (reg?.qtdOS||0);
+  }, 0);
+}
+
+function abrirEditarDivisaoKit(osId, cardId, propostaId, idxOriginal){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const itOriginal = p?.itens?.[idxOriginal];
+  if(!itOriginal){ alert('Item não encontrado.'); return; }
+  const card = (db.cards||[]).find(c=>c.id===cardId);
+  const filhos = p.itens.map((it,i)=>({...it,_idx:i})).filter(it=>it.kitPaiIdx===idxOriginal);
+  if(!filhos.length){ alert('Essa linha ainda não foi dividida em produtos individuais.'); return; }
+  _editarKitCtx = {osId, cardId, propostaId, idxOriginal, obraId: card?.obraId||null, descricaoOriginal: itOriginal.descricao||itOriginal.item||''};
+  _editarKitLinhas = filhos.map(f=>({
+    _origIdx: f._idx, produtoId: f.produtoEstoqueId||null, qtd: f.qtd, valor: f.total,
+    jaAlocado: _qtdAlocadaEmOSKit(propostaId, f._idx)
+  }));
+  _renderEditarDivisaoKitModal();
+}
+
+function _renderEditarDivisaoKitModal(){
+  const ctx = _editarKitCtx;
+  if(!ctx) return;
+  const {lista: produtos, restrito} = _produtosComSaldoObra(ctx.obraId);
+  const somaLinhas = _editarKitLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
+  const linhasHTML = _editarKitLinhas.map((l,i)=>{
+    const travado = l.jaAlocado>0;
+    const prodAtual = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
+    return `
+    <div style="display:grid;grid-template-columns:1fr 90px 120px 32px;gap:6px;align-items:end;margin-bottom:8px">
+      <div>
+        ${i===0?'<label>Produto do catálogo</label>':''}
+        ${travado
+          ? `<div style="font-size:13px;padding:6px 0">${prodAtual?escHtml(prodAtual.nome):'—'}</div><div style="font-size:10px;color:var(--muted)">🔒 travado — já tem baixa de estoque</div>`
+          : `<select onchange="_editarKitAtualizarLinha(${i},'produtoId',this.value?+this.value:null)">
+              <option value="">— Selecione —</option>
+              ${produtos.map(pr=>`<option value="${pr.id}" ${l.produtoId===pr.id?'selected':''}>${escHtml(pr.nome)}${restrito?` (saldo: ${fmtNum((pr._saldoObra||0)+(pr._saldoGeral||0))})`:''}</option>`).join('')}
+            </select>`}
+      </div>
+      <div>
+        ${i===0?'<label>Qtd</label>':''}
+        <input type="number" step="0.001" min="${l.jaAlocado||0}" value="${l.qtd??''}" onchange="_editarKitAtualizarLinha(${i},'qtd',this.value)">
+        ${travado?`<div style="font-size:10px;color:#e65100">mín. ${fmtNum(l.jaAlocado)}</div>`:''}
+      </div>
+      <div>
+        ${i===0?'<label>Valor total (R$)</label>':''}
+        <input type="number" step="0.01" min="0" value="${l.valor??''}" onchange="_editarKitAtualizarLinha(${i},'valor',this.value)">
+      </div>
+      ${travado ? `<span title="Não dá pra remover — já tem baixa de estoque" style="text-align:center;color:#bbb">🔒</span>` : `<button class="icon-btn del" title="Remover" style="margin-bottom:1px" onclick="_editarKitRemoverLinha(${i})">✖</button>`}
+    </div>`;
+  }).join('');
+
+  abrirModal(`
+    <h3>✏️ Corrigir Divisão do Kit</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:12px;color:var(--muted)">Item original do kit</div>
+        <div style="font-weight:600">${escHtml(ctx.descricaoOriginal)}</div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0">Ajuste quantidade, valor ou produto de cada linha resultante da divisão. Linhas que já têm baixa de estoque numa O.S. ficam travadas — pra soltar, remova a alocação na O.S. primeiro.</p>
+      ${restrito ? `<div style="font-size:11px;color:var(--muted)">📦 Combo filtrado só com produtos com saldo de estoque nessa obra.</div>` : ''}
+      <div>${linhasHTML}</div>
+      <button class="btn" style="width:fit-content" onclick="_editarKitAddLinha()">＋ Adicionar produto</button>
+      <div id="edk-soma" style="font-size:12px;color:var(--muted)">Soma das linhas: ${fmtMoney(somaLinhas)}</div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="_editarKitCtx=null;_editarKitLinhas=[];abrirSeletorItensOS(${ctx.osId},${ctx.cardId},'cliente')">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarEditarDivisaoKit()">Salvar Correção</button>
+    </div>`, 'cartao');
+}
+
+function _editarKitAtualizarLinha(i, campo, valor){
+  const l = _editarKitLinhas[i];
+  if(!l) return;
+  if(campo==='qtd' && Number(valor) < (l.jaAlocado||0)) valor = l.jaAlocado;
+  l[campo] = valor;
+  const somaEl = document.getElementById('edk-soma');
+  if(somaEl){
+    const soma = _editarKitLinhas.reduce((s,x)=>s+(Number(x.valor)||0),0);
+    somaEl.textContent = `Soma das linhas: ${fmtMoney(soma)}`;
+  }
+}
+
+function _editarKitAddLinha(){
+  _editarKitLinhas.push({_origIdx:null, produtoId:null, qtd:null, valor:null, jaAlocado:0});
+  _renderEditarDivisaoKitModal();
+}
+
+function _editarKitRemoverLinha(i){
+  const l = _editarKitLinhas[i];
+  if(!l) return;
+  if(l.jaAlocado>0){ alert('Não dá pra remover — essa linha já tem baixa de estoque em alguma O.S. Remova a alocação lá primeiro.'); return; }
+  _editarKitLinhas.splice(i,1);
+  _renderEditarDivisaoKitModal();
+}
+
+async function confirmarEditarDivisaoKit(){
+  const ctx = _editarKitCtx;
+  if(!ctx) return;
+  const p = db.propostas.find(x=>x.id===ctx.propostaId);
+  if(!p) return;
+  const linhasValidas = _editarKitLinhas.filter(l=>l.produtoId && Number(l.qtd)>0);
+  if(!linhasValidas.length){ alert('Mantenha pelo menos um produto com quantidade.'); return; }
+  for(const l of linhasValidas){
+    if(l.jaAlocado>0 && Number(l.qtd) < l.jaAlocado){
+      alert(`Uma das linhas não pode ficar com Qtd menor que ${l.jaAlocado} — já alocado em O.S. Remova a alocação lá primeiro.`);
+      return;
+    }
+  }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  const idxOriginaisAntes = p.itens.map((it,i)=>it.kitPaiIdx===ctx.idxOriginal?i:null).filter(i=>i!=null);
+  const idxsMantidos = new Set(linhasValidas.filter(l=>l._origIdx!=null).map(l=>l._origIdx));
+
+  // atualiza em vez de recriar as linhas que já existiam
+  linhasValidas.filter(l=>l._origIdx!=null).forEach(l=>{
+    const item = p.itens[l._origIdx];
+    if(!item) return;
+    const qtd = Number(l.qtd)||0, valor = Number(l.valor)||0;
+    const prod = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
+    item.produtoEstoqueId = l.produtoId;
+    item.qtd = qtd; item.total = valor; item.unit = qtd?Math.round((valor/qtd)*10000)/10000:0;
+    if(prod){ item.item = prod.nome; item.descricao = prod.nome; }
+  });
+
+  // linhas novas adicionadas na correção — vão pro final, ligadas ao mesmo kit pai
+  const clienteForneceOriginal = !!(p.itens[ctx.idxOriginal]?.clienteFornece);
+  linhasValidas.filter(l=>l._origIdx==null).forEach(l=>{
+    const qtd = Number(l.qtd)||0, valor = Number(l.valor)||0;
+    const prod = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
+    p.itens.push({
+      item: prod?.nome||'Item', descricao: prod?.nome||ctx.descricaoOriginal,
+      qtd, unit: qtd?Math.round((valor/qtd)*10000)/10000:0, total: valor,
+      tipo:'Produto', categoria:'produto', clienteFornece: clienteForneceOriginal,
+      produtoEstoqueId: l.produtoId, kitPaiIdx: ctx.idxOriginal
+    });
+  });
+
+  // linhas antigas que sumiram da edição (removidas) — zera; só chega aqui se jaAlocado era 0
+  idxOriginaisAntes.filter(i=>!idxsMantidos.has(i)).forEach(i=>{
+    p.itens[i].qtd = 0; p.itens[i].unit = 0; p.itens[i].total = 0;
+  });
+
+  await sincronizarItensProposta(ctx.propostaId);
+  registrarLog('editar','proposta',ctx.propostaId,`Divisão do kit "${ctx.descricaoOriginal}" corrigida manualmente pela tela.`);
+  save();
+
+  const {osId, cardId} = ctx;
+  _editarKitCtx = null; _editarKitLinhas = [];
+  fecharModal();
+  abrirSeletorItensOS(osId, cardId, 'cliente');
 }
 
 /* id da entrada de diário atualmente em edição (null = nenhuma) — ids do os_diario são
