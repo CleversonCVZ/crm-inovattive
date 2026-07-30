@@ -1374,7 +1374,7 @@ const CHANGELOG = [
     versao: '1.47.146',
     data: '30/07/2026',
     itens: [
-      'Combo "Item da proposta" (Itens da O.S. → Adicionar item) agora é buscável — digite um pedaço do nome pra filtrar, em vez de rolar a lista inteira do select nativo. Mesmo recurso já usado em Cliente/Obra/Fornecedor e outros combos longos do sistema.',
+      'Combo "Produto do catálogo" (tela "Vincular ao Catálogo de Estoque") agora é buscável — digite um pedaço do nome pra filtrar, em vez de rolar a lista inteira do select nativo. Mesmo recurso já usado em Cliente/Obra/Fornecedor e outros combos longos do sistema.',
     ]
   },
   {
@@ -19584,7 +19584,7 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
           <label style="font-size:11px;color:var(--muted)">Item da proposta</label>
-          <select id="sit-sel" class="combo-busca" data-placeholder="Buscar item da proposta…" style="width:100%;font-size:13px" onchange="atualizarSaldoSit()">
+          <select id="sit-sel" style="width:100%;font-size:13px" onchange="atualizarSaldoSit()">
             <option value="">— Selecione —</option>
             ${disponiveis.map((it)=>`<option value="${it.propostaId}_${it.idx}" data-saldo="${it.saldo}" data-tipo="${it.tipo||'un'}">${it.clienteFornece?'🏗 ':''}${it.descricao||it.item}</option>`).join('')}
           </select>
@@ -19786,7 +19786,7 @@ function abrirVincularProdutoEstoque(osId, cardId, propostaId, idx, qtd){
       ${produtos.length ? `
       <div>
         <label>Produto do catálogo *</label>
-        <select id="vpe-sel">
+        <select id="vpe-sel" class="combo-busca" data-placeholder="Buscar produto do catálogo…">
           <option value="">— Selecione —</option>
           ${produtos.map(pr=>`<option value="${pr.id}" ${sugestao&&sugestao.id===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
         </select>
