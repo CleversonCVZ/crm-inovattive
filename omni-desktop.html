@@ -1370,6 +1370,8 @@ const CHANGELOG = [
     data: '30/07/2026',
     itens: [
       'Kit de materiais na proposta: agora a coluna "Tipo" do Excel de importação aceita "Kit" além de Produto/Serviço — quando marcada, o item ganha um selo "🎁 KIT" na lista de Itens Contratados da proposta, e na tela de Itens da O.S. o aviso de "provável kit" (com o atalho pra dividir em produtos individuais) aparece direto, sem precisar esperar a correspondência do SRM. 7 itens de propostas antigas com "kit de materiais" na descrição já foram marcados retroativamente.',
+      'Corrigido: ao "Dividir em produtos individuais" uma linha marcada "Kit", os produtos resultantes estavam herdando o tipo "Kit" da linha original — o que faria cada produto já resolvido ganhar o selo 🎁 KIT e o aviso de divisão de novo, sem sentido. Agora os itens gerados pela divisão sempre nascem como "Produto" normal.',
+      'Ajuda contextual (❓) da aba Itens da O.S. de Execução/Obra atualizada com 2 seções novas: como funciona o vínculo com o Catálogo de Estoque na primeira baixa de cada item, e o fluxo de dividir um item marcado "Kit" em produtos individuais.',
     ]
   },
   {
@@ -10924,7 +10926,12 @@ const AJUDA_CONTEUDO = {
       },
       itens: {
         titulo: 'Aba Itens',
-        html: `<p>Itens da proposta aprovada alocados pra serem entregues/consumidos nesta O.S. específica (uma obra pode ter várias O.S. de execução, cada uma consumindo uma parte dos itens contratados). Alocar um item de produto aqui já dispara a baixa automática no Estoque, na hora — sem precisar de um passo extra de "confirmar retirada". A baixa consome primeiro do saldo reservado pra esta obra; se faltar, completa do estoque geral automaticamente. Nunca puxa da reserva de outra obra sozinho — isso só acontece via transferência manual, feita no Almoxarifado. Reduzir ou remover a quantidade do item devolve (estorna) a parte correspondente.</p>`
+        html: `
+          <p>Itens da proposta aprovada alocados pra serem entregues/consumidos nesta O.S. específica (uma obra pode ter várias O.S. de execução, cada uma consumindo uma parte dos itens contratados). Alocar um item de produto aqui já dispara a baixa automática no Estoque, na hora — sem precisar de um passo extra de "confirmar retirada". A baixa consome primeiro do saldo reservado pra esta obra; se faltar, completa do estoque geral automaticamente. Nunca puxa da reserva de outra obra sozinho — isso só acontece via transferência manual, feita no Almoxarifado. Reduzir ou remover a quantidade do item devolve (estorna) a parte correspondente.</p>
+          <h5>🔗 Vincular ao Catálogo de Estoque</h5>
+          <p>Antes da primeira baixa de um item de produto, o sistema pede pra casar a descrição da proposta com um produto do Catálogo (só é perguntado uma vez por item — depois fica lembrado). Sem esse vínculo não tem como saber o que baixar do estoque.</p>
+          <h5>🎁 Kit de materiais</h5>
+          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o sistema já sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível.</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -19817,6 +19824,11 @@ async function confirmarDividirItemKit(){
   }
 
   // adiciona uma linha nova por produto, sempre ao final do array (nunca no meio)
+  // v1.47.137: se a linha original era marcada tipo="Kit" (a razão de ela ter sido
+  // dividida), as linhas novas NÃO herdam esse tipo — cada uma já é um produto real e
+  // individual, não um kit dentro de outro kit. Herdar geraria o selo 🎁 KIT e o aviso
+  // de "provável kit" também nas linhas já resolvidas, o que não faz sentido.
+  const tipoFilho = /KIT/i.test(tipoOriginal||'') ? 'Produto' : (tipoOriginal||'item');
   linhasValidas.forEach(l=>{
     const prod = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
     const valor = Number(l.valor)||0;
@@ -19825,7 +19837,7 @@ async function confirmarDividirItemKit(){
       item: prod?.nome || 'Item',
       descricao: prod?.nome || descOriginal,
       qtd, unit: qtd?Math.round((valor/qtd)*10000)/10000:0, total: valor,
-      tipo: tipoOriginal||'item', categoria: categoriaOriginal||'produto',
+      tipo: tipoFilho, categoria: categoriaOriginal||'produto',
       clienteFornece: !!clienteForneceOriginal,
       produtoEstoqueId: l.produtoId
     });
