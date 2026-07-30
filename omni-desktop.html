@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.137';
+const APP_VERSION = '1.47.138';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.138',
+    data: '30/07/2026',
+    itens: [
+      'Itens Contratados da Proposta: novo ✏️ em cada linha pra corrigir Qtd, Valor Unit., Total, descrição e o produto do catálogo vinculado, sem precisar reimportar o Excel nem pedir correção manual no banco — resolve, por exemplo, erro de digitação numa divisão de kit. Trava a Qtd pra não ficar menor que o já alocado em O.S., e trava a troca de produto vinculado quando já existe baixa de estoque, pra não desincronizar.',
+    ]
+  },
   {
     versao: '1.47.137',
     data: '30/07/2026',
@@ -5531,7 +5538,7 @@ function itensContratadosHTML(p, podeEditar=true){
     <label style="margin-top:18px;color:var(--blue-dark)">— Itens Contratados (${p.itens.length}: ${nS} serviços, ${p.itens.length-nS} produtos) —</label>
     <div class="itens-wrap">
       <table class="itens-tab">
-        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th><th title="Fornecimento de terceiros — cliente providencia">🏗 Cliente</th></tr></thead>
+        <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th><th title="Fornecimento de terceiros — cliente providencia">🏗 Cliente</th>${podeEditar?'<th></th>':''}</tr></thead>
         <tbody>${p.itens.map((i,idx)=>`
           <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}" style="${i.clienteFornece?'background:#fff8e1':''}">
             <td>${i.item}${/KIT/i.test(i.tipo||'')?` <span title="Esse item representa um kit de vários produtos — ao dar baixa numa O.S. use 'Dividir em produtos individuais'" style="font-size:10px;background:#e65100;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">🎁 KIT</span>`:''}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}</td>
@@ -5539,11 +5546,100 @@ function itensContratadosHTML(p, podeEditar=true){
             <td>${i.unit==null?'':fmtMoney(i.unit)}</td><td>${i.total==null?'':fmtMoney(i.total)}</td>
             <td>${i.tipo}</td>
             <td style="text-align:center"><input type="checkbox" title="Cliente fornece este item" ${i.clienteFornece?'checked':''} ${podeEditar?`onchange="toggleClienteFornece(${p.id},${idx},this.checked)"`:'disabled'}></td>
+            ${podeEditar?`<td style="text-align:center"><button class="icon-btn" title="Corrigir quantidade/valor/produto" onclick="abrirEditarItemProposta(${p.id},${idx})">✏️</button></td>`:''}
           </tr>`).join('')}
         </tbody>
-        <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="3"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
+        <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="${podeEditar?4:3}"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
       </table>
     </div>`;
+}
+
+/** v1.47.138: soma quanto desse item da proposta (propostaId+idx) já está alocado em
+ *  alguma O.S. do mesmo cartão (qtdOS somado de todas as O.S., não só uma) — usado pra
+ *  travar a edição de forma segura: não deixa reduzir a Qtd abaixo do que já foi
+ *  debitado do estoque, nem trocar o produto vinculado depois que já rolou baixa. */
+function _qtdAlocadaEmOSDoItem(propostaId, idx){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  if(!p) return 0;
+  return (db.ordensServico||[]).filter(o=>o.cardId===p.cardId).reduce((s,o)=>{
+    const reg = (o.itensTrabalho||[]).find(m=>m.propostaId===propostaId && m.idx===idx);
+    return s + (reg?.qtdOS||0);
+  }, 0);
+}
+
+/* ---- v1.47.138: corrigir um item já salvo da proposta (Qtd/Valor Unit./Total/produto
+   vinculado) direto pela tela — antes só dava pra corrigir pedindo ajuda, mesmo sendo
+   um erro de digitação bobo (ex.: divisão de kit com quantidade errada). ---- */
+function abrirEditarItemProposta(propostaId, idx){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const it = p?.itens?.[idx];
+  if(!it){ alert('Item não encontrado.'); return; }
+  const jaAlocado = _qtdAlocadaEmOSDoItem(propostaId, idx);
+  const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+  const prodAtual = it.produtoEstoqueId ? (db.estoqueProdutos||[]).find(x=>x.id===it.produtoEstoqueId) : null;
+  abrirModal(`
+    <h3>✏️ Corrigir Item da Proposta</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:12px;color:var(--muted)">Item</div>
+        <div style="font-weight:600">${escHtml(it.item||'')}</div>
+      </div>
+      <div>
+        <label>Descrição</label>
+        <textarea id="eip-desc" rows="2">${escHtml(it.descricao||'')}</textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><label>Qtd</label><input type="number" id="eip-qtd" step="0.001" min="0" value="${it.qtd??''}" onchange="_eipRecalcTotal()"></div>
+        <div><label>Valor Unit. (R$)</label><input type="number" id="eip-unit" step="0.01" min="0" value="${it.unit??''}" onchange="_eipRecalcTotal()"></div>
+        <div><label>Total (R$)</label><input type="number" id="eip-total" step="0.01" min="0" value="${it.total??''}"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted)">Qtd/Unit. recalculam o Total sozinhos — mas dá pra digitar o Total direto por cima também (ex.: preço fechado de um kit).</div>
+      ${jaAlocado>0 ? `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">⚠ ${jaAlocado} já foi alocado/debitado em O.S. deste cartão — a Qtd não pode ficar menor que isso. Pra reduzir mais, primeiro remova a alocação na(s) O.S.</div>` : ''}
+      ${it.categoria==='produto' ? (
+        jaAlocado>0
+          ? `<div><label>Produto do catálogo</label><div style="font-size:13px;padding:6px 0">${prodAtual?escHtml(prodAtual.nome):'— não vinculado —'} <span style="font-size:11px;color:var(--muted)">(não dá pra trocar — já tem baixa de estoque feita com esse vínculo)</span></div></div>`
+          : `<div><label>Produto do catálogo</label>
+              <select id="eip-prod">
+                <option value="">— nenhum (não vincula ao estoque) —</option>
+                ${produtos.map(pr=>`<option value="${pr.id}" ${it.produtoEstoqueId===pr.id?'selected':''}>${escHtml(pr.nome)}</option>`).join('')}
+              </select></div>`
+      ) : ''}
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEditarCartao(${p.cardId},'aprovada')">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarEditarItemProposta(${propostaId},${idx})">Salvar Correção</button>
+    </div>`, 'cartao');
+}
+
+function _eipRecalcTotal(){
+  const qtd = +(document.getElementById('eip-qtd')?.value||0);
+  const unit = +(document.getElementById('eip-unit')?.value||0);
+  const totalEl = document.getElementById('eip-total');
+  if(totalEl && qtd && unit) totalEl.value = Math.round(qtd*unit*100)/100;
+}
+
+async function confirmarEditarItemProposta(propostaId, idx){
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const it = p?.itens?.[idx];
+  if(!it){ alert('Item não encontrado.'); return; }
+  const qtd = +(document.getElementById('eip-qtd')?.value||0);
+  const unit = +(document.getElementById('eip-unit')?.value||0);
+  const total = +(document.getElementById('eip-total')?.value||0);
+  const desc = document.getElementById('eip-desc')?.value||'';
+  if(!qtd || qtd<=0){ alert('Informe uma Qtd válida.'); return; }
+  const jaAlocado = _qtdAlocadaEmOSDoItem(propostaId, idx);
+  if(qtd < jaAlocado){ alert(`Não dá pra deixar a Qtd menor que ${jaAlocado} — já está alocado em O.S. deste cartão. Remova a alocação lá primeiro.`); return; }
+  const selProd = document.getElementById('eip-prod');
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+  const antes = `Qtd ${it.qtd}, Unit R$${it.unit}, Total R$${it.total}` + (it.produtoEstoqueId?`, produto #${it.produtoEstoqueId}`:'');
+  it.qtd = qtd; it.unit = unit; it.total = total; it.descricao = desc;
+  if(selProd) it.produtoEstoqueId = selProd.value ? +selProd.value : null;
+  await sincronizarItensProposta(propostaId);
+  registrarLog('editar','proposta',propostaId,`Item "${it.item}" corrigido manualmente pela tela (era: ${antes}).`);
+  save();
+  fecharModal();
+  abrirEditarCartao(p.cardId,'aprovada');
 }
 
 /* Importa itens do Excel com conferência; retorna os itens ou null (não importado) */
@@ -10791,7 +10887,9 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Proposta Aprovada',
         html: `
           <p>A aprovação é confirmada subindo o Excel (memória de cálculo) correspondente a uma das propostas emitidas. Depois de aprovada, esta aba mostra a proposta principal + todos os aditivos já aprovados, com o total contratado somado.</p>
-          <p>Pra criar um aditivo, emita-o primeiro na aba "Propostas Emitidas" (nasce como ADT automaticamente) — depois volte aqui pra aprovar esse aditivo do mesmo jeito.</p>`
+          <p>Pra criar um aditivo, emita-o primeiro na aba "Propostas Emitidas" (nasce como ADT automaticamente) — depois volte aqui pra aprovar esse aditivo do mesmo jeito.</p>
+          <h5>✏️ Corrigir um item</h5>
+          <p>Cada linha de "Itens Contratados" tem um ✏️ pra corrigir Qtd, Valor Unit., Total, descrição e (se ainda não foi alocado em nenhuma O.S.) o produto do catálogo vinculado — útil pra consertar um erro de digitação sem precisar reimportar o Excel. Se o item já tem quantidade debitada em alguma O.S., a Qtd não pode ficar menor que o já alocado, e o produto vinculado trava (pra não desincronizar de uma baixa de estoque que já aconteceu) — nesses casos, ajuste a alocação na O.S. primeiro.</p>`
       },
       obras: {
         titulo: 'Aba Obra',
