@@ -19846,7 +19846,9 @@ function _detectarProdutosKit(cardId, propostaId, it){
  *  é isso que realisticamente pode ter sido comprado/correspondido pra ela.
  *  v1.47.143: removido o fallback pro catálogo completo — se nada tem saldo, é sinal
  *  de que a compra ainda não foi lançada no SRM pra essa obra, e isso deve ser
- *  resolvido lá (não mascarado mostrando o catálogo inteiro aqui). */
+ *  resolvido lá (não mascarado mostrando o catálogo inteiro aqui). Como agora SEMPRE
+ *  filtra por saldo, o retorno não precisa mais de uma flag "restrito" — quem chama
+ *  já sabe que a lista é sempre filtrada (pode vir vazia, é só checar .length). */
 function _produtosComSaldoObra(obraId){
   const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).map(p=>({
     ...p,
@@ -19855,7 +19857,7 @@ function _produtosComSaldoObra(obraId){
   }));
   const comSaldo = produtos.filter(p=>(p._saldoObra + p._saldoGeral) > 0.0001)
     .sort((a,b)=>b._saldoObra-a._saldoObra || a.nome.localeCompare(b.nome,'pt-BR'));
-  return {lista: comSaldo, restrito: true};
+  return {lista: comSaldo};
 }
 
 function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
@@ -19874,14 +19876,11 @@ function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
 function _renderDividirKitModal(){
   const ctx = _dividirKitCtx;
   if(!ctx) return;
-  const {lista: produtos, restrito} = _produtosComSaldoObra(ctx.obraId);
+  const {lista: produtos} = _produtosComSaldoObra(ctx.obraId);
   const somaLinhas = _dividirKitLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
   const bateTotal = Math.abs(somaLinhas - (ctx.totalOriginal||0)) < 0.01;
   const temSugestao = _dividirKitLinhas.some(l=>l.produtoId);
-  const optLabel = pr => {
-    const saldo = (pr._saldoObra||0) + (pr._saldoGeral||0);
-    return restrito ? `${escHtml(pr.nome)} (saldo: ${fmtNum(saldo)})` : escHtml(pr.nome);
-  };
+  const optLabel = pr => `${escHtml(pr.nome)} (saldo: ${fmtNum((pr._saldoObra||0)+(pr._saldoGeral||0))})`;
   const linhasHTML = _dividirKitLinhas.map((l,i)=>`
     <div style="display:grid;grid-template-columns:1fr 90px 120px 32px;gap:6px;align-items:end;margin-bottom:8px">
       <div>
@@ -20010,7 +20009,10 @@ async function confirmarDividirItemKit(){
    pode cair abaixo do já alocado), pelo mesmo motivo da trava equivalente que existia
    no botão de edição genérica removido — aqui é seguro porque o escopo é só as linhas
    de UM kit específico, não a proposta inteira. */
-let _editarKitCtx = null;    // {osId, cardId, propostaId, idxOriginal, obraId, descricaoOriginal}
+let _editarKitCtx = null;    // {osId, cardId, propostaId, idxOriginal, obraId, descricaoOriginal, aba}
+                              // v1.47.144: "aba" ('itens'|'cliente') guarda de onde o
+                              // usuário abriu a correção, pra "Cancelar"/"Salvar" voltarem
+                              // pra mesma aba em vez de forçar sempre "cliente".
 let _editarKitLinhas = [];   // [{_origIdx, produtoId, qtd, valor, jaAlocado}]
 
 function _qtdAlocadaEmOSKit(propostaId, idx){
