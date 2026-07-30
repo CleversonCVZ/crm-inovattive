@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.138';
+const APP_VERSION = '1.47.139';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.139',
+    data: '30/07/2026',
+    itens: [
+      'Corrigido: no painel "Fornecimento do Cliente" (Itens da O.S.), a coluna Saldo só descontava o que estava alocado em OUTRAS O.S. — um item 100% usado nesta própria O.S. continuava mostrando o saldo cheio, como se nada tivesse sido consumido. Agora desconta a alocação desta O.S. também.',
+    ]
+  },
   {
     versao: '1.47.138',
     data: '30/07/2026',
@@ -19532,8 +19539,12 @@ function abrirSeletorItensOS(osId, cardId){
   // TODOS os itens marcados como cliente fornece da proposta (para painel fixo)
   const itensCliente = todosItens.filter(it=>it.clienteFornece).map(it=>{
     const regNesta = marcados.find(m=>m.propostaId===it.propostaId&&m.idx===it.idx);
-    const saldo = (it.qtd||0) - calcSaldoOutras(it);
-    return {...it, _nesta: regNesta?.qtdOS||0, saldo};
+    const nesta = regNesta?.qtdOS||0;
+    // v1.47.139: Saldo = Total - alocado em QUALQUER O.S. (outras + esta). Antes só
+    // descontava "outras", então um item 100% alocado nesta própria O.S. continuava
+    // mostrando o Saldo cheio, como se nada tivesse sido usado.
+    const saldo = (it.qtd||0) - calcSaldoOutras(it) - nesta;
+    return {...it, _nesta: nesta, saldo};
   });
 
   abrirModal(`
