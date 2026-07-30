@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.132';
+const APP_VERSION = '1.47.133';
 const APP_VERSION_DATE = '29/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.133',
+    data: '29/07/2026',
+    itens: [
+      'Tela "Estoque — [Obra]": corrigido texto confuso na coluna "Usado em" quando o mesmo produto do catálogo é comprado em mais de um pedido do SRM pra mesma obra (ex.: compra original + aditivo). Antes mostrava o total consumido do produto na obra inteira repetido em cada pedido, dando a entender (errado) que aquele pedido específico já tinha sido todo usado, mesmo quando o número era maior que a própria quantidade comprada nele. Agora, quando isso acontece, aparece um aviso "↕ saldo somado com outro(s) pedido(s) deste produto nesta obra" deixando claro que o número é um total compartilhado, não exclusivo daquela linha.',
+    ]
+  },
   {
     versao: '1.47.132',
     data: '29/07/2026',
@@ -12453,6 +12460,25 @@ function abrirEstoqueObraModal(obraId){
   const grupoEmpresa = todosCards.filter(c=>c.pagamentoResponsavel!=='cliente');
   const grupoCliente = todosCards.filter(c=>c.pagamentoResponsavel==='cliente');
 
+  /* v1.47.133: quando o mesmo produto do catálogo é comprado em mais de um pedido
+     SRM pra essa obra (ex.: compra original + aditivo do mesmo item), o saldo de
+     estoque é único por produto+obra — não existe separação por lote/pedido. Antes,
+     usoDoItem() mostrava o total consumido do produto (obra inteira) repetido em
+     CADA linha onde ele aparece, o que parecia dizer "esse pedido específico já foi
+     usado X", mesmo quando X era maior que a própria quantidade comprada nesse
+     pedido (ex.: pedido de 2 Patch Panel mostrando "usado (4)", porque os 4 usados
+     vieram na verdade do OUTRO pedido do mesmo produto). Agora conta quantas linhas
+     de NF (entre todos os pedidos dessa obra) apontam pro mesmo produto e, quando
+     há mais de uma, deixa isso explícito no texto. */
+  const contagemProdutoNaObra = {};
+  [...grupoEmpresa, ...grupoCliente].forEach(card=>{
+    const sel = cotacaoSelecionadaSRM(card.id);
+    (sel?.nfItens||[]).forEach(it=>{
+      const prod = matchProdutoEstoque(it);
+      if(prod) contagemProdutoNaObra[prod.id] = (contagemProdutoNaObra[prod.id]||0) + 1;
+    });
+  });
+
   const usoDoItem = (it) => {
     const prod = matchProdutoEstoque(it);
     if(!prod) return '<span style="color:var(--muted);font-size:11px">não catalogado ainda</span>';
@@ -12463,15 +12489,20 @@ function abrirEstoqueObraModal(obraId){
     // pra sempre. Agora calcula o líquido por O.S. (saída − entradas de ajuste com o
     // mesmo os_id) e só mostra a O.S. se ainda sobrar saldo consumido de verdade.
     const movs = (db.estoqueMov||[]).filter(m=>m.produtoId===prod.id && m.obraId===obraId && m.osId);
-    if(!movs.length) return '<span style="color:var(--muted);font-size:11px">ainda não usado</span>';
+    const compartilhado = (contagemProdutoNaObra[prod.id]||0) > 1;
+    const avisoCompartilhado = compartilhado
+      ? `<div style="font-size:10px;color:#e65100;margin-top:1px">↕ saldo somado com outro(s) pedido(s) deste produto nesta obra</div>`
+      : '';
+    if(!movs.length) return `<span style="color:var(--muted);font-size:11px">ainda não usado</span>${avisoCompartilhado}`;
     const porOS = {};
     movs.forEach(m=>{ porOS[m.osId]=(porOS[m.osId]||0)+(m.tipo==='saida'?(m.quantidade||0):-(m.quantidade||0)); });
     const usados = Object.entries(porOS).filter(([,qtd])=>qtd>0.0001);
-    if(!usados.length) return '<span style="color:var(--muted);font-size:11px">ainda não usado</span>';
-    return usados.map(([osId,qtd])=>{
+    if(!usados.length) return `<span style="color:var(--muted);font-size:11px">ainda não usado</span>${avisoCompartilhado}`;
+    const texto = usados.map(([osId,qtd])=>{
       const os = (db.ordensServico||[]).find(x=>x.id===+osId);
       return `${os?escHtml(os.numero):'O.S. #'+osId} (${fmtNum(qtd)})`;
     }).join(', ');
+    return `<span>${texto}</span>${compartilhado ? `<div style="font-size:10px;color:#e65100;margin-top:1px">↕ total do produto na obra (soma de todos os pedidos) — não é exclusivo desta linha</div>` : ''}`;
   };
 
   const blocoGrupo = (lista) => {
