@@ -1360,11 +1360,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.133';
+const APP_VERSION = '1.47.134';
 const APP_VERSION_DATE = '29/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.134',
+    data: '29/07/2026',
+    itens: [
+      'Tela "Itens da O.S." (gerenciar itens/materiais alocados): modal alargado (padrão "wide", igual outras telas com listas grandes, ex. Estoque da Obra) — com muitos itens, as colunas Total/Nesta O.S./Saldo empurravam a descrição do item pra quebrar em várias linhas, deixando a tela desnecessariamente longa de rolar.',
+    ]
+  },
   {
     versao: '1.47.133',
     data: '29/07/2026',
@@ -19480,7 +19487,7 @@ function abrirSeletorItensOS(osId, cardId){
     <div class="actions" style="margin-top:20px">
       <button class="btn neutral" onclick="${os.tipo==='execucao'?`abrirVerOSExecucao(${osId},${cardId},'itens')`:`abrirVerOS(${osId},${cardId})`}">← Voltar à O.S.</button>
     </div>
-  `);
+  `, 'wide');
 }
 
 function atualizarSaldoSit(){
