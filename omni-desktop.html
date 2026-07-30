@@ -124,7 +124,7 @@
      não afeta as outras 6 telas que já usam só "wide". */
   .modal.wide.abas-fixas{height:min(860px,88vh);display:flex;flex-direction:column}
   .modal.cartao{width:920px;height:min(860px,88vh);display:flex;flex-direction:column}
-  .modal.cartao .aba-corpo,.modal.wide.abas-fixas .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
+  .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
   .rodape-cartao{flex-shrink:0;border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
   .dados-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
   .dados-grid .col-hist .hist{height:320px}
@@ -1365,11 +1365,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.147';
+const APP_VERSION = '1.47.148';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.148',
+    data: '30/07/2026',
+    itens: [
+      'Tela "Itens da O.S.": "📦 Itens" e "🏗 Fornecimento do Cliente" viraram um menu lateral (em vez de abas no topo) — mesmo padrão de navegação lateral já usado dentro da aba "Obra" do Cartão CRM (Informações, Contatos, Compras...), deixando a tela mais parecida com a anterior.',
+    ]
+  },
   {
     versao: '1.47.147',
     data: '30/07/2026',
@@ -19547,11 +19554,13 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
   // v1.47.141: painéis divididos em 2 abas (antes ficavam empilhados na mesma tela,
   // exigindo rolar bastante em O.S. com muitos itens) — comportamento idêntico ao de
   // antes, só reorganizado visualmente.
-  // v1.47.147: trocado o estilo "caixinha" (inline, próprio dessa tela) pelo padrão
-  // .abas/.aba já usado no Cartão CRM e no resto do sistema — deixa visualmente
-  // consistente com a tela anterior (Cartão) em vez de parecer uma tela à parte.
-  const tabBtn = (t, label) =>
-    `<button class="aba ${aba===t?'ativa':''}" onclick="abrirSeletorItensOS(${osId},${cardId},'${t}')">${label}</button>`;
+  // v1.47.148: trocado de abas horizontais pro menu lateral (.obra-sidebar/.obra-nav-item)
+  // — mesmo padrão já usado na sub-navegação da aba "Obra" do Cartão CRM (Informações,
+  // Contatos, Compras...), deixando essa tela visualmente igual à anterior.
+  const tabBtn = (t, icon, label) =>
+    `<button class="obra-nav-item${aba===t?' active':''}" onclick="abrirSeletorItensOS(${osId},${cardId},'${t}')">
+       <span class="obra-nav-icon">${icon}</span>${label}
+     </button>`;
 
   const painelCliente = itensCliente.length ? `
       <table style="width:100%;border-collapse:collapse;font-size:12px">
@@ -19645,18 +19654,19 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
     </div>`;
 
   abrirModal(`
-    <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:2px">
+    <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <h3 style="margin:0">📦 Itens da O.S.</h3>
       <span style="font-size:13px;color:var(--muted)">${os.numero}</span>
     </div>
 
-    <div class="abas" style="flex-shrink:0">
-      ${tabBtn('itens','📦 Itens'+(alocados.length?` (${alocados.length})`:''))}
-      ${tabBtn('cliente','🏗 Fornecimento do Cliente'+(itensCliente.length?` (${itensCliente.length})`:''))}
-    </div>
-
-    <div class="aba-corpo" style="min-height:0">
-      ${aba==='cliente' ? painelCliente : painelItens}
+    <div style="flex:1;display:flex;overflow:hidden;min-height:0">
+      <nav class="obra-sidebar">
+        ${tabBtn('itens','📦','Itens'+(alocados.length?` (${alocados.length})`:''))}
+        ${tabBtn('cliente','🏗','Fornecimento do Cliente'+(itensCliente.length?` (${itensCliente.length})`:''))}
+      </nav>
+      <div class="obra-content">
+        ${aba==='cliente' ? painelCliente : painelItens}
+      </div>
     </div>
 
     <div class="actions rodape-cartao" style="flex-shrink:0">
