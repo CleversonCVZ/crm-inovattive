@@ -118,6 +118,11 @@
   .overlay.open{display:flex}
   .modal{background:#fff;border-radius:12px;padding:22px;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto}
   .modal.wide{width:820px}
+  /* v1.47.143: variante só pra abrirSeletorItensOS (Itens da O.S.) — mesmo comportamento
+     de altura fixa + rolagem interna do .modal.cartao (cabeçalho/abas/rodapé fixos, só o
+     meio rola), mas mantendo a largura de .wide. Como exige a classe "abas-fixas" junto,
+     não afeta as outras 6 telas que já usam só "wide". */
+  .modal.wide.abas-fixas{height:min(860px,88vh);display:flex;flex-direction:column}
   .modal.cartao{width:920px;height:min(860px,88vh);display:flex;flex-direction:column}
   .modal.cartao .aba-corpo{flex:1;overflow-y:auto;padding-right:4px}
   .rodape-cartao{flex-shrink:0;border-top:1px solid var(--border);padding-top:14px;margin-top:14px}
@@ -1360,11 +1365,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.142';
+const APP_VERSION = '1.47.143';
 const APP_VERSION_DATE = '30/07/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.143',
+    data: '30/07/2026',
+    itens: [
+      'Combo "Produto do catálogo" (ao dividir ou corrigir um kit) não cai mais pro catálogo completo quando nenhum produto tem saldo de estoque na obra — se não aparecer nada na lista, é sinal de que a compra ainda não foi lançada no SRM pra essa obra, e isso precisa ser resolvido lá primeiro (evita escolher o produto errado por falta de opção certa).',
+      'Tela "Itens da O.S.": removida a mensagem fixa sobre itens de fornecimento do cliente aparecerem primeiro na lista (a aba "🏗 Fornecimento do Cliente" já deixa isso claro).',
+      'Tela "Itens da O.S.": corrigido o rolamento — agora cabeçalho, abas e o botão "Voltar à O.S." ficam fixos, só o conteúdo do meio rola, igual à tela de O.S. Execução que abre ela.',
+    ]
+  },
   {
     versao: '1.47.142',
     data: '30/07/2026',
@@ -10969,7 +10983,7 @@ const AJUDA_CONTEUDO = {
           <h5>🔗 Vincular ao Catálogo de Estoque</h5>
           <p>Antes da primeira baixa de um item de produto, o sistema pede pra casar a descrição da proposta com um produto do Catálogo (só é perguntado uma vez por item — depois fica lembrado). Sem esse vínculo não tem como saber o que baixar do estoque.</p>
           <h5>🎁 Kit de materiais</h5>
-          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto já filtra só o que tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Errou algo na hora de dividir? Na aba "🏗 Fornecimento do Cliente" desta mesma tela, kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda.</p>`
+          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto só mostra o que já tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Se nenhum produto aparecer no combo, é sinal de que a compra ainda não foi lançada no SRM pra essa obra — resolva lá primeiro, o sistema não mostra o catálogo inteiro como alternativa. Errou algo na hora de dividir? Na aba "🏗 Fornecimento do Cliente" desta mesma tela, kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda.</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -19561,7 +19575,6 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
         <button class="btn primary" style="flex-shrink:0;align-self:flex-end" onclick="adicionarItemSit(${osId},${cardId})">＋ Adicionar</button>
       </div>
       <div id="sit-info" style="font-size:11px;color:var(--muted);margin-top:6px;min-height:16px"></div>
-      ${disponiveis.some(x=>x.clienteFornece) ? `<div style="font-size:11px;color:#e65100;margin-top:8px;padding:6px 8px;background:#fff3e0;border-radius:6px;border-left:3px solid #f9a825">🏗 Itens de fornecimento pelo cliente aparecem primeiro na lista acima</div>` : ''}
     </div>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:10px;background:#f5f5f5;border-radius:8px">Todos os itens da proposta já foram alocados em outras O.S.</div>`}
 
     <label style="font-weight:700;font-size:13px">Itens alocados nesta O.S.</label>
@@ -19584,22 +19597,24 @@ function abrirSeletorItensOS(osId, cardId, aba='itens'){
     </div>`;
 
   abrirModal(`
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+    <div style="flex-shrink:0;display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <h3 style="margin:0">📦 Itens da O.S.</h3>
       <span style="font-size:13px;color:var(--muted)">${os.numero}</span>
     </div>
 
-    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-wrap:wrap">
+    <div style="flex-shrink:0;display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px;flex-wrap:wrap">
       ${tabBtn('itens','📦 Itens'+(alocados.length?` (${alocados.length})`:''))}
       ${tabBtn('cliente','🏗 Fornecimento do Cliente'+(itensCliente.length?` (${itensCliente.length})`:''))}
     </div>
 
-    ${aba==='cliente' ? painelCliente : painelItens}
+    <div style="flex:1;overflow-y:auto;min-height:0">
+      ${aba==='cliente' ? painelCliente : painelItens}
+    </div>
 
-    <div class="actions" style="margin-top:20px">
+    <div class="actions" style="flex-shrink:0;margin-top:20px">
       <button class="btn neutral" onclick="${os.tipo==='execucao'?`abrirVerOSExecucao(${osId},${cardId},'itens')`:`abrirVerOS(${osId},${cardId})`}">← Voltar à O.S.</button>
     </div>
-  `, 'wide');
+  `, 'wide abas-fixas');
 }
 
 function atualizarSaldoSit(){
@@ -19801,11 +19816,12 @@ function _detectarProdutosKit(cardId, propostaId, it){
 }
 
 /** v1.47.142: catálogo pra escolha manual de produto (na divisão de kit e na edição
- *  de uma divisão já feita) — em vez de listar TODO o catálogo sem critério, prioriza
- *  o que já tem saldo de estoque nessa obra (reservado dela + estoque geral), porque
- *  é isso que realisticamente pode ter sido comprado/corresponded pra ela. Se nada
- *  tiver saldo (obra sem nenhuma compra lançada ainda), cai pro catálogo completo —
- *  senão o combo ficaria vazio e travaria quem ainda não comprou nada. */
+ *  de uma divisão já feita) — em vez de listar TODO o catálogo sem critério, mostra
+ *  só o que já tem saldo de estoque nessa obra (reservado dela + estoque geral), porque
+ *  é isso que realisticamente pode ter sido comprado/correspondido pra ela.
+ *  v1.47.143: removido o fallback pro catálogo completo — se nada tem saldo, é sinal
+ *  de que a compra ainda não foi lançada no SRM pra essa obra, e isso deve ser
+ *  resolvido lá (não mascarado mostrando o catálogo inteiro aqui). */
 function _produtosComSaldoObra(obraId){
   const produtos = (db.estoqueProdutos||[]).filter(x=>x.ativo).map(p=>({
     ...p,
@@ -19814,8 +19830,7 @@ function _produtosComSaldoObra(obraId){
   }));
   const comSaldo = produtos.filter(p=>(p._saldoObra + p._saldoGeral) > 0.0001)
     .sort((a,b)=>b._saldoObra-a._saldoObra || a.nome.localeCompare(b.nome,'pt-BR'));
-  if(comSaldo.length) return {lista: comSaldo, restrito: true};
-  return {lista: produtos.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR')), restrito: false};
+  return {lista: comSaldo, restrito: true};
 }
 
 function abrirDividirItemKit(osId, cardId, propostaId, idx, qtd){
@@ -19871,9 +19886,9 @@ function _renderDividirKitModal(){
         <div style="font-size:12px;color:var(--muted);margin-top:2px">Total contratado: ${fmtMoney(ctx.totalOriginal)}</div>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:0">Cada linha abaixo vira um item novo da proposta, já vinculado ao produto do catálogo — a linha original é zerada (não apagada, pra manter os outros itens no lugar). ${temSugestao ? 'Já sugeri os produtos com base nas compras já correspondidas no SRM pra essa linha — confira e ajuste se precisar.' : 'Não achei nenhuma compra do SRM correspondida a essa linha ainda — preencha manualmente.'}</p>
-      ${restrito ? `<div style="font-size:11px;color:var(--muted)">📦 O combo abaixo já filtra só produtos com saldo de estoque nessa obra (reservado dela + estoque geral) — reduz o risco de escolher o produto errado. Não achou o que precisa? Pode ser que ainda não tenha sido comprado/lançado no estoque.</div>` : `<div style="font-size:11px;color:#e65100">⚠ Nenhum produto do catálogo tem saldo de estoque pra essa obra ainda — mostrando o catálogo completo.</div>`}
+      ${produtos.length ? `<div style="font-size:11px;color:var(--muted)">📦 O combo abaixo já filtra só produtos com saldo de estoque nessa obra (reservado dela + estoque geral) — reduz o risco de escolher o produto errado.</div>` : `<div style="font-size:12px;color:#e65100;background:#fff3e0;border-radius:6px;padding:8px 10px">⚠ Nenhum produto do catálogo tem saldo de estoque pra essa obra ainda. Isso significa que a compra ainda não foi lançada no SRM — resolva lá primeiro antes de dividir esse kit.</div>`}
       <div>${linhasHTML}</div>
-      <button class="btn" style="width:fit-content" onclick="_dividirKitAddLinha()">＋ Adicionar produto</button>
+      <button class="btn" style="width:fit-content" ${produtos.length?'':'disabled title="Sem produtos com saldo pra essa obra"'} onclick="_dividirKitAddLinha()">＋ Adicionar produto</button>
       <div id="dvk-soma" style="font-size:12px;${bateTotal?'color:#2e7d32':'color:#e65100'}">Soma das linhas: ${fmtMoney(somaLinhas)} ${bateTotal?'✓ bate com o total original':'— diferente do total original, pode ajustar os valores acima'}</div>
     </div>
     <div class="actions rodape-cartao">
@@ -20000,7 +20015,16 @@ function abrirEditarDivisaoKit(osId, cardId, propostaId, idxOriginal){
 function _renderEditarDivisaoKitModal(){
   const ctx = _editarKitCtx;
   if(!ctx) return;
-  const {lista: produtos, restrito} = _produtosComSaldoObra(ctx.obraId);
+  const {lista: produtos} = _produtosComSaldoObra(ctx.obraId);
+  // v1.47.143: se a linha já tem um produto vinculado que não está mais na lista
+  // filtrada por saldo (ex: saldo zerou depois da divisão original), inclui ele
+  // mesmo assim — senão o combo mostraria a opção selecionada em branco.
+  _editarKitLinhas.forEach(l=>{
+    if(l.produtoId && !produtos.some(pr=>pr.id===l.produtoId)){
+      const prodExtra = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
+      if(prodExtra) produtos.push({...prodExtra, _semSaldo:true});
+    }
+  });
   const somaLinhas = _editarKitLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
   const linhasHTML = _editarKitLinhas.map((l,i)=>{
     const travado = l.jaAlocado>0;
@@ -20013,7 +20037,7 @@ function _renderEditarDivisaoKitModal(){
           ? `<div style="font-size:13px;padding:6px 0">${prodAtual?escHtml(prodAtual.nome):'—'}</div><div style="font-size:10px;color:var(--muted)">🔒 travado — já tem baixa de estoque</div>`
           : `<select onchange="_editarKitAtualizarLinha(${i},'produtoId',this.value?+this.value:null)">
               <option value="">— Selecione —</option>
-              ${produtos.map(pr=>`<option value="${pr.id}" ${l.produtoId===pr.id?'selected':''}>${escHtml(pr.nome)}${restrito?` (saldo: ${fmtNum((pr._saldoObra||0)+(pr._saldoGeral||0))})`:''}</option>`).join('')}
+              ${produtos.map(pr=>`<option value="${pr.id}" ${l.produtoId===pr.id?'selected':''}>${escHtml(pr.nome)}${pr._semSaldo?' (sem saldo nessa obra)':` (saldo: ${fmtNum((pr._saldoObra||0)+(pr._saldoGeral||0))})`}</option>`).join('')}
             </select>`}
       </div>
       <div>
@@ -20037,9 +20061,9 @@ function _renderEditarDivisaoKitModal(){
         <div style="font-weight:600">${escHtml(ctx.descricaoOriginal)}</div>
       </div>
       <p style="font-size:12px;color:var(--muted);margin:0">Ajuste quantidade, valor ou produto de cada linha resultante da divisão. Linhas que já têm baixa de estoque numa O.S. ficam travadas — pra soltar, remova a alocação na O.S. primeiro.</p>
-      ${restrito ? `<div style="font-size:11px;color:var(--muted)">📦 Combo filtrado só com produtos com saldo de estoque nessa obra.</div>` : ''}
+      <div style="font-size:11px;color:var(--muted)">📦 Combo filtrado só com produtos com saldo de estoque nessa obra.${produtos.length?'':' Nenhum produto novo disponível — se faltar opção, resolva a compra no SRM primeiro.'}</div>
       <div>${linhasHTML}</div>
-      <button class="btn" style="width:fit-content" onclick="_editarKitAddLinha()">＋ Adicionar produto</button>
+      <button class="btn" style="width:fit-content" ${produtos.length?'':'disabled title="Sem produtos com saldo pra essa obra"'} onclick="_editarKitAddLinha()">＋ Adicionar produto</button>
       <div id="edk-soma" style="font-size:12px;color:var(--muted)">Soma das linhas: ${fmtMoney(somaLinhas)}</div>
     </div>
     <div class="actions rodape-cartao">
