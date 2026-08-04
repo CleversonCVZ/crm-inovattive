@@ -1064,14 +1064,19 @@
   <div class="view" id="view-fin-resultado-aparente">
     <div class="bar">
       <h2>Resultado Aparente — Obras</h2>
-      <div class="spacer"></div>
-      <select id="fra-filtro" onchange="renderFinResultadoAparente()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+      <select id="fra-filtro" class="vista-sel" onchange="renderFinResultadoAparente()">
         <option value="pendentes">Com saldo a retirar</option>
         <option value="todas">Todas as obras</option>
       </select>
+      <select id="fra-periodo" class="vista-sel" onchange="renderFinResultadoAparente()" style="margin-left:6px">
+        <option value="mes">Este mês</option>
+        <option value="trim">Últimos 3 meses</option>
+        <option value="ano">Este ano</option>
+        <option value="tudo" selected>Todo o período</option>
+      </select>
     </div>
     <div class="stats" id="fra-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
-    <div class="kanban" id="fra-lista"></div>
+    <div id="fra-lista"></div>
   </div>
 
   <!-- SRM: PAINEL -->
@@ -1379,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.151';
+const APP_VERSION = '1.47.152';
 const APP_VERSION_DATE = '04/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.152',
+    data: '04/08/2026',
+    itens: [
+      'Financeiro → Res. Aparente trocou o kanban de colunas por uma grade agrupada (mesmo estilo da tela CRM → Perdidos & Concluídos): cabeçalho colorido com contador + cartões numa grade que quebra linha. Filtro de visualização movido pra logo após o título, e novo filtro de período (Este mês/Últimos 3 meses/Este ano/Todo o período) que afeta só o total "Retirado no Período" — o saldo de cada obra continua sempre o mesmo valor da aba da obra, não muda com o período.',
+    ]
+  },
   {
     versao: '1.47.151',
     data: '04/08/2026',
@@ -6451,7 +6463,8 @@ function ativarView(viewId){
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
   if(viewId==='fin-resultado-aparente'){
-    const fra=document.getElementById('fra-filtro'); if(fra) fra.value='pendentes';
+    const fra=document.getElementById('fra-filtro');  if(fra)  fra.value='pendentes';
+    const frp=document.getElementById('fra-periodo'); if(frp)  frp.value='tudo';
     renderFinResultadoAparente();
   }
   if(viewId==='fin-fornecedores'){
@@ -11249,9 +11262,10 @@ const AJUDA_CONTEUDO = {
   'fin-resultado-aparente': {
     titulo: 'Resultado Aparente — Obras',
     html: `
-      <p>Painel em formato kanban com o Resultado Aparente de todas as obras com proposta aprovada — mesmo cálculo e mesmos números da aba <b>Obra → Resultado Aparente</b> dentro do Cartão CRM (é a mesma fonte de dados, só que juntando todas as obras numa tela só). Clique num cartão pra abrir direto o Cartão CRM daquela obra, na aba Resultado Aparente.</p>
-      <p>As colunas são calculadas automaticamente pelo saldo disponível — <b>não</b> dá pra arrastar um cartão de uma coluna pra outra, porque o saldo muda sozinho conforme retiradas são lançadas ou custos mudam, não é um status que se escolhe manualmente:</p>
-      <p>⚠️ <b>Resultado Negativo</b> — saldo devedor (resultado negativo e/ou já retirou mais do que tinha disponível). 💰 <b>Saldo a Retirar</b> — ainda tem valor positivo disponível. ✅ <b>Quitado</b> — saldo zerado; essa coluna só aparece com o filtro "Todas as obras" (o padrão "Com saldo a retirar" a esconde).</p>
+      <p>Grade com o Resultado Aparente de todas as obras com proposta aprovada, agrupada por situação (mesmo estilo visual da tela CRM → Perdidos & Concluídos) — mesmo cálculo e mesmos números da aba <b>Obra → Resultado Aparente</b> dentro do Cartão CRM (é a mesma fonte de dados, só que juntando todas as obras numa tela só). Clique num cartão pra abrir direto o Cartão CRM daquela obra, na aba Resultado Aparente.</p>
+      <p>Os grupos são calculados automaticamente pelo saldo disponível de cada obra — não é um status que se escolhe manualmente, muda sozinho conforme retiradas são lançadas ou custos mudam:</p>
+      <p>⚠️ <b>Resultado Negativo</b> — saldo devedor (resultado negativo e/ou já retirou mais do que tinha disponível). 💰 <b>Saldo a Retirar</b> — ainda tem valor positivo disponível. ✅ <b>Quitado</b> — saldo zerado; esse grupo só aparece com o filtro "Todas as obras" (o padrão "Com saldo a retirar" o esconde).</p>
+      <p>O filtro de período (Este mês/Últimos 3 meses/Este ano/Todo o período) afeta <b>só</b> o cartão de totais "Retirado no Período" — ele NÃO recalcula o saldo disponível de cada obra nem muda de grupo ela aparece, porque esse saldo precisa continuar sempre igual ao mostrado na aba da obra.</p>
       <p>Cada cartão mostra o saldo disponível e, quando existem, um aviso "Projetado" (o cálculo já inclui estimativas de outros custos pendentes de decisão) e/ou "⚠ Resultado negativo". O histórico de retiradas (datas e valores) não aparece no cartão — só dentro da aba Obra → Resultado Aparente do Cartão CRM, que é também onde novas retiradas são lançadas.</p>`
   },
   'fat-painel': {
@@ -16200,10 +16214,10 @@ function abrirObraDaResultadoAparente(cardId){
   setTimeout(()=>trocarAbaObra(cardId,'resultadoAparente'),0);
 }
 
-/** v1.47.151: card compacto (estilo .kcard, igual aos cartões do Painel CRM/SRM/
- *  Faturamento) usado nas colunas kanban da tela "Res. Aparente". Sem drag — o
+/** v1.47.152: card compacto (estilo .kcard, igual aos cartões do Painel CRM/SRM/
+ *  Faturamento) usado nos grupos da tela "Res. Aparente". Sem drag — o
  *  saldo é calculado automaticamente (não é um status que se arrasta entre
- *  colunas), então o card só abre a obra ao clicar. Histórico de retiradas fica
+ *  grupos), então o card só abre a obra ao clicar. Histórico de retiradas fica
  *  de fora do card (só aparece dentro do Cartão CRM) pra manter o card enxuto. */
 function fraKcard(o){
   const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -16226,18 +16240,24 @@ function fraKcard(o){
   return el;
 }
 
-/** v1.47.149 (kanban desde v1.47.151): tela consolidada "Financeiro → Res.
- *  Aparente" — reusa _calcResultadoAparente (mesma fonte de verdade da aba
+/** v1.47.149 (grade agrupada desde v1.47.152): tela consolidada "Financeiro →
+ *  Res. Aparente" — reusa _calcResultadoAparente (mesma fonte de verdade da aba
  *  Obra→Resultado Aparente, nunca duplicar essa conta) e agrupa as obras em
- *  3 colunas fixas por saldoDisp: Resultado Negativo / Saldo a Retirar / Quitado.
- *  Não é um kanban de arrastar — a coluna é calculada automaticamente a partir
- *  do saldo, não é um status editável, então colEl() é usado sem opts.onDrop.
- *  Filtro "pendentes" (padrão) esconde a coluna Quitado; "Todas as obras" mostra. */
+ *  3 grupos fixos por saldoDisp: Resultado Negativo / Saldo a Retirar / Quitado,
+ *  no mesmo padrão visual de "CRM → Perdidos & Concluídos" (renderVistaArquivados):
+ *  cabeçalho colorido com contador + grade de cards que quebra linha (não é
+ *  kanban de arrastar — o grupo é calculado automaticamente a partir do saldo,
+ *  não é um status editável).
+ *  Filtro "pendentes" (padrão) esconde o grupo Quitado; "Todas as obras" mostra.
+ *  Filtro de período (mês/3 meses/ano/tudo) NÃO recalcula saldoDisp/baseRetirada
+ *  de cada obra (que precisam continuar idênticos aos da aba da obra) — ele só
+ *  restringe quais retiradas entram na soma do card "Retirado no período". */
 function renderFinResultadoAparente(){
   const listaEl = document.getElementById('fra-lista');
   if(!listaEl) return;
   const statsEl  = document.getElementById('fra-stats');
-  const filtro   = (document.getElementById('fra-filtro')||{}).value || 'pendentes';
+  const filtro   = (document.getElementById('fra-filtro')||{}).value  || 'pendentes';
+  const periodo  = (document.getElementById('fra-periodo')||{}).value || 'tudo';
   const fmtR  = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 
   // uma obra por cartão (obraDe é 1:1 com o cartão que a criou)
@@ -16249,13 +16269,15 @@ function renderFinResultadoAparente(){
     return {c, ob, ...calc};
   }).filter(Boolean);
 
-  const totalARetirar   = obras.filter(o=>o.saldoDisp>0).reduce((s,o)=>s+o.saldoDisp,0);
-  const totalRetiradoTd = obras.reduce((s,o)=>s+o.totalRetirado,0);
-  const qtdNegativas    = obras.filter(o=>o.baseRetirada<0).length;
+  const totalARetirar     = obras.filter(o=>o.saldoDisp>0).reduce((s,o)=>s+o.saldoDisp,0);
+  const totalRetiradoPer  = obras.reduce((s,o)=>
+    s + o.retiradas.filter(r=>_finPainelDentroFiltro(r.data, periodo)).reduce((ss,r)=>ss+r.valor,0), 0);
+  const qtdNegativas      = obras.filter(o=>o.baseRetirada<0).length;
+  const labelRetirado     = periodo==='tudo' ? 'Já Retirado' : 'Retirado no Período';
 
   if(statsEl) statsEl.innerHTML = `
     <div class="stat"><div class="n" style="color:#16a34a">${fmtR(totalARetirar)}</div><div class="l">Total a Retirar</div></div>
-    <div class="stat"><div class="n" style="color:#dc2626">${fmtR(totalRetiradoTd)}</div><div class="l">Já Retirado</div></div>
+    <div class="stat"><div class="n" style="color:#dc2626">${fmtR(totalRetiradoPer)}</div><div class="l">${labelRetirado}</div></div>
     ${qtdNegativas?`<div class="stat"><div class="n" style="color:#dc2626">${qtdNegativas}</div><div class="l">⚠ Obra(s) c/ Resultado Negativo</div></div>`:''}
   `;
 
@@ -16269,9 +16291,24 @@ function renderFinResultadoAparente(){
   const aRetirar  = obras.filter(o=>o.saldoDisp >  0.01).sort((a,b)=>b.saldoDisp-a.saldoDisp);       // maior saldo primeiro
   const quitadas  = obras.filter(o=>Math.abs(o.saldoDisp) <= 0.01).sort((a,b)=>a.ob.nome.localeCompare(b.ob.nome));
 
-  listaEl.appendChild(colEl('⚠️ Resultado Negativo', '#dc2626', negativas, {render: fraKcard}));
-  listaEl.appendChild(colEl('💰 Saldo a Retirar',     '#16a34a', aRetirar,  {render: fraKcard}));
-  if(filtro==='todas') listaEl.appendChild(colEl('✅ Quitado', '#64748b', quitadas, {render: fraKcard}));
+  const grupos = [
+    {chave:'neg',  titulo:'⚠️ Resultado Negativo', cor:'#dc2626', itens:negativas},
+    {chave:'ret',  titulo:'💰 Saldo a Retirar',     cor:'#16a34a', itens:aRetirar},
+  ];
+  if(filtro==='todas') grupos.push({chave:'qui', titulo:'✅ Quitado', cor:'#64748b', itens:quitadas});
+
+  listaEl.innerHTML = grupos.filter(g=>g.itens.length).map(g=>`
+    <div class="os-grupo-header" style="color:${g.cor}">
+      ${g.titulo} <span class="col-count" style="background:${g.cor};color:#fff">${g.itens.length}</span>
+    </div>
+    <div class="os-painel-list" style="margin-bottom:24px" id="fra-grupo-${g.chave}"></div>`
+  ).join('') || `<div class="empty" style="padding:60px;text-align:center">Nenhuma obra encontrada.</div>`;
+
+  grupos.forEach(g=>{
+    const cont = document.getElementById(`fra-grupo-${g.chave}`);
+    if(!cont) return;
+    g.itens.forEach(o=> cont.appendChild(fraKcard(o)));
+  });
 }
 
 function abaObraOutrosCustos(c, ob, editandoId=null){
