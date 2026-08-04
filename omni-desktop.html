@@ -1071,7 +1071,7 @@
       </select>
     </div>
     <div class="stats" id="fra-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
-    <div id="fra-lista" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div class="kanban" id="fra-lista"></div>
   </div>
 
   <!-- SRM: PAINEL -->
@@ -1379,11 +1379,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.149';
+const APP_VERSION = '1.47.151';
 const APP_VERSION_DATE = '04/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.151',
+    data: '04/08/2026',
+    itens: [
+      'Financeiro → Res. Aparente virou um painel kanban (mesmo estilo do Painel CRM, SRM e Faturamento) em vez da lista de blocos — 3 colunas fixas calculadas automaticamente: "⚠️ Resultado Negativo", "💰 Saldo a Retirar" e "✅ Quitado" (esta só aparece com o filtro "Todas as obras"). Cartões ficaram mais enxutos (sem histórico de retiradas, que continua disponível ao clicar e abrir a obra).',
+    ]
+  },
+  {
+    versao: '1.47.150',
+    data: '04/08/2026',
+    itens: [
+      'Ajuda (❓) da tela Financeiro — Acompanhamento reescrita: agora explica as 4 visualizações separadamente (Centros de Custo com a divisão Fixo/Variável, Contas a Pagar/Receber, Extrato por Conta), o que cada cartão de totais representa e como o filtro de período se aplica a cada uma — antes era só uma frase genérica.',
+    ]
+  },
   {
     versao: '1.47.149',
     data: '04/08/2026',
@@ -11180,7 +11194,14 @@ const AJUDA_CONTEUDO = {
   },
   'fin-painel': {
     titulo: 'Financeiro — Acompanhamento',
-    html: `<p>Painel geral com 4 visualizações: Centros de Custo (gasto agrupado por categoria), Contas a Pagar, Contas a Receber e Extrato por Conta (escolha uma conta corrente pra ver o extrato). Filtro de período (mês/trimestre/ano/tudo) se aplica às 3 primeiras visualizações.</p>`
+    html: `
+      <p>Painel geral com 4 visualizações (seletor no topo) — cada uma com seus próprios cartões de totais e sua própria lista abaixo. O filtro de período (mês/trimestre/ano/tudo) se aplica às 3 primeiras; na de Extrato ele define a partir de quando os movimentos entram no cálculo do saldo/fatura.</p>
+      <h5>🏢🏗️ Centros de Custo</h5>
+      <p>Soma as saídas de caixa (contas pagas, custos lançados na obra etc.) por Centro de Custo, separando em duas seções: <b>Custos Fixos (Overhead)</b> — despesas da empresa que não pertencem a nenhuma obra — e <b>Custos Variáveis (Projetos)</b> — gastos vinculados a obras (Material de Obra, Mão de Obra...). Os cartões no topo mostram Total Gasto, total Fixo, total Variável e quantidade de lançamentos; a barrinha ao lado de cada centro de custo mostra o peso dele em relação ao maior.</p>
+      <h5>📋 Contas a Pagar / 💰 Contas a Receber</h5>
+      <p>Agrupa por fornecedor (a pagar) ou cliente (a receber), mostrando Total, Pago/Recebido e Pendente de cada um — pendentes/vencidas sempre aparecem mesmo fora do período filtrado (não têm como filtrar por data algo que ainda não aconteceu); só o que já foi pago/recebido é que respeita o filtro de período.</p>
+      <h5>🏦 Extrato por Conta</h5>
+      <p>Escolha a conta corrente (ou cartão) no terceiro seletor que aparece. Mostra saldo inicial do período, todos os movimentos (entrada/saída/transferência) em ordem cronológica e saldo final. Para cartão de crédito, os cartões de totais mudam pra Limite, Fatura Atual e Gastos no Período.</p>`
   },
   'fin-recorrentes': {
     titulo: 'Contas Recorrentes',
@@ -11228,10 +11249,10 @@ const AJUDA_CONTEUDO = {
   'fin-resultado-aparente': {
     titulo: 'Resultado Aparente — Obras',
     html: `
-      <p>Lista consolidada, em blocos, do Resultado Aparente de todas as obras com proposta aprovada — mesmo cálculo e mesmos números da aba <b>Obra → Resultado Aparente</b> dentro do Cartão CRM (é a mesma fonte de dados, só que juntando todas as obras numa tela só). Clique num bloco pra abrir direto o Cartão CRM daquela obra, na aba Resultado Aparente.</p>
-      <p>Por padrão só aparecem obras com saldo a retirar (positivo ou negativo) — use o filtro "Todas as obras" pra ver também as que já foram totalmente retiradas ou zeradas.</p>
-      <p>Cada bloco mostra a base de cálculo do resultado: <b>efetivado</b> (só custos já confirmados) ou <b>projetado</b> (quando a obra tem estimativas de outros custos pendentes de decisão, o cálculo já soma essas estimativas — mesma regra usada na aba da obra). Obras com resultado negativo aparecem destacadas e sempre no topo da lista.</p>
-      <p>O histórico de retiradas (data, descrição e valor) aparece resumido em cada bloco — as retiradas em si só podem ser lançadas/editadas dentro da aba Obra → Resultado Aparente, no Cartão CRM.</p>`
+      <p>Painel em formato kanban com o Resultado Aparente de todas as obras com proposta aprovada — mesmo cálculo e mesmos números da aba <b>Obra → Resultado Aparente</b> dentro do Cartão CRM (é a mesma fonte de dados, só que juntando todas as obras numa tela só). Clique num cartão pra abrir direto o Cartão CRM daquela obra, na aba Resultado Aparente.</p>
+      <p>As colunas são calculadas automaticamente pelo saldo disponível — <b>não</b> dá pra arrastar um cartão de uma coluna pra outra, porque o saldo muda sozinho conforme retiradas são lançadas ou custos mudam, não é um status que se escolhe manualmente:</p>
+      <p>⚠️ <b>Resultado Negativo</b> — saldo devedor (resultado negativo e/ou já retirou mais do que tinha disponível). 💰 <b>Saldo a Retirar</b> — ainda tem valor positivo disponível. ✅ <b>Quitado</b> — saldo zerado; essa coluna só aparece com o filtro "Todas as obras" (o padrão "Com saldo a retirar" a esconde).</p>
+      <p>Cada cartão mostra o saldo disponível e, quando existem, um aviso "Projetado" (o cálculo já inclui estimativas de outros custos pendentes de decisão) e/ou "⚠ Resultado negativo". O histórico de retiradas (datas e valores) não aparece no cartão — só dentro da aba Obra → Resultado Aparente do Cartão CRM, que é também onde novas retiradas são lançadas.</p>`
   },
   'fat-painel': {
     titulo: 'Faturamento — Painel',
@@ -16179,37 +16200,54 @@ function abrirObraDaResultadoAparente(cardId){
   setTimeout(()=>trocarAbaObra(cardId,'resultadoAparente'),0);
 }
 
-/** v1.47.149: tela consolidada "Financeiro → Res. Aparente" — lista, em blocos, o
- *  Resultado Aparente de todas as obras que já têm proposta aprovada, reusando
- *  _calcResultadoAparente (mesma fonte de verdade da aba Obra→Resultado Aparente,
- *  nunca duplicar essa conta). Por padrão mostra só obras com saldo a retirar
- *  (positivo ou negativo); filtro "Todas as obras" mostra o restante também. */
+/** v1.47.151: card compacto (estilo .kcard, igual aos cartões do Painel CRM/SRM/
+ *  Faturamento) usado nas colunas kanban da tela "Res. Aparente". Sem drag — o
+ *  saldo é calculado automaticamente (não é um status que se arrasta entre
+ *  colunas), então o card só abre a obra ao clicar. Histórico de retiradas fica
+ *  de fora do card (só aparece dentro do Cartão CRM) pra manter o card enxuto. */
+function fraKcard(o){
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const cor  = v => v >= 0 ? '#16a34a' : '#dc2626';
+  const {c, ob, temEstimativas, baseRetirada, totalRetirado, saldoDisp} = o;
+  const cl = cliente(c.clienteId);
+  const el = document.createElement('div');
+  el.className = 'kcard';
+  el.style.cursor = 'pointer';
+  el.style.borderLeftColor = cor(saldoDisp);
+  el.onclick = () => abrirObraDaResultadoAparente(c.id);
+  el.innerHTML = `
+    <div class="top">${escHtml(ob.nome)}</div>
+    <div class="row"><b>Cliente:</b> ${escHtml(cl.nome)}</div>
+    <div class="row"><b>Cartão:</b> #${c.num}</div>
+    <div class="row valor" style="color:${cor(saldoDisp)}">${fmtR(saldoDisp)}</div>
+    ${totalRetirado>0?`<div class="row" style="font-size:11px">− ${fmtR(totalRetirado)} já retirado</div>`:''}
+    ${temEstimativas?`<span class="badge hoje">Projetado</span>`:''}
+    ${baseRetirada<0?`<span class="badge atrasado">⚠ Resultado negativo</span>`:''}`;
+  return el;
+}
+
+/** v1.47.149 (kanban desde v1.47.151): tela consolidada "Financeiro → Res.
+ *  Aparente" — reusa _calcResultadoAparente (mesma fonte de verdade da aba
+ *  Obra→Resultado Aparente, nunca duplicar essa conta) e agrupa as obras em
+ *  3 colunas fixas por saldoDisp: Resultado Negativo / Saldo a Retirar / Quitado.
+ *  Não é um kanban de arrastar — a coluna é calculada automaticamente a partir
+ *  do saldo, não é um status editável, então colEl() é usado sem opts.onDrop.
+ *  Filtro "pendentes" (padrão) esconde a coluna Quitado; "Todas as obras" mostra. */
 function renderFinResultadoAparente(){
   const listaEl = document.getElementById('fra-lista');
   if(!listaEl) return;
   const statsEl  = document.getElementById('fra-stats');
   const filtro   = (document.getElementById('fra-filtro')||{}).value || 'pendentes';
   const fmtR  = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const fmtDt = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
-  const cor   = v => v >= 0 ? '#16a34a' : '#dc2626';
 
   // uma obra por cartão (obraDe é 1:1 com o cartão que a criou)
-  let obras = (db.cards||[]).filter(c=>c.obraId).map(c=>{
+  const obras = (db.cards||[]).filter(c=>c.obraId).map(c=>{
     const ob = obraDe(c);
     if(!ob) return null;
     const calc = _calcResultadoAparente(c, ob);
     if(calc.semProposta) return null; // sem proposta aprovada não há resultado aparente a mostrar
     return {c, ob, ...calc};
   }).filter(Boolean);
-
-  if(filtro==='pendentes') obras = obras.filter(o=>Math.abs(o.saldoDisp) >= 0.01);
-
-  // negativas primeiro (mais urgente), depois maior saldo a retirar primeiro
-  obras.sort((a,b)=>{
-    const aNeg = a.saldoDisp < 0, bNeg = b.saldoDisp < 0;
-    if(aNeg!==bNeg) return aNeg?-1:1;
-    return b.saldoDisp - a.saldoDisp;
-  });
 
   const totalARetirar   = obras.filter(o=>o.saldoDisp>0).reduce((s,o)=>s+o.saldoDisp,0);
   const totalRetiradoTd = obras.reduce((s,o)=>s+o.totalRetirado,0);
@@ -16221,38 +16259,19 @@ function renderFinResultadoAparente(){
     ${qtdNegativas?`<div class="stat"><div class="n" style="color:#dc2626">${qtdNegativas}</div><div class="l">⚠ Obra(s) c/ Resultado Negativo</div></div>`:''}
   `;
 
+  listaEl.innerHTML = '';
   if(!obras.length){
-    listaEl.innerHTML = `<div class="empty" style="text-align:center;padding:24px;color:var(--muted)">Nenhuma obra encontrada${filtro==='pendentes'?' com saldo a retirar':''}.</div>`;
+    listaEl.innerHTML = `<div class="empty" style="padding:60px;text-align:center">Nenhuma obra com proposta aprovada ainda.</div>`;
     return;
   }
 
-  listaEl.innerHTML = obras.map(o=>{
-    const {c, ob, temEstimativas, baseRetirada, retiradas, totalRetirado, saldoDisp} = o;
-    const cl = cliente(c.clienteId);
-    const historico = retiradas.length ? `
-      <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">
-        ${retiradas.slice(0,3).map(r=>`
-          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);padding:2px 0">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtDt(r.data)} — ${escHtml(r.descricao||'—')}</span>
-            <span style="color:#dc2626;white-space:nowrap">− ${fmtR(r.valor)}</span>
-          </div>`).join('')}
-        ${retiradas.length>3?`<div style="font-size:11px;color:var(--muted);margin-top:2px">+ ${retiradas.length-3} retirada(s) anterior(es)</div>`:''}
-      </div>` : '';
-    return `
-    <div style="border-radius:10px;border:2px solid ${cor(saldoDisp)};padding:14px 16px;cursor:pointer" onclick="abrirObraDaResultadoAparente(${c.id})">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div style="min-width:0">
-          <div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(ob.nome)} <span style="color:var(--muted);font-weight:400">#${c.num} · ${escHtml(cl.nome)}</span></div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">Resultado base (${temEstimativas?'projetado — inclui estimativas':'efetivado'})${baseRetirada<0?' · <span style="color:#dc2626;font-weight:600">resultado negativo</span>':''}</div>
-        </div>
-        <div style="text-align:right;white-space:nowrap">
-          ${totalRetirado>0?`<div style="font-size:12px;color:#dc2626;font-weight:600">− ${fmtR(totalRetirado)} retirado</div>`:''}
-          <div style="font-size:16px;font-weight:700;color:${cor(saldoDisp)}">${fmtR(saldoDisp)}</div>
-        </div>
-      </div>
-      ${historico}
-    </div>`;
-  }).join('');
+  const negativas = obras.filter(o=>o.saldoDisp < -0.01).sort((a,b)=>a.saldoDisp-b.saldoDisp);      // mais negativo primeiro
+  const aRetirar  = obras.filter(o=>o.saldoDisp >  0.01).sort((a,b)=>b.saldoDisp-a.saldoDisp);       // maior saldo primeiro
+  const quitadas  = obras.filter(o=>Math.abs(o.saldoDisp) <= 0.01).sort((a,b)=>a.ob.nome.localeCompare(b.ob.nome));
+
+  listaEl.appendChild(colEl('⚠️ Resultado Negativo', '#dc2626', negativas, {render: fraKcard}));
+  listaEl.appendChild(colEl('💰 Saldo a Retirar',     '#16a34a', aRetirar,  {render: fraKcard}));
+  if(filtro==='todas') listaEl.appendChild(colEl('✅ Quitado', '#64748b', quitadas, {render: fraKcard}));
 }
 
 function abaObraOutrosCustos(c, ob, editandoId=null){
