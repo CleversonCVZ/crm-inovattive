@@ -1060,6 +1060,20 @@
     </table>
   </div>
 
+  <!-- FINANCEIRO: RESULTADO APARENTE -->
+  <div class="view" id="view-fin-resultado-aparente">
+    <div class="bar">
+      <h2>Resultado Aparente — Obras</h2>
+      <div class="spacer"></div>
+      <select id="fra-filtro" onchange="renderFinResultadoAparente()" style="font-size:13px;padding:6px 10px;border:1px solid var(--border);border-radius:8px">
+        <option value="pendentes">Com saldo a retirar</option>
+        <option value="todas">Todas as obras</option>
+      </select>
+    </div>
+    <div class="stats" id="fra-stats" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap"></div>
+    <div id="fra-lista" style="display:flex;flex-direction:column;gap:12px"></div>
+  </div>
+
   <!-- SRM: PAINEL -->
   <div class="view" id="view-srm-painel">
     <div class="bar">
@@ -1365,11 +1379,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.148';
-const APP_VERSION_DATE = '30/07/2026';
+const APP_VERSION = '1.47.149';
+const APP_VERSION_DATE = '04/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.149',
+    data: '04/08/2026',
+    itens: [
+      'Novo item no menu do Financeiro: "Res. Aparente" — lista consolidada, em blocos, do Resultado Aparente de todas as obras com proposta aprovada e saldo a retirar (positivo ou negativo), com histórico resumido das retiradas já feitas em cada obra. Clicar num bloco abre direto a obra na aba Resultado Aparente, dentro do Cartão CRM.',
+    ]
+  },
   {
     versao: '1.47.148',
     data: '30/07/2026',
@@ -3243,6 +3264,7 @@ const TELAS = [
   {id:'fin-contas-correntes',   nome:'Financeiro — Contas Correntes',   menu:'Contas Correntes'},
   {id:'fin-contas-pagar',       nome:'Financeiro — Contas a Pagar',     menu:'Contas a Pagar'},
   {id:'fin-contas-receber',     nome:'Financeiro — Contas a Receber',   menu:'Contas a Receber'},
+  {id:'fin-resultado-aparente', nome:'Financeiro — Resultado Aparente', menu:'Res. Aparente'},
   // ── SRM
   {id:'srm-painel',        nome:'SRM — Painel',         menu:'Painel'},
   {id:'srm-fases',         nome:'SRM — Fases',          menu:'Fases'},
@@ -3319,7 +3341,7 @@ const MODULOS = [
   {id:'propostas', nome:'Propostas', icone:'📄', telas:['prop-painel','prop-fases','propostas']},
   {id:'obras',     nome:'Obras',     icone:'🏗️', telas:['obras-painel','obras-fases','cat-outros-custos','obras-lista']},
   {id:'os',          nome:'O. Serviço', icone:'🔧', telas:['os-painel','os-fases','os-lista']},
-  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber'], sepAntes:true},
+  {id:'financeiro',  nome:'Financeiro', icone:'💳', telas:['fin-painel','fin-recorrentes','fin-centros-custo','fin-contas-correntes','fin-contas-pagar','fin-contas-receber','fin-resultado-aparente'], sepAntes:true},
   {id:'srm',     nome:'SRM',     icone:'🤝', telas:['srm-painel','srm-fases','fin-fornecedores'],     sepAntes:true},
   {id:'faturamento', nome:'Faturamento', icone:'🧾', telas:['fat-painel','fat-fases','fat-espelhos','fat-tributos'], sepAntes:true},
   {id:'estoque', nome:'Estoque', icone:'📦', telas:['estoque-painel','estoque-categorias','estoque-almoxarifado','estoque-movimentacoes','estoque-catalogo']}
@@ -6414,6 +6436,10 @@ function ativarView(viewId){
   }
   if(viewId==='fin-centros-custo')   renderCentrosCusto();
   if(viewId==='fin-contas-correntes') renderContasCorrente();
+  if(viewId==='fin-resultado-aparente'){
+    const fra=document.getElementById('fra-filtro'); if(fra) fra.value='pendentes';
+    renderFinResultadoAparente();
+  }
   if(viewId==='fin-fornecedores'){
     const fst=document.getElementById('forn-filtro-status'); if(fst) fst.value='ativo';
     renderFornecedores();
@@ -11199,6 +11225,14 @@ const AJUDA_CONTEUDO = {
     titulo: 'Confirmar Recebimento',
     html: `<p>Registra o dinheiro recebido de uma parcela, creditando numa conta corrente. Se o valor recebido agora for MENOR que o restante da parcela, ela fica com status "Parcial" e continua aparecendo na lista pra registrar o próximo pagamento depois (o histórico de pagamentos parciais anteriores aparece aqui em cima, se houver). Só quando a soma dos recebimentos bater com o valor total (ou passar, com folga de centavos) a parcela vira "Recebida".</p>`
   },
+  'fin-resultado-aparente': {
+    titulo: 'Resultado Aparente — Obras',
+    html: `
+      <p>Lista consolidada, em blocos, do Resultado Aparente de todas as obras com proposta aprovada — mesmo cálculo e mesmos números da aba <b>Obra → Resultado Aparente</b> dentro do Cartão CRM (é a mesma fonte de dados, só que juntando todas as obras numa tela só). Clique num bloco pra abrir direto o Cartão CRM daquela obra, na aba Resultado Aparente.</p>
+      <p>Por padrão só aparecem obras com saldo a retirar (positivo ou negativo) — use o filtro "Todas as obras" pra ver também as que já foram totalmente retiradas ou zeradas.</p>
+      <p>Cada bloco mostra a base de cálculo do resultado: <b>efetivado</b> (só custos já confirmados) ou <b>projetado</b> (quando a obra tem estimativas de outros custos pendentes de decisão, o cálculo já soma essas estimativas — mesma regra usada na aba da obra). Obras com resultado negativo aparecem destacadas e sempre no topo da lista.</p>
+      <p>O histórico de retiradas (data, descrição e valor) aparece resumido em cada bloco — as retiradas em si só podem ser lançadas/editadas dentro da aba Obra → Resultado Aparente, no Cartão CRM.</p>`
+  },
   'fat-painel': {
     titulo: 'Faturamento — Painel',
     html: `
@@ -15845,11 +15879,13 @@ async function excluirCategoriaCusto(id){
   renderCatOutrosCustos();
 }
 
-function abaObraResultadoAparente(c, ob){
-  const podeEditar = podeEditarRecurso(usuarioAtual,'obra-resultado-aparente');
-  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-  const cor   = v => v >= 0 ? '#16a34a' : '#dc2626';
-
+/** v1.47.149: cálculo do Resultado Aparente extraído de dentro de abaObraResultadoAparente
+ *  pra virar reutilizável — usado tanto pela aba Obra→Resultado Aparente (dentro do
+ *  Cartão CRM, comportamento idêntico ao de antes) quanto pela nova tela consolidada
+ *  "Financeiro → Res. Aparente" (lista de todas as obras). Fonte única de verdade: os
+ *  dois lugares SEMPRE mostram o mesmo número pra mesma obra, porque usam esta mesma
+ *  função — nunca duplicar essa conta em outro lugar. */
+function _calcResultadoAparente(c, ob){
   // ── 1. Valor de Venda (proposta aprovada) ─────────────────────────────────
   const propostasAprov = (db.propostas||[]).filter(p => p.cardId === c.id && p.status === 'aprovada');
   // valorVenda exclui itens fornecidos pelo cliente (clienteFornece=true) — eles não são faturados
@@ -15889,6 +15925,38 @@ function abaObraResultadoAparente(c, ob){
   const resultadoComEst   = valorVenda - totalCustosEfet - totalOCEst;
   const margemEfet        = valorVenda > 0 ? (resultadoEfet / valorVenda * 100) : null;
   const margemComEst      = valorVenda > 0 ? (resultadoComEst / valorVenda * 100) : null;
+
+  // ── 6. Retiradas do Lucro ──────────────────────────────────────────────────
+  const temEstimativas = ocEstimativas.length > 0;
+  const baseRetirada   = temEstimativas ? resultadoComEst : resultadoEfet;
+  const retiradas      = (db.obraRetiradas||[]).filter(x => x.obraId === ob.id)
+                            .sort((a,b) => b.data.localeCompare(a.data));
+  const totalRetirado  = retiradas.reduce((s,x) => s + x.valor, 0);
+  const saldoDisp      = baseRetirada - totalRetirado;
+
+  return {
+    valorVenda, semProposta, propostasComClienteFornece,
+    comprasSRM, compras, comprasSemValor, comprasPagoCliente, totalCompras,
+    osObra, totalMO,
+    outrosCustos, ocEfetivados, ocEstimativas, totalOCEfet, totalOCEst,
+    totalCustosEfet, resultadoEfet, resultadoComEst, margemEfet, margemComEst,
+    temEstimativas, baseRetirada, retiradas, totalRetirado, saldoDisp
+  };
+}
+
+function abaObraResultadoAparente(c, ob){
+  const podeEditar = podeEditarRecurso(usuarioAtual,'obra-resultado-aparente');
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const cor   = v => v >= 0 ? '#16a34a' : '#dc2626';
+
+  const {
+    valorVenda, semProposta, propostasComClienteFornece,
+    compras, comprasSemValor, comprasPagoCliente, totalCompras,
+    osObra, totalMO,
+    outrosCustos, ocEfetivados, ocEstimativas, totalOCEfet, totalOCEst,
+    totalCustosEfet, resultadoEfet, resultadoComEst, margemEfet, margemComEst,
+    baseRetirada, retiradas, totalRetirado, saldoDisp
+  } = _calcResultadoAparente(c, ob);
 
   // ── helpers de bloco ────────────────────────────────────────────────────────
   const secTitle = (icone, titulo) => `
@@ -16033,13 +16101,9 @@ function abaObraResultadoAparente(c, ob){
     </div>` : ''}
 
     ${(()=>{
-      // ── 6. Retiradas do Lucro ─────────────────────────────────────────────
-      const retiradas     = (db.obraRetiradas||[]).filter(x => x.obraId === ob.id)
-                              .sort((a,b) => b.data.localeCompare(a.data));
-      const totalRetirado = retiradas.reduce((s,x) => s + x.valor, 0);
-      const baseRetirada  = ocEstimativas.length ? resultadoComEst : resultadoEfet;
-      const saldoDisp     = baseRetirada - totalRetirado;
-      const fmtDt         = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+      // ── 6. Retiradas do Lucro (retiradas/totalRetirado/baseRetirada/saldoDisp já
+      //     vêm de _calcResultadoAparente, calculados uma única vez lá em cima) ──
+      const fmtDt = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
 
       const linhasRet = retiradas.length
         ? retiradas.map(r => {
@@ -16105,6 +16169,90 @@ function abaObraResultadoAparente(c, ob){
       </div>`:''}`;
     })()}
   `;
+}
+
+/** v1.47.149: navega da lista consolidada "Financeiro → Res. Aparente" direto pro
+ *  detalhe da obra dentro do Cartão CRM, aba Resultado Aparente — mesmo padrão de
+ *  voltarParaContatos(). */
+function abrirObraDaResultadoAparente(cardId){
+  abrirEditarCartao(cardId,'obras');
+  setTimeout(()=>trocarAbaObra(cardId,'resultadoAparente'),0);
+}
+
+/** v1.47.149: tela consolidada "Financeiro → Res. Aparente" — lista, em blocos, o
+ *  Resultado Aparente de todas as obras que já têm proposta aprovada, reusando
+ *  _calcResultadoAparente (mesma fonte de verdade da aba Obra→Resultado Aparente,
+ *  nunca duplicar essa conta). Por padrão mostra só obras com saldo a retirar
+ *  (positivo ou negativo); filtro "Todas as obras" mostra o restante também. */
+function renderFinResultadoAparente(){
+  const listaEl = document.getElementById('fra-lista');
+  if(!listaEl) return;
+  const statsEl  = document.getElementById('fra-stats');
+  const filtro   = (document.getElementById('fra-filtro')||{}).value || 'pendentes';
+  const fmtR  = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtDt = d => d ? new Date(d+'T12:00').toLocaleDateString('pt-BR') : '—';
+  const cor   = v => v >= 0 ? '#16a34a' : '#dc2626';
+
+  // uma obra por cartão (obraDe é 1:1 com o cartão que a criou)
+  let obras = (db.cards||[]).filter(c=>c.obraId).map(c=>{
+    const ob = obraDe(c);
+    if(!ob) return null;
+    const calc = _calcResultadoAparente(c, ob);
+    if(calc.semProposta) return null; // sem proposta aprovada não há resultado aparente a mostrar
+    return {c, ob, ...calc};
+  }).filter(Boolean);
+
+  if(filtro==='pendentes') obras = obras.filter(o=>Math.abs(o.saldoDisp) >= 0.01);
+
+  // negativas primeiro (mais urgente), depois maior saldo a retirar primeiro
+  obras.sort((a,b)=>{
+    const aNeg = a.saldoDisp < 0, bNeg = b.saldoDisp < 0;
+    if(aNeg!==bNeg) return aNeg?-1:1;
+    return b.saldoDisp - a.saldoDisp;
+  });
+
+  const totalARetirar   = obras.filter(o=>o.saldoDisp>0).reduce((s,o)=>s+o.saldoDisp,0);
+  const totalRetiradoTd = obras.reduce((s,o)=>s+o.totalRetirado,0);
+  const qtdNegativas    = obras.filter(o=>o.baseRetirada<0).length;
+
+  if(statsEl) statsEl.innerHTML = `
+    <div class="stat"><div class="n" style="color:#16a34a">${fmtR(totalARetirar)}</div><div class="l">Total a Retirar</div></div>
+    <div class="stat"><div class="n" style="color:#dc2626">${fmtR(totalRetiradoTd)}</div><div class="l">Já Retirado</div></div>
+    ${qtdNegativas?`<div class="stat"><div class="n" style="color:#dc2626">${qtdNegativas}</div><div class="l">⚠ Obra(s) c/ Resultado Negativo</div></div>`:''}
+  `;
+
+  if(!obras.length){
+    listaEl.innerHTML = `<div class="empty" style="text-align:center;padding:24px;color:var(--muted)">Nenhuma obra encontrada${filtro==='pendentes'?' com saldo a retirar':''}.</div>`;
+    return;
+  }
+
+  listaEl.innerHTML = obras.map(o=>{
+    const {c, ob, temEstimativas, baseRetirada, retiradas, totalRetirado, saldoDisp} = o;
+    const cl = cliente(c.clienteId);
+    const historico = retiradas.length ? `
+      <div style="border-top:1px solid var(--border);margin-top:10px;padding-top:8px">
+        ${retiradas.slice(0,3).map(r=>`
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--muted);padding:2px 0">
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtDt(r.data)} — ${escHtml(r.descricao||'—')}</span>
+            <span style="color:#dc2626;white-space:nowrap">− ${fmtR(r.valor)}</span>
+          </div>`).join('')}
+        ${retiradas.length>3?`<div style="font-size:11px;color:var(--muted);margin-top:2px">+ ${retiradas.length-3} retirada(s) anterior(es)</div>`:''}
+      </div>` : '';
+    return `
+    <div style="border-radius:10px;border:2px solid ${cor(saldoDisp)};padding:14px 16px;cursor:pointer" onclick="abrirObraDaResultadoAparente(${c.id})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(ob.nome)} <span style="color:var(--muted);font-weight:400">#${c.num} · ${escHtml(cl.nome)}</span></div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Resultado base (${temEstimativas?'projetado — inclui estimativas':'efetivado'})${baseRetirada<0?' · <span style="color:#dc2626;font-weight:600">resultado negativo</span>':''}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap">
+          ${totalRetirado>0?`<div style="font-size:12px;color:#dc2626;font-weight:600">− ${fmtR(totalRetirado)} retirado</div>`:''}
+          <div style="font-size:16px;font-weight:700;color:${cor(saldoDisp)}">${fmtR(saldoDisp)}</div>
+        </div>
+      </div>
+      ${historico}
+    </div>`;
+  }).join('');
 }
 
 function abaObraOutrosCustos(c, ob, editandoId=null){
