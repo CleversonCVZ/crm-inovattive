@@ -448,9 +448,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.34';
-const APP_VERSION_DATE = '24/07/2026';
+const APP_VERSION = '1.0.35';
+const APP_VERSION_DATE = '06/08/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.35',
+    data: '06/08/2026',
+    itens: [
+      'Nova seção "🔑 Equipamentos & Senhas" na tela de detalhe da Obra — mostra os equipamentos cadastrados com login, senha (oculta por padrão, toque no 👁 pra revelar) e observação, além de botão de download pra arquivos anexados (manual, nota fiscal etc.). Só consulta por enquanto — cadastro e edição continuam no desktop.',
+    ]
+  },
   {
     versao: '1.0.34',
     data: '24/07/2026',
@@ -817,6 +824,24 @@ async function signedUrlArquivoProposta(path){
     return data.signedUrl;
   }catch(e){ return ''; }
 }
+/* v1.0.35: arquivos anexados a um Equipamento (obra_equipamentos.arquivos, ex.: manual/
+   nota fiscal do equipamento) ficam no bucket 'equip-arquivos', PRIVADO — mesmo padrão
+   de signed URL do 'os-arquivos'/'propostas' acima, em função separada pra não misturar. */
+async function signedUrlArquivoEquip(path){
+  try{
+    const {data, error} = await sb.storage.from('equip-arquivos').createSignedUrl(path, 3600);
+    if(error || !data) return '';
+    return data.signedUrl;
+  }catch(e){ return ''; }
+}
+async function carregarLinksArquivosEquip(){
+  const els=[...document.querySelectorAll('#sheet-body a[data-equip-arq-path]')];
+  for(const el of els){
+    const url=await signedUrlArquivoEquip(el.dataset.equipArqPath);
+    if(url){ el.href=url; el.classList.remove('arq-carregando'); }
+    else { el.textContent='⚠ erro ao carregar'; }
+  }
+}
 async function carregarLinksArquivosProposta(){
   const els=[...document.querySelectorAll('#sheet-body a[data-prop-arq-path]')];
   for(const el of els){
@@ -1035,7 +1060,11 @@ async function carregarDados(){
       sb.from('fases_os').select('id,nome,cor,ordem,tipo').order('ordem').then(r=>{db.fasesOS=r.data||[];}),
       // v1.0.11: contatos da obra (arquiteto, empreiteiro etc.) — mesma tabela do desktop
       // (obra_contatos), só leitura no mobile (cadastro/edição continuam no desktop).
-      sb.from('obra_contatos').select('id,obra_id,nome,funcao,tel').then(r=>{db.obraContatos=r.data||[];})
+      sb.from('obra_contatos').select('id,obra_id,nome,funcao,tel').then(r=>{db.obraContatos=r.data||[];}),
+      // v1.0.35: equipamentos & senhas da obra (obra_equipamentos, mesma tabela do
+      // desktop) — só consulta + download de anexo no mobile, cadastro/edição continuam
+      // no desktop (mesmo padrão de obra_contatos acima).
+      sb.from('obra_equipamentos').select('id,obra_id,equipamento,login,senha,observacao,arquivos').then(r=>{db.obraEquipamentos=r.data||[];})
     );
     // clientes e fases também para técnico (nome da OS)
     if(!grupo.acessoComercial){
@@ -2353,6 +2382,10 @@ function abrirObra(id){
   // v1.0.11: contatos da obra (arquiteto, empreiteiro etc.) — só leitura aqui, cadastro
   // continua no desktop (aba Contatos do cartão CRM).
   const contatosObra=(db.obraContatos||[]).filter(ct=>ct.obra_id===id);
+  // v1.0.35: equipamentos & senhas da obra — só consulta + download de anexo aqui
+  // (cadastro/edição continuam no desktop, aba Obra → 🔑 Equipamentos & Senhas do
+  // Cartão CRM). Mesma tabela obra_equipamentos, mesmo padrão read-only de contatosObra.
+  const equipObra=(db.obraEquipamentos||[]).filter(e=>e.obra_id===id);
   // v1.0.15: "nossos projetos" = arquivos_projeto das O.S. tipo=projeto vinculadas à
   // obra (plantas/PDFs do projeto de automação finalizado — mesmo conteúdo da seção
   // "Projetos Finalizados" do desktop, que só mostra arquivos_projeto, não
@@ -2382,6 +2415,37 @@ function abrirObra(id){
         ${ct.tel?`<a href="tel:${esc(ct.tel)}" style="flex-shrink:0;text-decoration:none"><button class="btn btn-neutral btn-sm">📞 ${esc(ct.tel)}</button></a>`:''}
       </div>`).join('');
   } else html+='<p style="font-size:13px;color:var(--muted)">Nenhum contato cadastrado.</p>';
+
+  html+=`<div class="section-title">🔑 Equipamentos &amp; Senhas (${equipObra.length})</div>`;
+  if(equipObra.length){
+    html+=equipObra.map(e=>{
+      const senhaEsc=(e.senha||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+      const arqs=e.arquivos||[];
+      return `
+      <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:4px">${esc(e.equipamento)}</div>
+        <div class="info-row"><span class="lbl">Login</span><span class="val">${esc(e.login||'—')}</span></div>
+        <div class="info-row">
+          <span class="lbl">Senha</span>
+          <span class="val" style="display:flex;align-items:center;gap:6px">
+            <span style="font-family:monospace;letter-spacing:2px" id="mob-eq-senha-${e.id}">••••••</span>
+            <button class="btn btn-neutral btn-sm" onclick="toggleEqSenhaMobile(${e.id},'${senhaEsc}')">👁</button>
+          </span>
+        </div>
+        ${e.observacao?`<div class="info-row"><span class="lbl">Obs</span><span class="val">${esc(e.observacao)}</span></div>`:''}
+        ${arqs.length?arqs.map(a=>{
+          const path=(a.path||'').replace(/"/g,'&quot;');
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);margin-top:6px">
+            <span style="flex-shrink:0">📎</span>
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nome||'arquivo')}</span>
+            <a class="arq-carregando" data-equip-arq-path="${path}" href="#" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none" onclick="return this.classList.contains('arq-carregando')?false:true">
+              <button class="btn btn-neutral btn-sm">⬇ Baixar</button>
+            </a>
+          </div>`;
+        }).join(''):''}
+      </div>`;
+    }).join('');
+  } else html+='<p style="font-size:13px;color:var(--muted)">Nenhum equipamento cadastrado.</p>';
 
   if(osProjetos.length){
     html+=`<div class="section-title">Projetos (${osProjetos.reduce((s,os)=>s+(os.arquivos_projeto||[]).length,0)})</div>`;
@@ -2425,6 +2489,15 @@ function abrirObra(id){
 
   abrirSheet(o.nome||'Obra', html);
   if(osProjetos.length) carregarLinksArquivosProjeto();
+  if(equipObra.some(e=>(e.arquivos||[]).length)) carregarLinksArquivosEquip();
+}
+
+/* v1.0.35: mesmo padrão do toggleEqSenha() do desktop — mostra/esconde a senha do
+   equipamento sem precisar de outra ida ao servidor (o valor já veio no carregamento). */
+function toggleEqSenhaMobile(id, senha){
+  const el=document.getElementById('mob-eq-senha-'+id);
+  if(!el) return;
+  el.textContent = el.textContent.includes('•') ? (senha||'—') : '••••••';
 }
 
 /* ===== PERFIL ===== */
