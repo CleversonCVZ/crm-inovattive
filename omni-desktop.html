@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.152';
-const APP_VERSION_DATE = '04/08/2026';
+const APP_VERSION = '1.47.153';
+const APP_VERSION_DATE = '06/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.153',
+    data: '06/08/2026',
+    itens: [
+      'Corrigido: na tela "Estoque — Obra", itens já lançados no estoque apareciam como "não catalogado ainda" quando o texto exato da nota fiscal não batia com o nome salvo no catálogo, ou quando o NCM é compartilhado por vários produtos (ex.: Patch Cord de cores diferentes). A tela agora prioriza o vínculo já confirmado no momento do lançamento em vez de tentar adivinhar de novo pelo texto — o estoque em si sempre esteve correto, era só a exibição que reavaliava errado.',
+    ]
+  },
   {
     versao: '1.47.152',
     data: '04/08/2026',
@@ -12636,11 +12643,31 @@ function _estoqueObraCardHTML(o){
   </div>`;
 }
 
+/** v1.47.153: resolve qual produto do catálogo corresponde a uma linha de NF já
+ *  LANÇADA no estoque, priorizando o vínculo real gravado em estoque_movimentacoes
+ *  (srm_cotacao_id + nf_item_idx, gravado uma única vez no momento do lançamento)
+ *  em vez de tentar adivinhar de novo pelo texto/NCM. Isso resolve casos onde o
+ *  texto exato da nota não bate com o nome salvo no catálogo (nota do fornecedor
+ *  escrita diferente) e/ou o NCM é compartilhado por vários produtos (ex.: Patch
+ *  Cord de cores diferentes) — nesses casos matchProdutoEstoque() sozinho erra
+ *  achando que o item "não foi catalogado ainda", mesmo já tendo sido. Cai no
+ *  matchProdutoEstoque(it) (adivinhação por texto/NCM) só quando não existe
+ *  nenhuma movimentação pra essa linha específica — ou seja, quando o item
+ *  genuinamente ainda não foi lançado. */
+function resolverProdutoNF(cotId, idx, it){
+  const mov = (db.estoqueMov||[]).find(m=>m.srmCotacaoId===cotId && m.nfItemIdx===idx && m.tipo==='entrada');
+  if(mov){
+    const prod = (db.estoqueProdutos||[]).find(p=>p.id===mov.produtoId);
+    if(prod) return prod;
+  }
+  return matchProdutoEstoque(it);
+}
+
 /** Detalhamento por produto de uma obra: separa compras "empresa" × "cliente",
  *  mostra os itens da NF (quando há) e cruza com uso em O.S. via db.estoqueMov
  *  (produtoId + obraId, tipo='saida'). Como a maioria dos itens ainda não foi
- *  catalogada (matchProdutoEstoque não acha correspondência) e a tabela de
- *  movimentações pode estar zerada, é normal aparecer "ainda não usado" pra
+ *  catalogada (resolverProdutoNF não acha vínculo nem correspondência) e a tabela
+ *  de movimentações pode estar zerada, é normal aparecer "ainda não usado" pra
  *  praticamente tudo até a operação real começar a girar. */
 function abrirEstoqueObraModal(obraId){
   const ob = (db.obras||[]).find(o=>o.id===obraId); if(!ob) return;
@@ -12664,14 +12691,14 @@ function abrirEstoqueObraModal(obraId){
   const contagemProdutoNaObra = {};
   [...grupoEmpresa, ...grupoCliente].forEach(card=>{
     const sel = cotacaoSelecionadaSRM(card.id);
-    (sel?.nfItens||[]).forEach(it=>{
-      const prod = matchProdutoEstoque(it);
+    (sel?.nfItens||[]).forEach((it,idx)=>{
+      const prod = resolverProdutoNF(sel.id, idx, it);
       if(prod) contagemProdutoNaObra[prod.id] = (contagemProdutoNaObra[prod.id]||0) + 1;
     });
   });
 
-  const usoDoItem = (it) => {
-    const prod = matchProdutoEstoque(it);
+  const usoDoItem = (it, cotId, idx) => {
+    const prod = resolverProdutoNF(cotId, idx, it);
     if(!prod) return '<span style="color:var(--muted);font-size:11px">não catalogado ainda</span>';
     // v1.47.131: estornarEstoque() nunca apaga a saída original ao desalocar um item
     // de uma O.S. — cria uma ENTRADA de ajuste com o mesmo os_id (mesmo princípio de
@@ -12710,12 +12737,12 @@ function abrirEstoqueObraModal(obraId){
               <th style="text-align:right;padding:3px 6px">Valor</th>
               <th style="text-align:left;padding:3px 6px">Usado em</th>
             </tr></thead>
-            <tbody>${itens.map(it=>`
+            <tbody>${itens.map((it,idx)=>`
               <tr style="font-size:12px;border-top:1px solid var(--border)">
                 <td style="padding:4px 6px">${escHtml(it.xProd)}</td>
                 <td style="padding:4px 6px;text-align:right;white-space:nowrap">${fmtNum(it.qCom)} ${escHtml(it.uCom||'')}</td>
                 <td style="padding:4px 6px;text-align:right;white-space:nowrap">${fmtR(it.vProd)}</td>
-                <td style="padding:4px 6px">${usoDoItem(it)}</td>
+                <td style="padding:4px 6px">${usoDoItem(it, sel.id, idx)}</td>
               </tr>`).join('')}</tbody>
           </table>`
         : `<div style="font-size:12px;color:var(--muted);margin-top:6px">${sel && sel.valor ? fmtR(sel.valor) : ''} ${sel && sel.descricao ? '— '+escHtml(sel.descricao) : (card.descricao?'— '+escHtml(card.descricao):'')} <i>(sem itens detalhados na NF)</i></div>`;
