@@ -1384,11 +1384,20 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.153';
+const APP_VERSION = '1.47.154';
 const APP_VERSION_DATE = '06/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.154',
+    data: '06/08/2026',
+    itens: [
+      'Movido: a aba "Garantias" deixou de ser uma aba principal do Cartão CRM e virou um sub-item de Obra, posicionado logo após "Equipamentos & Senhas" — fazia mais sentido ali, já que essa aba sempre dependeu de ter uma obra vinculada.',
+      'A ajuda contextual agora tem um texto específico para o sub-item Garantias (preservado na íntegra) em vez de cair no texto genérico da aba Obra.',
+      'Permissões: a antiga permissão "Cartão CRM — aba Garantias" foi renomeada para "Aba Obras — Garantias" (Ver, sem Editar — essa aba não tem ação de escrita própria, só um botão "Atualizar" que recalcula na hora).',
+    ]
+  },
   {
     versao: '1.47.153',
     data: '06/08/2026',
@@ -3331,7 +3340,6 @@ const RECURSOS = [
   {id:'aba-obras',        grupo:'crm', nome:'Cartão CRM — aba Obras'},
   {id:'aba-os',           grupo:'crm', nome:'Cartão CRM — aba O.S. (Ordens de Serviço)'},
   {id:'aba-financeiro',   grupo:'crm', nome:'Cartão CRM — aba Financeiro'},
-  {id:'aba-garantias',    grupo:'crm', nome:'Cartão CRM — aba Garantias'},
   {id:'hist-card-editar', grupo:'crm', nome:'Cartão CRM — Histórico: Editar e Excluir registros'},
   {id:'hist-os-editar',   grupo:'crm', nome:'O.S. — Histórico: Editar e Excluir registros'},
   {id:'os-reabrir',       grupo:'crm', nome:'O.S. — Permitir Reabrir (após fechada)'},
@@ -3339,6 +3347,12 @@ const RECURSOS = [
   {id:'obra-informacoes',   grupo:'obras', nome:'Aba Obras — Informações'},
   {id:'obra-contatos',      grupo:'obras', nome:'Aba Obras — Contatos'},
   {id:'obra-senhas',        grupo:'obras', nome:'Aba Obras — Senhas'},
+  // v1.47.154: Garantias deixou de ser aba principal do Cartão CRM e virou sub-item
+  // de Obras (era 'aba-garantias', grupo 'crm') — sem checkbox de "Editar" de propósito,
+  // já que essa aba não tem nenhuma ação de escrita (só um botão "Atualizar" que
+  // recalcula na hora, sem salvar nada), então não entra em RECURSOS_NIVEL — mesma
+  // regra já aplicada a aba-financeiro/aba-obras (ver comentário perto de RECURSOS_NIVEL).
+  {id:'obra-garantias',     grupo:'obras', nome:'Aba Obras — Garantias'},
   {id:'obra-compras',       grupo:'obras', nome:'Aba Obras — Compras'},
   {id:'obra-custo-mo',      grupo:'obras', nome:'Aba Obras — Custo M.Obra'},
   {id:'obra-outros-custos',    grupo:'obras', nome:'Aba Obras — Outros Custos'},
@@ -6427,7 +6441,7 @@ function ativarView(viewId){
   if(v) v.classList.add('active');
   // v1.47.48: trocar de tela principal reseta o contexto de ajuda (modal/aba
   // só fazem sentido dentro da tela onde foram abertos)
-  contextoAjuda = {tela:viewId, modal:null, aba:null};
+  contextoAjuda = {tela:viewId, modal:null, aba:null, subAba:null};
   _refreshAjudaSeAberta();
   if(viewId==='gerais') renderGerais();
   // v1.47.127: bloco abaixo reseta os filtros de select/input de cada tela-lista
@@ -10943,10 +10957,29 @@ const AJUDA_CONTEUDO = {
       obras: {
         titulo: 'Aba Obra',
         html: `
-          <p>Só aparece com conteúdo se o cartão já tem uma obra vinculada (campo "Nome da obra" na aba Dados). Reúne, num menu lateral: Informações da obra, Contatos, Equipamentos & Senhas, Compras (visualização do que foi comprado via SRM pra essa obra, incluindo os itens em regime "🧾 Fatura direta"), Custo M.Obra (lançamento de mão de obra própria ou de fornecedor), Outros Custos e Resultado Aparente (o resumo financeiro da obra: contratado − custos ≈ resultado).</p>
+          <p>Só aparece com conteúdo se o cartão já tem uma obra vinculada (campo "Nome da obra" na aba Dados). Reúne, num menu lateral: Informações da obra, Contatos, Equipamentos & Senhas, Garantias (produtos/serviços com prazo de garantia), Compras (visualização do que foi comprado via SRM pra essa obra, incluindo os itens em regime "🧾 Fatura direta"), Custo M.Obra (lançamento de mão de obra própria ou de fornecedor), Outros Custos e Resultado Aparente (o resumo financeiro da obra: contratado − custos ≈ resultado).</p>
           <h5>Status × Fase</h5>
           <p>São dois campos no cadastro da obra: "Fase" é a etapa física (definida em Faturamento — Fases de Obra), "Status" é ativa/pausada/concluída/abandonada — usado pelos filtros de combo (Estoque, Contas a Pagar, Recorrentes, SRM só oferecem obra "ativa"). Escolher uma fase do tipo Concluída/Abandonada trava o Status automaticamente nesse mesmo valor (🔒 campo desabilitado) — pra mudar o Status manualmente, primeiro troque a Fase pra um tipo diferente. Essa trava existe nos dois lados: na tela e também num trigger no banco, pra cobrir qualquer escrita que não passe por este modal.</p>
-          <p>Quando o Status vira "Concluída", aparece o campo "Concluída em" — preenchido sozinho com a data de hoje na primeira vez, mas editável. Essa data alimenta a Garantia de Serviços da Obra na aba Garantias (ver Configurações do Sistema → Garantia de Serviços).</p>`
+          <p>Quando o Status vira "Concluída", aparece o campo "Concluída em" — preenchido sozinho com a data de hoje na primeira vez, mas editável. Essa data alimenta a Garantia de Serviços da Obra no sub-item Garantias (ver Configurações do Sistema → Garantia de Serviços).</p>`,
+        subAbas: {
+          garantias: {
+            titulo: 'Garantias',
+            html: `
+              <p>A lista carrega sozinha ao abrir o sub-item — procura, na obra, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto. O botão "🔄 Atualizar" só é necessário se algo mudou (nova compra, troca de classe) enquanto esse sub-item já estava aberto.</p>
+              <h5>Compra direta pelo cliente (badge 🏠 Cliente)</h5>
+              <p>Quando o SRM está marcado "Cliente paga diretamente", o botão "Lançar no Estoque" fica travado de propósito (não é material/custo da empresa) — mas se o item da NF bater (nome fiscal/NCM) com um produto do catálogo marcado pra garantia, ele aparece aqui mesmo assim, com o selo "🏠 Cliente", pra não perder o controle do prazo. Item sem correspondência no catálogo não aparece — o caminho pra resolver é cadastrar o produto (com garantia marcada) pelo botão "📦 Cadastrar no Catálogo" na tela do próprio SRM.</p>
+              <h5>Por que é por obra, não só por este cartão</h5>
+              <p>Uma obra pode ter mais de um Cartão CRM ao longo do tempo — mas os produtos instalados pertencem fisicamente à obra, não a um cartão específico. Por isso a busca sempre traz TODOS os itens em garantia da obra, mesmo que a compra tenha entrado por outro cartão.</p>
+              <h5>Itens vencidos continuam aparecendo</h5>
+              <p>A lista nunca esconde item — garantia vencida some o selo verde "✅ Em garantia" e vira "⚠️ Vencida" em vermelho, mas o produto continua na lista pra consulta.</p>
+              <h5>Cálculo sempre ao vivo</h5>
+              <p>Nada fica numa tabela própria — a cada abertura do sub-item (ou clique em Atualizar) o sistema relê SRM/Estoque na hora. Se a classe de garantia do produto mudar depois da compra, a próxima abertura já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>
+              <h5>Garantia de Serviços da Obra</h5>
+              <p>Só aparece quando a obra está com Status "Concluída" e tem a data "Concluída em" preenchida (campo no cadastro da obra, autopreenchido na primeira vez que o status vira Concluída, mas editável). O vencimento = data de conclusão + prazo do campo "Obra concluída (meses)" em Configurações do Sistema → Garantia de Serviços.</p>
+              <h5>Garantia de O.S. Avulsas (pós-obra)</h5>
+              <p>Lista cada O.S. Avulsa desta obra que foi fechada DEPOIS da data de conclusão da obra (atendimento pós-entrega). O vencimento de cada uma = Término Real da O.S. + prazo do campo "O.S. Avulsa (meses)" em Configurações do Sistema → Garantia de Serviços. O.S. Avulsa fechada durante a obra (antes da conclusão) não entra aqui — já está coberta pela garantia geral da obra.</p>`
+          }
+        }
       },
       os: {
         titulo: 'Aba O.S.',
@@ -10959,23 +10992,6 @@ const AJUDA_CONTEUDO = {
           <p>Cada parcela pode ser fixa (data de vencimento) ou condicional (texto livre, ex.: "na entrega"), e aceita recebimento total ou parcial (com histórico).</p>
           <h5>De onde vem o valor de referência de uma O.S. Avulsa</h5>
           <p>O total mostrado por O.S. Avulsa (aqui e no modal "＋ Nova Parcela") é a soma dos itens (Serviços + Produtos) lançados na aba Itens dessa própria O.S. — o mesmo "Total geral" que aparece lá. Não existe um valor "manual" separado: se o total parecer errado, confira/edite os itens na O.S., não aqui.</p>`
-      },
-      garantias: {
-        titulo: 'Aba Garantias',
-        html: `
-          <p>A lista carrega sozinha ao abrir a aba — procura, na obra vinculada a este cartão, todos os produtos comprados (via SRM) que estão marcados com "controle de garantia" no Catálogo de Estoque. Pra cada um, mostra a NF de compra (número/data) e calcula o vencimento = data da NF + prazo da Classe de Garantia do produto. O botão "🔄 Atualizar" só é necessário se algo mudou (nova compra, troca de classe) enquanto essa aba já estava aberta.</p>
-          <h5>Compra direta pelo cliente (badge 🏠 Cliente)</h5>
-          <p>Quando o SRM está marcado "Cliente paga diretamente", o botão "Lançar no Estoque" fica travado de propósito (não é material/custo da empresa) — mas se o item da NF bater (nome fiscal/NCM) com um produto do catálogo marcado pra garantia, ele aparece aqui mesmo assim, com o selo "🏠 Cliente", pra não perder o controle do prazo. Item sem correspondência no catálogo não aparece — o caminho pra resolver é cadastrar o produto (com garantia marcada) pelo botão "📦 Cadastrar no Catálogo" na tela do próprio SRM.</p>
-          <h5>Por que é por obra, não só por este cartão</h5>
-          <p>Uma obra pode ter mais de um Cartão CRM ao longo do tempo — mas os produtos instalados pertencem fisicamente à obra, não a um cartão específico. Por isso a busca sempre traz TODOS os itens em garantia da obra, mesmo que a compra tenha entrado por outro cartão.</p>
-          <h5>Itens vencidos continuam aparecendo</h5>
-          <p>A lista nunca esconde item — garantia vencida some o selo verde "✅ Em garantia" e vira "⚠️ Vencida" em vermelho, mas o produto continua na lista pra consulta.</p>
-          <h5>Cálculo sempre ao vivo</h5>
-          <p>Nada fica numa tabela própria — a cada abertura da aba (ou clique em Atualizar) o sistema relê SRM/Estoque na hora. Se a classe de garantia do produto mudar depois da compra, a próxima abertura já usa o novo prazo. Item sem NF vinculada (cotação sem data) aparece como "sem data de NF" em vez de travar o resto da lista.</p>
-          <h5>Garantia de Serviços da Obra</h5>
-          <p>Só aparece quando a obra vinculada está com Status "Concluída" e tem a data "Concluída em" preenchida (campo no cadastro da obra, autopreenchido na primeira vez que o status vira Concluída, mas editável). O vencimento = data de conclusão + prazo do campo "Obra concluída (meses)" em Configurações do Sistema → Garantia de Serviços.</p>
-          <h5>Garantia de O.S. Avulsas (pós-obra)</h5>
-          <p>Lista cada O.S. Avulsa desta obra que foi fechada DEPOIS da data de conclusão da obra (atendimento pós-entrega). O vencimento de cada uma = Término Real da O.S. + prazo do campo "O.S. Avulsa (meses)" em Configurações do Sistema → Garantia de Serviços. O.S. Avulsa fechada durante a obra (antes da conclusão) não entra aqui — já está coberta pela garantia geral da obra.</p>`
       }
     }
   },
@@ -11408,7 +11424,7 @@ const AJUDA_CONTEUDO = {
   },
   'grupo-form': {
     titulo: 'Editar Grupo de Acesso',
-    html: `<p>Marque, tela por tela, o nível de acesso deste grupo (Ver / Editar / Excluir conforme disponível). Algumas telas têm sub-permissões próprias (ex.: abas do Cartão CRM — Propostas/Obra/O.S./Financeiro/Garantias podem ser liberadas ou não independente umas das outras).</p>`
+    html: `<p>Marque, tela por tela, o nível de acesso deste grupo (Ver / Editar / Excluir conforme disponível). Algumas telas têm sub-permissões próprias (ex.: abas do Cartão CRM — Propostas/Obra/O.S./Financeiro podem ser liberadas ou não independente umas das outras, e dentro da aba Obra cada sub-item do menu lateral — Informações, Contatos, Senhas, Garantias, Compras, Custo M.Obra, Outros Custos, Resultado Aparente — também tem seu próprio controle).</p>`
   },
   'funcoes': {
     titulo: 'Funções na Empresa',
@@ -11448,7 +11464,7 @@ const AJUDA_CONTEUDO = {
    (23/07/2026): todas as telas de TELAS e todos os modais que setam contextoAjuda.modal
    têm entrada aqui — o aviso "ainda não escrevi a ajuda desta tela" é só um fallback
    de segurança pra telas/modais novos que ainda não ganharam texto. */
-let contextoAjuda = {tela:null, modal:null, aba:null};
+let contextoAjuda = {tela:null, modal:null, aba:null, subAba:null};
 
 function _refreshAjudaSeAberta(){
   const painel = document.getElementById('ajuda-painel');
@@ -11460,7 +11476,16 @@ function _conteudoAjudaAtual(){
   if(ctx.modal && AJUDA_CONTEUDO[ctx.modal]){
     const def = AJUDA_CONTEUDO[ctx.modal];
     if(ctx.aba && def.abas && def.abas[ctx.aba]){
-      return {titulo:`${def.titulo} — ${def.abas[ctx.aba].titulo}`, html:def.abas[ctx.aba].html};
+      const abaDef = def.abas[ctx.aba];
+      // v1.47.154: sub-abas dentro de uma aba (hoje só a aba Obra, menu lateral) —
+      // usa o texto específico do sub-item ativo quando existir (ex.: Garantias);
+      // os demais sub-itens ainda não têm texto próprio e caem no texto geral da
+      // aba (abaDef.html), que já descreve todos eles resumidamente.
+      if(ctx.subAba && abaDef.subAbas && abaDef.subAbas[ctx.subAba]){
+        const sub = abaDef.subAbas[ctx.subAba];
+        return {titulo:`${def.titulo} — ${abaDef.titulo} — ${sub.titulo}`, html:sub.html};
+      }
+      return {titulo:`${def.titulo} — ${abaDef.titulo}`, html:abaDef.html};
     }
     if(def.html) return {titulo:def.titulo, html:def.html};
   }
@@ -12150,10 +12175,9 @@ function abrirEditarCartao(id, aba='dados'){
   const verObras       = podeUsar(usuarioAtual,'aba-obras');
   const verOS          = podeUsar(usuarioAtual,'aba-os');
   const verFinanceiro  = podeUsar(usuarioAtual,'aba-financeiro');
-  const verGarantias   = podeUsar(usuarioAtual,'aba-garantias');
   const podeEditarPainel = podeEditarTela(usuarioAtual,'painel');
   const podeExcluirPainel = podeExcluirTela(usuarioAtual,'painel');
-  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS) || (aba==='financeiro' && !verFinanceiro) || (aba==='garantias' && !verGarantias)) aba='dados';
+  if((['emitidas','aprovada'].includes(aba) && !verPropostas) || (aba==='obras' && !verObras) || (aba==='os' && !verOS) || (aba==='financeiro' && !verFinanceiro)) aba='dados';
   contextoAjuda.modal='cartao-crm'; contextoAjuda.aba=aba; _refreshAjudaSeAberta(); // v1.47.52
   if(aba!=='emitidas') propEditandoId=null; // sai do modo de edição ao trocar de aba/cartão
   const c=db.cards.find(x=>x.id===id);
@@ -12187,7 +12211,6 @@ function abrirEditarCartao(id, aba='dados'){
   else if(aba==='obras') corpo=abaObrasCartaoHTML(c);
   else if(aba==='os') corpo=abaOSCartaoHTML(c);
   else if(aba==='financeiro') corpo=abaFinanceiroCartaoHTML(c);
-  else if(aba==='garantias') corpo=abaGarantiasCartaoHTML(c);
   else corpo=abaOSCartaoHTML(c);
   abrirModal(`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
@@ -12202,7 +12225,6 @@ function abrirEditarCartao(id, aba='dados'){
       ${verObras?`<button class="aba ${aba==='obras'?'ativa':''}" onclick="abrirEditarCartao(${id},'obras')">Obra</button>`:''}
       ${verOS?`<button class="aba ${aba==='os'?'ativa':''}" onclick="abrirEditarCartao(${id},'os')">O.S.${nOS?' ('+nOS+')':''}</button>`:''}
       ${verFinanceiro?`<button class="aba ${aba==='financeiro'?'ativa':''}" onclick="abrirEditarCartao(${id},'financeiro')">💳 Financeiro${nReceb?' ('+nReceb+')':''}</button>`:''}
-      ${verGarantias?`<button class="aba ${aba==='garantias'?'ativa':''}" onclick="abrirEditarCartao(${id},'garantias')">🛡️ Garantias</button>`:''}
     </div>
     <div class="aba-corpo">${corpo}</div>
     <div class="actions rodape-cartao">
@@ -12262,6 +12284,10 @@ function abaObrasCartaoHTML(c, abaAtiva){
     {id:'informacoes',  recurso:'obra-informacoes',   icon:'🏗', label:'Informações'},
     {id:'contatos',     recurso:'obra-contatos',       icon:'👥', label:'Contatos'},
     {id:'senhas',       recurso:'obra-senhas',         icon:'🔑', label:'Equipamentos & Senhas'},
+    // v1.47.154: Garantias veio da antiga aba principal do Cartão CRM — logo depois
+    // de Equipamentos & Senhas, a pedido do Cleverson (fazia mais sentido aqui, já
+    // que a aba já dependia 100% de ter obra vinculada).
+    {id:'garantias',    recurso:'obra-garantias',      icon:'🛡️', label:'Garantias'},
     {id:'compras',      recurso:'obra-compras',        icon:'🛒', label:'Compras'},
     {id:'custoMobra',   recurso:'obra-custo-mo',       icon:'👷', label:'Custo M.Obra'},
     {id:'outrosCustos',       recurso:'obra-outros-custos',        icon:'💰', label:'Outros Custos'},
@@ -12270,6 +12296,10 @@ function abaObrasCartaoHTML(c, abaAtiva){
   const navItens = todoNavItens.filter(n=>podeUsar(usuarioAtual, n.recurso));
   if(!navItens.length) return '<div class="empty">Sem permissão para acessar sub-itens desta obra.</div>';
   if(!abaAtiva || !navItens.find(n=>n.id===abaAtiva)) abaAtiva = navItens[0].id;
+  // v1.47.154: ajuda contextual específica por sub-item (hoje só Garantias tem
+  // conteúdo próprio; os demais caem no texto genérico da aba Obra — ver
+  // _conteudoAjudaAtual()). Atualiza também ao trocar de sub-item em trocarAbaObra().
+  contextoAjuda.subAba = abaAtiva; _refreshAjudaSeAberta();
   return `
     <datalist id="dl-funcoes-obra">
       <option>Proprietário</option><option>Esposa</option><option>Esposo</option>
@@ -12306,12 +12336,14 @@ function trocarAbaObra(cardId, aba){
   });
   const el = document.getElementById('obra-content-'+cardId);
   if(el) el.innerHTML = abaObraConteudo(c, ob, aba);
+  contextoAjuda.subAba = aba; _refreshAjudaSeAberta(); // v1.47.154
 }
 
 function abaObraConteudo(c, ob, aba){
   if(aba==='informacoes') return abaObraInformacoes(c, ob);
   if(aba==='contatos')    return abaObraContatos(c, ob);
   if(aba==='senhas')      return abaObraSenhas(c, ob);
+  if(aba==='garantias')   return abaObraGarantias(c, ob);
   if(aba==='compras')     return abaObraCompras(c, ob);
   if(aba==='custoMobra')  return abaObraCustoMobra(c, ob);
   if(aba==='outrosCustos')      return abaObraOutrosCustos(c, ob);
@@ -17152,21 +17184,17 @@ function _garantiasConteudoHTML(c, obra){
   return `${servicoObraHTML}${osAvulsaHTML}${temExtra?'<h3 style="font-size:14px;margin-bottom:8px">🛡️ Produtos em Garantia</h3>':''}${produtosHTML}`;
 }
 
-function abaGarantiasCartaoHTML(c){
-  if(!c.obraId){
-    return `<div class="empty" style="padding:48px;text-align:center;color:var(--muted)">
-      <div style="font-size:32px;margin-bottom:12px">🛡️</div>
-      <div style="font-weight:600">Sem obra vinculada</div>
-      <div style="font-size:13px;margin-top:6px">Vincule uma obra a este cartão (aba Dados) pra poder ver os itens em garantia.</div>
-    </div>`;
-  }
-  const obra = db.obras.find(o=>o.id===c.obraId);
+/** v1.47.154: renomeada de abaGarantiasCartaoHTML(c) — Garantias deixou de ser aba
+ *  principal do Cartão CRM e virou sub-item de Obra (menu lateral, depois de
+ *  Equipamentos & Senhas), então já não precisa mais checar "sem obra vinculada":
+ *  abaObrasCartaoHTML() só chega a chamar isso quando obraDe(c) já existe. */
+function abaObraGarantias(c, ob){
   return `
     <div class="bar" style="margin-bottom:14px;flex-wrap:wrap">
       <button class="btn primary" onclick="buscarItensGarantiaCartao(${c.id}, this)">🔄 Atualizar</button>
       <span style="font-size:12px;color:var(--muted);margin-left:10px">Produtos com controle de garantia comprados (via SRM, inclusive direto pelo cliente 🏠), garantia de serviços da obra (se concluída) e das O.S. Avulsas pós-obra. Recalculado sempre que a aba é aberta.</span>
     </div>
-    <div id="garantias-resultado">${_garantiasConteudoHTML(c, obra)}</div>`;
+    <div id="garantias-resultado">${_garantiasConteudoHTML(c, ob)}</div>`;
 }
 
 function buscarItensGarantiaCartao(cardId, btn){
@@ -22994,15 +23022,19 @@ function formGrupo(g){
   /* RECURSOS_NIVEL: subconjunto dos RECURSOS que ganham o degrau Ver/Editar
      (em vez de um único checkbox tudo-ou-nada). São a aba-propostas e a aba-os
      do cartão CRM (que têm ações de escrita próprias — nova proposta, aprovar,
-     nova O.S., excluir O.S.) e os 7 sub-itens de Obras (idem). Ficam de fora:
-       - aba-obras: é só um "envelope" — todo o conteúdo dela já vem dos 7
-         sub-itens abaixo, cada um com seu próprio Ver/Editar. Um toggle
+     nova O.S., excluir O.S.) e 7 dos 8 sub-itens de Obras (idem). Ficam de fora:
+       - aba-obras: é só um "envelope" — todo o conteúdo dela já vem dos
+         sub-itens abaixo, cada um com seu próprio controle. Um toggle
          "editar" na aba em si não teria nada pra controlar.
        - aba-financeiro: já é controlada por recursos financeiros próprios
          (fin-contas-receber-gerenciar/receber), que já fazem o papel de "editar".
        - hist-card-editar / hist-os-editar: já são, eles mesmos, permissões de
          edição (não tem um "ver" separado — histórico sempre aparece pra quem
-         vê o cartão/OS). */
+         vê o cartão/OS).
+       - obra-garantias (v1.47.154): virou sub-item de Obras mas não tem ação de
+         escrita própria (só um botão "Atualizar" que recalcula na hora, sem
+         salvar nada) — mesma lógica de aba-financeiro/aba-obras. Fica de fora
+         de RECURSOS_NIVEL e cai em mkRecursosCk('obras') como Ver-only. */
   const RECURSOS_NIVEL = ['aba-propostas','aba-os',
     'obra-informacoes','obra-contatos','obra-senhas','obra-compras','obra-custo-mo','obra-outros-custos','obra-resultado-aparente'];
   /* RECURSOS_DEFAULT_OFF: recursos que, ao contrário da regra geral (grupo novo =
@@ -23029,7 +23061,7 @@ function formGrupo(g){
     </div>`;
   }).join('');
   const recursosCk         = mkRecursosLeveled('crm') + mkRecursosCk('crm');
-  const recursosObras      = mkRecursosLeveled('obras');
+  const recursosObras      = mkRecursosLeveled('obras') + mkRecursosCk('obras');
   const recursosFinanceiro = mkRecursosCk('financeiro');
   const restringirFases = g && Array.isArray(g.fasesPermitidas);
   const fasesCk = (db.fases||[]).map(f=>`
