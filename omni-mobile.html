@@ -448,9 +448,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.35';
+const APP_VERSION = '1.0.36';
 const APP_VERSION_DATE = '06/08/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.36',
+    data: '06/08/2026',
+    itens: [
+      'Corrigido: download de arquivo anexado a um Equipamento (seção 🔑 Equipamentos & Senhas da Obra) ficava travado numa tela em branco pra arquivos que o navegador não sabe previsualizar (funcionava só pra PDF). Agora baixa direto pelo app, sem abrir aba nova.',
+    ]
+  },
   {
     versao: '1.0.35',
     data: '06/08/2026',
@@ -825,22 +832,24 @@ async function signedUrlArquivoProposta(path){
   }catch(e){ return ''; }
 }
 /* v1.0.35: arquivos anexados a um Equipamento (obra_equipamentos.arquivos, ex.: manual/
-   nota fiscal do equipamento) ficam no bucket 'equip-arquivos', PRIVADO — mesmo padrão
-   de signed URL do 'os-arquivos'/'propostas' acima, em função separada pra não misturar. */
-async function signedUrlArquivoEquip(path){
+   nota fiscal do equipamento) ficam no bucket 'equip-arquivos', PRIVADO.
+   v1.0.36: trocado de "signed URL + <a target=_blank>" (mesmo padrão do 'os-arquivos'/
+   'propostas' acima) pra download direto via blob — o padrão de nova aba funciona bem
+   pra PDF (o navegador exibe), mas trava numa tela em branco pra arquivo que o navegador
+   não sabe previsualizar (ex.: um .ca de teste do Fabio Amaro), porque a aba abre um link
+   direto do Supabase sem saber o que fazer com o conteúdo. Mesma lógica que o desktop já
+   usa pra arquivo não-PDF em _baixarArquivoBucket(): baixa o conteúdo pelo próprio client
+   (sem navegar pra fora do app) e força o salvamento com um <a download> clicado via JS. */
+async function baixarArquivoEquipMobile(path, nome){
   try{
-    const {data, error} = await sb.storage.from('equip-arquivos').createSignedUrl(path, 3600);
-    if(error || !data) return '';
-    return data.signedUrl;
-  }catch(e){ return ''; }
-}
-async function carregarLinksArquivosEquip(){
-  const els=[...document.querySelectorAll('#sheet-body a[data-equip-arq-path]')];
-  for(const el of els){
-    const url=await signedUrlArquivoEquip(el.dataset.equipArqPath);
-    if(url){ el.href=url; el.classList.remove('arq-carregando'); }
-    else { el.textContent='⚠ erro ao carregar'; }
-  }
+    const {data, error} = await sb.storage.from('equip-arquivos').download(path);
+    if(error || !data){ toast('Não foi possível baixar o arquivo.'); return; }
+    const url=URL.createObjectURL(data);
+    const a=document.createElement('a');
+    a.href=url; a.download=nome||'arquivo';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }catch(e){ toast('Erro ao baixar arquivo.'); }
 }
 async function carregarLinksArquivosProposta(){
   const els=[...document.querySelectorAll('#sheet-body a[data-prop-arq-path]')];
@@ -2434,13 +2443,12 @@ function abrirObra(id){
         </div>
         ${e.observacao?`<div class="info-row"><span class="lbl">Obs</span><span class="val">${esc(e.observacao)}</span></div>`:''}
         ${arqs.length?arqs.map(a=>{
-          const path=(a.path||'').replace(/"/g,'&quot;');
+          const path=(a.path||'').replace(/'/g,"\\'");
+          const nome=(a.nome||'arquivo').replace(/'/g,"\\'");
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--border);margin-top:6px">
             <span style="flex-shrink:0">📎</span>
             <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.nome||'arquivo')}</span>
-            <a class="arq-carregando" data-equip-arq-path="${path}" href="#" target="_blank" rel="noopener" style="flex-shrink:0;text-decoration:none" onclick="return this.classList.contains('arq-carregando')?false:true">
-              <button class="btn btn-neutral btn-sm">⬇ Baixar</button>
-            </a>
+            <button class="btn btn-neutral btn-sm" style="flex-shrink:0" onclick="baixarArquivoEquipMobile('${path}','${nome}')">⬇ Baixar</button>
           </div>`;
         }).join(''):''}
       </div>`;
@@ -2489,7 +2497,6 @@ function abrirObra(id){
 
   abrirSheet(o.nome||'Obra', html);
   if(osProjetos.length) carregarLinksArquivosProjeto();
-  if(equipObra.some(e=>(e.arquivos||[]).length)) carregarLinksArquivosEquip();
 }
 
 /* v1.0.35: mesmo padrão do toggleEqSenha() do desktop — mostra/esconde a senha do
