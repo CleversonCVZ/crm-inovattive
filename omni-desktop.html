@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.156';
+const APP_VERSION = '1.47.157';
 const APP_VERSION_DATE = '07/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.157',
+    data: '07/08/2026',
+    itens: [
+      'Corrigido: o botão "🔒 Reverter" travado (v1.47.156) não fazia nada visível ao clicar — agora explica na hora, num aviso, por que está travado e o que fazer no lugar.',
+    ]
+  },
   {
     versao: '1.47.156',
     data: '07/08/2026',
@@ -21262,7 +21269,7 @@ function propostaItemHTML(p, podeEditar=true){
       ${podeEditar?`<div class="prop-acoes">
         ${p.status==='aprovada'
           ?(temUso
-            ?`<button class="btn sm neutral" disabled title="Itens desta proposta já foram usados em O.S. — reverter apagaria vínculos de estoque/kit já feitos. Peça a correção diretamente (sem reverter) a quem administra o sistema.">🔒 Reverter</button>`
+            ?`<button class="btn sm neutral" style="opacity:.6;cursor:not-allowed" title="Itens desta proposta já foram usados em O.S. — clique para saber o motivo" onclick="reverterPropostaBloqueada(${p.id})">🔒 Reverter</button>`
             :`<button class="btn sm neutral" title="Desfazer a aprovação" onclick="reverterProposta(${p.id})">↩ Reverter</button>`)
           :propostaPerdida(p)
             ?`<button class="btn sm neutral" title="Devolver à fase anterior" onclick="reativarProposta(${p.id})">↩ Reativar</button>`
@@ -21722,6 +21729,20 @@ function confirmarAprovacaoProposta(cardId, propId){
   save(); renderAll(); abrirEditarCartao(cardId,'aprovada');
 }
 
+/* v1.47.157: mensagem única, reaproveitada tanto pelo clique no botão travado
+   (reverterPropostaBloqueada, abaixo — explica na hora, já que um botão com o
+   atributo HTML "disabled" nem dispara onclick, então antes clicar no 🔒 não
+   fazia nada visível e o Cleverson ficava sem entender por quê) quanto pelo
+   reforço de trava dentro do próprio reverterProposta(). */
+function _msgPropostaBloqueadaReverter(p){
+  return `Não é possível reverter ${p.aditivo?'este aditivo':'esta proposta'} agora: itens dela já foram usados em alguma O.S. (alocação e possivelmente baixa de estoque).\n\nReverter e reaprovar por Excel reconstruiria a lista de itens do zero, perdendo vínculos com o catálogo de estoque e divisões de kit já feitas.\n\nPara corrigir um valor nesse caso, peça a correção diretamente (sem reverter) a quem administra o sistema.`;
+}
+function reverterPropostaBloqueada(id){
+  const p=db.propostas.find(x=>x.id===id);
+  if(!p) return;
+  alert(_msgPropostaBloqueadaReverter(p));
+}
+
 async function reverterProposta(id){
   const p=db.propostas.find(x=>x.id===id);
   // trava: a principal não pode ser revertida enquanto houver aditivos aprovados
@@ -21734,7 +21755,7 @@ async function reverterProposta(id){
   // Reverter reconstrói os itens do zero ao reaprovar por Excel, perdendo vínculo
   // de catálogo de estoque e divisão de kit já feitos — ver propostaTemUsoEmOS.
   if(propostaTemUsoEmOS(id)){
-    alert(`Não é possível reverter ${p.aditivo?'este aditivo':'esta proposta'}: itens dela já foram usados em alguma O.S. (alocação e possivelmente baixa de estoque).\n\nReverter e reaprovar por Excel reconstruiria a lista de itens do zero, perdendo vínculos com o catálogo de estoque e divisões de kit já feitas.\n\nPara corrigir um valor nesse caso, peça a correção diretamente (sem reverter) a quem administra o sistema.`);
+    alert(_msgPropostaBloqueadaReverter(p));
     return;
   }
   const excels=(p.arquivos||[]).filter(a=>/\.(xlsx|xls)$/i.test(a.nome));
