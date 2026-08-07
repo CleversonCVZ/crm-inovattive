@@ -26,6 +26,25 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// v1.47.155: helper central pra descrever erros de forma útil pro Cleverson.
+// Motivo: um caso real em produção (usuário "Jair Junior da Costa") mostrou
+// "Erro ao atualizar login: {}" — a chamada ao Auth do Supabase (GoTrue) falhou
+// com um erro interno do servidor (nesse caso: coluna "email_change" NULL em
+// auth.users, de um cadastro antigo, quebrando a leitura interna do usuário —
+// "converting NULL to string is unsupported"), e nesses casos .message vem
+// vazio ou "{}", que não diz nada. Esse helper: (1) sempre loga o erro completo
+// (aparece em Logs → Edge Functions → admin-usuarios no painel do Supabase,
+// com o passo-a-passo técnico), e (2) monta uma mensagem pro usuário que, quando
+// .message não ajuda, ao menos mostra o status/código e aponta pra onde olhar.
+function descreverErro(contexto: string, err: any): string {
+  console.error(`[admin-usuarios] ${contexto}:`, JSON.stringify(err));
+  const msg = err?.message;
+  if (msg && msg !== '{}' && msg !== '{}\n') return msg;
+  const status = err?.status ?? err?.statusCode ?? '?';
+  const code = err?.code ?? err?.error_code ?? 'desconhecido';
+  return `falha interna (status ${status}, código ${code}) — veja os Logs da Edge Function "admin-usuarios" no Supabase para o detalhe técnico`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -65,7 +84,7 @@ Deno.serve(async (req) => {
       const { data: novo, error: erroAuth } = await admin.auth.admin.inviteUserByEmail(email, {
         redirectTo: req.headers.get('origin') || undefined
       });
-      if (erroAuth) return json({ error: 'Erro ao criar usuário no Auth: ' + erroAuth.message }, 400);
+      if (erroAuth) return json({ error: 'Erro ao criar usuário no Auth: ' + descreverErro('criar → inviteUserByEmail', erroAuth) }, 400);
 
       const { data: linha, error: erroInsert } = await admin
         .from('usuarios')
@@ -79,7 +98,7 @@ Deno.serve(async (req) => {
       if (erroInsert) {
         // se falhar ao salvar no CRM, desfaz a criação no Auth para não ficar órfão
         await admin.auth.admin.deleteUser(novo.user.id);
-        return json({ error: 'Erro ao salvar usuário: ' + erroInsert.message }, 400);
+        return json({ error: 'Erro ao salvar usuário: ' + descreverErro('criar → insert usuarios', erroInsert) }, 400);
       }
 
       return json({ ok: true, usuario: linha });
@@ -99,7 +118,7 @@ Deno.serve(async (req) => {
         if (senha) updateAuth.password = senha;
         if (Object.keys(updateAuth).length) {
           const { error: erroAuth } = await admin.auth.admin.updateUserById(existente.auth_id, updateAuth);
-          if (erroAuth) return json({ error: 'Erro ao atualizar login: ' + erroAuth.message }, 400);
+          if (erroAuth) return json({ error: 'Erro ao atualizar login: ' + descreverErro('atualizar → updateUserById', erroAuth) }, 400);
         }
       }
 
@@ -109,7 +128,7 @@ Deno.serve(async (req) => {
         .eq('id', id)
         .select()
         .single();
-      if (erroUpdate) return json({ error: 'Erro ao salvar usuário: ' + erroUpdate.message }, 400);
+      if (erroUpdate) return json({ error: 'Erro ao salvar usuário: ' + descreverErro('atualizar → update usuarios', erroUpdate) }, 400);
 
       return json({ ok: true, usuario: linha });
     }
@@ -124,11 +143,11 @@ Deno.serve(async (req) => {
 
       if (existente.auth_id) {
         const { error: erroAuth } = await admin.auth.admin.deleteUser(existente.auth_id);
-        if (erroAuth) return json({ error: 'Erro ao excluir login: ' + erroAuth.message }, 400);
+        if (erroAuth) return json({ error: 'Erro ao excluir login: ' + descreverErro('excluir → deleteUser', erroAuth) }, 400);
       }
 
       const { error: erroDelete } = await admin.from('usuarios').delete().eq('id', id);
-      if (erroDelete) return json({ error: 'Erro ao excluir usuário: ' + erroDelete.message }, 400);
+      if (erroDelete) return json({ error: 'Erro ao excluir usuário: ' + descreverErro('excluir → delete usuarios', erroDelete) }, 400);
 
       return json({ ok: true });
     }
