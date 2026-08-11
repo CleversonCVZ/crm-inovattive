@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.157';
-const APP_VERSION_DATE = '07/08/2026';
+const APP_VERSION = '1.47.158';
+const APP_VERSION_DATE = '11/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.158',
+    data: '11/08/2026',
+    itens: [
+      'Corrigido: em "Lançar Itens da NF no Estoque" (SRM), um clique duplo no botão "✅ Confirmar Lançamento" duplicava produtos e movimentações de entrada — o botão só travava depois de já ter criado os produtos novos no catálogo, então o segundo clique disparava tudo de novo do zero. Agora trava assim que clicado. Caso real (cotação SRM #29, obra Fabio Amaro) limpo manualmente: 5 produtos/movimentações duplicados removidos.',
+    ]
+  },
   {
     versao: '1.47.157',
     data: '07/08/2026',
@@ -24740,6 +24747,20 @@ async function confirmarLancarEstoque(){
   const {cotId,srmId}=_estoqueCtx;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
   if(!cot) return;
+
+  // v1.47.158: trava o botão JÁ NO INÍCIO da função, não só antes de inserir as
+  // movimentações — o laço abaixo cria produto por produto no catálogo (1 await
+  // por item, pode levar vários segundos numa NF com muitos itens novos), e nesse
+  // meio-tempo o botão continuava clicável. Um clique duplo (ou duplo-toque de
+  // trackpad) nessa janela disparava 2 chamadas concorrentes desta função, cada
+  // uma recriando os mesmos produtos e movimentações do zero — caso real: cotação
+  // SRM #29 (obra Fabio Amaro) duplicou 5 produtos/entradas em 08/2026, limpo via
+  // SQL manual. Também reseta o texto/estado em toda saída antecipada da função.
+  const btn=document.getElementById('btn-confirmar-estoque');
+  if(btn?.disabled) return; // já está processando um clique anterior
+  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  const destravar=()=>{ if(btn){ btn.disabled=false; btn.textContent='✅ Confirmar Lançamento'; } };
+
   const obsGeral=(document.getElementById('est-obs-geral').value||'').trim();
   const dataHoje=localDia(0);
   const card=(db.cardsSRM||[]).find(c=>c.id===cot.cardSrmId);
@@ -24753,7 +24774,7 @@ async function confirmarLancarEstoque(){
     const it=cot.nfItens[idx];
     const selProdId=document.getElementById(`est-prod-${idx}`)?.value;
     const qtd=parseFloat(document.getElementById(`est-qtd-${idx}`)?.value)||0;
-    if(qtd<=0){ alert(`Item "${it.xProd}": quantidade inválida.`); return; }
+    if(qtd<=0){ alert(`Item "${it.xProd}": quantidade inválida.`); destravar(); return; }
 
     let produtoId=selProdId?parseInt(selProdId):null;
 
@@ -24765,16 +24786,16 @@ async function confirmarLancarEstoque(){
       const selEl=document.getElementById(`est-prod-${idx}`);
       if(selEl?.dataset.ncmAmbiguo==='1'){
         const ok=confirm(`O item "${it.xProd}" tem o mesmo NCM de outro(s) produto(s) já cadastrado(s) no catálogo.\n\nTem certeza que quer criar um produto NOVO em vez de selecionar um existente?`);
-        if(!ok) return;
+        if(!ok){ destravar(); return; }
       }
       const nomeNovo=(document.getElementById(`est-nome-${idx}`)?.value||'').trim();
-      if(!nomeNovo){ alert(`Item "${it.xProd}": informe o nome comercial do produto.`); return; }
+      if(!nomeNovo){ alert(`Item "${it.xProd}": informe o nome comercial do produto.`); destravar(); return; }
       const nomeFiscalNovo = normalizarNomeProduto(it.xProd)||null;
       const {data:pData,error:pErr}=await sb.from('estoque_produtos').insert({
         nome:nomeNovo, nome_fiscal:nomeFiscalNovo,
         ncm:it.NCM||null, unidade:it.uCom||'un', descricao:'', ativo:true
       }).select().single();
-      if(pErr){ alert('Erro ao criar produto: '+pErr.message); return; }
+      if(pErr){ alert('Erro ao criar produto: '+pErr.message); destravar(); return; }
       produtoId=pData.id;
       const novoProd={id:pData.id,nome:nomeNovo,nomeFiscal:nomeFiscalNovo,ncm:it.NCM||null,unidade:it.uCom||'un',descricao:'',ativo:true,criadoEm:pData.criado_em||''};
       if(!Array.isArray(db.estoqueProdutos)) db.estoqueProdutos=[];
@@ -24792,16 +24813,13 @@ async function confirmarLancarEstoque(){
     });
   }
 
-  if(!movRows.length){ alert('Selecione ao menos um item para lançar.'); return; }
-
-  const btn=document.getElementById('btn-confirmar-estoque');
-  if(btn){ btn.disabled=true; btn.textContent='Salvando…'; }
+  if(!movRows.length){ alert('Selecione ao menos um item para lançar.'); destravar(); return; }
 
   /* Inserir movimentações */
   const {data:movData,error:movErr}=await sb.from('estoque_movimentacoes').insert(movRows).select();
   if(movErr){
     alert('Erro ao registrar movimentações: '+movErr.message);
-    if(btn){ btn.disabled=false; btn.textContent='✅ Confirmar Lançamento'; }
+    destravar();
     return;
   }
 
