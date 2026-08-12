@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.159';
+const APP_VERSION = '1.47.160';
 const APP_VERSION_DATE = '11/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.160',
+    data: '11/08/2026',
+    itens: [
+      'Corrigido: em "Salvar Correspondências" (SRM), se a lista de itens da proposta mudasse entre abrir a tela e clicar em salvar (ex.: alguém dividiu um kit nesse meio-tempo), a associação de algum item da NF podia se perder em silêncio, sem nenhum aviso. Agora avisa exatamente quais itens falharam e não salva nada até você refazer a seleção deles.',
+    ]
+  },
   {
     versao: '1.47.159',
     data: '11/08/2026',
@@ -8555,6 +8562,15 @@ async function salvarCorrespondenciasNF(cotId, srmId){
   const btn=document.querySelector('[data-btn-salvar-corresp]'); btnSalvando(btn,'💾 Salvando…');
   /* reconstrói itensPropostas na mesma ordem do render */
   const itensPropostas=itensPropostasParaObra(srm.obraId);
+  // v1.47.160: quando o select apontava pra um índice que não bate mais com a
+  // lista reconstruída aqui (ex.: a proposta foi resincronizada — delete+insert
+  // completo de proposta_itens, ver [[project_crm_inovattive]] — entre abrir a
+  // tela e clicar em Salvar), o item simplesmente ficava sem correspondência,
+  // em silêncio, sem nenhum aviso. Caso real: SRM #26/obra Fabio Amaro, item
+  // "MolSmart - Gateway GW8" perdeu a associação com "Interface molsmart IR+RF"
+  // dessa forma. Agora avisa explicitamente quais itens falharam, em vez de só
+  // não salvar.
+  const falhas=[];
   cot.nfItens.forEach((item,idx)=>{
     const sel=document.getElementById(`nf-match-${idx}`);
     if(!sel) return;
@@ -8569,9 +8585,16 @@ async function salvarCorrespondenciasNF(cotId, srmId){
         item.propostaId=itensPropostas[i].propostaId;
         item.propostaItemDesc=itensPropostas[i].desc;
         item.semCorrespondencia=false;
+      } else {
+        falhas.push(item.xProd||`item ${idx+1}`);
       }
     }
   });
+  if(falhas.length){
+    btnRestaurar(btn);
+    alert(`Não deu pra salvar a correspondência de: ${falhas.join(', ')}.\n\nA lista de itens da proposta mudou desde que a tela foi aberta (por exemplo, alguém dividiu um kit ou reimportou a proposta). Feche e reabra este cartão SRM e selecione de novo pra esses itens específicos.`);
+    return;
+  }
   const {error}=await sb.from('srm_cotacoes').update({nf_itens:cot.nfItens}).eq('id',cotId);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+(error.message||error)); return; }
   save();
