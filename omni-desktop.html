@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.161';
+const APP_VERSION = '1.47.162';
 const APP_VERSION_DATE = '13/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.162',
+    data: '13/08/2026',
+    itens: [
+      'Corrigido: era possível editar o "Valor" de uma Conta a Pagar/Parcela a Receber já paga, ou o valor do lançamento correspondente na Conta Corrente, sem que um refletisse no outro — os dois números divergiam em silêncio. Agora o campo "Valor" fica travado (com o motivo explicado) nesses casos, e excluir o lançamento direto pela Conta Corrente é bloqueado quando ele veio de uma baixa — a tela oferece ir direto até a Conta a Pagar/Parcela de origem, que já exclui tudo certinho em cascata.',
+    ]
+  },
   {
     versao: '1.47.161',
     data: '13/08/2026',
@@ -14790,7 +14797,7 @@ function editarMovimentacao(id, contaId){
         <div>
           <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Valor (R$) *</label>
           <input id="em-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
-            oninput="mascaraMoeda(this)" style="margin-top:6px;width:100%">
+            oninput="mascaraMoeda(this)" style="margin-top:6px;width:100%" ${_ehMovLigadaCPouCR(m)?'disabled':''}>
         </div>
         <div>
           <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Data *</label>
@@ -14818,11 +14825,25 @@ function editarMovimentacao(id, contaId){
         <p class="cp-obra-hint" style="display:none;margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic"></p>
       </div>
       ${m.origemTipo!=='manual'?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</div>':''}
+      ${_ehMovLigadaCPouCR(m)?`<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:12px;color:#2e7d32">✔ Este lançamento veio da baixa de uma ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} — o "Valor" fica travado aqui, porque editá-lo não atualizaria o valor pago lá na origem (ficariam divergentes). Pra corrigir, vá até a ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} de origem e exclua-a (isso remove este lançamento também) — depois lance de novo com o valor certo.</div>`:''}
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">← Fechar</button>
       <button class="btn primary" data-btn-salvar onclick="salvarEdicaoMovimentacao(${id},${contaId})">Salvar</button>
     </div>`, 'cartao');
+}
+
+/* v1.47.162: helper compartilhado por editarMovimentacao/excluirMovimentacao —
+   um lançamento nascido da baixa de Conta a Pagar/Receber não pode ter seu valor
+   editado nem ser excluído direto pela Conta Corrente, porque isso deixaria o
+   valor pago lá na origem (contas_pagar.valorPago / recebimentos.valorPago)
+   divergente do que está de fato na conta corrente, sem nenhum aviso — mesmo
+   problema de raiz do "revert proposta" resolvido antes: nunca deixar dois
+   lugares guardarem o mesmo fato sem sincronia. A via segura pra desfazer
+   continua sendo excluir a Conta a Pagar/Parcela a Receber (que já remove a
+   movimentação em cascata corretamente). */
+function _ehMovLigadaCPouCR(m){
+  return m.origemTipo==='contas_pagar' || m.origemTipo==='recebimento';
 }
 
 /** Persiste edição de movimentação */
@@ -14872,8 +14893,26 @@ async function excluirMovimentacao(id, contaId){
     alert('Esta é uma Conta de Sistema. Você não tem permissão para excluir lançamentos nela.');
     return;
   }
-  if(!confirm('Excluir este lançamento?')) return;
   const m = (db.movimentacoes||[]).find(x=>x.id===id); // v1.47.108: guarda antes de remover, pro log
+  if(m && _ehMovLigadaCPouCR(m)){
+    // v1.47.162: excluir esse lançamento aqui deixaria a Conta a Pagar/Parcela a
+    // Receber de origem com "pago"/"recebido" apontando pra um valor sem nenhum
+    // lançamento real na conta corrente por trás — a via segura é excluir a
+    // origem, que já remove o lançamento em cascata corretamente.
+    const origemNome = m.origemTipo==='contas_pagar' ? 'Conta a Pagar' : 'Parcela a Receber';
+    const irAgora = confirm(`Não é possível excluir este lançamento direto pela Conta Corrente: ele veio da baixa de uma ${origemNome}, e excluí-lo aqui deixaria o valor já pago/recebido lá na origem sem nenhum lançamento correspondente.\n\nPra desfazer, exclua a ${origemNome} de origem — isso remove este lançamento junto, corretamente.\n\nQuer ir até lá agora?`);
+    if(irAgora){
+      fecharModal();
+      if(m.origemTipo==='contas_pagar'){
+        abrirEditarContaPagar(m.origemId);
+      } else {
+        const r=(db.recebimentos||[]).find(x=>x.id===m.origemId);
+        if(r) editarParcelaReceber(r.id, r.cardId);
+      }
+    }
+    return;
+  }
+  if(!confirm('Excluir este lançamento?')) return;
   await excluirDoSupabase('movimentacoes_financeiras', id);
   db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
   save();
@@ -15731,6 +15770,7 @@ function abrirEditarContaPagar(id){
   abrirModal(`
     <h3>${escHtml(p.descricao)}</h3>
     ${p.status==='parcial'?`<p style="margin:0 0 10px;font-size:13px;color:#b45309">🔶 Pagamento parcial: já pago <b>${fmtMoney(p.valorPago)}</b> de ${fmtMoney(p.valor)} — falta ${fmtMoney(Math.max(p.valor-(p.valorPago||0),0))}. Alterar o "Valor" aqui muda o valor TOTAL previsto, não afeta o que já foi pago.</p>`:''}
+    ${p.status==='pago'?`<p style="margin:0 0 10px;font-size:13px;color:#2e7d32">✔ Esta conta já foi paga integralmente — o campo "Valor" fica travado, porque alterá-lo não mudaria o pagamento já lançado na conta corrente (deixaria os dois números divergentes). Pra corrigir o valor de um pagamento já feito, exclua esta conta (remove também o lançamento na conta corrente) e lance de novo com o valor certo.</p>`:''}
     <div class="aba-corpo" style="display:grid;gap:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Descrição *
@@ -15748,7 +15788,7 @@ function abrirEditarContaPagar(id){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label>Valor (R$) *
           <input id="ecp-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
-            oninput="mascaraMoeda(this)" style="margin-top:4px">
+            oninput="mascaraMoeda(this)" style="margin-top:4px" ${p.status==='pago'?'disabled':''}>
         </label>
         <label>Tipo *
           <select id="ecp-tipo" class="input" style="margin-top:4px" onchange="toggleCPTipo('ecp')">
@@ -17631,6 +17671,7 @@ function editarParcelaReceber(id, cardId){
   ].join('');
   abrirModal(`
     <h3>Editar Parcela — Cartão #${c.num}</h3>
+    ${r.status==='recebido'?`<p style="margin:0 0 10px;font-size:13px;color:#2e7d32">✔ Esta parcela já foi recebida integralmente — o campo "Valor" fica travado, porque alterá-lo não mudaria o recebimento já lançado na conta corrente (deixaria os dois números divergentes). Pra corrigir o valor de um recebimento já feito, exclua esta parcela (remove também o lançamento na conta corrente) e lance de novo com o valor certo.</p>`:''}
     <div class="form-row">
       <div>
         <label>Descrição</label>
@@ -17638,7 +17679,7 @@ function editarParcelaReceber(id, cardId){
       </div>
       <div>
         <label>Valor (R$)</label>
-        <input id="er-valor" type="text" inputmode="decimal" value="${fmtMoney(r.valor)}" oninput="mascaraMoeda(this)">
+        <input id="er-valor" type="text" inputmode="decimal" value="${fmtMoney(r.valor)}" oninput="mascaraMoeda(this)" ${r.status==='recebido'?'disabled':''}>
       </div>
     </div>
     <div class="form-row">
