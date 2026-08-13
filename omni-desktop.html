@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.160';
-const APP_VERSION_DATE = '11/08/2026';
+const APP_VERSION = '1.47.161';
+const APP_VERSION_DATE = '13/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.161',
+    data: '13/08/2026',
+    itens: [
+      'Novo: Espelho de Faturamento agora permite editar descrição/quantidade/valor unitário de um item de Produto ou Serviço já adicionado (✏️), com a Previsão de Impostos recalculada sozinha ao salvar. Fica travado (com o motivo explicado na hora) quando o Espelho já tem Guia de Recolhimento gerada ou a NF real já tem número preenchido — casos em que os valores já estão fechados.',
+    ]
+  },
   {
     versao: '1.47.160',
     data: '11/08/2026',
@@ -9329,6 +9336,75 @@ async function removerItemFaturamento(itemId, nfId, tipo){
   abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
 }
 
+/* v1.47.161: edição de descrição/quantidade/valor unitário de um item já
+   adicionado ao Espelho — análise de risco feita com o Cleverson antes de
+   implementar (ver conversa): itens do Espelho são uma CÓPIA congelada, não
+   ficam ligados de volta na proposta/O.S. (só guardam osId/propostaId/idx pra
+   controlar que o mesmo item não seja adicionado 2x em Espelhos diferentes),
+   então editar aqui não quebra nada lá. Os dois pontos que precisam de trava:
+   (1) a Previsão de Impostos já para de recalcular sozinha assim que existe uma
+   Guia de Recolhimento vinculada (sincronizarProvisaoImpostoEspelho retorna cedo
+   nesse caso — ver a função); (2) o campo "Valor" da NF de Produto/Serviço, uma
+   vez preenchido (NF já emitida de verdade pela contabilidade), passa a mandar
+   sozinho no total/provisão — editar item depois disso não muda nada visível,
+   o que confundiria. Por isso trava (com explicação, nunca com `disabled` puro —
+   ver [[project_crm_inovattive]] sobre não esconder o motivo atrás do disabled)
+   quando qualquer uma dessas duas condições já vale pro tipo (produto/serviço)
+   sendo editado. */
+function _motivoBloqueioEdicaoItemFat(nf, tipo){
+  if(nf.guiaTributosId) return 'Este Espelho já tem uma Guia de Recolhimento de impostos gerada — a partir daí os valores ficam congelados pra não descasar da guia já emitida. Se precisar corrigir, fale com quem administra o sistema.';
+  const numeroPreenchido = tipo==='material' ? nf.produtoNumero : nf.servicoNumero;
+  if(numeroPreenchido) return `A NF de ${tipo==='material'?'Produto':'Serviço'} deste Espelho já tem número preenchido (nº ${numeroPreenchido}) — ou seja, já foi emitida de verdade pela contabilidade. Editar o item agora não mudaria o total nem a previsão de impostos (que passam a usar o valor da NF real), então ficaria só a lista de itens desatualizada em relação ao que foi emitido.`;
+  return null;
+}
+
+function abrirEditarItemFaturamento(itemId, nfId, tipo){
+  const item = (db.faturamentoItens||[]).find(x=>x.id===itemId); if(!item) return;
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const motivo = _motivoBloqueioEdicaoItemFat(nf, tipo);
+  if(motivo){ alert('Não é possível editar este item agora:\n\n'+motivo); return; }
+  contextoAjuda.modal='editar-item-espelho'; contextoAjuda.aba=null; _refreshAjudaSeAberta();
+  abrirModal(`
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✏️ Editar Item do Espelho</h3>
+      ${ajudaBtnModalHTML()}
+    </div>
+    <label>Descrição *</label>
+    <input id="eif-desc" type="text" value="${escHtml(item.descricao||'')}">
+    <div class="form-row">
+      <div><label>Quantidade *</label><input id="eif-qtd" type="text" inputmode="decimal" value="${(item.quantidade||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)"></div>
+      <div><label>Valor Unitário *</label><input id="eif-unit" type="text" inputmode="decimal" value="${(item.valorUnitario||0).toFixed(2).replace('.',',')}" oninput="mascaraMoeda(this)"></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted)">O total do item (${fmtMoney(item.valorTotal)} hoje) é recalculado automaticamente como Quantidade × Valor Unitário ao salvar.</p>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="abrirEspelhoNF(${nfId},'${tipo==='material'?'produtos':'servicos'}')">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarEditarItemFaturamento(${itemId},${nfId},'${tipo}')">Salvar</button>
+    </div>`, 'cartao');
+}
+
+async function confirmarEditarItemFaturamento(itemId, nfId, tipo){
+  const item = (db.faturamentoItens||[]).find(x=>x.id===itemId); if(!item) return;
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const desc = (document.getElementById('eif-desc').value||'').trim();
+  const qtd = lerMoeda('eif-qtd');
+  const unit = lerMoeda('eif-unit');
+  if(!desc){ alert('Preencha a descrição.'); return; }
+  if(!(qtd>0)){ alert('Quantidade inválida.'); return; }
+  if(unit<0){ alert('Valor unitário inválido.'); return; }
+  const total = qtd*unit;
+  const btn=btnModalPrimario(); btnSalvando(btn);
+  const {error} = await sb.from('faturamento_itens').update({
+    descricao:desc, quantidade:qtd, valor_unitario:unit, valor_total:total
+  }).eq('id', itemId);
+  if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
+  const descAntiga = item.descricao, totalAntigo = item.valorTotal;
+  item.descricao=desc; item.quantidade=qtd; item.valorUnitario=unit; item.valorTotal=total;
+  save();
+  registrarLog('editar','nota_fiscal',nfId,`Item do Espelho #${nfId} editado: "${descAntiga}" (${fmtMoney(totalAntigo)}) → "${desc}" (${fmtMoney(total)})`);
+  await sincronizarProvisaoImpostoEspelho(nf);
+  abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
+}
+
 /* v1.47.41: itens de produto travados num Espelho SEM descrição fiscal (produto
    nunca vinculado ao catálogo — comum em itens antigos, anteriores ao controle
    que hoje já obriga vincular na hora de dar saída na O.S.) ganham um jeito de
@@ -9781,6 +9857,7 @@ function abaEspelhoProdutosHTML(nf){
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
           <b>${fmtMoney(i.valorTotal)}</b>
+          ${podeEditar?`<button class="btn-xs" onclick="abrirEditarItemFaturamento(${i.id},${nf.id},'material')">✏️</button>`:''}
           ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'material')">🗑</button>`:''}
         </div>
       </div>
@@ -9829,6 +9906,7 @@ function abaEspelhoServicosHTML(nf){
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
           <b>${fmtMoney(i.valorTotal)}</b>
+          ${podeEditar?`<button class="btn-xs" onclick="abrirEditarItemFaturamento(${i.id},${nf.id},'servico')">✏️</button>`:''}
           ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'servico')">🗑</button>`:''}
         </div>
       </div>
@@ -11427,6 +11505,12 @@ const AJUDA_CONTEUDO = {
     html: `
       <p>Corrige, direto por aqui, um item de produto do Espelho que ficou sem "Descrição Fiscal" (xProd) — comum em itens antigos, de antes do sistema passar a exigir o vínculo com o catálogo na hora da saída da O.S. Escolha o produto certo do catálogo e o Espelho passa a usar a descrição fiscal dele.</p>
       <p>Produtos marcados com ⭐ têm saldo reservado especificamente para a obra deste Espelho — são os candidatos mais prováveis de ser o item certo. Se o produto não existir ainda no catálogo, cadastre primeiro em Estoque → Almoxarifado → "＋ Novo Produto" e volte aqui.</p>`
+  },
+  'editar-item-espelho': {
+    titulo: 'Editar Item do Espelho',
+    html: `
+      <p>Corrige descrição, quantidade e valor unitário de um item já adicionado ao Espelho (o total recalcula sozinho). Como esse item é uma cópia — não fica ligado de volta na proposta nem na O.S. — editar aqui não altera nada em outra tela do sistema.</p>
+      <p>A Previsão de Impostos (aba Dados) é recalculada automaticamente depois de salvar. A edição fica bloqueada (com o motivo explicado na hora) quando o Espelho já tem uma Guia de Recolhimento vinculada, ou quando a NF de Produto/Serviço real já tem o número preenchido — nesses casos os valores já estão "fechados" e editar o item não mudaria mais nada visível.</p>`
   },
   'estoque-categorias': {
     titulo: 'Estoque — Categorias de Produtos',
