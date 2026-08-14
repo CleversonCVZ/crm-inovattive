@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.162';
-const APP_VERSION_DATE = '13/08/2026';
+const APP_VERSION = '1.47.163';
+const APP_VERSION_DATE = '14/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.163',
+    data: '14/08/2026',
+    itens: [
+      'Novo: um Cartão CRM já pode ter mais de um Espelho de Faturamento (útil quando o faturamento de um cliente é dividido em várias NFs de produto/serviço até completar o valor total). Agora, ao criar um novo Espelho pra um cartão que já tem outro(s), aparece um aviso com os Espelhos existentes e o total já faturado; e dentro de cada Espelho, um bloco novo mostra Total Contratado × Já Faturado × Restante, com link direto pros outros Espelhos do mesmo cartão. Nenhuma trava de item mudou — cada item da proposta continua só podendo entrar em um Espelho por vez, como já era.',
+    ]
+  },
   {
     versao: '1.47.162',
     data: '13/08/2026',
@@ -9613,9 +9620,22 @@ function _atualizarPreviewCardFaturamento(){
   const c = (db.cards||[]).find(x=>x.id===cardId);
   const ob = c ? (db.obras||[]).find(o=>o.id===c.obraId) : null;
   const cli = c ? cliente(c.clienteId) : null;
-  el.innerHTML = ob
-    ? `🏗 Obra: <b>${escHtml(ob.nome)}</b> · 👤 ${escHtml(cli?cli.nome:'—')}`
-    : `<span style="color:#e65100">⚠ Este cartão ainda não tem obra vinculada.</span>`;
+  if(!ob){ el.innerHTML = `<span style="color:#e65100">⚠ Este cartão ainda não tem obra vinculada.</span>`; return; }
+  let html = `🏗 Obra: <b>${escHtml(ob.nome)}</b> · 👤 ${escHtml(cli?cli.nome:'—')}`;
+  // v1.47.163: se este cartão já tem outro(s) Espelho(s), avisa antes de criar
+  // mais um — pra deixar claro que é uma prática normal (faturamento em várias
+  // NFs), não um erro/duplicidade.
+  const resumo = _resumoFaturamentoCard(cardId);
+  if(resumo.espelhos.length){
+    html += `<div style="margin-top:8px;padding:8px 10px;background:#e3f2fd;border-radius:6px;font-size:12.5px">
+      ℹ️ Este cartão já tem <b>${resumo.espelhos.length} Espelho${resumo.espelhos.length>1?'s':''}</b> de Faturamento
+      (${resumo.espelhos.map(e=>'#'+e.id).join(', ')}), somando <b>${fmtMoney(resumo.faturado)}</b> já faturados
+      de um total contratado de ${fmtMoney(resumo.contratado)} — restante: <b>${fmtMoney(resumo.restante)}</b>.
+      Tudo bem criar mais um Espelho pro mesmo cartão (útil quando o faturamento é dividido em várias NFs);
+      os itens já usados nos outros Espelhos não aparecerão disponíveis aqui de novo.
+    </div>`;
+  }
+  el.innerHTML = html;
 }
 async function confirmarNovoEspelhoFaturamento(){
   const btn = btnModalPrimario();
@@ -9772,20 +9792,46 @@ async function sincronizarProvisaoImpostoEspelho(nf){
  * de produto/serviço do próprio Espelho e das alíquotas de Produto/Serviço
  * configuradas em Configurações do Sistema. Sempre recalculada na hora (não fica
  * "congelada" com a alíquota de quando foi salva). */
+/* v1.47.163: valor de produto/serviço de um Espelho — mesma regra usada em 3
+ * lugares (previsão de impostos, aba Dados, salvarDadosEspelhoNF): usa o valor
+ * REAL da NF já digitado (produtoValor/servicoValor) quando existir, senão cai
+ * pra soma dos itens ainda não faturados de verdade (rascunho). Centralizado
+ * aqui pra evitar as 3 cópias divergirem entre si no futuro. */
+function _totaisEspelho(nf){
+  const produto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const servico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  return {produto, servico, total: produto+servico};
+}
+
 function previsaoImpostosEspelho(nf){
-  const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
-  const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const {produto:totalProduto, servico:totalServico} = _totaisEspelho(nf);
   const empresa = db.empresa||{};
   const aliqProduto = Number(empresa.aliquotaTributosProduto)||0;
   const aliqServico = Number(empresa.aliquotaTributosServico)||0;
   return totalProduto*aliqProduto/100 + totalServico*aliqServico/100;
 }
 
+/* v1.47.163: um Cartão CRM pode ter mais de um Espelho de Faturamento (cada um
+ * com sua própria NF de Produto e/ou Serviço) — por exemplo, um cliente que
+ * paga em várias notas até completar o valor total contratado. O sistema já
+ * trava cada item da proposta pra não entrar em 2 Espelhos ao mesmo tempo
+ * (ver itensProdutoDisponiveis/itensServicoDisponiveis); esta função só soma
+ * o que já foi contratado x já foi colocado em algum Espelho ativo (exclui
+ * Espelhos numa fase "cancelada"), pra dar visibilidade de conjunto. */
+function _resumoFaturamentoCard(cardId){
+  const contratado = (db.propostas||[]).filter(p=>p.cardId===cardId && p.status==='aprovada')
+    .reduce((s,p)=>s+valorReceberProposta(p),0);
+  const espelhos = (db.notasFiscais||[]).filter(n=>n.cardId===cardId && faseFat(n.faseId)?.tipo!=='cancelada');
+  const faturado = espelhos.reduce((s,n)=>s+_totaisEspelho(n).total,0);
+  return {contratado, faturado, restante:contratado-faturado, espelhos};
+}
+
 function abaEspelhoDadosHTML(nf, c, ob, cli){
   const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
-  const totalProduto = nf.produtoValor!=null ? nf.produtoValor : itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0);
-  const totalServico = nf.servicoValor!=null ? nf.servicoValor : itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0);
+  const {produto:totalProduto, servico:totalServico} = _totaisEspelho(nf);
   const previsaoImpostos = previsaoImpostosEspelho(nf);
+  const resumoCard = nf.cardId ? _resumoFaturamentoCard(nf.cardId) : null;
+  const outrosEspelhos = resumoCard ? resumoCard.espelhos.filter(e=>e.id!==nf.id) : [];
   return `
     <div class="form-row">
       <div><label>Cartão CRM</label><input value="${c?'#'+c.num:'—'}" disabled></div>
@@ -9813,7 +9859,27 @@ function abaEspelhoDadosHTML(nf, c, ob, cli){
       <div style="font-size:13px"><span style="color:var(--muted)">Total Produto:</span> <b>${fmtMoney(totalProduto)}</b></div>
       <div style="font-size:13px"><span style="color:var(--muted)">Total Serviço:</span> <b>${fmtMoney(totalServico)}</b></div>
       <div style="font-size:13px"><span style="color:var(--muted)">Total Geral:</span> <b>${fmtMoney(totalProduto+totalServico)}</b></div>
-    </div>`;
+    </div>
+    ${resumoCard ? `
+    <div style="border-top:2px solid var(--border);margin-top:16px;padding-top:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Faturamento deste Cartão${outrosEspelhos.length?` (${outrosEspelhos.length+1} Espelhos)`:''}</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:${outrosEspelhos.length?'10px':'0'}">
+        <div style="font-size:13px"><span style="color:var(--muted)">Total Contratado:</span> <b>${fmtMoney(resumoCard.contratado)}</b></div>
+        <div style="font-size:13px"><span style="color:var(--muted)">Já Faturado (todos os Espelhos):</span> <b>${fmtMoney(resumoCard.faturado)}</b></div>
+        <div style="font-size:13px"><span style="color:${resumoCard.restante>0.005?'#e65100':'var(--green)'}">Restante a Faturar:</span> <b style="color:${resumoCard.restante>0.005?'#e65100':'var(--green)'}">${fmtMoney(resumoCard.restante)}</b></div>
+      </div>
+      ${outrosEspelhos.length?`
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Outros Espelhos deste mesmo cartão:</div>
+      ${outrosEspelhos.map(o=>{
+        const fo=faseFat(o.faseId)||{};
+        const numeros=[o.produtoNumero,o.servicoNumero].filter(Boolean).join(' / ');
+        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">
+          <a href="javascript:void(0)" onclick="abrirEspelhoNF(${o.id})" style="font-size:13px;color:#1565c0;text-decoration:underline">Espelho #${o.id}${numeros?' — NF '+escHtml(numeros):''}</a>
+          <span style="font-size:12px">${fmtMoney(_totaisEspelho(o).total)} · <span style="padding:1px 7px;border-radius:20px;background:${fo.cor||'#dee2e6'};color:${textColor(fo.cor||'#dee2e6')}">${fo.nome||'—'}</span></span>
+        </div>`;
+      }).join('')}
+      `:`<div style="font-size:12px;color:var(--muted)">Nenhum outro Espelho pra este cartão ainda. Se este cliente for faturar em mais de uma NF, é só criar um novo Espelho selecionando o mesmo Cartão CRM — os itens já usados aqui não aparecem de novo lá.</div>`}
+    </div>` : ''}`;
 }
 async function salvarDadosEspelhoNF(id){
   if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
@@ -9824,8 +9890,7 @@ async function salvarDadosEspelhoNF(id){
   nf.incluirPrevisaoImpostos = !!document.getElementById('fe-incluir-previsao')?.checked;
   const criadoEmInput = document.getElementById('fe-criado-em')?.value || null;
   if(criadoEmInput) nf.criadoEm = criadoEmInput;
-  nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
-           + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
+  nf.valor = _totaisEspelho(nf).total;
   const btn=btnModalPrimario(); btnSalvando(btn);
   try{
     const {error}=await sb.from('notas_fiscais').update({
@@ -10184,8 +10249,7 @@ async function salvarBlocoEspelhoNF(id, bloco, btn){
   const valorRaw = document.getElementById(`fe-${pref}-valor`).value.trim();
   const valor = valorRaw ? lerMoeda(`fe-${pref}-valor`) : null;
   nf[bloco+'Numero']=numero; nf[bloco+'Data']=data; nf[bloco+'Valor']=valor;
-  nf.valor = (nf.produtoValor!=null?nf.produtoValor:itensDoEspelho(nf.id,'material').reduce((s,i)=>s+(i.valorTotal||0),0))
-           + (nf.servicoValor!=null?nf.servicoValor:itensDoEspelho(nf.id,'servico').reduce((s,i)=>s+(i.valorTotal||0),0));
+  nf.valor = _totaisEspelho(nf).total;
   btnSalvando(btn);
   try{
     const {error} = await sb.from('notas_fiscais').update({
@@ -11483,6 +11547,8 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Dados',
         html: `
           <p>Fase do Espelho, Previsão de Impostos (calculada, só-leitura) e observações. Cartão/Cliente/Obra vêm da origem do Espelho e não são editáveis aqui.</p>
+          <h5>Faturamento deste Cartão</h5>
+          <p>Um mesmo Cartão CRM pode ter mais de um Espelho — útil quando o faturamento de um cliente é dividido em várias NFs até completar o valor total contratado. Este bloco mostra o total contratado (proposta aprovada, exclui itens "Cliente Fornece"), quanto já foi colocado em algum Espelho ativo deste cartão (soma de todos, não só este) e quanto ainda resta, com link direto pros outros Espelhos. Um item da proposta só entra em UM Espelho por vez — assim que usado aqui, some da lista de disponíveis dos demais.</p>
           <h5>Botões do rodapé</h5>
           <p>"Visualizar/Exportar PDF" e "Exportar Excel" geram a <b>Instrução para Emissão de NF</b> — o documento que você manda pra contabilidade ANTES de emitir a nota, com endereços, CNPJ/CPF, itens de produto (descrição fiscal) e de serviço. É diferente dos arquivos que a contabilidade te devolve DEPOIS de emitida (esses são só anexados nas abas Itens de Produto/Serviço).</p>`
       },
