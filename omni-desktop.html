@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.163';
+const APP_VERSION = '1.47.164';
 const APP_VERSION_DATE = '14/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.164',
+    data: '14/08/2026',
+    itens: [
+      'Novo: itens de serviço (ex.: mão de obra) que ainda não foram faturados agora podem ser divididos em várias parcelas independentes — "🔀 Dividir" na aba Proposta Aprovada do Cartão CRM e também dentro do próprio Espelho de Faturamento (aba Itens de Serviço). Cada parcela vira um item novo, faturável numa NF separada, mesmo padrão seguro já usado no "Dividir Kit" de produtos (a linha original é zerada, nunca apagada). Fica travado quando o item já foi colocado em algum Espelho.',
+    ]
+  },
   {
     versao: '1.47.163',
     data: '14/08/2026',
@@ -5752,14 +5759,17 @@ function itensContratadosHTML(p, podeEditar=true){
     <div class="itens-wrap">
       <table class="itens-tab">
         <thead><tr><th>Item</th><th>Qtd</th><th>Unit.</th><th>Total</th><th>Tipo</th><th title="Fornecimento de terceiros — cliente providencia">🏗 Cliente</th></tr></thead>
-        <tbody>${p.itens.map((i,idx)=>`
+        <tbody>${p.itens.map((i,idx)=>{
+          const podeDividir = podeEditar && i.categoria==='servico' && (i.total>0) && !_itemServicoTravado(p.id, idx);
+          return `
           <tr title="${(i.descricao||'').replace(/"/g,'&quot;')}" style="${i.clienteFornece?'background:#fff8e1':''}">
-            <td>${i.item}${/KIT/i.test(i.tipo||'')?` <span title="Esse item representa um kit de vários produtos — ao dar baixa numa O.S. use 'Dividir em produtos individuais'" style="font-size:10px;background:#e65100;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">🎁 KIT</span>`:''}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}</td>
+            <td>${i.item}${/KIT/i.test(i.tipo||'')?` <span title="Esse item representa um kit de vários produtos — ao dar baixa numa O.S. use 'Dividir em produtos individuais'" style="font-size:10px;background:#e65100;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">🎁 KIT</span>`:''}${i.clienteFornece?` <span style="font-size:10px;background:#f57f17;color:#fff;border-radius:3px;padding:1px 4px;vertical-align:middle">CLIENTE</span>`:''}${podeDividir?` <button class="btn-xs" title="Dividir em parcelas — cada uma faturável numa NF diferente" onclick="abrirDividirItemServico(${p.id},${idx},'cartao',${p.cardId})">🔀</button>`:''}</td>
             <td>${i.qtd==null?'':i.qtd}</td>
             <td>${i.unit==null?'':fmtMoney(i.unit)}</td><td>${i.total==null?'':fmtMoney(i.total)}</td>
             <td>${i.tipo}</td>
             <td style="text-align:center"><input type="checkbox" title="Cliente fornece este item" ${i.clienteFornece?'checked':''} ${podeEditar?`onchange="toggleClienteFornece(${p.id},${idx},this.checked)"`:'disabled'}></td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
         </tbody>
         <tfoot><tr><td colspan="3"><b>Soma dos itens</b></td><td colspan="3"><b>${fmtMoney(soma)}</b></td></tr></tfoot>
       </table>
@@ -9270,6 +9280,156 @@ function itensServicoDisponiveis(cardId){
     }));
 }
 
+/* v1.47.164: divide um item de SERVIÇO da proposta (ex.: mão de obra) em várias
+ * "parcelas" independentes — pro caso de um cliente que precisa de várias NFs até
+ * completar o valor total. Mesmo padrão seguro já usado no "Dividir Kit" de
+ * produtos (confirmarDividirItemKit): a linha original nunca é removida (só
+ * zerada, pra não deslocar o idx dos outros itens da proposta), as parcelas
+ * entram como linhas novas no fim do array, ligadas de volta via kitPaiIdx. Bem
+ * mais simples que o Kit por não envolver catálogo/estoque — serviço não passa
+ * por O.S., vai direto da proposta aprovada pro Faturamento. Acessível tanto
+ * pelo Cartão CRM (aba Proposta Aprovada → Itens Contratados) quanto por um
+ * atalho dentro do próprio Espelho de Faturamento (aba Itens de Serviço, na
+ * lista "Disponíveis pra adicionar") — "origem" guarda pra onde voltar ao
+ * confirmar/cancelar, já que as duas telas usam essa mesma função. */
+let _dividirServicoCtx = null;   // {propostaId, idx, origem:'cartao'|'espelho', voltaId, totalOriginal, descricaoOriginal}
+let _dividirServicoLinhas = [];  // [{descricao, valor}]
+
+/** Um item de serviço já usado em algum Espelho de Faturamento ativo não pode
+ *  mais ser dividido — a parte já faturada perderia a rastreabilidade. */
+function _itemServicoTravado(propostaId, idx){
+  return (db.faturamentoItens||[]).some(fi=>{
+    if(fi.tipo!=='servico' || fi.propostaId!==propostaId || fi.propostaIdx!==idx) return false;
+    const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
+    return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
+  });
+}
+
+function abrirDividirItemServico(propostaId, idx, origem, voltaId){
+  const permOk = origem==='espelho' ? podeEditarTela(usuarioAtual,'fat-painel') : podeEditarRecurso(usuarioAtual,'aba-propostas');
+  if(!permOk){ alert('Sem permissão para dividir este item.'); return; }
+  const p = db.propostas.find(x=>x.id===propostaId);
+  const it = p?.itens?.[idx];
+  if(!it){ alert('Item não encontrado.'); return; }
+  if(_itemServicoTravado(propostaId, idx)){ alert('Este item já foi colocado em algum Espelho de Faturamento — não é mais possível dividi-lo.'); return; }
+  const descBase = it.descricao||it.item||'';
+  _dividirServicoCtx = {propostaId, idx, origem, voltaId, totalOriginal: it.total||0, descricaoOriginal: descBase};
+  _dividirServicoLinhas = [
+    {descricao: descBase+' — Parcela 1', valor: null},
+    {descricao: descBase+' — Parcela 2', valor: null}
+  ];
+  _renderDividirServicoModal();
+}
+
+function _renderDividirServicoModal(){
+  const ctx = _dividirServicoCtx;
+  if(!ctx) return;
+  const somaLinhas = _dividirServicoLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
+  const bateTotal = Math.abs(somaLinhas-(ctx.totalOriginal||0))<0.01;
+  const linhasHTML = _dividirServicoLinhas.map((l,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 140px 32px;gap:6px;align-items:end;margin-bottom:8px">
+      <div>
+        ${i===0?'<label>Descrição da parcela</label>':''}
+        <input type="text" value="${escHtml(l.descricao||'')}" onchange="_dividirServicoAtualizarLinha(${i},'descricao',this.value)">
+      </div>
+      <div>
+        ${i===0?'<label>Valor (R$)</label>':''}
+        <input type="number" step="0.01" min="0" value="${l.valor??''}" onchange="_dividirServicoAtualizarLinha(${i},'valor',this.value)">
+      </div>
+      <button class="icon-btn del" title="Remover" style="margin-bottom:1px" onclick="_dividirServicoRemoverLinha(${i})">✖</button>
+    </div>`).join('');
+  const voltaOnclick = ctx.origem==='espelho' ? `abrirEspelhoNF(${ctx.voltaId},'servicos')` : `abrirEditarCartao(${ctx.voltaId},'aprovada')`;
+
+  abrirModal(`
+    <h3>🔀 Dividir Item de Serviço em Parcelas</h3>
+    <div class="aba-corpo" style="display:grid;gap:12px">
+      <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+        <div style="font-size:12px;color:var(--muted)">Item original da proposta</div>
+        <div style="font-weight:600">${escHtml(ctx.descricaoOriginal)}</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Total contratado: ${fmtMoney(ctx.totalOriginal)}</div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0">Cada linha abaixo vira uma parcela nova e independente — passa a aparecer separadamente em "Disponíveis pra adicionar" de qualquer Espelho, podendo cada uma ir pra uma NF diferente. A linha original é zerada (não apagada, pra manter os outros itens da proposta no lugar).</p>
+      <div>${linhasHTML}</div>
+      <button class="btn" style="width:fit-content" onclick="_dividirServicoAddLinha()">＋ Adicionar parcela</button>
+      <div id="dvs-soma" style="font-size:12px;${bateTotal?'color:#2e7d32':'color:#e65100'}">Soma das parcelas: ${fmtMoney(somaLinhas)} ${bateTotal?'✓ bate com o total original':'— diferente do total original, pode ajustar os valores acima'}</div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="${voltaOnclick}">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarDividirItemServico()">Confirmar Divisão</button>
+    </div>`, 'cartao');
+}
+
+function _dividirServicoAtualizarLinha(i, campo, valor){
+  if(!_dividirServicoLinhas[i]) return;
+  _dividirServicoLinhas[i][campo] = valor;
+  const ctx = _dividirServicoCtx;
+  const somaEl = document.getElementById('dvs-soma');
+  if(somaEl && ctx){
+    const soma = _dividirServicoLinhas.reduce((s,l)=>s+(Number(l.valor)||0),0);
+    const bate = Math.abs(soma-(ctx.totalOriginal||0))<0.01;
+    somaEl.textContent = `Soma das parcelas: ${fmtMoney(soma)} ` + (bate?'✓ bate com o total original':'— diferente do total original, pode ajustar os valores acima');
+    somaEl.style.color = bate?'#2e7d32':'#e65100';
+  }
+}
+
+function _dividirServicoAddLinha(){
+  const n = _dividirServicoLinhas.length+1;
+  _dividirServicoLinhas.push({descricao:(_dividirServicoCtx?.descricaoOriginal||'')+' — Parcela '+n, valor:null});
+  _renderDividirServicoModal();
+}
+
+function _dividirServicoRemoverLinha(i){
+  _dividirServicoLinhas.splice(i,1);
+  if(!_dividirServicoLinhas.length) _dividirServicoLinhas.push({descricao:'', valor:null});
+  _renderDividirServicoModal();
+}
+
+async function confirmarDividirItemServico(){
+  const ctx = _dividirServicoCtx;
+  if(!ctx) return;
+  const linhasValidas = _dividirServicoLinhas.filter(l=>(l.descricao||'').trim() && Number(l.valor)>0);
+  if(linhasValidas.length<2){ alert('Informe pelo menos 2 parcelas, cada uma com descrição e valor.'); return; }
+  const p = db.propostas.find(x=>x.id===ctx.propostaId);
+  const itOriginal = p?.itens?.[ctx.idx];
+  if(!itOriginal){ alert('Item original não encontrado.'); return; }
+  if(_itemServicoTravado(ctx.propostaId, ctx.idx)){ alert('Este item já foi colocado em algum Espelho de Faturamento nesse meio-tempo — não é mais possível dividi-lo. Feche e reabra a tela.'); return; }
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  const tipoOriginal = itOriginal.tipo;
+  const categoriaOriginal = itOriginal.categoria;
+  const clienteForneceOriginal = itOriginal.clienteFornece;
+  const descOriginal = itOriginal.descricao||itOriginal.item||'';
+
+  // zera a linha original (nunca remove — removeria/deslocaria o idx dos outros itens)
+  itOriginal.qtd = 0; itOriginal.unit = 0; itOriginal.total = 0;
+  if(!/\(dividido em parcelas/i.test(itOriginal.descricao||'')){
+    itOriginal.descricao = descOriginal + ' (dividido em parcelas abaixo)';
+  }
+
+  // adiciona uma linha nova por parcela, sempre ao final do array (nunca no meio)
+  linhasValidas.forEach(l=>{
+    const valor = Number(l.valor)||0;
+    p.itens.push({
+      item: l.descricao.trim(), descricao: l.descricao.trim(),
+      qtd: 1, unit: valor, total: valor,
+      tipo: tipoOriginal||'Serviço', categoria: categoriaOriginal||'servico',
+      clienteFornece: !!clienteForneceOriginal,
+      kitPaiIdx: ctx.idx // liga a parcela de volta à linha original — mesmo campo já usado pelo Dividir Kit
+    });
+  });
+
+  await sincronizarItensProposta(ctx.propostaId);
+  registrarLog('editar','proposta',ctx.propostaId,`Item de serviço "${descOriginal}" dividido em ${linhasValidas.length} parcela(s) (${linhasValidas.map(l=>fmtMoney(Number(l.valor)||0)).join(', ')}).`);
+  save();
+
+  const {origem, voltaId} = ctx;
+  _dividirServicoCtx = null; _dividirServicoLinhas = [];
+  fecharModal();
+  if(origem==='espelho') abrirEspelhoNF(voltaId,'servicos');
+  else abrirEditarCartao(voltaId,'aprovada');
+}
+
 /** Itens já travados num espelho, por tipo. */
 function itensDoEspelho(nfId, tipo){
   return (db.faturamentoItens||[]).filter(fi=>fi.notaFiscalId===nfId && fi.tipo===tipo);
@@ -9991,7 +10151,10 @@ function abaEspelhoServicosHTML(nf){
       ${disponiveis.map(l=>`
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
           <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (Proposta #${l.propostaNum||l.propostaId})</span></div>
-          <button class="btn-xs" onclick="adicionarItemFaturamentoServico(${nf.id},${nf.cardId},${l.propostaId},${l.propostaIdx})">+ Adicionar</button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn-xs" title="Faturar só uma parte deste item — divide em parcelas, cada uma numa NF diferente" onclick="abrirDividirItemServico(${l.propostaId},${l.propostaIdx},'espelho',${nf.id})">🔀 Dividir</button>
+            <button class="btn-xs" onclick="adicionarItemFaturamentoServico(${nf.id},${nf.cardId},${l.propostaId},${l.propostaIdx})">+ Adicionar</button>
+          </div>
         </div>`).join('')}
     </div>` : '';
 
@@ -11168,7 +11331,9 @@ const AJUDA_CONTEUDO = {
         html: `
           <p>A aprovação é confirmada subindo o Excel (memória de cálculo) correspondente a uma das propostas emitidas. Depois de aprovada, esta aba mostra a proposta principal + todos os aditivos já aprovados, com o total contratado somado.</p>
           <p>Pra criar um aditivo, emita-o primeiro na aba "Propostas Emitidas" (nasce como ADT automaticamente) — depois volte aqui pra aprovar esse aditivo do mesmo jeito.</p>
-          <p>O botão "↩ Reverter" desfaz a aprovação (volta pra "emitida", exige reaprovar por Excel de novo). Ele fica travado (🔒) assim que algum item da proposta/aditivo já foi usado em alguma O.S. — reverter nesse ponto reconstruiria a lista de itens do zero ao reaprovar, perdendo vínculos com o catálogo de estoque e divisões de kit já feitas. Precisando corrigir só um valor nesse caso, peça a correção diretamente, sem reverter.</p>`
+          <p>O botão "↩ Reverter" desfaz a aprovação (volta pra "emitida", exige reaprovar por Excel de novo). Ele fica travado (🔒) assim que algum item da proposta/aditivo já foi usado em alguma O.S. — reverter nesse ponto reconstruiria a lista de itens do zero ao reaprovar, perdendo vínculos com o catálogo de estoque e divisões de kit já feitas. Precisando corrigir só um valor nesse caso, peça a correção diretamente, sem reverter.</p>
+          <h5>🔀 Dividir item de serviço em parcelas</h5>
+          <p>Aparece nos itens de serviço (ex.: mão de obra) que ainda não foram colocados em nenhum Espelho de Faturamento. Divide o item em várias parcelas independentes — útil quando esse valor vai ser faturado aos poucos, em NFs separadas ao longo do tempo. A linha original fica zerada (não é apagada) e cada parcela passa a aparecer como um item próprio, disponível pra entrar em qualquer Espelho. O mesmo atalho também existe dentro do Espelho de Faturamento, na aba Itens de Serviço.</p>`
       },
       obras: {
         titulo: 'Aba Obra',
@@ -11561,7 +11726,8 @@ const AJUDA_CONTEUDO = {
       },
       servicos: {
         titulo: 'Aba Itens de Serviço',
-        html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>`
+        html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>
+          <p>O botão "🔀 Dividir" em cada item disponível divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela.</p>`
       },
       xmlproduto: {
         titulo: 'Aba XML Produto',
