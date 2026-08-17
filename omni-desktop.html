@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.166';
+const APP_VERSION = '1.47.167';
 const APP_VERSION_DATE = '17/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.167',
+    data: '17/08/2026',
+    itens: [
+      'Estoque → Painel → "obras concluídas e abandonadas": trocado o layout de kanban (colunas lado a lado com scroll vertical interno) por cabeçalho + grade que quebra linha — mesmo padrão já usado em "CRM → Perdidos & Concluídos" e "Financeiro → Res. Aparente". Evita ficar rolando uma coluna estreita conforme o número de obras concluídas cresce; a visualização "obras em andamento" continua em kanban normal, que faz sentido pra fases de trabalho em curso.',
+    ]
+  },
   {
     versao: '1.47.166',
     data: '17/08/2026',
@@ -11830,7 +11837,7 @@ const AJUDA_CONTEUDO = {
   },
   'estoque-painel': {
     titulo: 'Estoque — Painel (Acompanhamento)',
-    html: `<p>Kanban por obra cruzando compras (SRM) com uso em O.S. — mostra o que foi comprado pra cada obra e em quais Ordens de Serviço já foi consumido. Puramente informativo, sem cadastro próprio.</p>`
+    html: `<p>Cruza compras (SRM) com uso em O.S. por obra — mostra o que foi comprado pra cada obra e em quais Ordens de Serviço já foi consumido. Puramente informativo, sem cadastro próprio. Visualização "obras em andamento": kanban por fase de obra. Visualização "obras concluídas e abandonadas": grade agrupada por fase (Concluída/Cancelada) que quebra linha conforme cresce, em vez de kanban com scroll interno — mais fácil de rolar quando o histórico de obras concluídas fica grande.</p>`
   },
   'auditoria': {
     titulo: 'Auditoria & Logs',
@@ -13052,6 +13059,39 @@ function _montarKanbanObras(corpo, lista, fases, msgVazio){
   else corpo.appendChild(kanban);
 }
 
+/** v1.47.167: mesma ideia do _montarKanbanObras, mas pra listas "arquivadas" (obras
+ *  concluídas/abandonadas) — em vez de colunas de kanban lado a lado com scroll vertical
+ *  interno (apropriado pra fases de trabalho em andamento, onde a largura fixa ajuda a
+ *  comparar colunas), usa cabeçalho + grade que quebra linha (mesmo padrão já usado em
+ *  "CRM → Perdidos & Concluídos", renderVistaArquivados, e Financeiro → Res. Aparente —
+ *  ver .os-grupo-header/.os-painel-list). Faz sentido aqui porque com o tempo o número de
+ *  obras concluídas só cresce, e ficar uma coluna estreita rolando pra sempre incomoda —
+ *  a grade aproveita a largura toda da tela e cresce pra baixo com o scroll normal da
+ *  página. */
+function _montarGridObrasArquivadas(corpo, lista, fases, msgVazio){
+  let html = '';
+  let apareceu = false;
+  fases.forEach(f=>{
+    const itens = lista.filter(o=>o.faseId===f.id);
+    if(!itens.length) return;
+    apareceu = true;
+    html += `<div class="os-grupo-header" style="color:${f.cor}">
+      ${escHtml(f.nome)} <span class="col-count" style="background:${f.cor};color:#fff">${itens.length}</span>
+    </div>
+    <div class="os-painel-list" style="margin-bottom:24px">${itens.map(_estoqueObraCardHTML).join('')}</div>`;
+  });
+  const idsFases = new Set(fases.map(f=>f.id));
+  const semFase = lista.filter(o=>!idsFases.has(o.faseId));
+  if(semFase.length){
+    apareceu = true;
+    html += `<div class="os-grupo-header" style="color:#adb5bd">
+      Sem fase <span class="col-count" style="background:#adb5bd;color:#fff">${semFase.length}</span>
+    </div>
+    <div class="os-painel-list" style="margin-bottom:24px">${semFase.map(_estoqueObraCardHTML).join('')}</div>`;
+  }
+  corpo.innerHTML = apareceu ? html : `<div class="empty" style="padding:40px">${msgVazio}</div>`;
+}
+
 /* Alterna entre as 2 visualizações (select #estoque-painel-vista, valor
    persistido em estoquePainelVista) e já respeita a busca global (#busca) —
    chamada também de dentro de renderAll() pra ficar coerente com os outros
@@ -13072,7 +13112,7 @@ function renderEstoquePainel(){
       ['concluida','cancelada'].includes(o.status||'ativa') && matchBusca(o)
     );
     const fases = fasesObraOrdenadas().filter(f=>f.tipo==='concluida' || f.tipo==='cancelada');
-    _montarKanbanObras(corpo, lista, fases, 'Nenhuma obra concluída ou abandonada encontrada.');
+    _montarGridObrasArquivadas(corpo, lista, fases, 'Nenhuma obra concluída ou abandonada encontrada.');
   } else {
     const lista = (db.obras||[]).filter(o=>
       (o.status||'ativa')==='ativa' && _obraTemCardAtivo(o.id) && matchBusca(o)
