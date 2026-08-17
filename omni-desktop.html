@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.164';
+const APP_VERSION = '1.47.165';
 const APP_VERSION_DATE = '14/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.165',
+    data: '14/08/2026',
+    itens: [
+      'Corrigido/completo: o "🔀 Dividir em parcelas" (v1.47.164) só aparecia nos itens de serviço ainda não adicionados ao Espelho ("Disponíveis pra adicionar"). Agora também aparece nos itens já adicionados (junto do ✏️/🗑) — clicar remove o item deste Espelho e já abre direto a divisão em parcelas, sem precisar fazer isso manualmente em 2 passos.',
+    ]
+  },
   {
     versao: '1.47.164',
     data: '14/08/2026',
@@ -9510,6 +9517,25 @@ async function removerItemFaturamento(itemId, nfId, tipo){
   abrirEspelhoNF(nfId, tipo==='material'?'produtos':'servicos');
 }
 
+/* v1.47.165: divide um item de serviço que JÁ foi adicionado a este Espelho —
+ * atalho que poupa o passo manual de "🗑 remover" e depois procurar o item de
+ * novo na lista "Disponíveis pra adicionar" só pra achar o "🔀 Dividir" (que só
+ * aparece lá). Faz a mesma remoção do botão 🗑 e já abre direto o formulário de
+ * divisão pro item liberado — as parcelas resultantes ficam disponíveis pra
+ * adicionar em qualquer Espelho deste cartão, incluindo este mesmo. */
+async function dividirItemJaFaturado(itemId, nfId){
+  const item = (db.faturamentoItens||[]).find(x=>x.id===itemId);
+  if(!item){ alert('Item não encontrado.'); return; }
+  if(!confirm(`Pra dividir "${item.descricao}" em parcelas, ele precisa sair deste Espelho primeiro (fica disponível pra adicionar de novo, já dividido em partes menores). Continuar?`)) return;
+  await sb.from('faturamento_itens').delete().eq('id', itemId);
+  db.faturamentoItens = (db.faturamentoItens||[]).filter(x=>x.id!==itemId);
+  save();
+  registrarLog('excluir','nota_fiscal',nfId,`Item removido do Espelho #${nfId} pra ser dividido em parcelas: ${item.descricao}`);
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId);
+  if(nf) await sincronizarProvisaoImpostoEspelho(nf);
+  abrirDividirItemServico(item.propostaId, item.propostaIdx, 'espelho', nfId);
+}
+
 /* v1.47.161: edição de descrição/quantidade/valor unitário de um item já
    adicionado ao Espelho — análise de risco feita com o Cleverson antes de
    implementar (ver conversa): itens do Espelho são uma CÓPIA congelada, não
@@ -10138,6 +10164,7 @@ function abaEspelhoServicosHTML(nf){
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
           <b>${fmtMoney(i.valorTotal)}</b>
+          ${podeEditar?`<button class="btn-xs" title="Dividir em parcelas — remove deste Espelho e já abre a divisão" onclick="dividirItemJaFaturado(${i.id},${nf.id})">🔀</button>`:''}
           ${podeEditar?`<button class="btn-xs" onclick="abrirEditarItemFaturamento(${i.id},${nf.id},'servico')">✏️</button>`:''}
           ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'servico')">🗑</button>`:''}
         </div>
@@ -11727,7 +11754,7 @@ const AJUDA_CONTEUDO = {
       servicos: {
         titulo: 'Aba Itens de Serviço',
         html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>
-          <p>O botão "🔀 Dividir" em cada item disponível divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela.</p>`
+          <p>O botão "🔀" em cada item divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela. Funciona tanto nos itens já adicionados aqui em cima (remove do Espelho e já abre a divisão) quanto nos "Disponíveis pra adicionar" embaixo.</p>`
       },
       xmlproduto: {
         titulo: 'Aba XML Produto',
