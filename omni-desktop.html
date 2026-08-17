@@ -1384,11 +1384,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.165';
-const APP_VERSION_DATE = '14/08/2026';
+const APP_VERSION = '1.47.166';
+const APP_VERSION_DATE = '17/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.166',
+    data: '17/08/2026',
+    itens: [
+      'Melhorada a operação do "🔀 Dividir Kit" (Itens da O.S.): ao confirmar a divisão de um kit em produtos individuais, cada produto novo já é alocado direto na O.S. de origem (com a quantidade digitada na própria tela de divisão) — antes era preciso voltar pra "Itens da O.S." e adicionar cada produto manualmente, um por um, o que gerou confusão na operação (inclusive um kit dividido duas vezes por engano).',
+      'Quando a proposta já vem com "Kit" marcado (coluna Tipo), o botão "+Adicionar" em Itens da O.S. agora pula direto pra tela de divisão em kit, sem passar pela etapa intermediária "Vincular ao Catálogo de Estoque". Casos onde o kit só é sugerido (correspondência com compras no SRM, sem a marcação explícita) continuam passando pela tela de vincular normalmente.',
+    ]
+  },
   {
     versao: '1.47.165',
     data: '14/08/2026',
@@ -11502,7 +11510,7 @@ const AJUDA_CONTEUDO = {
           <h5>🔗 Vincular ao Catálogo de Estoque</h5>
           <p>Antes da primeira baixa de um item de produto, o sistema pede pra casar a descrição da proposta com um produto do Catálogo (só é perguntado uma vez por item — depois fica lembrado). Sem esse vínculo não tem como saber o que baixar do estoque.</p>
           <h5>🎁 Kit de materiais</h5>
-          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: no passo de vincular, use "🔀 Dividir em produtos individuais" pra quebrar a linha em uma por produto — o combo de produto só mostra o que já tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Se nenhum produto aparecer no combo, é sinal de que a compra ainda não foi lançada no SRM pra essa obra — resolva lá primeiro, o sistema não mostra o catálogo inteiro como alternativa. Errou algo na hora de dividir? Kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda. Isso aparece tanto na aba "📦 Itens" (kit que nós fornecemos, dentro dos itens já alocados nesta O.S.) quanto na aba "🏗 Fornecimento do Cliente" (kit que o cliente fornece).</p>`
+          <p>Item marcado "Kit" na proposta (coluna Tipo do Excel) ganha o selo "🎁 KIT" na lista de Itens Contratados — sinal de que aquela linha, na hora de comprar, virou vários produtos reais diferentes (ex.: "Kit de pequenos materiais" → Keystone + Régua + Fita Velcro). Uma linha assim não pode ser vinculada a 1 produto só: clicar "+Adicionar" nela já abre direto a tela de "🔀 Dividir em produtos individuais" (pula a etapa de vincular ao catálogo, que não faz sentido pra kit) — o combo de produto só mostra o que já tem saldo de estoque nessa obra (reduz risco de escolher errado), e o sistema sugere quantidades/valores quando a correspondência da compra no SRM estiver disponível. Se nenhum produto aparecer no combo, é sinal de que a compra ainda não foi lançada no SRM pra essa obra — resolva lá primeiro, o sistema não mostra o catálogo inteiro como alternativa. Ao confirmar a divisão, cada produto já é alocado nesta O.S. automaticamente, com a quantidade que foi digitada na própria tela — não precisa voltar em "Itens da O.S." e adicionar cada um manualmente depois. Errou algo na hora de dividir? Kits já divididos aparecem agrupados (produto pai + filhos indentados) com um ✏️ pra corrigir depois — sem precisar reimportar nem pedir ajuda. Isso aparece tanto na aba "📦 Itens" (kit que nós fornecemos, dentro dos itens já alocados nesta O.S.) quanto na aba "🏗 Fornecimento do Cliente" (kit que o cliente fornece). Linhas onde o kit só é sugerido pela compra no SRM (sem a marcação "Kit" explícita na proposta) continuam passando primeiro pela tela de vincular ao catálogo, com o aviso de kit provável — só a marcação explícita pula direto.</p>`
       },
       diario: {
         titulo: 'Aba Diário',
@@ -20432,6 +20440,17 @@ async function adicionarItemSit(osId, cardId){
   // caso — só libera o segundo.
   const elegivelEstoque = os.tipo==='execucao' && it.categoria==='produto';
   if(elegivelEstoque && !it.produtoEstoqueId){
+    // v1.47.166: quando a proposta já vem com "Kit" marcado na coluna Tipo (sinal
+    // explícito, escrito pelo Cleverson na emissão — não é a detecção indireta via SRM),
+    // pula a tela "Vincular ao Catálogo" e já abre a divisão em kit direto — ele não
+    // precisa passar por uma tela que só ia mostrar o mesmo aviso de "isso é um kit?"
+    // e clicar de novo pra chegar no formulário de divisão. Casos ambíguos (só
+    // detectados por correspondência no SRM, sem a tag explícita) continuam passando
+    // pela tela de vincular primeiro, porque aí a suspeita de kit ainda pode estar errada.
+    if(/KIT/i.test(it.tipo||'')){
+      abrirDividirItemKit(osId, cardId, it.propostaId, it.idx, qtd);
+      return;
+    }
     abrirVincularProdutoEstoque(osId, cardId, it.propostaId, it.idx, qtd);
     return;
   }
@@ -20726,6 +20745,8 @@ async function confirmarDividirItemKit(){
   // individual, não um kit dentro de outro kit. Herdar geraria o selo 🎁 KIT e o aviso
   // de "provável kit" também nas linhas já resolvidas, o que não faz sentido.
   const tipoFilho = /KIT/i.test(tipoOriginal||'') ? 'Produto' : (tipoOriginal||'item');
+  const baseIdx = p.itens.length; // v1.47.166: posição em que as linhas novas vão cair —
+                                   // usado logo abaixo pra já alocar cada uma na O.S. de origem
   linhasValidas.forEach(l=>{
     const prod = (db.estoqueProdutos||[]).find(x=>x.id===l.produtoId);
     const valor = Number(l.valor)||0;
@@ -20745,6 +20766,19 @@ async function confirmarDividirItemKit(){
   await sincronizarItensProposta(ctx.propostaId);
   registrarLog('editar','proposta',ctx.propostaId,`Item "${descOriginal}" dividido em ${linhasValidas.length} produto(s) individuais (${linhasValidas.map(l=>(db.estoqueProdutos||[]).find(x=>x.id===l.produtoId)?.nome).filter(Boolean).join(', ')}).`);
   save();
+
+  // v1.47.166: já aloca cada produto novo direto na O.S. que originou a divisão, com a
+  // quantidade que o Cleverson acabou de digitar nesta mesma tela — antes disso ele
+  // precisava voltar pra "Itens da O.S." e adicionar cada produto um por um (escolher no
+  // combo, digitar a quantidade de novo, confirmar), o que ele reportou como confuso.
+  // Sequencial (não Promise.all) pelo mesmo motivo do lock em confirmarLancarEstoque:
+  // evita 2 chamadas concorrentes de debitarEstoque colidindo.
+  if(btn) btn.textContent = 'Alocando na O.S.…';
+  for(let i=0;i<linhasValidas.length;i++){
+    const idxFilho = baseIdx+i;
+    const qtdFilho = Number(linhasValidas[i].qtd)||0;
+    await salvarQtdItemOS(ctx.osId, `${ctx.propostaId}_${idxFilho}`, ctx.propostaId, idxFilho, qtdFilho, ctx.cardId);
+  }
 
   const {osId, cardId} = ctx;
   _dividirKitCtx = null; _dividirKitLinhas = [];
