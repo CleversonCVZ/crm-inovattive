@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.169';
+const APP_VERSION = '1.47.170';
 const APP_VERSION_DATE = '18/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.170',
+    data: '18/08/2026',
+    itens: [
+      'Corrigido: um produto que teve a alocação numa O.S. desfeita e refeita aparecia duplicado na aba Garantias do Cartão CRM — uma vez pela entrada real da compra (com NF) e outra pela entrada de ajuste/estorno que o sistema lança automaticamente (sem NF nenhuma, aparecendo como "— sem data de NF —"). Agora essa entrada de ajuste é ignorada na lista de garantias, igual já era feito na tela Estoque da Obra.',
+    ]
+  },
   {
     versao: '1.47.169',
     data: '18/08/2026',
@@ -7155,7 +7162,14 @@ function somarMesesData(dataStr, meses){
    combinada com cleverson, ver memória do feature). */
 function itensGarantiaDaObra(obraId){
   if(!obraId) return [];
-  const movs = (db.estoqueMov||[]).filter(m=>m.tipo==='entrada' && m.obraId===obraId);
+  // v1.47.170: entrada com osId preenchido é sempre um ajuste/estorno de alocação
+  // (estornarEstoque nunca apaga movimentação, só compensa com uma entrada — mesmo
+  // critério já usado em usoDoItem(), tela Estoque da Obra) — NÃO é uma compra real,
+  // então não deve contar como um item de garantia à parte. Sem esse filtro, um produto
+  // que teve sua alocação numa O.S. desfeita e refeita aparecia duplicado aqui: uma vez
+  // pela entrada real da compra (com NF/cotação do SRM) e outra pela entrada de ajuste
+  // (sem NF nenhuma, aparecendo como "— sem data de NF —").
+  const movs = (db.estoqueMov||[]).filter(m=>m.tipo==='entrada' && m.obraId===obraId && !m.osId);
   const itens = [];
   movs.forEach(m=>{
     const produto = (db.estoqueProdutos||[]).find(p=>p.id===m.produtoId);
