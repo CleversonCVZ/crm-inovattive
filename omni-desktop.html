@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.167';
-const APP_VERSION_DATE = '17/08/2026';
+const APP_VERSION = '1.47.168';
+const APP_VERSION_DATE = '18/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.168',
+    data: '18/08/2026',
+    itens: [
+      'Contas a Receber: corrigido o cadastro/edição de "Nova Parcela" pra exigir data de vencimento quando o tipo é "Data fixa" — antes salvava sem avisar, e a parcela ficava aparecendo com vencimento "—" na lista.',
+    ]
+  },
   {
     versao: '1.47.167',
     data: '17/08/2026',
@@ -17926,6 +17933,9 @@ async function salvarNovaParcelaReceber(cardId){
   const origem= document.getElementById('nr-origem').value;
   if(!desc){ alert('Informe uma descrição.'); return; }
   if(!valor || valor<=0){ alert('Informe um valor maior que zero.'); return; }
+  // v1.47.168: "Data fixa" sem data preenchida ficava salvando silenciosamente com
+  // vencimento null (aparecia "—" na lista, sem aviso nenhum na hora de criar) — trava aqui.
+  if(tipo==='fixo' && !document.getElementById('nr-data').value){ alert('Informe a data de vencimento (ou troque o tipo para "Condicional").'); return; }
   const btn = btnModalPrimario();
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
@@ -18041,6 +18051,12 @@ async function salvarEdicaoParcelaReceber(id, cardId){
     if(novoValor < (r.valorPago||0) - 0.01){
       btnRestaurar(btn);
       alert(`O valor não pode ficar menor que o já recebido (${fmtMoney(r.valorPago)}).`);
+      return;
+    }
+    // v1.47.168: mesma trava do cadastro — "Data fixa" sem data preenchida
+    if(tipo==='fixo' && !document.getElementById('er-data').value){
+      btnRestaurar(btn);
+      alert('Informe a data de vencimento (ou troque o tipo para "Condicional").');
       return;
     }
     r.descricao = document.getElementById('er-desc').value.trim() || r.descricao;
