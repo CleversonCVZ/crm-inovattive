@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.171';
+const APP_VERSION = '1.47.172';
 const APP_VERSION_DATE = '19/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.172',
+    data: '19/08/2026',
+    itens: [
+      'Tela "Fechar O.S.": quando a O.S. tem obra vinculada, ganhou uma 3ª opção "Fase da Obra" (igual já existia pra Fase da O.S. e Fase do Cartão CRM) — dá pra avançar a fase da Obra direto ao fechar a O.S., sem precisar ir em outra tela. Reaproveita o mesmo campo que já existe na Aba Geral da O.S. (Fase da Obra executada), com o mesmo efeito de atualizar a fase real da obra.',
+    ]
+  },
   {
     versao: '1.47.171',
     data: '19/08/2026',
@@ -21328,13 +21335,21 @@ function fecharOS(osId, cardId){
   const faseAtualOS   = fasesOSOrdenadas().find(f=>f.id===os.faseId);
   const fasesCardDisp = fasesOrdenadas().filter(f=>!f.tipo);
   const fasesOSDisp   = fasesOSOrdenadas();
+  // v1.47.172: mesma conveniência que já existe pro Cartão CRM, agora também pra Obra —
+  // só faz sentido se essa O.S. tem uma obra vinculada (nem toda O.S. Avulsa tem).
+  // Reaproveita o campo já existente os.faseObraId (Aba Geral) — que já propaga pra
+  // obraVinc.faseId sozinho (ver autoSalvarCampoOS), então o efeito colateral aqui é
+  // idêntico ao de editar essa mesma combo na Aba Geral, só que direto na hora de fechar.
+  const obraVinc = os.obraId ? (db.obras||[]).find(o=>o.id===os.obraId) : null;
+  const faseAtualObra = obraVinc ? fasesObraOrdenadas().find(f=>f.id===obraVinc.faseId) : null;
+  const fasesObraDisp = fasesObraOrdenadas();
   abrirModal(`
     <h3>🔒 Fechar O.S. ${os.numero}</h3>
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
       A O.S. ficará bloqueada para edição. Você poderá reabrir se necessário.
     </p>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:repeat(${obraVinc?3:2},1fr);gap:14px;margin-bottom:16px">
 
       <!-- Fase da OS -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
@@ -21364,6 +21379,21 @@ function fecharOS(osId, cardId){
         </select>
       </div>
 
+      ${obraVinc?`
+      <!-- Fase da Obra -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:10px">Fase da Obra</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${faseAtualObra?faseAtualObra.cor:'#aaa'};flex-shrink:0"></span>
+          <span style="font-size:13px;font-weight:700">${faseAtualObra?faseAtualObra.nome:'—'}</span>
+        </div>
+        <label>Alterar fase (opcional)</label>
+        <select id="fechar-os-fase-obra">
+          <option value="">— Manter fase atual —</option>
+          ${fasesObraDisp.map(f=>`<option value="${f.id}">${f.nome}</option>`).join('')}
+        </select>
+      </div>`:''}
+
     </div>
 
     <div class="actions">
@@ -21378,6 +21408,8 @@ function confirmarFecharOS(osId, cardId){
   const card = db.cards.find(x=>x.id===cardId);
   const novaFaseOS   = +document.getElementById('fechar-os-fase-os').value   || null;
   const novaFaseCard = +document.getElementById('fechar-os-fase-card').value || null;
+  const selFaseObra  = document.getElementById('fechar-os-fase-obra'); // só existe se a O.S. tem obra vinculada
+  const novaFaseObra = selFaseObra ? (+selFaseObra.value || null) : null;
 
   // fase da OS
   const faseOSAnterior = fasesOSOrdenadas().find(f=>f.id===os.faseId);
@@ -21399,6 +21431,20 @@ function confirmarFecharOS(osId, cardId){
     const faseCardNova     = fasesOrdenadas().find(f=>f.id===novaFaseCard);
     card.faseId = novaFaseCard;
     msgHist += ` Cartão CRM → "${faseCardNova?faseCardNova.nome:'?'}"${faseCardAnterior?` (era "${faseCardAnterior.nome}")`:''}.`;
+  }
+
+  // v1.47.172: fase da Obra — mesmo campo/efeito colateral de os.faseObraId já usado na
+  // Aba Geral (autoSalvarCampoOS), só disponibilizado aqui também pra não obrigar o
+  // usuário a ir em outra tela só pra avançar a obra junto do fechamento da O.S.
+  if(novaFaseObra && os.obraId){
+    const obraVinc = (db.obras||[]).find(o=>o.id===os.obraId);
+    if(obraVinc && novaFaseObra !== obraVinc.faseId){
+      const faseObraAnterior = fasesObraOrdenadas().find(f=>f.id===obraVinc.faseId);
+      const faseObraNova     = fasesObraOrdenadas().find(f=>f.id===novaFaseObra);
+      os.faseObraId = novaFaseObra;
+      obraVinc.faseId = novaFaseObra;
+      msgHist += ` Obra → "${faseObraNova?faseObraNova.nome:'?'}"${faseObraAnterior?` (era "${faseObraAnterior.nome}")`:''}.`;
+    }
   }
 
   os.historico.unshift({data:agoraISO(), texto:msgHist});
