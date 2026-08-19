@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.172';
+const APP_VERSION = '1.47.173';
 const APP_VERSION_DATE = '19/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.173',
+    data: '19/08/2026',
+    itens: [
+      'SRM (Card, aba Dados): os checkboxes "✖ Cancelado" e "✔ Concluído" agora dão feedback na hora de marcar, igual já acontecia no CRM — "Concluído" já checava cotação/NF/Contas a Pagar pendentes, mas só ao clicar em Salvar; agora avisa assim que você marca o checkbox. "Cancelado" ganhou uma confirmação nova, avisando se já existe NF importada ou Conta a Pagar em aberto vinculada (não bloqueia, só avisa — cancelar pode ser exatamente o motivo). Os dois continuam mutuamente exclusivos, e o que persiste de fato continua sendo o botão Salvar do card.',
+    ]
+  },
   {
     versao: '1.47.172',
     data: '19/08/2026',
@@ -7539,8 +7546,8 @@ function abrirEditarSRM(id, aba='dados'){
           <option value="cliente" ${c.pagamentoResponsavel==='cliente'?'selected':''}>👤 Cliente paga diretamente</option>
         </select>
         <div class="flags">
-          <label class="flag perdido"><input type="checkbox" id="srm-m-can" ${c.cancelado?'checked':''}> ✖ Cancelado</label>
-          <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''}> ✔ Concluído</label>
+          <label class="flag perdido"><input type="checkbox" id="srm-m-can" ${c.cancelado?'checked':''} onchange="onToggleSRMCancelado(${c.id})"> ✖ Cancelado</label>
+          <label class="flag concluido"><input type="checkbox" id="srm-m-enc" ${c.encerrado?'checked':''} onchange="onToggleSRMConcluido(${c.id})"> ✔ Concluído</label>
         </div>
       </div>
       <div class="col-hist">
@@ -7573,6 +7580,81 @@ function abrirEditarSRM(id, aba='dados'){
     </div>`, 'cartao');
 }
 
+/** v1.47.173: mesma checagem de "pode concluir este SRM?" usada tanto no clique do
+ *  checkbox ✔ Concluído (feedback imediato, ver onToggleSRMConcluido) quanto no
+ *  Salvar (rede de segurança — cobre o caso raro de algo mudar entre marcar o
+ *  checkbox e salvar, ex.: desmarcar a cotação selecionada numa outra aba e voltar). */
+function _pendenciasConcluirSRM(c){
+  const erros = [];
+  const cotSel = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
+  if(!cotSel){
+    erros.push('Nenhuma cotação selecionada (aba Propostas/Cotações).');
+  } else if(!cotSel.xmlNfNome && !cotSel.pdfNfNome){
+    erros.push('Nota Fiscal (XML ou PDF) não foi importada (aba Pedido Aprovado).');
+  }
+  if((c.pagamentoResponsavel||'empresa')==='empresa'){
+    const cpsPendentes = (db.contasPagar||[]).filter(x=>Number(x.cardSrmId)===Number(c.id) && x.status!=='pago');
+    if(cpsPendentes.length) erros.push(`${cpsPendentes.length} conta(s) a pagar ainda em aberto (aba Financeiro).`);
+  }
+  return erros;
+}
+
+/** v1.47.173: avisos (não bloqueiam) pra quem vai marcar ✖ Cancelado — mesmo espírito
+ *  do "Perdido" do CRM: cancelar com dinheiro/estoque já envolvido não é proibido
+ *  (pode ser exatamente o motivo do cancelamento), só não deve acontecer em silêncio. */
+function _avisosCancelarSRM(c){
+  const avisos = [];
+  const cotSel = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
+  if(cotSel && (cotSel.xmlNfNome || cotSel.pdfNfNome)) avisos.push('já tem Nota Fiscal importada (aba Pedido Aprovado)');
+  if((c.pagamentoResponsavel||'empresa')==='empresa'){
+    const cpsPendentes = (db.contasPagar||[]).filter(x=>Number(x.cardSrmId)===Number(c.id) && x.status!=='pago');
+    if(cpsPendentes.length) avisos.push(`${cpsPendentes.length} conta(s) a pagar em aberto (aba Financeiro)`);
+  }
+  return avisos;
+}
+
+/** v1.47.173: dá o mesmo feedback imediato do CRM (confirm ao marcar o checkbox, não
+ *  só ao salvar) — mas o que persiste de fato continua sendo o botão "Salvar" do card,
+ *  igual sempre foi aqui no SRM; isso só evita a pessoa preencher a tela toda pra só
+ *  no fim descobrir que falta algo. Cancelado/Concluído são mutuamente exclusivos. */
+function onToggleSRMConcluido(cardId){
+  const c = (db.cardsSRM||[]).find(x=>x.id===cardId); if(!c) return;
+  const cbEnc = document.getElementById('srm-m-enc');
+  const cbCan = document.getElementById('srm-m-can');
+  if(!cbEnc) return;
+  if(cbEnc.checked && !c.encerrado){
+    const erros = _pendenciasConcluirSRM(c);
+    if(erros.length){
+      cbEnc.checked = false;
+      alert('Não é possível concluir este SRM ainda:\n\n• '+erros.join('\n• '));
+      return;
+    }
+    if(!confirm('Marcar este SRM como CONCLUÍDO? Ele sai do painel de fases e vai pra "Encerrados". Confirmar?')){
+      cbEnc.checked = false;
+      return;
+    }
+  }
+  if(cbEnc.checked && cbCan) cbCan.checked = false;
+}
+
+function onToggleSRMCancelado(cardId){
+  const c = (db.cardsSRM||[]).find(x=>x.id===cardId); if(!c) return;
+  const cbEnc = document.getElementById('srm-m-enc');
+  const cbCan = document.getElementById('srm-m-can');
+  if(!cbCan) return;
+  if(cbCan.checked && !c.cancelado){
+    const avisos = _avisosCancelarSRM(c);
+    const msg = avisos.length
+      ? `Atenção: este SRM ${avisos.join(' e ')}. Marcar como CANCELADO mesmo assim? Ele sai do painel de fases — nada é apagado, mas confira se não precisa resolver isso antes. Confirmar?`
+      : 'Marcar este SRM como CANCELADO? Ele sai do painel de fases. Confirmar?';
+    if(!confirm(msg)){
+      cbCan.checked = false;
+      return;
+    }
+  }
+  if(cbCan.checked && cbEnc) cbEnc.checked = false;
+}
+
 async function salvarEdicaoSRM(id){
   if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para editar este SRM.'); return; }
   const c=(db.cardsSRM||[]).find(x=>x.id===id); if(!c) return;
@@ -7588,25 +7670,14 @@ async function salvarEdicaoSRM(id){
   c.pagamentoResponsavel= document.getElementById('srm-m-pagamento').value||'empresa';
   c.faturaDireta        = c.obraId ? !!document.getElementById('srm-m-fatdireta')?.checked : false;
 
-  // validações ao tentar concluir
+  // v1.47.173: validação centralizada em _pendenciasConcluirSRM() — o clique do
+  // checkbox ✔ Concluído (onToggleSRMConcluido) já roda a mesma checagem na hora;
+  // isso aqui fica como rede de segurança pro caso raro de algo mudar entre marcar
+  // o checkbox e clicar em Salvar.
   if(encerradoNovo && !c.encerrado){
-    const erros = [];
-    // 1. NF XML enviada?
-    const cotSel = (db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id && x.status==='selecionada');
-    if(!cotSel){
-      erros.push('• Nenhuma cotação selecionada (aba Propostas/Cotações).');
-    } else if(!cotSel.xmlNfNome && !cotSel.pdfNfNome){
-      erros.push('• Nota Fiscal (XML ou PDF) não foi importada (aba Pedido Aprovado).');
-    }
-    // 2. CPs pendentes?
-    if((c.pagamentoResponsavel||'empresa')==='empresa'){
-      const cpsPendentes = (db.contasPagar||[]).filter(x=>Number(x.cardSrmId)===Number(c.id) && x.status!=='pago');
-      if(cpsPendentes.length){
-        erros.push(`• ${cpsPendentes.length} conta(s) a pagar ainda em aberto (aba Financeiro).`);
-      }
-    }
+    const erros = _pendenciasConcluirSRM(c);
     if(erros.length){
-      alert('Não é possível concluir este SRM:\n\n'+erros.join('\n'));
+      alert('Não é possível concluir este SRM:\n\n• '+erros.join('\n• '));
       return;
     }
   }
@@ -11625,7 +11696,7 @@ const AJUDA_CONTEUDO = {
           <h5>🧾 Fornecedor emite a NF de venda direto ao cliente final</h5>
           <p>Só aparece quando o card tem obra vinculada. Marque quando: nós pagamos o fornecedor normalmente, colocamos o material em estoque e controlamos o uso via O.S. — mas quem fatura a VENDA desse material pro cliente final é o próprio fornecedor, direto, a preço de custo (sem markup nosso). O material entra em estoque e é reservado pra obra normalmente, do mesmo jeito que qualquer outra compra vinculada a obra — a única diferença prática é que os itens desse produto, nessa obra, somem da lista de "disponíveis pra adicionar" no Espelho de Faturamento, porque a NF fiscal deles não é nossa.</p>
           <h5>Concluído / Cancelado</h5>
-          <p>Marcar "Concluído" valida antes: precisa ter uma cotação selecionada com N.F. importada (XML ou PDF), e — se formos nós que pagamos — nenhuma Conta a Pagar pendente na aba Financeiro.</p>`
+          <p>Marcar "Concluído" já avisa na hora se falta algo: cotação selecionada com N.F. importada (XML ou PDF), e — se formos nós que pagamos — nenhuma Conta a Pagar pendente na aba Financeiro. Marcar "Cancelado" pede confirmação e avisa (sem bloquear) se já existe N.F. importada ou Conta a Pagar em aberto vinculada a este SRM. Os dois são mutuamente exclusivos, e o que grava de fato continua sendo o botão "Salvar".</p>`
       },
       propostas: {
         titulo: 'Aba Propostas / Cotações',
