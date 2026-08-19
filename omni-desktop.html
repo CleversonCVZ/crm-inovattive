@@ -1384,11 +1384,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.170';
-const APP_VERSION_DATE = '18/08/2026';
+const APP_VERSION = '1.47.171';
+const APP_VERSION_DATE = '19/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.171',
+    data: '19/08/2026',
+    itens: [
+      'Nas telas "Lançar como Conta a Pagar" (Retirada do Lucro, Outro Custo e Custo de O.S.), o campo Observação agora já vem preenchido com a descrição do lançamento de origem — antes vinha sempre em branco e precisava redigitar a mesma informação que já aparecia ali em cima. Continua editável normalmente.',
+    ]
+  },
   {
     versao: '1.47.170',
     data: '18/08/2026',
@@ -17133,7 +17140,7 @@ function abrirLancarOutroCustoComoCP(custoId, obraId, cardId){
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
-        <input id="loc-obs" type="text" class="input" placeholder="Opcional…">
+        <input id="loc-obs" type="text" class="input" placeholder="Opcional…" value="${escHtml(cu.descricao||'')}">
       </div>
     </div>
     <div class="actions rodape-cartao">
@@ -17277,7 +17284,7 @@ function abrirLancarRetiradaComoCP(retId, obraId, cardId){
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
-        <input id="lret-obs" type="text" class="input" placeholder="Opcional…">
+        <input id="lret-obs" type="text" class="input" placeholder="Opcional…" value="${escHtml(ret.descricao||'')}">
       </div>
     </div>
     <div class="actions rodape-cartao">
@@ -19701,7 +19708,7 @@ function abrirLancarCustoComoCP(custoId, osId, cardId){
       </div>
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Observação</div>
-        <input id="lcp-obs" type="text" class="input" placeholder="Opcional…">
+        <input id="lcp-obs" type="text" class="input" placeholder="Opcional…" value="${escHtml(custo.descricao||'')}">
       </div>
     </div>
     <div class="actions rodape-cartao">
