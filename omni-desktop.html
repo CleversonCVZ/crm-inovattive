@@ -1308,6 +1308,7 @@
   <div class="view" id="view-origens">
     <div class="bar">
       <h2>Origem do Lead</h2>
+      <div class="spacer"></div>
       <select id="origens-vista" class="vista-sel" onchange="mudarVistaOrigens(this.value)">
         <option value="lista">Visualização: lista de origens</option>
         <option value="kanban">Visualização: leads por origem</option>
@@ -1324,8 +1325,7 @@
         <option value="perdidos">Status: perdidos/abandonados</option>
         <option value="concluidos">Status: concluídos</option>
       </select>
-      <div class="spacer"></div>
-      <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()">+ Nova Origem</button>
+      <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()" style="margin-left:6px">+ Nova Origem</button>
     </div>
     <p id="origens-desc" style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Clique no ícone para escolher outro, edite o nome diretamente na linha.
@@ -1402,11 +1402,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.181';
+const APP_VERSION = '1.47.182';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.182',
+    data: '20/08/2026',
+    itens: [
+      'CRM → Origem do Lead: combos de visualização/período/status movidos pra alinhar à direita da barra (mesmo padrão do Res. Aparente/Contas a Receber), ao lado do botão "+ Nova Origem".',
+    ]
+  },
   {
     versao: '1.47.181',
     data: '20/08/2026',
