@@ -1395,11 +1395,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.176';
+const APP_VERSION = '1.47.177';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.177',
+    data: '20/08/2026',
+    itens: [
+      'Auditoria completa: mais 10 pontos do sistema que gravavam dado mas não geravam registro de Auditoria agora logam — lançar Conta a Pagar a partir de Custo de O.S.; excluir Retirada do Lucro; remover técnico de O.S. (Execução); excluir e anexar foto num lançamento do Diário de Obra; anexar PDF de cotação e mudar status (selecionada/rejeitada/recebida) no SRM; alocar/atualizar/remover quantidade de item na O.S. (inclusive via Dividir Kit); e editar/excluir um registro já existente do histórico do Cartão e da O.S.',
+    ]
+  },
   {
     versao: '1.47.176',
     data: '20/08/2026',
@@ -8048,6 +8055,7 @@ async function uploadPDFCotacaoSRM(cotId, srmId, input){
     cot.arquivos.push({id:'f'+Date.now(), nome:file.name, path});
     await sb.from('srm_cotacoes').update({arquivos:cot.arquivos}).eq('id',cotId);
     save();
+    registrarLog('editar','srm',srmId,`PDF de cotação anexado no SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}: ${file.name}`);
     abrirEditarSRM(srmId,'propostas');
   }catch(e){ alert('Erro no upload: '+(e.message||e)); }
 }
@@ -8058,8 +8066,10 @@ async function uploadPDFCotacaoSRM(cotId, srmId, input){
 async function statusCotacaoSRM(cotId, srmId, novoStatus){
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const todas = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===srmId);
+  const statusAntes = cot.status;
   cot.status = novoStatus;
   await sb.from('srm_cotacoes').update({status:novoStatus}).eq('id',cotId);
+  registrarLog('editar','srm',srmId,`Cotação do SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId}${cot.descricao?' ('+cot.descricao+')':''} — status: ${statusAntes||'—'} → ${novoStatus}`);
   if(novoStatus==='selecionada'){
     /* auto-rejeitar todas as outras */
     const outras = todas.filter(x=>x.id!==cotId && x.status!=='rejeitada');
@@ -12389,6 +12399,7 @@ function editarHistCard(cardId, idx){
   const novo = prompt('Editar registro do histórico:', h.texto);
   if(novo === null || !novo.trim()) return;
   h.texto = novo.trim();
+  registrarLog('editar','card',cardId,`Registro do histórico do Cartão #${c.num} editado`);
   saveLocal(); sincronizarHistoricoCard(cardId); abrirEditarCartao(cardId, 'dados');
 }
 
@@ -12396,6 +12407,7 @@ function excluirHistCard(cardId, idx){
   const c = db.cards.find(x=>x.id===cardId);
   if(!confirm('Excluir este registro do histórico? Esta ação não pode ser desfeita.')) return;
   c.historico.splice(idx, 1);
+  registrarLog('excluir','card',cardId,`Registro do histórico do Cartão #${c.num} excluído`);
   saveLocal(); sincronizarHistoricoCard(cardId); abrirEditarCartao(cardId, 'dados');
 }
 
@@ -12406,6 +12418,7 @@ function editarHistOS(osId, idx, cardId){
   const novo = prompt('Editar registro do histórico:', h.texto);
   if(novo === null || !novo.trim()) return;
   h.texto = novo.trim();
+  registrarLog('editar','os',osId,`Registro do histórico da O.S. ${os.numero} editado`);
   save(); abrirVerOS(osId, cardId);
 }
 
@@ -12414,6 +12427,7 @@ function excluirHistOS(osId, idx, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!confirm('Excluir este registro do histórico?')) return;
   os.historico.splice(idx, 1);
+  registrarLog('excluir','os',osId,`Registro do histórico da O.S. ${os.numero} excluído`);
   save(); abrirVerOS(osId, cardId);
 }
 
@@ -17451,6 +17465,8 @@ async function excluirRetirada(retId, obraId, cardId){
   const {error} = await sb.from('obra_retiradas').delete().eq('id', retId);
   if(error){ alert('Erro ao excluir: '+error.message); return; }
   db.obraRetiradas = (db.obraRetiradas||[]).filter(x=>x.id!==retId);
+  const fmtR = v => 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+  registrarLog('excluir','obra_retirada', retId, `Retirada do Lucro excluída: ${fmtR(ret?.valor)}${ret?.descricao?' — '+ret.descricao:''}`);
   const c  = db.cards.find(x=>x.id===cardId);
   const ob = db.obras.find(x=>x.id===obraId);
   const el = document.getElementById('obra-content-'+cardId);
@@ -19977,6 +19993,7 @@ async function confirmarLancarCustoComoCP(custoId, osId, cardId){
     centroCustoId:custo.centroCustoId||null, osId, status:'pendente',
     observacao:obs||'', dataPagamento:null, criadoEm:cp.created_at||''
   });
+  registrarLog('criar','conta_pagar', cp.id, `Conta a Pagar criada a partir de Custo de O.S.: "${descricaoCP}" — ${fmtMoney(cp.valor)}`);
   save();
   fecharModal();
   abrirVerOSAvulsa(osId, cardId, 'custos');
@@ -20468,7 +20485,9 @@ async function removerTecnicoOS(osId, tecId, cardId){
   const os = db.ordensServico.find(x=>x.id===osId);
   const {error} = await sb.from('os_tecnicos').delete().eq('id', tecId);
   if(error){ console.error(error); alert('Erro ao remover técnico.'); return; }
+  const tecNome = db.usuarios.find(u=>u.id===(os.tecnicos||[]).find(t=>t.id===tecId)?.usuarioId)?.nome||'';
   os.tecnicos = (os.tecnicos||[]).filter(t=>t.id!==tecId);
+  registrarLog('editar','os',osId,`Técnico removido da OS ${os.numero}${tecNome?': '+tecNome:''}`);
   save(); abrirVerOSExecucao(osId, cardId, 'equipe');
 }
 
@@ -20493,15 +20512,18 @@ async function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
     await estornarEstoque(existente.estoqueMovIds, `Ajuste de alocação — O.S. ${os.numero}`);
   }
 
+  const descItem = it?.descricao||it?.item||existente?.descricao||'';
   if(qtdOS > 0){
     let novosMovIds = [];
     if(elegivelEstoque){
       novosMovIds = await debitarEstoque(it.produtoEstoqueId, os.obraId, qtdOS, {osId, observacao:`Consumo O.S. ${os.numero} — ${it.descricao||it.item||''}`});
     }
     if(existente){
+      const qtdAntes = existente.qtdOS;
       existente.qtdOS = qtdOS;
       existente.produtoEstoqueId = it?.produtoEstoqueId||null;
       existente.estoqueMovIds = novosMovIds;
+      if(qtdAntes !== qtdOS) registrarLog('editar','os',osId,`Item da O.S. ${os.numero} — quantidade alterada: "${descItem}" ${qtdAntes}→${qtdOS}`);
     } else {
       os.itensTrabalho.push({
         propostaId, idx,
@@ -20511,10 +20533,14 @@ async function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
         produtoEstoqueId: it?.produtoEstoqueId||null,
         estoqueMovIds: novosMovIds
       });
+      registrarLog('criar','os',osId,`Item alocado na O.S. ${os.numero}: "${descItem}" (qtd ${qtdOS})`);
     }
   } else {
     // qtd 0 = remove o registro (o estorno acima já devolveu o estoque, se aplicável)
-    os.itensTrabalho = os.itensTrabalho.filter(m=>!(m.propostaId===propostaId && m.idx===idx));
+    if(existente){
+      os.itensTrabalho = os.itensTrabalho.filter(m=>!(m.propostaId===propostaId && m.idx===idx));
+      registrarLog('excluir','os',osId,`Item removido da O.S. ${os.numero}: "${descItem}"`);
+    }
   }
   save();
   // atualiza contador na aba sem reabrir o modal
@@ -21364,6 +21390,7 @@ async function excluirEntradaDiario(osId, diaId, cardId){
   await sb.from('os_diario').delete().eq('id', diaId);
   os.diario = (os.diario||[]).filter(x=>x.id!==diaId);
   if(_diarioEditId===diaId) _diarioEditId=null;
+  registrarLog('excluir','os_diario', diaId, `Registro do diário excluído: ${os.numero}${d?.data?' — '+fmtDia2(d.data):''}`);
   save(); abrirVerOSExecucao(osId, cardId, 'diario');
 }
 
@@ -21386,6 +21413,7 @@ async function uploadImagemDiario(osId, diaId, cardId){
   if(!d.imagens) d.imagens=[];
   d.imagens.push(...novas);
   await sb.from('os_diario').update({imagens:d.imagens}).eq('id', diaId);
+  if(novas.length) registrarLog('editar','os_diario', diaId, `${novas.length} imagem(ns) adicionada(s) ao diário: ${os.numero}${d?.data?' — '+fmtDia2(d.data):''}`);
   save();
   if(statusEl) statusEl.textContent = `${novas.length} imagem(ns) enviada(s).`;
   setTimeout(()=>abrirVerOSExecucao(osId, cardId, 'diario'), 800);
