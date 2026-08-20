@@ -1317,6 +1317,12 @@
         <option value="ano">Este ano</option>
         <option value="tudo" selected>Todo o período</option>
       </select>
+      <select id="origens-status" class="vista-sel" onchange="renderOrigens()" style="margin-left:6px;display:none">
+        <option value="todos" selected>Status: todos</option>
+        <option value="ativos">Status: ativos</option>
+        <option value="perdidos">Status: perdidos/abandonados</option>
+        <option value="concluidos">Status: concluídos</option>
+      </select>
       <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()">+ Nova Origem</button>
     </div>
@@ -1395,11 +1401,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.177';
+const APP_VERSION = '1.47.178';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.178',
+    data: '20/08/2026',
+    itens: [
+      'CRM → Origem do Lead → Leads por origem: novo combo de Status (Todos / Ativos / Perdidos-Abandonados / Concluídos), do lado do filtro de período — os dois se combinam com a coluna de origem pra filtrar os cartões mostrados.',
+    ]
+  },
   {
     versao: '1.47.177',
     data: '20/08/2026',
@@ -6421,11 +6434,13 @@ function renderOrigens(){
   const tabela = document.getElementById('origens-tabela');
   const kanban = document.getElementById('origens-kanban');
   const periodoSel = document.getElementById('origens-periodo');
+  const statusSel = document.getElementById('origens-status');
   const desc = document.getElementById('origens-desc');
   const btnNova = document.getElementById('btn-nova-origem');
   if(tabela) tabela.style.display = ehKanban?'none':'';
   if(kanban) kanban.style.display = ehKanban?'':'none';
   if(periodoSel) periodoSel.style.display = ehKanban?'':'none';
+  if(statusSel) statusSel.style.display = ehKanban?'':'none';
   if(desc) desc.style.display = ehKanban?'none':'';
   if(btnNova) btnNova.style.display = ehKanban?'none':'';
   if(ehKanban) renderOrigemLeadsKanban();
@@ -6433,18 +6448,26 @@ function renderOrigens(){
 }
 
 /* Vista: leads agrupados por origem (kanban só-leitura, sem drag — a origem se corrige editando o cartão) */
+function _origemStatusMatch(c, status){
+  if(status==='ativos') return !c.perdido && !c.concluido;
+  if(status==='perdidos') return !!c.perdido;
+  if(status==='concluidos') return !!c.concluido;
+  return true; // 'todos'
+}
+
 function renderOrigemLeadsKanban(){
   const k = document.getElementById('origens-kanban'); if(!k) return;
   k.innerHTML = '';
   const periodo = (document.getElementById('origens-periodo')||{}).value || 'tudo';
+  const status  = (document.getElementById('origens-status')||{}).value || 'todos';
   const idsOrigem = new Set(db.origens.map(o=>o.id));
   [...db.origens].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).forEach(o=>{
-    const itens = db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo));
+    const itens = db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo) && _origemStatusMatch(c, status));
     k.appendChild(colEl(`${o.emoji||'🏷'} ${o.nome}`, '#495057', itens, {
       render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
     }));
   });
-  const semOrigem = db.cards.filter(c=>!idsOrigem.has(c.origemId) && _finPainelDentroFiltro(c.criadoEm, periodo));
+  const semOrigem = db.cards.filter(c=>!idsOrigem.has(c.origemId) && _finPainelDentroFiltro(c.criadoEm, periodo) && _origemStatusMatch(c, status));
   if(semOrigem.length){
     k.appendChild(colEl('Sem origem', '#adb5bd', semOrigem, {
       render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
@@ -11574,7 +11597,7 @@ const AJUDA_CONTEUDO = {
     html: `
       <p>Cadastro de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio. Clique no ícone pra escolher outro, edite o nome e a ordem direto na lista (mesmo padrão de "Obras — Categorias de Custo").</p>
       <h5>Visualizações</h5>
-      <p>"Lista de origens" é o cadastro (ícone/nome/ordem/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com todos os cartões daquela origem (inclusive Perdidos e Concluídos, pra dar visão histórica de onde vieram os negócios ao longo do tempo). Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado.</p>`
+      <p>"Lista de origens" é o cadastro (ícone/nome/ordem/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com os cartões daquela origem. Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado. O filtro de status escolhe entre Todos (default, inclusive Perdidos e Concluídos — visão histórica completa de onde vieram os negócios), só Ativos (ainda em andamento), só Perdidos/Abandonados ou só Concluídos.</p>`
   },
   'clientes': {
     titulo: 'CRM — Clientes / Prospects',
