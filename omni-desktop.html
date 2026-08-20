@@ -1321,10 +1321,10 @@
       <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()">+ Nova Origem</button>
     </div>
     <p id="origens-desc" style="font-size:13px;color:var(--muted);margin-bottom:10px">
-      Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Edite o nome direto na lista.
+      Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Clique no ícone para escolher outro, edite o nome diretamente na linha.
     </p>
-    <table class="lista" id="origens-tabela" style="max-width:560px">
-      <thead><tr><th>Origem</th><th>CRM(s) com a origem</th><th></th></tr></thead>
+    <table class="lista" id="origens-tabela" style="max-width:600px">
+      <thead><tr><th style="width:60px">Ícone</th><th>Origem</th><th style="width:80px;text-align:center">Ordem</th><th style="width:90px">CRM(s)</th><th style="width:40px"></th></tr></thead>
       <tbody id="origens-tbody"></tbody>
     </table>
     <div class="kanban" id="origens-kanban" style="display:none"></div>
@@ -1395,11 +1395,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.175';
+const APP_VERSION = '1.47.176';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.176',
+    data: '20/08/2026',
+    itens: [
+      'CRM → Origem do Lead (Lista de origens): tela redesenhada pra ficar igual a "Obras — Categorias de Custo" — cada origem agora tem um ícone (clique pra trocar, mesmo seletor de emojis), campo de ordem editável (reordena a lista ao sair do campo), e o mesmo estilo de linha. Criar/renomear/trocar ícone/excluir gera registro na Auditoria (reordenar é silencioso, igual à tela de Categorias de Custo). O contador "CRM(s)" foi mantido como coluna extra.',
+    ]
+  },
   {
     versao: '1.47.175',
     data: '20/08/2026',
@@ -3615,7 +3622,7 @@ function load(){
     db.funcoes = FUNCOES_SEED.map((nome,i)=>({id:i+1, nome}));
   }
   if(!Array.isArray(db.origens) || !db.origens.length){
-    db.origens = ORIGENS_SEED.map((nome,i)=>({id:i+1, nome}));
+    db.origens = ORIGENS_SEED.map((nome,i)=>({id:i+1, nome, emoji:'🏷', ordem:i+1}));
   }
   if(!db.empresa){
     db.empresa = {logo:'', razao:'', fantasia:'', cnpj:'', ie:'', tel:'', email:'', site:'',
@@ -3924,7 +3931,7 @@ async function carregarConfigSupabase(){
     if(garantiaClassesRes.data && garantiaClassesRes.data.length)
       db.garantiaClasses = garantiaClassesRes.data.map(g=>({id:g.id, nome:g.nome, meses:Number(g.meses)||0, ordem:g.ordem}));
     if(origens.data && origens.data.length)
-      db.origens = origens.data.map(o=>({id:o.id, nome:o.nome}));
+      db.origens = origens.data.map(o=>({id:o.id, nome:o.nome, emoji:o.emoji||'🏷', ordem:o.ordem||0}));
     if(funcoes.data && funcoes.data.length)
       db.funcoes = funcoes.data.map(f=>({id:f.id, nome:f.nome}));
     if(grupos.data && grupos.data.length)
@@ -6424,9 +6431,9 @@ function renderOrigemLeadsKanban(){
   k.innerHTML = '';
   const periodo = (document.getElementById('origens-periodo')||{}).value || 'tudo';
   const idsOrigem = new Set(db.origens.map(o=>o.id));
-  db.origens.forEach(o=>{
+  [...db.origens].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).forEach(o=>{
     const itens = db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo));
-    k.appendChild(colEl(o.nome, '#495057', itens, {
+    k.appendChild(colEl(`${o.emoji||'🏷'} ${o.nome}`, '#495057', itens, {
       render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
     }));
   });
@@ -6442,53 +6449,93 @@ function renderOrigensLista(){
   const tb=document.getElementById('origens-tbody'); tb.innerHTML='';
   const podeEditar = podeEditarTela(usuarioAtual,'origens');
   const podeExcluir = podeExcluirTela(usuarioAtual,'origens');
-  db.origens.forEach(o=>{
+  const lista = [...db.origens].sort((a,b)=>(a.ordem||0)-(b.ordem||0));
+  if(!lista.length){
+    tb.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--muted)">Nenhuma origem cadastrada. Clique em + Nova Origem para começar.</td></tr>`;
+    return;
+  }
+  lista.forEach(o=>{
     const emUso = db.cards.filter(c=>c.origemId===o.id).length;
     const tr=document.createElement('tr');
     tr.innerHTML=`
-      <td><input type="text" value="${o.nome.replace(/"/g,'&quot;')}" data-id="${o.id}" ${podeEditar?'':'disabled'}
-        style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:4px;border-radius:6px"
-        onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
-        onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
-      <td>${emUso}</td>
-      <td style="text-align:right">${podeExcluir?`<button class="icon-btn del" title="Excluir origem" data-del="${o.id}">🗑</button>`:''}</td>`;
+      <td style="padding:8px 10px;text-align:center">
+        <button data-emoji-btn title="Clique para escolher outro ícone"
+          ${podeEditar?`onclick="abrirEmojiPicker(${o.id}, this, 'origem')"`:'disabled'}
+          style="font-size:24px;background:#f8f9fa;border:1px solid var(--border);border-radius:8px;width:44px;height:44px;cursor:pointer;line-height:1;transition:background .15s"
+          onmouseover="this.style.background='#e9ecef'" onmouseout="this.style.background='#f8f9fa'">${o.emoji||'🏷'}</button>
+      </td>
+      <td style="padding:8px 10px">
+        <input type="text" value="${(o.nome||'').replace(/"/g,'&quot;')}" data-id="${o.id}" ${podeEditar?'':'disabled'}
+          style="border:1px solid transparent;background:none;font-size:14px;font-weight:600;width:100%;padding:5px 8px;border-radius:6px"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
+      <td style="padding:8px 10px;text-align:center">
+        <input type="number" value="${o.ordem||0}" min="0" data-ord="${o.id}" ${podeEditar?'':'disabled'}
+          style="width:56px;text-align:center;border:1px solid transparent;background:none;font-size:13px;padding:4px;border-radius:6px"
+          onfocus="this.style.borderColor='var(--border)';this.style.background='#fff'"
+          onblur="this.style.borderColor='transparent';this.style.background='none'"></td>
+      <td style="padding:8px 10px">${emUso}</td>
+      <td style="padding:8px 10px;text-align:right">${podeExcluir?`<button class="icon-btn del" title="Excluir origem" data-del="${o.id}">🗑</button>`:''}</td>`;
     tb.appendChild(tr);
   });
-  tb.querySelectorAll('input').forEach(inp=>{
+  tb.querySelectorAll('input[data-id]').forEach(inp=>{
     inp.onchange=()=>{
       const nome=inp.value.trim();
-      if(!nome){ alert('O nome da origem não pode ficar vazio.'); renderOrigens(); return; }
-      const oobj=db.origens.find(o=>o.id===+inp.dataset.id);
-      const nomeAnt=oobj.nome;
-      oobj.nome=nome;
-      registrarLog('editar', 'origem', oobj.id, `Origem renomeada: "${nomeAnt}" → "${nome}"`);
-      save(); renderAll();
+      if(!nome){ alert('O nome da origem não pode ficar vazio.'); renderOrigensLista(); return; }
+      atualizarOrigem(+inp.dataset.id, {nome});
+    };
+  });
+  tb.querySelectorAll('input[data-ord]').forEach(inp=>{
+    inp.onchange=()=>{
+      atualizarOrigem(+inp.dataset.ord, {ordem:+inp.value});
+      setTimeout(()=>{ renderOrigensLista(); }, 300);
     };
   });
   tb.querySelectorAll('[data-del]').forEach(btn=>{
-    btn.onclick=()=>{
-      const o=db.origens.find(x=>x.id===+btn.dataset.del);
-      const emUso=db.cards.filter(c=>c.origemId===o.id).length;
-      if(!confirm(emUso?`A origem "${o.nome}" está em uso em ${emUso} CRM(s) — eles ficarão sem origem. Excluir?`:`Excluir a origem "${o.nome}"?`)) return;
-      registrarLog('excluir', 'origem', o.id, `Origem excluída: "${o.nome}"`);
-      excluirDoSupabase('origens', o.id);
-      db.cards.forEach(c=>{ if(c.origemId===o.id) c.origemId=null; });
-      db.origens=db.origens.filter(x=>x.id!==o.id);
-      save(); renderAll();
-    };
+    btn.onclick = ()=> excluirOrigem(+btn.dataset.del);
   });
 }
+
+async function atualizarOrigem(id, campos){
+  if(!podeEditarTela(usuarioAtual,'origens')) return;
+  const o = db.origens.find(x=>x.id===id);
+  if(!o) return;
+  const nomeAntes = o.nome, emojiAntes = o.emoji;
+  Object.assign(o, campos);
+  await sb.from('origens').update(campos).eq('id',id);
+  if(campos.nome !== undefined && campos.nome !== nomeAntes){
+    registrarLog('editar', 'origem', id, `Origem renomeada: "${nomeAntes}" → "${o.nome}"`);
+  } else if(campos.emoji !== undefined && campos.emoji !== emojiAntes){
+    registrarLog('editar', 'origem', id, `Origem "${o.nome}" — emoji alterado`);
+  }
+  saveLocal();
+}
+
+async function excluirOrigem(id){
+  if(!podeExcluirTela(usuarioAtual,'origens')){ alert('Sem permissão para excluir origens.'); return; }
+  const o = db.origens.find(x=>x.id===id);
+  if(!o) return;
+  const emUso = db.cards.filter(c=>c.origemId===o.id).length;
+  if(!confirm(emUso?`A origem "${o.nome}" está em uso em ${emUso} CRM(s) — eles ficarão sem origem. Excluir?`:`Excluir a origem "${o.nome}"?`)) return;
+  registrarLog('excluir', 'origem', o.id, `Origem excluída: "${o.nome}"`);
+  excluirDoSupabase('origens', o.id);
+  db.cards.forEach(c=>{ if(c.origemId===o.id) c.origemId=null; });
+  db.origens = db.origens.filter(x=>x.id!==o.id);
+  save(); renderAll();
+}
+
 async function novaOrigem(){
   if(!podeEditarTela(usuarioAtual,'origens')){ alert('Sem permissão para criar origens.'); return; }
   const nome=prompt('Nome da nova origem:');
   if(!nome || !nome.trim()) return;
   if(db.origens.some(o=>o.nome.toLowerCase()===nome.trim().toLowerCase())){ alert('Essa origem já existe.'); return; }
-  const no={id: await proximoIdSeguro('origens', db.origens), nome:nome.trim()};
+  const ordem = (db.origens||[]).reduce((m,o)=>Math.max(m,o.ordem||0),0)+1;
+  const no={id: await proximoIdSeguro('origens', db.origens), nome:nome.trim(), emoji:'🏷', ordem};
   // grava direto no Supabase antes de existir localmente: origens é FK de cards.origem_id,
   // e o card pode ser criado (com upsert direto e awaited) segundos depois — se essa origem
   // ainda não tivesse sido persistida, o insert do card falharia por violação de FK
   // (mesma causa raiz do bug de Centro de Custo corrigido em v1.33.0).
-  const {error} = await sb.from('origens').upsert({id:no.id, nome:no.nome});
+  const {error} = await sb.from('origens').upsert({id:no.id, nome:no.nome, emoji:no.emoji, ordem:no.ordem});
   if(error){ alert('Erro ao criar origem: '+error.message); return; }
   db.origens.push(no);
   registrarLog('criar', 'origem', no.id, `Nova origem do lead criada: "${no.nome}"`);
@@ -11515,9 +11562,9 @@ const AJUDA_CONTEUDO = {
   'origens': {
     titulo: 'CRM — Origem do Lead',
     html: `
-      <p>Cadastro simples de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio.</p>
+      <p>Cadastro de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio. Clique no ícone pra escolher outro, edite o nome e a ordem direto na lista (mesmo padrão de "Obras — Categorias de Custo").</p>
       <h5>Visualizações</h5>
-      <p>"Lista de origens" é o cadastro (renomear/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com todos os cartões daquela origem (inclusive Perdidos e Concluídos, pra dar visão histórica de onde vieram os negócios ao longo do tempo). Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado.</p>`
+      <p>"Lista de origens" é o cadastro (ícone/nome/ordem/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com todos os cartões daquela origem (inclusive Perdidos e Concluídos, pra dar visão histórica de onde vieram os negócios ao longo do tempo). Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado.</p>`
   },
   'clientes': {
     titulo: 'CRM — Clientes / Prospects',
@@ -14228,10 +14275,14 @@ const EMOJIS_CUSTO = [
 ];
 
 let _emojiPickerCatId = null;
+let _emojiPickerTipo = 'cat'; // 'cat' (Categoria de Custo) | 'origem' (Origem do Lead)
 
-function abrirEmojiPicker(catId, el){
-  if(!podeEditarTela(usuarioAtual,'cat-outros-custos')) return;
-  _emojiPickerCatId = catId;
+function abrirEmojiPicker(id, el, tipo){
+  tipo = tipo || 'cat';
+  const tela = tipo==='origem' ? 'origens' : 'cat-outros-custos';
+  if(!podeEditarTela(usuarioAtual,tela)) return;
+  _emojiPickerCatId = id;
+  _emojiPickerTipo = tipo;
   const picker = document.getElementById('emoji-picker');
   const grid   = document.getElementById('emoji-picker-grid');
   if(!picker || !grid) return;
@@ -14255,9 +14306,15 @@ function fecharEmojiPicker(){
 
 async function selecionarEmoji(emoji){
   if(!_emojiPickerCatId) return;
-  await atualizarCategoriaCusto(_emojiPickerCatId, {emoji});
-  fecharEmojiPicker();
-  renderCatOutrosCustos();
+  if(_emojiPickerTipo==='origem'){
+    await atualizarOrigem(_emojiPickerCatId, {emoji});
+    fecharEmojiPicker();
+    renderOrigensLista();
+  } else {
+    await atualizarCategoriaCusto(_emojiPickerCatId, {emoji});
+    fecharEmojiPicker();
+    renderCatOutrosCustos();
+  }
 }
 
 // Fechar picker ao clicar fora

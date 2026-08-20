@@ -624,7 +624,9 @@ create table public.ordens_servico (
 
 create table public.origens (
   id bigint not null,
-  nome text not null
+  nome text not null,
+  emoji text default '🏷'::text,
+  ordem integer default 0
 );
 
 create table public.os_custos (
@@ -645,12 +647,6 @@ create table public.os_diario (
   autor_id integer,
   descricao text not null default ''::text,
   imagens jsonb not null default '[]'::jsonb
-);
-
-create table public.os_itens_trabalho (
-  id integer not null default nextval('os_itens_trabalho_id_seq'::regclass),
-  os_id integer not null,
-  proposta_item_id bigint not null
 );
 
 create table public.os_tecnicos (
@@ -783,7 +779,6 @@ alter table public.ordens_servico add constraint ordens_servico_pkey primary key
 alter table public.origens add constraint origens_pkey primary key (id);
 alter table public.os_custos add constraint os_custos_pkey primary key (id);
 alter table public.os_diario add constraint os_diario_pkey primary key (id);
-alter table public.os_itens_trabalho add constraint os_itens_trabalho_pkey primary key (id);
 alter table public.os_tecnicos add constraint os_tecnicos_pkey primary key (id);
 alter table public.proposta_arquivos add constraint proposta_arquivos_pkey primary key (id);
 alter table public.proposta_itens add constraint proposta_itens_pkey primary key (id);
@@ -861,8 +856,6 @@ alter table public.os_custos add constraint os_custos_centro_custo_id_fkey forei
 alter table public.os_custos add constraint os_custos_cp_id_fkey foreign key (cp_id) references public.contas_pagar(id) on delete set null;
 alter table public.os_diario add constraint os_diario_autor_id_fkey foreign key (autor_id) references public.usuarios(id) on delete set null;
 alter table public.os_diario add constraint os_diario_os_id_fkey foreign key (os_id) references public.ordens_servico(id) on delete cascade;
-alter table public.os_itens_trabalho add constraint os_itens_trabalho_os_id_fkey foreign key (os_id) references public.ordens_servico(id) on delete cascade;
-alter table public.os_itens_trabalho add constraint os_itens_trabalho_proposta_item_id_fkey foreign key (proposta_item_id) references public.proposta_itens(id) on delete cascade;
 alter table public.os_tecnicos add constraint os_tecnicos_usuario_id_fkey foreign key (usuario_id) references public.usuarios(id) on delete cascade;
 alter table public.os_tecnicos add constraint os_tecnicos_os_id_fkey foreign key (os_id) references public.ordens_servico(id) on delete cascade;
 alter table public.proposta_arquivos add constraint proposta_arquivos_proposta_id_fkey foreign key (proposta_id) references public.propostas(id) on delete cascade;
@@ -1065,9 +1058,6 @@ create policy "os_custos_all" on public.os_custos for ALL to public using (usuar
 
 alter table public.os_diario enable row level security;
 create policy "os_diario_all" on public.os_diario for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
-
-alter table public.os_itens_trabalho enable row level security;
-create policy "os_itens_trabalho_all" on public.os_itens_trabalho for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.os_tecnicos enable row level security;
 create policy "os_tecnicos_all" on public.os_tecnicos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
