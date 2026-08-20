@@ -1307,16 +1307,27 @@
   <div class="view" id="view-origens">
     <div class="bar">
       <h2>Origem do Lead</h2>
+      <select id="origens-vista" class="vista-sel" onchange="mudarVistaOrigens(this.value)">
+        <option value="lista">Visualização: lista de origens</option>
+        <option value="kanban">Visualização: leads por origem</option>
+      </select>
+      <select id="origens-periodo" class="vista-sel" onchange="renderOrigens()" style="margin-left:6px;display:none">
+        <option value="mes">Este mês</option>
+        <option value="trim">Últimos 3 meses</option>
+        <option value="ano">Este ano</option>
+        <option value="tudo" selected>Todo o período</option>
+      </select>
       <div class="spacer"></div>
       <button class="btn primary" id="btn-nova-origem" onclick="novaOrigem()">+ Nova Origem</button>
     </div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:10px">
+    <p id="origens-desc" style="font-size:13px;color:var(--muted);margin-bottom:10px">
       Estas origens ficam disponíveis no cartão CRM para registrar de onde veio o lead. Edite o nome direto na lista.
     </p>
-    <table class="lista" style="max-width:560px">
+    <table class="lista" id="origens-tabela" style="max-width:560px">
       <thead><tr><th>Origem</th><th>CRM(s) com a origem</th><th></th></tr></thead>
       <tbody id="origens-tbody"></tbody>
     </table>
+    <div class="kanban" id="origens-kanban" style="display:none"></div>
   </div>
 
   <!-- FUNÇÕES NA EMPRESA -->
@@ -1384,11 +1395,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.173';
-const APP_VERSION_DATE = '19/08/2026';
+const APP_VERSION = '1.47.174';
+const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.174',
+    data: '20/08/2026',
+    itens: [
+      'CRM → Origem do Lead: nova visualização "Leads por origem" — um combo ao lado do título alterna entre a lista de origens (cadastro) e um kanban só-leitura com uma coluna por origem, mostrando todos os cartões daquela origem (inclusive Perdidos e Concluídos, pra ver de onde vieram os negócios ao longo do tempo). Tem um filtro de período (Este mês/3 meses/Ano/Todo o período) que fatia pela data de criação do cartão. Os cartões não são arrastáveis aqui — pra corrigir a origem de um lead, edita direto no Cartão.',
+    ]
+  },
   {
     versao: '1.47.173',
     data: '19/08/2026',
@@ -4009,7 +4027,7 @@ async function carregarDadosSupabase(){
         id:c.id, num:c.num, clienteId:c.cliente_id, obraId:c.obra_id, origemId:c.origem_id,
         faseId:c.fase_id, responsavel:c.responsavel||'', responsavelId: c.responsavel_id||null, agenda: c.agenda ? c.agenda.slice(0,16) : '',
         valor:Number(c.valor)||0, perdido:!!c.perdido, concluido:!!c.concluido, historico:[],
-        googleEventId: c.google_event_id || null
+        googleEventId: c.google_event_id || null, criadoEm: c.created_at || null
       }));
       if(historico.data){
         historico.data.forEach(h=>{
@@ -6371,9 +6389,50 @@ function renderFuncoes(){
   });
 }
 /* ===== Origem do lead ===== */
+let origensVista = localStorage.getItem('origensVista') || 'lista';
+function mudarVistaOrigens(v){ origensVista=v; localStorage.setItem('origensVista', v); renderOrigens(); }
+
 function renderOrigens(){
-  const tb=document.getElementById('origens-tbody'); tb.innerHTML='';
   if(!usuarioAtual || !podeVer(usuarioAtual,'origens')) return;
+  const selV = document.getElementById('origens-vista');
+  if(selV && selV.value!==origensVista) selV.value = origensVista;
+  const ehKanban = origensVista==='kanban';
+  const tabela = document.getElementById('origens-tabela');
+  const kanban = document.getElementById('origens-kanban');
+  const periodoSel = document.getElementById('origens-periodo');
+  const desc = document.getElementById('origens-desc');
+  const btnNova = document.getElementById('btn-nova-origem');
+  if(tabela) tabela.style.display = ehKanban?'none':'';
+  if(kanban) kanban.style.display = ehKanban?'':'none';
+  if(periodoSel) periodoSel.style.display = ehKanban?'':'none';
+  if(desc) desc.style.display = ehKanban?'none':'';
+  if(btnNova) btnNova.style.display = ehKanban?'none':'';
+  if(ehKanban) renderOrigemLeadsKanban();
+  else renderOrigensLista();
+}
+
+/* Vista: leads agrupados por origem (kanban só-leitura, sem drag — a origem se corrige editando o cartão) */
+function renderOrigemLeadsKanban(){
+  const k = document.getElementById('origens-kanban'); if(!k) return;
+  k.innerHTML = '';
+  const periodo = (document.getElementById('origens-periodo')||{}).value || 'tudo';
+  const idsOrigem = new Set(db.origens.map(o=>o.id));
+  db.origens.forEach(o=>{
+    const itens = db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo));
+    k.appendChild(colEl(o.nome, '#495057', itens, {
+      render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
+    }));
+  });
+  const semOrigem = db.cards.filter(c=>!idsOrigem.has(c.origemId) && _finPainelDentroFiltro(c.criadoEm, periodo));
+  if(semOrigem.length){
+    k.appendChild(colEl('Sem origem', '#adb5bd', semOrigem, {
+      render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
+    }));
+  }
+}
+
+function renderOrigensLista(){
+  const tb=document.getElementById('origens-tbody'); tb.innerHTML='';
   const podeEditar = podeEditarTela(usuarioAtual,'origens');
   const podeExcluir = podeExcluirTela(usuarioAtual,'origens');
   db.origens.forEach(o=>{
@@ -11448,7 +11507,10 @@ const AJUDA_CONTEUDO = {
   },
   'origens': {
     titulo: 'CRM — Origem do Lead',
-    html: `<p>Cadastro simples de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio.</p>`
+    html: `
+      <p>Cadastro simples de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio.</p>
+      <h5>Visualizações</h5>
+      <p>"Lista de origens" é o cadastro (renomear/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com todos os cartões daquela origem (inclusive Perdidos e Concluídos, pra dar visão histórica de onde vieram os negócios ao longo do tempo). Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado.</p>`
   },
   'clientes': {
     titulo: 'CRM — Clientes / Prospects',
