@@ -1395,11 +1395,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.174';
+const APP_VERSION = '1.47.175';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.175',
+    data: '20/08/2026',
+    itens: [
+      'Obras → Categorias de Custo: criar, renomear/trocar emoji e excluir categoria agora gera registro na Auditoria (era uma lacuna — essa tela nunca teve log, diferente das outras telas de cadastro do sistema).',
+    ]
+  },
   {
     versao: '1.47.174',
     data: '20/08/2026',
@@ -16626,6 +16633,7 @@ async function novaCategoriaCusto(){
   if(!db.catOutrosCustos) db.catOutrosCustos = [];
   db.catOutrosCustos.push({id:data.id, nome:data.nome, emoji:data.emoji, ordem:data.ordem});
   db.catOutrosCustos.sort((a,b)=>a.ordem-b.ordem);
+  registrarLog('criar', 'categoria_custo', data.id, `Nova categoria de custo de obra criada: "${data.nome}"`);
   renderCatOutrosCustos();
 }
 
@@ -16633,8 +16641,14 @@ async function atualizarCategoriaCusto(id, campos){
   if(!podeEditarTela(usuarioAtual,'cat-outros-custos')) return;
   const cat = (db.catOutrosCustos||[]).find(c=>c.id===id);
   if(!cat) return;
+  const nomeAntes = cat.nome, emojiAntes = cat.emoji;
   Object.assign(cat, campos);
   await sb.from('categorias_outros_custos').update(campos).eq('id',id);
+  if(campos.nome !== undefined && campos.nome !== nomeAntes){
+    registrarLog('editar', 'categoria_custo', id, `Categoria de custo de obra renomeada: "${nomeAntes}" → "${cat.nome}"`);
+  } else if(campos.emoji !== undefined && campos.emoji !== emojiAntes){
+    registrarLog('editar', 'categoria_custo', id, `Categoria de custo de obra "${cat.nome}" — emoji alterado`);
+  }
 }
 
 async function excluirCategoriaCusto(id){
@@ -16643,6 +16657,7 @@ async function excluirCategoriaCusto(id){
   if(!confirm(`Excluir a categoria "${cat?.nome||id}"? Os lançamentos existentes manterão o texto da categoria, mas ela não aparecerá mais no seletor.`)) return;
   await sb.from('categorias_outros_custos').delete().eq('id',id);
   db.catOutrosCustos = (db.catOutrosCustos||[]).filter(c=>c.id!==id);
+  registrarLog('excluir', 'categoria_custo', id, `Categoria de custo de obra excluída: "${cat?.nome||id}"`);
   renderCatOutrosCustos();
 }
 
