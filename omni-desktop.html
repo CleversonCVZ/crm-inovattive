@@ -1402,11 +1402,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.182';
+const APP_VERSION = '1.47.183';
 const APP_VERSION_DATE = '20/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.183',
+    data: '20/08/2026',
+    itens: [
+      'Segurança: o token de sincronização do Google Calendar de cada usuário (google_refresh_token) não é mais lido pelo app — antes vinha junto no carregamento da lista de usuários e ficava visível pra qualquer usuário ativo via consulta direta ao banco. O app só usava a informação de "conectado ou não", que agora vem de uma coluna dedicada sem expor o token. Nenhuma tela ou comportamento muda visualmente.',
+    ]
+  },
   {
     versao: '1.47.182',
     data: '20/08/2026',
@@ -6006,12 +6013,22 @@ function textColor(hex){
    A sessão (token) é gerenciada automaticamente pelo supabase-js (localStorage),
    então um refresh da página mantém o usuário conectado. */
 async function carregarUsuariosSupabase(){
-  const {data, error} = await sb.from('usuarios').select('*').order('id');
+  // v1.47.183: NÃO seleciona google_refresh_token — a coluna guarda o token de
+  // sincronização do Google Calendar de cada usuário, e antes vinha inteira nesse
+  // select('*'), ficando legível por QUALQUER usuário ativo (a política de RLS de
+  // 'usuarios' libera SELECT pra todo mundo ativo, só a ESCRITA é restrita a
+  // dono/admin). O app nunca precisou do valor em si — só de saber se está
+  // conectado ou não (checagem !!token em ~8 lugares) — então a coluna
+  // 'google_conectado' (gerada automaticamente no banco a partir da antiga,
+  // sem expor o valor) resolve isso sem mudar nenhum comportamento visível.
+  const {data, error} = await sb.from('usuarios')
+    .select('id,nome,login,email,funcao,grupo_id,dias_logado,ativo,auth_id,google_conectado')
+    .order('id');
   if(error || !data) return;
   db.usuarios = data.map(u=>({
     id:u.id, nome:u.nome, login:u.login, email:u.email, funcao:u.funcao,
     grupoId:u.grupo_id, diasLogado:u.dias_logado, ativo:u.ativo, authId:u.auth_id,
-    googleRefreshToken: u.google_refresh_token || null
+    googleRefreshToken: u.google_conectado ? true : null
   }));
 }
 

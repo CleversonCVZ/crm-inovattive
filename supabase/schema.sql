@@ -727,8 +727,23 @@ create table public.usuarios (
   dias_logado integer default 30,
   ativo boolean default true,
   email text,
-  google_refresh_token text
+  google_refresh_token text,
+  google_conectado boolean generated always as (google_refresh_token is not null) stored
 );
+
+-- v1.47.183: SELECT em google_refresh_token revogado de authenticated/anon — o token
+-- de sincronização do Google Calendar de cada usuário só pode ser lido pelas Edge
+-- Functions (google-oauth, google-calendar), que usam a service role key e por isso
+-- não passam nem por RLS nem por privilégio de coluna. O app nunca leu o valor em
+-- si, só checava "conectado ou não" — daí a coluna gerada google_conectado acima,
+-- liberada normalmente pra leitura, sem expor o token.
+-- IMPORTANTE: revogar só a coluna (`revoke select (col) ... `) não é suficiente —
+-- o grant de tabela inteira (select on all tables, padrão do Supabase) continua
+-- cobrindo a coluna implicitamente. É preciso revogar o SELECT de tabela inteira
+-- e conceder de volta explicitamente coluna por coluna, como abaixo.
+revoke select on public.usuarios from authenticated, anon;
+grant select (id, auth_id, nome, login, funcao, grupo_id, dias_logado, ativo, email, google_conectado)
+  on public.usuarios to authenticated, anon;
 
 
 -- ── PRIMARY KEYS ─────────────────────────────────────────────────────────────
