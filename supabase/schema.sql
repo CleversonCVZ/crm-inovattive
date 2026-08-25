@@ -73,6 +73,41 @@ begin
 end;
 $$;
 
+-- v1.47.184 (Fase 1 do plano de RLS): espelha podeVer(u, telaId) do app — admin
+-- sempre vê tudo, senão só quem tem a tela liberada no grupo (grupos.telas).
+-- Reutilizável em qualquer tabela "tela-gated" (hoje só audit_logs; Financeiro/
+-- Estoque/SRM ainda usam só usuario_ativo(), ver Fase 2 do plano).
+create or replace function public.pode_ver_tela(tela text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select g.admin or tela = any(g.telas)
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+-- Mesma armadilha do google_refresh_token (ver nota em usuarios/google_conectado):
+-- "revoke ... from anon" sozinho não fecha nada quando existe grant paralelo pra
+-- PUBLIC (padrão do Postgres ao criar função) — é preciso revogar de PUBLIC e de
+-- cada role explicitamente, e conceder de volta só quem precisa. Confirmado via
+-- information_schema.routine_privileges depois, não só "parece certo".
+-- Não dá pra revogar de 'authenticated' em usuario_ativo()/sou_admin()/pode_ver_tela
+-- — todas as policies de RLS do arquivo inteiro dependem dessas funções rodando
+-- como 'authenticated'. bloquear_autopromocao_usuario é função de trigger, nunca
+-- precisa ser chamada como RPC por ninguém, nem autenticado.
+revoke execute on function public.usuario_ativo() from public, anon;
+grant execute on function public.usuario_ativo() to authenticated;
+revoke execute on function public.sou_admin() from public, anon;
+grant execute on function public.sou_admin() to authenticated;
+revoke execute on function public.pode_ver_tela(text) from public, anon;
+grant execute on function public.pode_ver_tela(text) to authenticated;
+revoke execute on function public.bloquear_autopromocao_usuario() from public, anon, authenticated;
+
 
 -- ── TABELAS ─────────────────────────────────────────────────────────────────
 
@@ -910,7 +945,14 @@ with (security_definer = true) as
 -- só por admin via trigger, ver bloquear_autopromocao_usuario acima).
 
 alter table public.audit_logs enable row level security;
-create policy "authenticated_full_access" on public.audit_logs for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+-- v1.47.184: INSERT continua liberado a qualquer ativo (registrarLog() grava de
+-- todo canto do app). SELECT exige a tela 'auditoria' liberada no grupo (mesma
+-- checagem que já existia só na UI). Sem policy de UPDATE — auditoria não deveria
+-- ser editável depois de criada. DELETE só admin (espelha o check client-side já
+-- existente em purgarLogsAntigos()).
+create policy "audit_logs_insert" on public.audit_logs for INSERT to authenticated with check (usuario_ativo());
+create policy "audit_logs_select" on public.audit_logs for SELECT to authenticated using (pode_ver_tela('auditoria'));
+create policy "audit_logs_delete_admin" on public.audit_logs for DELETE to authenticated using (sou_admin());
 
 alter table public.card_contatos enable row level security;
 create policy "Usuários autenticados acessam card_contatos" on public.card_contatos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
