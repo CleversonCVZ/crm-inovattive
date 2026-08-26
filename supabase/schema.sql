@@ -193,6 +193,119 @@ $$;
 revoke execute on function public.pode_editar_recurso(text) from public, anon;
 grant execute on function public.pode_editar_recurso(text) to authenticated;
 
+-- Fase 3: "cascata de responsável" — SELECT de cards/ordens_servico/propostas/obras.
+-- Só restringe LEITURA (escrita continua em usuario_ativo(), igual hoje: abrir um
+-- registro específico por id sempre funcionou mesmo sem ser o responsável — as
+-- funções JS cardVisivelParaUsuario/osVisivelParaUsuario só filtram LISTAS).
+--
+-- card_visivel/os_visivel têm uma cascata mútua (não é mirror 1:1 da função JS):
+-- card também é visível se tenho uma O.S. nele; O.S. também é visível se o card
+-- dela já é visível pra mim (mesma regra de card_visivel, reaproveitada). Sem essa
+-- cascata, todo técnico perderia acesso ao Cartão CRM da própria O.S. em que
+-- trabalha (o card quase sempre pertence a outro responsável) e a aba "O.S." de um
+-- cartão pararia de mostrar O.S. de colegas no mesmo cartão — confirmado com dado
+-- real antes de aplicar (todo técnico ativo tinha esse padrão).
+create or replace function public.card_visivel(p_id bigint, p_responsavel_id integer)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select
+       g.admin
+       or not coalesce(g.filtrar_cards, false)
+       or p_responsavel_id = u.id
+       or exists(
+            select 1 from public.ordens_servico os
+            where os.card_id = p_id
+              and (os.responsavel_id = u.id
+                   or exists(select 1 from public.os_tecnicos ot where ot.os_id = os.id and ot.usuario_id = u.id))
+          )
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.card_visivel(bigint, integer) from public, anon;
+grant execute on function public.card_visivel(bigint, integer) to authenticated;
+
+create or replace function public.os_visivel(p_id integer, p_responsavel_id integer, p_card_id integer)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select
+       g.admin
+       or not coalesce(g.filtrar_os, false)
+       or p_responsavel_id = u.id
+       or exists(select 1 from public.os_tecnicos ot where ot.os_id = p_id and ot.usuario_id = u.id)
+       or exists(
+            select 1 from public.cards c
+            where c.id = p_card_id and public.card_visivel(c.id, c.responsavel_id)
+          )
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.os_visivel(integer, integer, integer) from public, anon;
+grant execute on function public.os_visivel(integer, integer, integer) to authenticated;
+
+create or replace function public.proposta_visivel(p_card_id bigint)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select
+       g.admin
+       or not coalesce(g.filtrar_propostas, false)
+       or exists(select 1 from public.cards c where c.id = p_card_id and c.responsavel_id = u.id)
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.proposta_visivel(bigint) from public, anon;
+grant execute on function public.proposta_visivel(bigint) to authenticated;
+
+create or replace function public.obra_visivel(p_id bigint)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select
+       g.admin
+       or not coalesce(g.filtrar_obras, false)
+       or exists(
+            select 1 from public.ordens_servico os
+            where os.obra_id = p_id
+              and (os.responsavel_id = u.id
+                   or exists(select 1 from public.os_tecnicos ot where ot.os_id = os.id and ot.usuario_id = u.id))
+          )
+       or exists(
+            select 1 from public.propostas p
+            join public.cards c on c.id = p.card_id
+            where p.obra_id = p_id and c.responsavel_id = u.id
+          )
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.obra_visivel(bigint) from public, anon;
+grant execute on function public.obra_visivel(bigint) to authenticated;
+
 revoke execute on function public.bloquear_autopromocao_usuario() from public, anon, authenticated;
 
 
@@ -1047,8 +1160,13 @@ create policy "Usuários autenticados acessam card_contatos" on public.card_cont
 alter table public.card_historico enable row level security;
 create policy "authenticated_full_access" on public.card_historico for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
+-- Fase 3: SELECT usa a cascata de responsável (card_visivel). Escrita continua
+-- aberta pra qualquer usuário ativo — sem mudança de comportamento real.
 alter table public.cards enable row level security;
-create policy "authenticated_full_access" on public.cards for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "cards_select" on public.cards for SELECT to authenticated using (card_visivel(id, responsavel_id));
+create policy "cards_insert" on public.cards for INSERT to authenticated with check (usuario_ativo());
+create policy "cards_update" on public.cards for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "cards_delete" on public.cards for DELETE to authenticated using (usuario_ativo());
 
 alter table public.cards_srm enable row level security;
 -- v1.47.187 (Fase 2, Lote 2 — SRM): todo write real de cards_srm passa por
@@ -1283,11 +1401,19 @@ create policy "Autenticados podem atualizar retiradas" on public.obra_retiradas 
 create policy "Autenticados podem ver retiradas" on public.obra_retiradas for SELECT to authenticated using (usuario_ativo());
 create policy "Autenticados podem inserir retiradas" on public.obra_retiradas for INSERT to authenticated with check (usuario_ativo());
 
+-- Fase 3: SELECT usa a cascata de responsável (obra_visivel).
 alter table public.obras enable row level security;
-create policy "authenticated_full_access" on public.obras for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "obras_select" on public.obras for SELECT to authenticated using (obra_visivel(id));
+create policy "obras_insert" on public.obras for INSERT to authenticated with check (usuario_ativo());
+create policy "obras_update" on public.obras for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "obras_delete" on public.obras for DELETE to authenticated using (usuario_ativo());
 
+-- Fase 3: SELECT usa a cascata de responsável (os_visivel).
 alter table public.ordens_servico enable row level security;
-create policy "authenticated_all" on public.ordens_servico for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "os_select" on public.ordens_servico for SELECT to authenticated using (os_visivel(id, responsavel_id, card_id));
+create policy "os_insert" on public.ordens_servico for INSERT to authenticated with check (usuario_ativo());
+create policy "os_update" on public.ordens_servico for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "os_delete" on public.ordens_servico for DELETE to authenticated using (usuario_ativo());
 
 alter table public.origens enable row level security;
 create policy "authenticated_full_access" on public.origens for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
@@ -1307,8 +1433,12 @@ create policy "authenticated_full_access" on public.proposta_arquivos for ALL to
 alter table public.proposta_itens enable row level security;
 create policy "authenticated_full_access" on public.proposta_itens for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
+-- Fase 3: SELECT usa a cascata de responsável (proposta_visivel).
 alter table public.propostas enable row level security;
-create policy "authenticated_full_access" on public.propostas for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "propostas_select" on public.propostas for SELECT to authenticated using (proposta_visivel(card_id));
+create policy "propostas_insert" on public.propostas for INSERT to authenticated with check (usuario_ativo());
+create policy "propostas_update" on public.propostas for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "propostas_delete" on public.propostas for DELETE to authenticated using (usuario_ativo());
 
 alter table public.srm_cotacoes enable row level security;
 -- Diferente de cards_srm: várias ações de cotação (upload PDF/XML, mudar status,
