@@ -287,6 +287,10 @@ as $$
        g.admin
        or not coalesce(g.filtrar_obras, false)
        or exists(
+            select 1 from public.cards c
+            where c.obra_id = p_id and c.responsavel_id = u.id
+          )
+       or exists(
             select 1 from public.ordens_servico os
             where os.obra_id = p_id
               and (os.responsavel_id = u.id
@@ -305,6 +309,11 @@ as $$
 $$;
 revoke execute on function public.obra_visivel(bigint) from public, anon;
 grant execute on function public.obra_visivel(bigint) to authenticated;
+-- v1.47.190 (auditoria pós Fase 3): faltava a condição de dono DIRETO (card.obra_id
+-- + card.responsavel_id=eu) — sem isso, uma obra recém-criada e vinculada a um
+-- cartão (criarObraRapida) só ficava visível pro responsável do cartão depois de
+-- existir uma O.S./proposta ligando os dois. Sintoma real: aba "Obra" do próprio
+-- cartão mostrando "Nenhuma obra vinculada" (mensagem falsa) após reload.
 
 revoke execute on function public.bloquear_autopromocao_usuario() from public, anon, authenticated;
 
@@ -1172,7 +1181,13 @@ alter table public.cards_srm enable row level security;
 -- v1.47.187 (Fase 2, Lote 2 — SRM): todo write real de cards_srm passa por
 -- podeEditarTela/podeExcluirTela(usuarioAtual,'srm-painel') no código (confirmado
 -- em 100% dos pontos de escrita) — dá pra usar a política completa sem risco.
-create policy "cards_srm_select" on public.cards_srm for SELECT to authenticated using (pode_ver_tela('srm-painel'));
+-- v1.47.190 (auditoria pós Fase 3): SELECT restrito a pode_ver_tela('srm-painel')
+-- era regressão real — itensGarantiaDaObra() (aba Garantias da Obra) lê cards_srm
+-- fora da tela SRM; Técnicos/Vendedores têm obras-painel mas não srm-painel, então
+-- os itens de garantia sumiam silenciosamente. Corrigido pra usuario_ativo() (aberto),
+-- mesmo padrão já usado em estoque_produtos/estoque_movimentacoes/srm_cotacoes por
+-- serem consumidas fora do módulo de origem.
+create policy "cards_srm_select" on public.cards_srm for SELECT to authenticated using (usuario_ativo());
 create policy "cards_srm_insert" on public.cards_srm for INSERT to authenticated with check (pode_editar_tela('srm-painel'));
 create policy "cards_srm_update" on public.cards_srm for UPDATE to authenticated using (pode_editar_tela('srm-painel')) with check (pode_editar_tela('srm-painel'));
 create policy "cards_srm_delete" on public.cards_srm for DELETE to authenticated using (pode_excluir_tela('srm-painel'));
@@ -1211,7 +1226,12 @@ create policy "ccorr_delete" on public.contas_correntes for DELETE to authentica
 alter table public.contas_pagar enable row level security;
 create policy "cp_select" on public.contas_pagar for SELECT to authenticated using (usuario_ativo());
 create policy "cp_insert" on public.contas_pagar for INSERT to authenticated with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_editar_tela('fat-tributos') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista'));
-create policy "cp_update" on public.contas_pagar for UPDATE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar')) with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar'));
+-- v1.47.190 (auditoria pós Fase 3): salvarEdicaoGuiaTributos atualiza valor/vencimento
+-- da CP vinculada sob guarda de podeEditarTela('fat-tributos') — faltava essa condição
+-- no OR-list do UPDATE (hoje só Operações tem fat-tributos, e Operações já tinha
+-- fin-contas-pagar-gerenciar também, então não quebrou na prática, mas corrigido pra
+-- não depender de coincidência de configuração de grupo).
+create policy "cp_update" on public.contas_pagar for UPDATE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos')) with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos'));
 create policy "cp_delete" on public.contas_pagar for DELETE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_excluir_tela('fat-tributos'));
 
 alter table public.contas_pagar_pagamentos enable row level security;
@@ -1335,8 +1355,13 @@ create policy "fc_write" on public.fornecedor_contatos for ALL to authenticated 
 -- checagem de fin-fornecedores-gerenciar quando aberto via callback).
 alter table public.fornecedores enable row level security;
 create policy "forn_select" on public.fornecedores for SELECT to authenticated using (usuario_ativo());
-create policy "forn_insert" on public.fornecedores for INSERT to authenticated with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar'));
-create policy "forn_update" on public.fornecedores for UPDATE to authenticated using (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar')) with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar'));
+-- v1.47.190 (auditoria pós Fase 3): o atalho "+Cadastrar novo fornecedor" dentro de
+-- Editar Conta a Pagar (abrirEditarContaPagar, guardado só por enxergar a tela
+-- fin-contas-pagar) pula a checagem de recurso de abrirNovoFornecedor quando tem
+-- callbackId — faltava pode_ver_tela('fin-contas-pagar') no OR-list. Hoje os grupos
+-- com essa tela já têm fin-contas-pagar-gerenciar também, então não quebrou.
+create policy "forn_insert" on public.fornecedores for INSERT to authenticated with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_ver_tela('fin-contas-pagar'));
+create policy "forn_update" on public.fornecedores for UPDATE to authenticated using (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_ver_tela('fin-contas-pagar')) with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_ver_tela('fin-contas-pagar'));
 create policy "forn_delete" on public.fornecedores for DELETE to authenticated using (pode_usar_recurso('fin-fornecedores-gerenciar'));
 
 alter table public.funcoes enable row level security;
@@ -1370,9 +1395,13 @@ create policy "gt_delete" on public.guias_tributos for DELETE to authenticated u
 -- de parcela, faturamento/tributos) — OR de todos os recursos/telas evidenciados.
 alter table public.movimentacoes_financeiras enable row level security;
 create policy "mf_select" on public.movimentacoes_financeiras for SELECT to authenticated using (usuario_ativo());
+-- v1.47.190 (auditoria pós Fase 3): excluirParcelaReceber apaga movimentações
+-- vinculadas sob guarda de fin-contas-receber-gerenciar (recurso distinto de
+-- fin-contas-receber-receber, que já estava no OR-list) — faltava. Hoje os grupos
+-- com acesso têm os dois recursos juntos, então não quebrou, mas corrigido.
 create policy "mf_write" on public.movimentacoes_financeiras for ALL to authenticated
-  using (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'))
-  with check (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
+  using (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_usar_recurso('fin-contas-receber-gerenciar') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'))
+  with check (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_usar_recurso('fin-contas-receber-gerenciar') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
 
 alter table public.notas_fiscais enable row level security;
 create policy "nf_select" on public.notas_fiscais for SELECT to authenticated using (usuario_ativo());
