@@ -1402,11 +1402,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.190';
+const APP_VERSION = '1.47.191';
 const APP_VERSION_DATE = '26/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.191',
+    data: '26/08/2026',
+    itens: [
+      'Segurança (Lote 1 do plano de RLS — fechamento de gaps de UI): 5 ações que não tinham nenhuma checagem de permissão passaram a exigir o mesmo nível de acesso já usado no resto do app — no SRM, Lançar no Estoque / Cadastrar no Catálogo / Remover XML da NF agora exigem editar em SRM; na O.S., adicionar/remover produto avulso e Gerenciar itens da Execução agora exigem editar em O.S. (bônus: Adicionar serviço avulso, que tinha a mesma falha, também foi corrigido). A regra do banco (RLS) foi apertada junto pra acompanhar a tela.',
+    ]
+  },
   {
     versao: '1.47.190',
     data: '26/08/2026',
@@ -8407,6 +8414,7 @@ function parseNFeXML(xmlText){
 
 /* ---- SRM: Aba Pedido Aprovado ---- */
 function abaPedidoAprovadoSRMHTML(c){
+  const podeEditarSRM = podeEditarTela(usuarioAtual,'srm-painel');
   const cot=(db.srmCotacoes||[]).find(x=>x.cardSrmId===c.id&&x.status==='selecionada');
   if(!cot) return `
     <div class="empty" style="padding:50px 20px;text-align:center;color:var(--muted)">
@@ -8467,7 +8475,7 @@ function abaPedidoAprovadoSRMHTML(c){
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn sm" onclick="baixarXmlNfSRM('${escHtml(cot.xmlNfPath||'')}','${escHtml(cot.xmlNfNome||'')}')">⬇ Baixar</button>
-          <button class="btn sm danger" onclick="removerXmlNfSRM(${cot.id},${c.id})">🗑 Remover XML</button>
+          ${podeEditarSRM?`<button class="btn sm danger" onclick="removerXmlNfSRM(${cot.id},${c.id})">🗑 Remover XML</button>`:''}
         </div>
       </div>`;
   } else {
@@ -8631,6 +8639,8 @@ function abaPedidoAprovadoSRMHTML(c){
     const rotuloLancar = c.obraId ? '🏭 Lançar no Estoque da Obra' : '🏭 Lançar no Estoque Geral';
     if(cot.estoqueLancado){
       btnEstoque=`<span style="background:#2e7d32;color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:700;display:inline-flex;align-items:center;gap:5px">✅ Lançado no Estoque${cot.estoqueLancadoEm?` <span style="font-weight:400;font-size:11px;opacity:.85">em ${fmtDia2(cot.estoqueLancadoEm.slice(0,10))}</span>`:''}</span>`;
+    } else if(!podeEditarSRM){
+      btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Sem permissão para lançar estoque via SRM">${rotuloLancar}</button>`;
     } else if(c.pagamentoResponsavel!=='empresa' && !c.obraId){
       btnEstoque=`<button class="btn" style="opacity:0.45;cursor:not-allowed" disabled title="Pagamento de responsabilidade do cliente e sem obra vinculada — não há onde reservar esse material">🏭 Lançar no Estoque</button>`;
     } else if(!cot.nfItens||!cot.nfItens.length){
@@ -8651,7 +8661,7 @@ function abaPedidoAprovadoSRMHTML(c){
        existente continuam elegíveis aqui. */
     const semEstoque = c.pagamentoResponsavel!=='empresa' && !c.obraId;
     const itensParaCatalogar = semEstoque ? cot.nfItens.filter(it=>!it.catalogoRevisado && !matchProdutoEstoque(it)) : [];
-    const btnCatalogo = itensParaCatalogar.length
+    const btnCatalogo = itensParaCatalogar.length && podeEditarSRM
       ? `<button class="btn" onclick="abrirCadastrarCatalogo(${cot.id},${c.id})">📦 Cadastrar ${itensParaCatalogar.length} produto${itensParaCatalogar.length>1?'s':''} no Catálogo</button>`
       : '';
 
@@ -8760,6 +8770,7 @@ async function baixarPdfNfSRM(path, nome){
 
 /* Remove XML: limpa xml fields + dados da NF (usuário pode re-extrair do PDF manualmente) */
 async function removerXmlNfSRM(cotId, srmId){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   // v1.47.130: a baixa de estoque numa O.S. (debitarEstoque) não grava srm_cotacao_id
   // — ou seja, remover aqui só apaga a ENTRADA (linhas com srm_cotacao_id=cotId), mas
   // se o material já foi consumido numa O.S. depois, a SAÍDA correspondente fica órfã
@@ -19423,7 +19434,7 @@ function abrirVerOSExecucao(osId, cardId, aba='geral'){
     tabContent = !todosItens.length
       ? `<div class="empty" style="padding:30px">Não há propostas aprovadas vinculadas a este cartão.</div>`
       : `
-        ${!os.fechada ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        ${!os.fechada&&podeEditar ? `<div style="display:flex;justify-content:flex-end;margin-bottom:12px">
           <button class="btn primary" onclick="abrirSeletorItensOS(${osId},${cardId})">＋ Gerenciar itens</button>
         </div>` : ''}
         ${mkListaAlocados(alocados)}
@@ -19717,7 +19728,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
                   onchange="toggleValorPDFAVL(${osId},${i},${cardId},this.checked)"
                   style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)">
               </td>
-              ${!os.fechada?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button></td>`:''}
+              ${!os.fechada&&podeEditar?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button></td>`:''}
             </tr>`;
           }).join('')}
         </tbody>
@@ -19728,7 +19739,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
     tabContent = `
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">🛠️ Serviços</div>
       ${tabelaItens(servicos, 'Nenhum serviço adicionado.')}
-      ${!os.fechada?`
+      ${!os.fechada&&podeEditar?`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:20px">
         <div class="form-row">
           <div style="flex:2"><label>Descrição</label><input id="avl-serv-desc" placeholder="Ex: Troca de tomada..."></div>
@@ -19741,7 +19752,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
 
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">📦 Produtos (do estoque)</div>
       ${tabelaItens(produtosLista, 'Nenhum produto adicionado.')}
-      ${!os.fechada?`
+      ${!os.fechada&&podeEditar?`
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
         ${produtosAtivos.length ? `
         <div class="form-row">
@@ -20529,6 +20540,7 @@ async function removerTecnicoAVL(osId, tecId, cardId){
    null), nunca reserva/consome de uma obra específica (Avulsa normalmente atende obra já
    concluída; mesma regra já usada no Contas a Pagar da Avulsa). */
 function adicionarServicoAVL(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const os   = db.ordensServico.find(x=>x.id===osId);
   const desc = document.getElementById('avl-serv-desc').value.trim();
   if(!desc){ alert('Informe a descrição do serviço.'); return; }
@@ -20547,6 +20559,7 @@ function adicionarServicoAVL(osId, cardId){
    (Avulsa nunca reserva/consome de uma obra específica, mesma regra já usada no
    Contas a Pagar da Avulsa), sem passo extra de vincular/confirmar. */
 async function adicionarProdutoAVL(osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const os = db.ordensServico.find(x=>x.id===osId);
   const produtoId = parseInt(document.getElementById('avl-prod-sel')?.value)||null;
   if(!produtoId){ alert('Selecione um produto do catálogo.'); return; }
@@ -20568,6 +20581,7 @@ async function adicionarProdutoAVL(osId, cardId){
 }
 
 async function removerItemAVL(osId, idx, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const os   = db.ordensServico.find(x=>x.id===osId);
   const item = os.produtos[idx];
   if(item?.estoqueMovIds?.length){
@@ -20624,6 +20638,7 @@ async function removerTecnicoOS(osId, tecId, cardId){
    adicionarItemSit) — o que decide se baixa é só ter produtoEstoqueId vinculado, não
    quem é responsável pelo pagamento. */
 async function salvarQtdItemOS(osId, key, propostaId, idx, qtdOS, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const os = db.ordensServico.find(x=>x.id===osId);
   if(!os.itensTrabalho) os.itensTrabalho=[];
   const todosItens = _itensPropostasAprovadas(cardId);
@@ -25704,6 +25719,7 @@ function fecharLancarEstoque(){
 }
 
 async function confirmarLancarEstoque(){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   if(!_estoqueCtx) return;
   const {cotId,srmId}=_estoqueCtx;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
@@ -25859,6 +25875,7 @@ function fecharCadastrarCatalogo(){
 }
 
 async function confirmarCadastrarCatalogo(){
+  if(!podeEditarTela(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   if(!_catalogoCtx) return;
   const {cotId,srmId}=_catalogoCtx;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);

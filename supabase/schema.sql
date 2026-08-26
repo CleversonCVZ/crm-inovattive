@@ -1267,27 +1267,26 @@ create policy "estoque_categorias_update" on public.estoque_categorias for UPDAT
 create policy "estoque_categorias_delete" on public.estoque_categorias for DELETE to authenticated using (pode_excluir_tela('estoque-categorias'));
 
 alter table public.estoque_movimentacoes enable row level security;
--- v1.47.186 (Fase 2, Lote 1 — parte 2): SELECT continua amplo de propósito (lido
--- fora de Estoque/SRM/O.S. também, ex.: proposta_itens/faturamento_itens têm FK
--- pra estoque_produtos — não mapeei toda leitura cruzada do sistema). Escrita
--- liberada pra quem tem QUALQUER UMA das 3 áreas que hoje já gravam aqui de fato
--- (auditado no código, não suposição): Estoque-Almoxarifado editar, OU SRM-Painel
--- qualquer nível (as 3 ações do SRM não são travadas por nível hoje), OU O.S.
--- Painel/Lista qualquer nível (débito/estorno de material em O.S. também não é
--- travado por nível hoje, só por a O.S. não estar fechada — isso fica de fora da
--- RLS, é checagem de app). Replica o que já funciona hoje; só fecha a porta pra
--- quem não tem NENHUMA ligação com essas 3 áreas (ex.: Vendedor/Projetista puro).
+-- v1.47.191 (Lote 1 — fechamento dos gaps de UI): SELECT continua amplo de propósito
+-- (lido fora de Estoque/SRM/O.S. também, ex.: proposta_itens/faturamento_itens têm FK
+-- pra estoque_produtos). Escrita agora exige EDITAR de verdade em uma das 3 áreas —
+-- Estoque-Almoxarifado editar, OU SRM-Painel editar (lançar estoque/cadastrar
+-- catálogo/remover XML agora são gated na UI por podeEditarTela('srm-painel')), OU
+-- aba-os editar (produto/serviço avulso e gerenciar itens de execução agora são
+-- gated na UI por podeEditarRecurso('aba-os')). Antes era só pode_ver_tela nessas 2
+-- últimas porque a UI não checava nada; a UI passou a checar, então a RLS acompanha
+-- (Camada 1 não pode ser mais permissiva que a Camada 2).
 create policy "estoque_movimentacoes_select" on public.estoque_movimentacoes for SELECT to authenticated using (usuario_ativo());
 create policy "estoque_movimentacoes_write" on public.estoque_movimentacoes for INSERT to authenticated with check (
-  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-almoxarifado') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 create policy "estoque_movimentacoes_update" on public.estoque_movimentacoes for UPDATE to authenticated using (
-  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-almoxarifado') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 ) with check (
-  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-almoxarifado') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 create policy "estoque_movimentacoes_delete" on public.estoque_movimentacoes for DELETE to authenticated using (
-  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-almoxarifado') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 
 alter table public.estoque_produtos enable row level security;
@@ -1295,15 +1294,15 @@ alter table public.estoque_produtos enable row level security;
 -- editar por 'estoque-catalogo' editar (é essa tela que gated salvarProdutoEstoque).
 create policy "estoque_produtos_select" on public.estoque_produtos for SELECT to authenticated using (usuario_ativo());
 create policy "estoque_produtos_insert" on public.estoque_produtos for INSERT to authenticated with check (
-  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-catalogo') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 create policy "estoque_produtos_update" on public.estoque_produtos for UPDATE to authenticated using (
-  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-catalogo') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 ) with check (
-  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-catalogo') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 create policy "estoque_produtos_delete" on public.estoque_produtos for DELETE to authenticated using (
-  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+  pode_editar_tela('estoque-catalogo') or pode_editar_tela('srm-painel') or pode_editar_recurso('aba-os')
 );
 
 alter table public.fases_crm enable row level security;
