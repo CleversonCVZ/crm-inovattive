@@ -1402,11 +1402,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.191';
+const APP_VERSION = '1.47.192';
 const APP_VERSION_DATE = '26/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.192',
+    data: '26/08/2026',
+    itens: [
+      'Segurança (Lote 2 do plano de RLS — defesa em profundidade no SRM): as ~13 ações de cotação do SRM (anexar/remover PDF e XML da NF, extrair dados do DANFE, mudar status da cotação, excluir cotação/arquivo, lançar Conta a Pagar do SRM) passaram a checar permissão de acesso ao SRM dentro da própria função, não só na navegação até a tela — mesmo padrão de segurança redundante já usado no resto do app. Não muda o acesso de ninguém hoje (a regra do banco já exigia isso).',
+    ]
+  },
   {
     versao: '1.47.191',
     data: '26/08/2026',
@@ -8121,6 +8128,7 @@ function abaCotacoesSRMHTML(c){
 /** Adiciona uma nova cotação ao SRM. Lê os campos do formulário inline (#ncot-*),
  *  persiste no Supabase (srm_cotacoes) e atualiza db.srmCotacoes em memória. */
 async function adicionarCotacaoSRM(srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const valor   = parseFloat((document.getElementById('ncot-valor').value||'0').replace(/\./g,'').replace(',','.'))||null;
   const data    = document.getElementById('ncot-data').value||null;
   const desc    = (document.getElementById('ncot-desc').value||'').trim();
@@ -8175,6 +8183,7 @@ async function adicionarCotacaoSRM(srmId){
 }
 
 async function uploadPDFCotacaoSRM(cotId, srmId, input){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const file = input.files[0]; if(!file) return;
   if(!file.name.toLowerCase().endsWith('.pdf')){ alert('Apenas PDF.'); return; }
@@ -8194,6 +8203,7 @@ async function uploadPDFCotacaoSRM(cotId, srmId, input){
  *  Ao selecionar uma cotação, desseleciona automaticamente qualquer outra
  *  que estava como 'selecionada' no mesmo SRM. */
 async function statusCotacaoSRM(cotId, srmId, novoStatus){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const todas = (db.srmCotacoes||[]).filter(x=>x.cardSrmId===srmId);
   const statusAntes = cot.status;
@@ -8220,6 +8230,7 @@ async function statusCotacaoSRM(cotId, srmId, novoStatus){
 }
 
 async function excluirCotacaoSRM(cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   if(!confirm('Excluir esta cotação e seus arquivos?')) return;
   const cot = (db.srmCotacoes||[]).find(x=>x.id===cotId);
   if(cot && cot.arquivos) for(const a of cot.arquivos) await sb.storage.from('srm-cotacoes').remove([a.path]);
@@ -8233,6 +8244,7 @@ async function excluirCotacaoSRM(cotId, srmId){
 }
 
 async function excluirArquivoCotacaoSRM(cotId, srmId, arqId, arqPath){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   if(!confirm('Remover este arquivo?')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(arqPath) await sb.storage.from('srm-cotacoes').remove([arqPath]);
@@ -8689,6 +8701,7 @@ function abaPedidoAprovadoSRMHTML(c){
 
 /* Upload XML NF-e: parse → upload → salva xml fields + itens (sempre source da verdade) */
 async function uploadXmlNfSRM(input, cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const file=input&&input.files&&input.files[0]; if(!file) return;
   const statusEl=document.getElementById('nf-xml-status');
@@ -8733,6 +8746,7 @@ async function uploadXmlNfSRM(input, cotId, srmId){
 
 /* Upload PDF DANFE: só armazena o arquivo — extração é feita manualmente pelo usuário */
 async function uploadPdfNfSRM(input, cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const file=input&&input.files&&input.files[0]; if(!file) return;
   const statusEl=document.getElementById('nf-pdf-status');
@@ -8810,6 +8824,7 @@ async function removerXmlNfSRM(cotId, srmId){
 
 /* Remove PDF: limpa só campos do PDF; itens permanecem (vêm do XML) */
 async function removerPdfNfSRM(cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   if(!confirm('Remover o PDF DANFE?')) return;
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   if(cot.pdfNfPath) await sb.storage.from('srm-nfs').remove([cot.pdfNfPath]);
@@ -8843,6 +8858,7 @@ function toggleSemXmlSRM(cotId, srmId, checked){
  *  Usa regex sobre o texto extraído para tentar preencher nfItens, nfValorTotal e nfData.
  *  Resultados são aproximados — o XML sempre tem prioridade quando disponível. */
 async function extrairDanfePdfSRM(cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot||!cot.pdfNfPath) return;
   const statusEl=document.getElementById('nf-xml-status');
   if(statusEl) statusEl.textContent='🔍 Baixando e extraindo dados do PDF…';
@@ -8928,6 +8944,7 @@ function abrirCadastroManualNF(cotId, srmId){
     </div>`, 'wide');
 }
 async function salvarNFManualSRM(cotId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId); if(!cot) return;
   const numero=(document.getElementById('manf-numero').value||'').trim();
   const data=document.getElementById('manf-data').value;
@@ -9239,6 +9256,7 @@ function abrirNovaCPSRM(srmId){
  *  Persiste em contas_pagar com card_srm_id preenchido e cria a movimentação
  *  correspondente em movimentacoes_financeiras (saída na conta corrente escolhida). */
 async function salvarNovaCPSRM(srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const descricao = (document.getElementById('nsrm-desc').value||'').trim();
   const fornId    = parseInt(document.getElementById('nsrm-forn').value)||null;
   const valor     = parseFloat((document.getElementById('nsrm-valor').value||'0').replace(/\./g,'').replace(',','.'))||0;
@@ -9290,6 +9308,7 @@ function pagarCPdoSRM(cpId, srmId){
 /** Exclui uma CP vinculada ao SRM e remove a movimentação financeira correspondente
  *  (padrão cascade delete movimentações: origemTipo='contas_pagar', origemId=cpId). */
 async function excluirCPdoSRM(cpId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); // v1.47.110: guarda antes de remover, pro log
   // v1.47.121: avisa quando já tem pagamento(s) parcial(is) registrado(s), mesmo padrão de excluirContaPagar
   const msgConfirm = (p&&p.status==='parcial')
@@ -9379,6 +9398,7 @@ function toggleEcpObra(){
 }
 
 async function salvarEdicaoCPdoSRM(cpId, srmId){
+  if(!podeVer(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===cpId); if(!p) return;
   const btn = btnModalPrimario(); btnSalvando(btn);
   const tipo    = document.getElementById('ecp-tipo').value;
