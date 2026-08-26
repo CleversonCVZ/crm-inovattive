@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.196';
+const APP_VERSION = '1.47.197';
 const APP_VERSION_DATE = '26/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.197',
+    data: '26/08/2026',
+    itens: [
+      'Financeiro → Resultado Aparente: padronizada a cor do stat "Já Retirado"/"Retirado no Período" — estava vermelho nas visões de Obras e verde nas de O.S. Avulsa; agora as duas usam verde-escuro, igual ao selo "✅ Retirado" dos cartões.',
+    ]
+  },
   {
     versao: '1.47.196',
     data: '26/08/2026',
@@ -17408,7 +17415,7 @@ function renderFinResultadoAparente(){
 
   if(statsEl) statsEl.innerHTML = `
     <div class="stat"><div class="n" style="color:#16a34a">${fmtR(totalARetirar)}</div><div class="l">Total a Retirar</div></div>
-    <div class="stat"><div class="n" style="color:#dc2626">${fmtR(totalRetiradoPer)}</div><div class="l">${labelRetirado}</div></div>
+    <div class="stat"><div class="n" style="color:#166534">${fmtR(totalRetiradoPer)}</div><div class="l">${labelRetirado}</div></div>
     ${qtdNegativas?`<div class="stat"><div class="n" style="color:#dc2626">${qtdNegativas}</div><div class="l">⚠ Obra(s) c/ Resultado Negativo</div></div>`:''}
   `;
 
