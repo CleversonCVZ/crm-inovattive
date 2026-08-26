@@ -106,6 +106,51 @@ revoke execute on function public.sou_admin() from public, anon;
 grant execute on function public.sou_admin() to authenticated;
 revoke execute on function public.pode_ver_tela(text) from public, anon;
 grant execute on function public.pode_ver_tela(text) to authenticated;
+
+-- v1.47.185 (Fase 2, Lote 1): espelham nivelTela()/podeEditarTela()/podeExcluirTela()
+-- do JS (~omni-desktop.html:6692-6704) — nível cumulativo visualizar<editar<excluir
+-- DENTRO de uma tela já visível, independente de pode_ver_tela (que só decide se a
+-- tela existe pro grupo). admin sempre 'excluir'; tela ausente de telas[] = 'nenhum';
+-- tela presente mas ausente de telas_nivel = 'excluir' (mesmo fallback do JS, pra
+-- grupo antigo que nunca configurou nível não perder acesso que já tinha).
+create or replace function public.nivel_tela(tela text)
+returns text
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select case
+       when g.admin then 'excluir'
+       when not (tela = any(g.telas)) then 'nenhum'
+       else coalesce(g.telas_nivel->>tela, 'excluir')
+     end
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    'nenhum'
+  );
+$$;
+revoke execute on function public.nivel_tela(text) from public, anon;
+grant execute on function public.nivel_tela(text) to authenticated;
+
+create or replace function public.pode_editar_tela(tela text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$ select public.nivel_tela(tela) in ('editar','excluir'); $$;
+revoke execute on function public.pode_editar_tela(text) from public, anon;
+grant execute on function public.pode_editar_tela(text) to authenticated;
+
+create or replace function public.pode_excluir_tela(tela text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$ select public.nivel_tela(tela) = 'excluir'; $$;
+revoke execute on function public.pode_excluir_tela(text) from public, anon;
+grant execute on function public.pode_excluir_tela(text) to authenticated;
 revoke execute on function public.bloquear_autopromocao_usuario() from public, anon, authenticated;
 
 
@@ -1001,16 +1046,54 @@ alter table public.empresa enable row level security;
 create policy "authenticated_full_access" on public.empresa for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.estoque_categorias enable row level security;
-create policy "del" on public.estoque_categorias for DELETE to authenticated using (usuario_ativo());
-create policy "upd" on public.estoque_categorias for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
-create policy "sel" on public.estoque_categorias for SELECT to authenticated using (usuario_ativo());
-create policy "ins" on public.estoque_categorias for INSERT to authenticated with check (usuario_ativo());
+-- v1.47.185 (Fase 2, Lote 1 — Estoque): gated pela tela 'estoque-categorias'
+-- (confirmado em novaEstoqueCategoria/excluirEstoqueCategoria). Hoje só o grupo
+-- "Operações" tem essa tela, em nível 'visualizar' — só admin edita/exclui pela UI,
+-- então esta policy não tira acesso de ninguém que já tinha.
+create policy "estoque_categorias_select" on public.estoque_categorias for SELECT to authenticated using (pode_ver_tela('estoque-categorias'));
+create policy "estoque_categorias_insert" on public.estoque_categorias for INSERT to authenticated with check (pode_editar_tela('estoque-categorias'));
+create policy "estoque_categorias_update" on public.estoque_categorias for UPDATE to authenticated using (pode_editar_tela('estoque-categorias')) with check (pode_editar_tela('estoque-categorias'));
+create policy "estoque_categorias_delete" on public.estoque_categorias for DELETE to authenticated using (pode_excluir_tela('estoque-categorias'));
 
 alter table public.estoque_movimentacoes enable row level security;
-create policy "Acesso autenticado — estoque_movimentacoes" on public.estoque_movimentacoes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+-- v1.47.186 (Fase 2, Lote 1 — parte 2): SELECT continua amplo de propósito (lido
+-- fora de Estoque/SRM/O.S. também, ex.: proposta_itens/faturamento_itens têm FK
+-- pra estoque_produtos — não mapeei toda leitura cruzada do sistema). Escrita
+-- liberada pra quem tem QUALQUER UMA das 3 áreas que hoje já gravam aqui de fato
+-- (auditado no código, não suposição): Estoque-Almoxarifado editar, OU SRM-Painel
+-- qualquer nível (as 3 ações do SRM não são travadas por nível hoje), OU O.S.
+-- Painel/Lista qualquer nível (débito/estorno de material em O.S. também não é
+-- travado por nível hoje, só por a O.S. não estar fechada — isso fica de fora da
+-- RLS, é checagem de app). Replica o que já funciona hoje; só fecha a porta pra
+-- quem não tem NENHUMA ligação com essas 3 áreas (ex.: Vendedor/Projetista puro).
+create policy "estoque_movimentacoes_select" on public.estoque_movimentacoes for SELECT to authenticated using (usuario_ativo());
+create policy "estoque_movimentacoes_write" on public.estoque_movimentacoes for INSERT to authenticated with check (
+  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
+create policy "estoque_movimentacoes_update" on public.estoque_movimentacoes for UPDATE to authenticated using (
+  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+) with check (
+  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
+create policy "estoque_movimentacoes_delete" on public.estoque_movimentacoes for DELETE to authenticated using (
+  pode_editar_tela('estoque-almoxarifado') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
 
 alter table public.estoque_produtos enable row level security;
-create policy "Acesso autenticado — estoque_produtos" on public.estoque_produtos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+-- Mesma lógica de estoque_movimentacoes acima, trocando 'estoque-almoxarifado'
+-- editar por 'estoque-catalogo' editar (é essa tela que gated salvarProdutoEstoque).
+create policy "estoque_produtos_select" on public.estoque_produtos for SELECT to authenticated using (usuario_ativo());
+create policy "estoque_produtos_insert" on public.estoque_produtos for INSERT to authenticated with check (
+  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
+create policy "estoque_produtos_update" on public.estoque_produtos for UPDATE to authenticated using (
+  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+) with check (
+  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
+create policy "estoque_produtos_delete" on public.estoque_produtos for DELETE to authenticated using (
+  pode_editar_tela('estoque-catalogo') or pode_ver_tela('srm-painel') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista')
+);
 
 alter table public.fases_crm enable row level security;
 create policy "authenticated_full_access" on public.fases_crm for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
@@ -1059,7 +1142,17 @@ alter table public.funcoes enable row level security;
 create policy "authenticated_full_access" on public.funcoes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.garantia_classes enable row level security;
-create policy "authenticated_ativo" on public.garantia_classes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+-- v1.47.185: gated pela tela 'gerais' (Configurações do Sistema), confirmado em
+-- novaGarantiaClasse/excluirGarantiaClasse. Nenhum grupo não-admin tem 'gerais' em
+-- telas[] hoje — na prática já era só-admin, sem tirar acesso de mais ninguém.
+-- SELECT continua amplo (usuario_ativo()) de propósito: garantia_classes é FK de
+-- estoque_produtos.garantia_classe_id e precisa ser lida por quem só tem a tela
+-- 'estoque-catalogo' (pra mostrar o nome da garantia no catálogo), não só quem
+-- edita classes de garantia.
+create policy "garantia_classes_select" on public.garantia_classes for SELECT to authenticated using (usuario_ativo());
+create policy "garantia_classes_insert" on public.garantia_classes for INSERT to authenticated with check (pode_editar_tela('gerais'));
+create policy "garantia_classes_update" on public.garantia_classes for UPDATE to authenticated using (pode_editar_tela('gerais')) with check (pode_editar_tela('gerais'));
+create policy "garantia_classes_delete" on public.garantia_classes for DELETE to authenticated using (pode_excluir_tela('gerais'));
 
 alter table public.grupos enable row level security;
 create policy "grupos_select" on public.grupos for SELECT to authenticated using (usuario_ativo());
