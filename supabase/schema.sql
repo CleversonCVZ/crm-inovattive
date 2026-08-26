@@ -1009,10 +1009,13 @@ alter table public.cards enable row level security;
 create policy "authenticated_full_access" on public.cards for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.cards_srm enable row level security;
-create policy "Authenticated users can delete cards_srm" on public.cards_srm for DELETE to authenticated using (usuario_ativo());
-create policy "Authenticated users can insert cards_srm" on public.cards_srm for INSERT to authenticated with check (usuario_ativo());
-create policy "Authenticated users can select cards_srm" on public.cards_srm for SELECT to authenticated using (usuario_ativo());
-create policy "Authenticated users can update cards_srm" on public.cards_srm for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+-- v1.47.187 (Fase 2, Lote 2 — SRM): todo write real de cards_srm passa por
+-- podeEditarTela/podeExcluirTela(usuarioAtual,'srm-painel') no código (confirmado
+-- em 100% dos pontos de escrita) — dá pra usar a política completa sem risco.
+create policy "cards_srm_select" on public.cards_srm for SELECT to authenticated using (pode_ver_tela('srm-painel'));
+create policy "cards_srm_insert" on public.cards_srm for INSERT to authenticated with check (pode_editar_tela('srm-painel'));
+create policy "cards_srm_update" on public.cards_srm for UPDATE to authenticated using (pode_editar_tela('srm-painel')) with check (pode_editar_tela('srm-painel'));
+create policy "cards_srm_delete" on public.cards_srm for DELETE to authenticated using (pode_excluir_tela('srm-painel'));
 
 alter table public.categorias_outros_custos enable row level security;
 create policy "autenticados podem gerenciar categorias" on public.categorias_outros_custos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
@@ -1222,10 +1225,18 @@ alter table public.propostas enable row level security;
 create policy "authenticated_full_access" on public.propostas for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.srm_cotacoes enable row level security;
-create policy "sel" on public.srm_cotacoes for SELECT to public using (usuario_ativo());
-create policy "del" on public.srm_cotacoes for DELETE to public using (usuario_ativo());
-create policy "ins" on public.srm_cotacoes for INSERT to public with check (usuario_ativo());
-create policy "upd" on public.srm_cotacoes for UPDATE to public using (usuario_ativo()) with check (usuario_ativo());
+-- Diferente de cards_srm: várias ações de cotação (upload PDF/XML, mudar status,
+-- marcar lançada no estoque, cadastrar catálogo) não checam nível de edição no
+-- código, só exigem o card SRM acessível. Confirmado com dado real: grupo
+-- "Operações" tem srm-painel só em nível 'visualizar' mas faz essas ações hoje na
+-- prática — exigir pode_editar_tela aqui quebraria o trabalho diário desse grupo.
+-- Por isso a escrita é liberada por pode_ver_tela (qualquer nível), não
+-- pode_editar_tela. SELECT também amplo (usuario_ativo()) por precaução — não
+-- mapeei toda leitura cruzada (ex.: Estoque pode exibir referência à cotação).
+create policy "srm_cotacoes_select" on public.srm_cotacoes for SELECT to authenticated using (usuario_ativo());
+create policy "srm_cotacoes_insert" on public.srm_cotacoes for INSERT to authenticated with check (pode_ver_tela('srm-painel'));
+create policy "srm_cotacoes_update" on public.srm_cotacoes for UPDATE to authenticated using (pode_ver_tela('srm-painel')) with check (pode_ver_tela('srm-painel'));
+create policy "srm_cotacoes_delete" on public.srm_cotacoes for DELETE to authenticated using (pode_ver_tela('srm-painel'));
 
 alter table public.usuarios enable row level security;
 create policy "usuarios_insert_admin" on public.usuarios for INSERT to authenticated with check (sou_admin());
