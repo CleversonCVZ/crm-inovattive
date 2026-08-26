@@ -1219,19 +1219,22 @@ create policy "ccorr_update" on public.contas_correntes for UPDATE to authentica
 create policy "ccorr_delete" on public.contas_correntes for DELETE to authenticated using (pode_usar_recurso('fin-contas-correntes-gerenciar'));
 
 -- Fase 2, Lote 3: contas_pagar tem 10 origens de criação. INSERT cobre todas,
--- inclusive confirmarLancarCustoComoCP() (custo de O.S. → C.P.), que hoje NÃO
--- checa recurso nenhum — réplica: quem abre O.S. (painel/lista) consegue lançar.
--- UPDATE cobre editar/gerenciar, registrar pagamento, e salvarEdicaoContaPagar()
--- que também não checa recurso — réplica: quem enxerga a tela de Contas a Pagar.
+-- inclusive confirmarLancarCustoComoCP() (custo de O.S. → C.P.). UPDATE cobre
+-- editar/gerenciar, registrar pagamento, e salvarEdicaoContaPagar().
+-- v1.47.193 (Lote 3 — fechamento de gaps de UI): confirmarLancarCustoComoCP() e
+-- salvarEdicaoContaPagar() passaram a checar podeEditarRecurso('aba-os') e
+-- podeEditarTela('fin-contas-pagar') respectivamente na UI — a RLS acompanhou,
+-- trocando os antigos pode_ver_tela('os-painel'/'os-lista') e
+-- pode_ver_tela('fin-contas-pagar') por suas versões "editar".
 alter table public.contas_pagar enable row level security;
 create policy "cp_select" on public.contas_pagar for SELECT to authenticated using (usuario_ativo());
-create policy "cp_insert" on public.contas_pagar for INSERT to authenticated with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_editar_tela('fat-tributos') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista'));
+create policy "cp_insert" on public.contas_pagar for INSERT to authenticated with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_editar_tela('fat-tributos') or pode_editar_recurso('aba-os'));
 -- v1.47.190 (auditoria pós Fase 3): salvarEdicaoGuiaTributos atualiza valor/vencimento
 -- da CP vinculada sob guarda de podeEditarTela('fat-tributos') — faltava essa condição
 -- no OR-list do UPDATE (hoje só Operações tem fat-tributos, e Operações já tinha
 -- fin-contas-pagar-gerenciar também, então não quebrou na prática, mas corrigido pra
 -- não depender de coincidência de configuração de grupo).
-create policy "cp_update" on public.contas_pagar for UPDATE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos')) with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos'));
+create policy "cp_update" on public.contas_pagar for UPDATE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_editar_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos')) with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_editar_tela('fin-contas-pagar') or pode_editar_tela('fat-tributos'));
 create policy "cp_delete" on public.contas_pagar for DELETE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_excluir_tela('fat-tributos'));
 
 alter table public.contas_pagar_pagamentos enable row level security;
@@ -1343,11 +1346,12 @@ alter table public.financeiro_recebimentos_pagamentos enable row level security;
 create policy "frp_select" on public.financeiro_recebimentos_pagamentos for SELECT to authenticated using (usuario_ativo());
 create policy "frp_write" on public.financeiro_recebimentos_pagamentos for ALL to authenticated using (pode_usar_recurso('fin-contas-receber-receber')) with check (pode_usar_recurso('fin-contas-receber-receber'));
 
--- Fase 2, Lote 3: fornecedor_contatos hoje NÃO tem nenhuma checagem de recurso —
--- réplica: quem enxerga o cartão de Fornecedores mexe nos contatos.
+-- Fase 2, Lote 3: fornecedor_contatos. v1.47.193 (fechamento de gaps de UI): as 4
+-- funções de contato agora checam podeEditarTela('fin-fornecedores') na UI — RLS
+-- acompanhou, trocando pode_ver_tela por pode_editar_tela.
 alter table public.fornecedor_contatos enable row level security;
 create policy "fc_select" on public.fornecedor_contatos for SELECT to authenticated using (usuario_ativo());
-create policy "fc_write" on public.fornecedor_contatos for ALL to authenticated using (pode_ver_tela('fin-fornecedores')) with check (pode_ver_tela('fin-fornecedores'));
+create policy "fc_write" on public.fornecedor_contatos for ALL to authenticated using (pode_editar_tela('fin-fornecedores')) with check (pode_editar_tela('fin-fornecedores'));
 
 -- Fase 2, Lote 3: fornecedores pode ser criado/editado via cadastro direto OU via
 -- atalho "+ Novo" embutido em SRM/Recorrentes/Contas a Pagar (que hoje ignora a

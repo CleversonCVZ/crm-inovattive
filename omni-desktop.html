@@ -1402,11 +1402,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.192';
+const APP_VERSION = '1.47.193';
 const APP_VERSION_DATE = '26/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.193',
+    data: '26/08/2026',
+    itens: [
+      'Segurança (Lote 3 do plano de RLS — Financeiro): 3 ações sem nenhuma checagem de permissão passaram a exigir o nível certo — lançar Custo de O.S. como Conta a Pagar exige editar em O.S., editar Conta a Pagar exige editar em Contas a Pagar, e gerenciar Contatos de Fornecedor exige editar em Fornecedores. A regra do banco (RLS) foi apertada junto. A edição inline de Centro de Custo ganhou checagem redundante (sem mudar o nível exigido, que continua "visualizar" de propósito). Nenhum usuário ativo hoje é afetado.',
+    ]
+  },
   {
     versao: '1.47.192',
     data: '26/08/2026',
@@ -14623,6 +14630,7 @@ function renderCentrosCusto(){
   // Listeners inline save
   tb.querySelectorAll('input[type=text], select').forEach(el => {
     el.onchange = () => {
+      if(!podeVer(usuarioAtual,'fin-centros-custo')){ alert('Sem permissão para esta ação.'); return; }
       const c = db.centrosCusto.find(x => x.id === +el.dataset.id);
       if(!c) return;
       c[el.dataset.campo] = el.value;
@@ -14632,6 +14640,7 @@ function renderCentrosCusto(){
   });
   tb.querySelectorAll('input[type=checkbox]').forEach(el => {
     el.onchange = () => {
+      if(!podeVer(usuarioAtual,'fin-centros-custo')){ alert('Sem permissão para esta ação.'); return; }
       const c = db.centrosCusto.find(x => x.id === +el.dataset.id);
       if(!c) return;
       c.ativo = el.checked;
@@ -14729,6 +14738,7 @@ async function salvarNovoCentroCusto(){
  * - Não verifica vínculos com contas a pagar; centros protegidos já cobrem o caso crítico.
  */
 async function excluirCentroCusto(id){
+  if(!podeVer(usuarioAtual,'fin-centros-custo')){ alert('Sem permissão para esta ação.'); return; }
   const c = db.centrosCusto.find(x=>x.id===id);
   if(!c) return;
   if(c.protegido){ alert(`"${c.nome}" é um registro protegido pelo sistema e não pode ser excluído.`); return; }
@@ -15885,6 +15895,7 @@ async function buscarCepFornecedor(cep, fornId=null){
 /** Conteúdo da aba Contatos do fornecedor */
 function _abaContatosFornecedor(fornId){
   const cts = (db.fornecedorContatos||[]).filter(c=>c.fornecedorId===fornId);
+  const podeEditarForn = podeEditarTela(usuarioAtual,'fin-fornecedores');
   return `
     ${cts.length ? `
     <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">
@@ -15903,12 +15914,13 @@ function _abaContatosFornecedor(fornId){
           <td style="padding:7px 6px">${ct.telefone?`<a href="tel:${ct.telefone.replace(/\D/g,'')}" style="color:var(--blue-dark);text-decoration:none">📞 ${escHtml(ct.telefone)}</a>`:'—'}</td>
           <td style="padding:7px 6px">${ct.email?`<a href="mailto:${ct.email}" style="color:var(--blue-dark);text-decoration:none">${escHtml(ct.email)}</a>`:'—'}</td>
           <td style="padding:7px 4px;text-align:center;white-space:nowrap">
-            <button class="btn sm neutral" title="Editar" onclick="editarContatoFornecedor(${ct.id},${fornId})">✏️</button>
-            <button class="btn sm neutral" title="Remover" onclick="excluirContatoFornecedor(${ct.id},${fornId})">🗑</button>
+            ${podeEditarForn?`<button class="btn sm neutral" title="Editar" onclick="editarContatoFornecedor(${ct.id},${fornId})">✏️</button>
+            <button class="btn sm neutral" title="Remover" onclick="excluirContatoFornecedor(${ct.id},${fornId})">🗑</button>`:''}
           </td>
         </tr>`).join('')}
       </tbody>
     </table>` : `<div style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">Nenhum contato cadastrado.</div>`}
+    ${podeEditarForn?`
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px">
       <div style="font-size:11px;font-weight:600;color:var(--muted)">Novo contato</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -15920,11 +15932,12 @@ function _abaContatosFornecedor(fornId){
         <input id="fc-email" type="email" placeholder="email@exemplo.com" class="input">
       </div>
       <button class="btn sm primary" style="align-self:flex-end" onclick="adicionarContatoFornecedor(${fornId})">＋ Adicionar</button>
-    </div>`;
+    </div>`:''}`;
 }
 
 /** Adiciona contato ao fornecedor */
 async function adicionarContatoFornecedor(fornId){
+  if(!podeEditarTela(usuarioAtual,'fin-fornecedores')){ alert('Sem permissão para esta ação.'); return; }
   const nome = (document.getElementById('fc-nome').value||'').trim();
   if(!nome){ alert('Informe o nome do contato.'); return; }
   const id = await proximoIdSeguro('fornecedor_contatos', db.fornecedorContatos||[]);
@@ -15945,6 +15958,7 @@ async function adicionarContatoFornecedor(fornId){
 
 /** Editar contato inline (abre mini-modal) */
 function editarContatoFornecedor(ctId, fornId){
+  if(!podeEditarTela(usuarioAtual,'fin-fornecedores')){ alert('Sem permissão para esta ação.'); return; }
   const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
   if(!ct) return;
   const row = document.getElementById('fc-row-'+ctId);
@@ -15966,6 +15980,7 @@ function editarContatoFornecedor(ctId, fornId){
 
 /** Persiste edição de contato */
 async function salvarEdicaoContatoFornecedor(ctId, fornId){
+  if(!podeEditarTela(usuarioAtual,'fin-fornecedores')){ alert('Sem permissão para esta ação.'); return; }
   const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
   if(!ct) return;
   const nome     = (document.getElementById('fce-nome-'+ctId).value||'').trim();
@@ -15985,6 +16000,7 @@ async function salvarEdicaoContatoFornecedor(ctId, fornId){
 
 /** Exclui contato do fornecedor */
 async function excluirContatoFornecedor(ctId, fornId){
+  if(!podeEditarTela(usuarioAtual,'fin-fornecedores')){ alert('Sem permissão para esta ação.'); return; }
   if(!confirm('Remover este contato?')) return;
   const ct = (db.fornecedorContatos||[]).find(x=>x.id===ctId);
   await excluirDoSupabase('fornecedor_contatos', ctId);
@@ -16470,6 +16486,7 @@ async function salvarNovaContaPagar(){
 
 /** Abre modal para editar uma conta a pagar existente */
 function abrirEditarContaPagar(id){
+  if(!podeEditarTela(usuarioAtual,'fin-contas-pagar')){ alert('Sem permissão para esta ação.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const ccOpts = (db.centrosCusto||[]).filter(c=>c.ativo)
@@ -16557,6 +16574,7 @@ function abrirEditarContaPagar(id){
 
 /** Persiste edição de conta a pagar */
 async function salvarEdicaoContaPagar(id){
+  if(!podeEditarTela(usuarioAtual,'fin-contas-pagar')){ alert('Sem permissão para esta ação.'); return; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
   if(!p) return;
   const descricao   = (document.getElementById('ecp-desc').value||'').trim();
@@ -19884,7 +19902,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             const cpLancado = !!c.cpId;
             const cpCell = cpLancado
               ? `<td style="text-align:center;padding:4px"><span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado</span></td>`
-              : (!os.fechada
+              : (!os.fechada && podeEditar
                   ? `<td style="text-align:center;padding:4px"><button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarCustoComoCP(${c.id},${osId},${cardId})">📋 → C.P.</button></td>`
                   : `<td style="text-align:center;padding:4px;color:var(--muted);font-size:12px">—</td>`);
             return `<tr style="border-bottom:1px solid var(--border)">
@@ -20061,6 +20079,7 @@ async function excluirOSCusto(custoId, osId, cardId){
 
 /** Abre mini-modal para lançar custo de OS Avulsa como Conta a Pagar */
 function abrirLancarCustoComoCP(custoId, osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const custo = (db.osCustos||[]).find(c=>c.id===custoId);
   if(!custo) return;
   const fornOpts = (db.fornecedores||[]).filter(f=>f.ativo)
@@ -20100,6 +20119,7 @@ function abrirLancarCustoComoCP(custoId, osId, cardId){
 }
 
 async function confirmarLancarCustoComoCP(custoId, osId, cardId){
+  if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const custo = (db.osCustos||[]).find(c=>c.id===custoId);
   if(!custo) return;
   const os    = (db.ordensServico||[]).find(x=>x.id===osId);
