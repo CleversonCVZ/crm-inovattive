@@ -151,6 +151,48 @@ set search_path = public
 as $$ select public.nivel_tela(tela) = 'excluir'; $$;
 revoke execute on function public.pode_excluir_tela(text) from public, anon;
 grant execute on function public.pode_excluir_tela(text) to authenticated;
+
+-- Fase 2, Lote 3: eixo de permissão por "recursos" (independente de telas),
+-- usado principalmente pelo Financeiro (ex.: fin-contas-pagar-gerenciar,
+-- fin-contas-pagar-pagar). Espelham podeUsar()/podeEditarRecurso() do JS.
+create or replace function public.pode_usar_recurso(recurso text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select g.admin or recurso = any(g.recursos)
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.pode_usar_recurso(text) from public, anon;
+grant execute on function public.pode_usar_recurso(text) to authenticated;
+
+create or replace function public.pode_editar_recurso(recurso text)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select case
+       when g.admin then true
+       when not (recurso = any(g.recursos)) then false
+       else coalesce(g.recursos_editar ? recurso, false)
+     end
+     from public.usuarios u
+     join public.grupos g on g.id = u.grupo_id
+     where u.auth_id = auth.uid() and coalesce(u.ativo, true)),
+    false
+  );
+$$;
+revoke execute on function public.pode_editar_recurso(text) from public, anon;
+grant execute on function public.pode_editar_recurso(text) to authenticated;
+
 revoke execute on function public.bloquear_autopromocao_usuario() from public, anon, authenticated;
 
 
@@ -1021,23 +1063,51 @@ alter table public.categorias_outros_custos enable row level security;
 create policy "autenticados podem gerenciar categorias" on public.categorias_outros_custos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 create policy "autenticados podem ler categorias" on public.categorias_outros_custos for SELECT to authenticated using (usuario_ativo());
 
+-- Fase 2, Lote 3: SELECT amplo (leitura cruzada não auditada). INSERT exige o
+-- recurso "gerenciar" (única checagem real hoje, no abridor de Novo Centro de
+-- Custo). UPDATE e DELETE replicam a edição/exclusão inline, que hoje NÃO checa
+-- nenhum recurso — só exige enxergar a tela.
 alter table public.centros_custo enable row level security;
-create policy "Authenticated users can manage centros_custo" on public.centros_custo for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "cc_select" on public.centros_custo for SELECT to authenticated using (usuario_ativo());
+create policy "cc_insert" on public.centros_custo for INSERT to authenticated with check (pode_usar_recurso('fin-centros-custo-gerenciar'));
+create policy "cc_update" on public.centros_custo for UPDATE to authenticated using (pode_ver_tela('fin-centros-custo')) with check (pode_ver_tela('fin-centros-custo'));
+create policy "cc_delete" on public.centros_custo for DELETE to authenticated using (pode_ver_tela('fin-centros-custo'));
 
 alter table public.clientes enable row level security;
 create policy "authenticated_full_access" on public.clientes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
+-- Fase 2, Lote 3: INSERT = cadastro manual (recurso "gerenciar") OU criação
+-- automática da conta de sistema "Provisão de Impostos" a partir do Faturamento.
+-- UPDATE/DELETE = só o recurso "gerenciar" (salvarEdicaoContaCorrente já checava).
 alter table public.contas_correntes enable row level security;
-create policy "auth_contas_correntes" on public.contas_correntes for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "ccorr_select" on public.contas_correntes for SELECT to authenticated using (usuario_ativo());
+create policy "ccorr_insert" on public.contas_correntes for INSERT to authenticated with check (pode_usar_recurso('fin-contas-correntes-gerenciar') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
+create policy "ccorr_update" on public.contas_correntes for UPDATE to authenticated using (pode_usar_recurso('fin-contas-correntes-gerenciar')) with check (pode_usar_recurso('fin-contas-correntes-gerenciar'));
+create policy "ccorr_delete" on public.contas_correntes for DELETE to authenticated using (pode_usar_recurso('fin-contas-correntes-gerenciar'));
 
+-- Fase 2, Lote 3: contas_pagar tem 10 origens de criação. INSERT cobre todas,
+-- inclusive confirmarLancarCustoComoCP() (custo de O.S. → C.P.), que hoje NÃO
+-- checa recurso nenhum — réplica: quem abre O.S. (painel/lista) consegue lançar.
+-- UPDATE cobre editar/gerenciar, registrar pagamento, e salvarEdicaoContaPagar()
+-- que também não checa recurso — réplica: quem enxerga a tela de Contas a Pagar.
 alter table public.contas_pagar enable row level security;
-create policy "auth_contas_pagar" on public.contas_pagar for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "cp_select" on public.contas_pagar for SELECT to authenticated using (usuario_ativo());
+create policy "cp_insert" on public.contas_pagar for INSERT to authenticated with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_editar_tela('fat-tributos') or pode_ver_tela('os-painel') or pode_ver_tela('os-lista'));
+create policy "cp_update" on public.contas_pagar for UPDATE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar')) with check (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_ver_tela('fin-contas-pagar'));
+create policy "cp_delete" on public.contas_pagar for DELETE to authenticated using (pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_excluir_tela('fat-tributos'));
 
 alter table public.contas_pagar_pagamentos enable row level security;
-create policy "authenticated_full_access" on public.contas_pagar_pagamentos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "cpp_select" on public.contas_pagar_pagamentos for SELECT to authenticated using (usuario_ativo());
+create policy "cpp_write" on public.contas_pagar_pagamentos for ALL to authenticated using (pode_usar_recurso('fin-contas-pagar-pagar')) with check (pode_usar_recurso('fin-contas-pagar-pagar'));
 
+-- Fase 2, Lote 3: contas_recorrentes é 100% gateado por nível de tela no app
+-- (salvarNovaRecorrente/salvarEdicaoRecorrente = editar; excluirRecorrente = excluir).
+-- Também faz parte do mecanismo de sync em massa (falhas viram só console.error).
 alter table public.contas_recorrentes enable row level security;
-create policy "auth_contas_recorrentes" on public.contas_recorrentes for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "crec_select" on public.contas_recorrentes for SELECT to authenticated using (usuario_ativo());
+create policy "crec_insert" on public.contas_recorrentes for INSERT to authenticated with check (pode_editar_tela('fin-recorrentes'));
+create policy "crec_update" on public.contas_recorrentes for UPDATE to authenticated using (pode_editar_tela('fin-recorrentes')) with check (pode_editar_tela('fin-recorrentes'));
+create policy "crec_delete" on public.contas_recorrentes for DELETE to authenticated using (pode_excluir_tela('fin-recorrentes'));
 
 alter table public.download_arquivos enable row level security;
 create policy "auth" on public.download_arquivos for ALL to public using (usuario_ativo()) with check (usuario_ativo());
@@ -1133,13 +1203,23 @@ alter table public.financeiro_recebimentos enable row level security;
 create policy "Authenticated users can manage financeiro_recebimentos" on public.financeiro_recebimentos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
 
 alter table public.financeiro_recebimentos_pagamentos enable row level security;
-create policy "authenticated_full_access" on public.financeiro_recebimentos_pagamentos for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "frp_select" on public.financeiro_recebimentos_pagamentos for SELECT to authenticated using (usuario_ativo());
+create policy "frp_write" on public.financeiro_recebimentos_pagamentos for ALL to authenticated using (pode_usar_recurso('fin-contas-receber-receber')) with check (pode_usar_recurso('fin-contas-receber-receber'));
 
+-- Fase 2, Lote 3: fornecedor_contatos hoje NÃO tem nenhuma checagem de recurso —
+-- réplica: quem enxerga o cartão de Fornecedores mexe nos contatos.
 alter table public.fornecedor_contatos enable row level security;
-create policy "auth_fornecedor_contatos" on public.fornecedor_contatos for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "fc_select" on public.fornecedor_contatos for SELECT to authenticated using (usuario_ativo());
+create policy "fc_write" on public.fornecedor_contatos for ALL to authenticated using (pode_ver_tela('fin-fornecedores')) with check (pode_ver_tela('fin-fornecedores'));
 
+-- Fase 2, Lote 3: fornecedores pode ser criado/editado via cadastro direto OU via
+-- atalho "+ Novo" embutido em SRM/Recorrentes/Contas a Pagar (que hoje ignora a
+-- checagem de fin-fornecedores-gerenciar quando aberto via callback).
 alter table public.fornecedores enable row level security;
-create policy "auth_fornecedores" on public.fornecedores for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "forn_select" on public.fornecedores for SELECT to authenticated using (usuario_ativo());
+create policy "forn_insert" on public.fornecedores for INSERT to authenticated with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar'));
+create policy "forn_update" on public.fornecedores for UPDATE to authenticated using (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar')) with check (pode_usar_recurso('fin-fornecedores-gerenciar') or pode_editar_tela('srm-painel') or pode_editar_tela('fin-recorrentes') or pode_usar_recurso('fin-contas-pagar-gerenciar'));
+create policy "forn_delete" on public.fornecedores for DELETE to authenticated using (pode_usar_recurso('fin-fornecedores-gerenciar'));
 
 alter table public.funcoes enable row level security;
 create policy "authenticated_full_access" on public.funcoes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
@@ -1162,19 +1242,25 @@ create policy "grupos_select" on public.grupos for SELECT to authenticated using
 create policy "grupos_write_admin" on public.grupos for ALL to authenticated using (sou_admin()) with check (sou_admin());
 
 alter table public.guias_tributos enable row level security;
-create policy "Authenticated users can update guias_tributos" on public.guias_tributos for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
-create policy "Authenticated users can delete guias_tributos" on public.guias_tributos for DELETE to authenticated using (usuario_ativo());
-create policy "Authenticated users can insert guias_tributos" on public.guias_tributos for INSERT to authenticated with check (usuario_ativo());
-create policy "Authenticated users can select guias_tributos" on public.guias_tributos for SELECT to authenticated using (usuario_ativo());
+create policy "gt_select" on public.guias_tributos for SELECT to authenticated using (usuario_ativo());
+create policy "gt_insert" on public.guias_tributos for INSERT to authenticated with check (pode_editar_tela('fat-tributos'));
+create policy "gt_update" on public.guias_tributos for UPDATE to authenticated using (pode_editar_tela('fat-tributos') or pode_usar_recurso('fin-contas-pagar-pagar')) with check (pode_editar_tela('fat-tributos') or pode_usar_recurso('fin-contas-pagar-pagar'));
+create policy "gt_delete" on public.guias_tributos for DELETE to authenticated using (pode_excluir_tela('fat-tributos'));
 
+-- Fase 2, Lote 3: movimentacoes_financeiras é gerada/editada/excluída a partir de
+-- várias origens (extrato manual, contas de sistema, pagamento de C.P., recebimento
+-- de parcela, faturamento/tributos) — OR de todos os recursos/telas evidenciados.
 alter table public.movimentacoes_financeiras enable row level security;
-create policy "auth_movimentacoes" on public.movimentacoes_financeiras for ALL to public using (usuario_ativo()) with check (usuario_ativo());
+create policy "mf_select" on public.movimentacoes_financeiras for SELECT to authenticated using (usuario_ativo());
+create policy "mf_write" on public.movimentacoes_financeiras for ALL to authenticated
+  using (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'))
+  with check (pode_usar_recurso('fin-contas-correntes-lancar') or pode_usar_recurso('fin-contas-correntes-sistema') or pode_usar_recurso('fin-contas-pagar-pagar') or pode_usar_recurso('fin-contas-pagar-gerenciar') or pode_usar_recurso('fin-contas-receber-receber') or pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
 
 alter table public.notas_fiscais enable row level security;
-create policy "Authenticated users can insert notas_fiscais" on public.notas_fiscais for INSERT to authenticated with check (usuario_ativo());
-create policy "Authenticated users can delete notas_fiscais" on public.notas_fiscais for DELETE to authenticated using (usuario_ativo());
-create policy "Authenticated users can select notas_fiscais" on public.notas_fiscais for SELECT to authenticated using (usuario_ativo());
-create policy "Authenticated users can update notas_fiscais" on public.notas_fiscais for UPDATE to authenticated using (usuario_ativo()) with check (usuario_ativo());
+create policy "nf_select" on public.notas_fiscais for SELECT to authenticated using (usuario_ativo());
+create policy "nf_insert" on public.notas_fiscais for INSERT to authenticated with check (pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
+create policy "nf_update" on public.notas_fiscais for UPDATE to authenticated using (pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos')) with check (pode_editar_tela('fat-painel') or pode_editar_tela('fat-tributos'));
+create policy "nf_delete" on public.notas_fiscais for DELETE to authenticated using (pode_excluir_tela('fat-painel'));
 
 alter table public.notificacoes enable row level security;
 create policy "authenticated_full_access" on public.notificacoes for ALL to authenticated using (usuario_ativo()) with check (usuario_ativo());
