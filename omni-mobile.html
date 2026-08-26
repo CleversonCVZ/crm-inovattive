@@ -445,9 +445,16 @@ html,body{height:100%;background:var(--bg);font-family:-apple-system,BlinkMacSys
    implementado aqui pela primeira vez em 15/07/2026 — serve tanto pra dar
    visibilidade de versão pro usuário quanto, na prática, pra confirmar visualmente
    que um deploy novo realmente chegou no celular (útil pra depurar cache de PWA). */
-const APP_VERSION = '1.0.37';
-const APP_VERSION_DATE = '06/08/2026';
+const APP_VERSION = '1.0.38';
+const APP_VERSION_DATE = '21/08/2026';
 const CHANGELOG = [
+  {
+    versao: '1.0.38',
+    data: '21/08/2026',
+    itens: [
+      'Corrigido: login parou de funcionar pra todo mundo desde ontem — uma proteção de segurança no banco (token do Google Calendar não pode mais ser lido por qualquer usuário) fez a consulta de login, que buscava TODOS os campos do usuário de uma vez, falhar por inteiro. Login volta a funcionar normalmente.',
+    ]
+  },
   {
     versao: '1.0.37',
     data: '06/08/2026',
@@ -975,7 +982,11 @@ async function iniciar(){
     if(!user){ mostrarLogin(); loading(false); return; }
 
     // Busca usuário e grupo
-    const {data:us} = await sb.from('usuarios').select('*').eq('auth_id',user.id).single();
+    // v1.0.38: select('*') incluía google_refresh_token, que desde v1.47.183 do
+    // desktop não tem mais permissão de leitura pra authenticated/anon (só a Edge
+    // Function enxerga) — select('*') com uma coluna sem permissão falha a consulta
+    // INTEIRA, não só omite o campo. Isso derrubou o login de todo mundo no mobile.
+    const {data:us} = await sb.from('usuarios').select('id,nome,grupo_id,ativo,auth_id').eq('auth_id',user.id).single();
     if(!us||!us.ativo){ await sb.auth.signOut(); mostrarLogin(); loading(false); toast('Usuário inativo.'); return; }
 
     const {data:gr} = await sb.from('grupos').select('*').eq('id',us.grupo_id).single();
