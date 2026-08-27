@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.199';
-const APP_VERSION_DATE = '26/08/2026';
+const APP_VERSION = '1.47.200';
+const APP_VERSION_DATE = '27/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.200',
+    data: '27/08/2026',
+    itens: [
+      'Corrigido: excluir um Custo de O.S. Avulsa que já tinha virado Conta a Pagar não apagava/avisava sobre a C.P. — ficava órfã em Contas a Pagar sem ninguém perceber. Agora avisa antes, mesmo padrão já usado ao excluir Retirada de Lucro de Obra. Também limpada 1 C.P. órfã (R$ 280,00) que já tinha ficado assim.',
+    ]
+  },
   {
     versao: '1.47.199',
     data: '26/08/2026',
@@ -20233,8 +20240,11 @@ async function adicionarOSCusto(osId, cardId){
 }
 
 async function excluirOSCusto(custoId, osId, cardId){
-  if(!confirm('Remover este custo?')) return;
   const custo = (db.osCustos||[]).find(c=>c.id===custoId);
+  // v1.47.200: mesmo aviso já usado em excluirRetirada — excluir o custo NÃO apaga
+  // a Conta a Pagar já gerada a partir dele (ficaria órfã sem ninguém saber).
+  if(custo?.cpId && !confirm('Este custo já está vinculado a uma Conta a Pagar (não será excluída automaticamente — vá excluir/cancelar ela também em Contas a Pagar). Excluir mesmo assim?')) return;
+  if(!custo?.cpId && !confirm('Remover este custo?')) return;
   await excluirDoSupabase('os_custos', custoId);
   db.osCustos = (db.osCustos||[]).filter(c=>c.id!==custoId);
   registrarLog('excluir', 'os_custo', custoId, `Custo "${custo?.descricao||''}" removido da O.S. Avulsa #${osId}`);
