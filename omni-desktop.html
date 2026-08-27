@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.201';
+const APP_VERSION = '1.47.202';
 const APP_VERSION_DATE = '27/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.202',
+    data: '27/08/2026',
+    itens: [
+      'Categorias de Downloads (Financeiro → Downloads) ganharam 2 checkboxes — "Visível pra Comercial" e "Visível pra Técnico" — que controlam quem vê essa categoria no app mobile (o novo ícone 📁 de Downloads de lá). Sem marcar nenhuma, só Administrador vê. O cadastro/edição de categoria trocou de uma caixinha de texto simples pra um formulário com esses 2 campos.',
+    ]
+  },
   {
     versao: '1.47.201',
     data: '27/08/2026',
@@ -4336,7 +4343,7 @@ async function carregarDadosSupabase(){
         arquivos: Array.isArray(e.arquivos) ? e.arquivos : []
       }));
     if(dlCats.data)
-      db.downloadCategorias = dlCats.data.map(c=>({id:c.id, nome:c.nome, ordem:c.ordem||0}));
+      db.downloadCategorias = dlCats.data.map(c=>({id:c.id, nome:c.nome, ordem:c.ordem||0, acessoComercial:!!c.acesso_comercial, acessoTecnico:!!c.acesso_tecnico}));
     if(dlArqs.data)
       db.downloadArquivos = dlArqs.data.map(a=>({
         id:a.id, categoriaId:a.categoria_id, nome:a.nome,
@@ -4692,7 +4699,7 @@ function syncDadosSupabase(){
       tipo_atendimento:  o.tipoAtendimento||null
     }));
     await sincronizarTabela('download_categorias', db.downloadCategorias||[], c=>({
-      id:c.id, nome:c.nome, ordem:c.ordem||0
+      id:c.id, nome:c.nome, ordem:c.ordem||0, acesso_comercial:!!c.acessoComercial, acesso_tecnico:!!c.acessoTecnico
     }));
     await sincronizarTabela('download_arquivos', db.downloadArquivos||[], a=>({
       id:a.id, categoria_id:Number(a.categoriaId)||null, nome:a.nome, descricao:a.descricao||'',
@@ -5459,28 +5466,76 @@ function extIcone(ext){
   return '📎';
 }
 
-async function abrirNovaCatDl(){
-  const nome = prompt('Nome da nova categoria:');
-  if(!nome || !nome.trim()) return;
-  const ordem = (db.downloadCategorias||[]).length;
-  const {data, error} = await sb.from('download_categorias').insert({nome:nome.trim(), ordem}).select().single();
-  if(error){ alert('Erro ao criar categoria: '+error.message); return; }
-  db.downloadCategorias = db.downloadCategorias||[];
-  db.downloadCategorias.push({id:data.id, nome:data.nome, ordem:data.ordem});
-  _dlCatAtiva = data.id;
-  registrarLog('criar','download-cat',data.id,`Categoria de download criada: "${data.nome}"`);
-  renderDownloads();
+/** v1.47.202: modal único de Nova/Editar Categoria de Download — pediu pra sair do
+ *  prompt() nativo porque agora a categoria também precisa dizer "quem vê ela no
+ *  app mobile" (☑ Comercial / ☑ Técnico — mesmas 2 flags que o mobile já usa em
+ *  todo o resto do app pra decidir o que cada grupo enxerga, `grupo.acesso_comercial`/
+ *  `acesso_tecnico`). Administrativo fica sem nenhuma marcada de propósito — só quem
+ *  é admin enxerga essas categorias, no mobile e no desktop. */
+function abrirNovaCatDl(){
+  abrirModalCatDl(null);
 }
 
-async function renomearCatDl(id){
-  const cat = (db.downloadCategorias||[]).find(c=>c.id===id);
-  if(!cat) return;
-  const novo = prompt('Novo nome:', cat.nome);
-  if(!novo || !novo.trim() || novo.trim()===cat.nome) return;
-  const {error} = await sb.from('download_categorias').update({nome:novo.trim()}).eq('id',id);
-  if(error){ alert('Erro: '+error.message); return; }
-  cat.nome = novo.trim();
-  registrarLog('editar','download-cat',id,`Categoria renomeada para: "${cat.nome}"`);
+function renomearCatDl(id){
+  abrirModalCatDl(id);
+}
+
+function abrirModalCatDl(id){
+  const cat = id ? (db.downloadCategorias||[]).find(c=>c.id===id) : null;
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3>📁 ${cat?'Editar':'Nova'} Categoria de Download</h3>
+    </div>
+    <div class="aba-corpo" style="display:grid;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:6px">Nome *</div>
+        <input id="catdl-nome" type="text" class="input" value="${escHtml(cat?.nome||'')}" placeholder="Ex.: Comercial">
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px">Visível no app mobile para</div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="catdl-comercial" ${cat?.acessoComercial?'checked':''}> Comercial
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="catdl-tecnico" ${cat?.acessoTecnico?'checked':''}> Técnico
+        </label>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px">Sem marcar nenhuma, só quem é Administrador vê essa categoria (no mobile e no desktop). Não precisa marcar nada aqui pra aparecer no desktop — isso é controlado por Grupos de Acesso, essas 2 caixas são só pro app mobile.</div>
+      </div>
+    </div>
+    <div class="actions rodape-cartao">
+      <button class="btn neutral" onclick="fecharModal()">← Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="salvarModalCatDl(${id||'null'})">Salvar</button>
+    </div>`, 'cartao');
+}
+
+async function salvarModalCatDl(id){
+  const nome = (document.getElementById('catdl-nome').value||'').trim();
+  if(!nome){ alert('Informe o nome da categoria.'); return; }
+  const acessoComercial = document.getElementById('catdl-comercial').checked;
+  const acessoTecnico   = document.getElementById('catdl-tecnico').checked;
+  const btn = btnModalPrimario();
+  btnSalvando(btn);
+
+  if(id){
+    const {error} = await sb.from('download_categorias').update({
+      nome, acesso_comercial:acessoComercial, acesso_tecnico:acessoTecnico
+    }).eq('id',id);
+    if(error){ btnRestaurar(btn); alert('Erro: '+error.message); return; }
+    const cat = (db.downloadCategorias||[]).find(c=>c.id===id);
+    cat.nome = nome; cat.acessoComercial = acessoComercial; cat.acessoTecnico = acessoTecnico;
+    registrarLog('editar','download-cat',id,`Categoria de download editada: "${nome}" (mobile: ${[acessoComercial?'Comercial':null,acessoTecnico?'Técnico':null].filter(Boolean).join(', ')||'só admin'})`);
+  } else {
+    const ordem = (db.downloadCategorias||[]).length;
+    const {data, error} = await sb.from('download_categorias').insert({
+      nome, ordem, acesso_comercial:acessoComercial, acesso_tecnico:acessoTecnico
+    }).select().single();
+    if(error){ btnRestaurar(btn); alert('Erro ao criar categoria: '+error.message); return; }
+    db.downloadCategorias = db.downloadCategorias||[];
+    db.downloadCategorias.push({id:data.id, nome:data.nome, ordem:data.ordem, acessoComercial, acessoTecnico});
+    _dlCatAtiva = data.id;
+    registrarLog('criar','download-cat',data.id,`Categoria de download criada: "${nome}" (mobile: ${[acessoComercial?'Comercial':null,acessoTecnico?'Técnico':null].filter(Boolean).join(', ')||'só admin'})`);
+  }
+  fecharModal();
   renderDownloads();
 }
 
@@ -12303,7 +12358,8 @@ const AJUDA_CONTEUDO = {
   },
   'downloads': {
     titulo: 'Downloads',
-    html: `<p>Repositório de arquivos gerais da empresa, organizados em categorias (coluna esquerda) — pra materiais que não pertencem a nenhum cadastro específico (catálogos, manuais, tabelas de preço). Diferente dos arquivos anexados dentro de um Cartão/O.S./Espelho, que ficam vinculados àquele registro.</p>`
+    html: `<p>Repositório de arquivos gerais da empresa, organizados em categorias (coluna esquerda) — pra materiais que não pertencem a nenhum cadastro específico (catálogos, manuais, tabelas de preço). Diferente dos arquivos anexados dentro de um Cartão/O.S./Espelho, que ficam vinculados àquele registro.</p>
+      <p>No desktop, quem vê cada categoria continua sendo controlado em Grupos de Acesso (permissão por categoria). Ao criar/editar uma categoria, as 2 caixinhas "Visível pra Comercial"/"Visível pra Técnico" controlam algo diferente: quem vê essa categoria no <b>app mobile</b> (ícone 📁 ao lado do ❓ de Ajuda lá) — sem marcar nenhuma, só quem é Administrador vê ela no celular.</p>`
   },
   'grupos': {
     titulo: 'Grupos de Acesso',
