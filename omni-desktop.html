@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.202';
+const APP_VERSION = '1.47.203';
 const APP_VERSION_DATE = '27/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.203',
+    data: '27/08/2026',
+    itens: [
+      'Downloads: arquivos em PDF agora têm um botão 👁 Visualizar separado do ⬇ Baixar, pra abrir o arquivo numa aba nova sem precisar baixar.',
+    ]
+  },
   {
     versao: '1.47.202',
     data: '27/08/2026',
@@ -5445,7 +5452,7 @@ function renderDlArquivos(catId){
         </div>
         <div class="dl-file-acoes">
           ${podeDl
-            ? `<button class="btn sm primary" onclick="baixarDlArquivo('${a.id}','${a.storagePath}','${a.nome}')">⬇ Baixar</button>`
+            ? `${ext==='PDF'?`<button class="btn sm neutral" title="Visualizar" onclick="visualizarDlArquivo('${a.storagePath}','${a.nome}')">👁</button>`:''}<button class="btn sm primary" onclick="baixarDlArquivo('${a.id}','${a.storagePath}','${a.nome}')">⬇ Baixar</button>`
             : `<span class="dl-bloqueado">🔒 Sem acesso</span>`}
           ${admin||podeUl ? `<button class="icon-btn" title="Editar descrição" onclick="editarDescDlArquivo('${a.id}')">✏️</button>` : ''}
           ${admin ? `<button class="icon-btn del" title="Excluir arquivo" onclick="excluirDlArquivo('${a.id}','${a.storagePath}')">🗑</button>` : ''}
@@ -5678,6 +5685,25 @@ async function salvarDescDlArquivo(id){
 async function baixarDlArquivo(id, path, nome){
   await _baixarArquivoBucket('downloads', path, nome);
   registrarLog('download','download-arq',id,`Arquivo baixado: "${nome}"`);
+}
+
+/** v1.47.203: botão 👁 Visualizar ao lado do ⬇ Baixar, só pra PDF — abre o arquivo
+ *  numa aba nova pra consulta rápida sem precisar salvar no computador. Usa
+ *  createSignedUrl (mais leve que baixar o blob inteiro, mesma técnica já usada
+ *  no mobile em baixarOuAbrirArquivoMobile()) — não conta como "download" no log,
+ *  só o botão ⬇ Baixar registra isso. */
+async function visualizarDlArquivo(path, nome){
+  const win = window.open('', '_blank');
+  if(win){ try{ win.document.write('<title>Abrindo...</title><p style="font-family:sans-serif">Carregando o arquivo...</p>'); }catch(e){} }
+  try{
+    const {data, error} = await sb.storage.from('downloads').createSignedUrl(path, 3600);
+    if(error || !data){ if(win) win.close(); alert('Não foi possível abrir o arquivo: '+(error?error.message:'')); return; }
+    if(win && !win.closed) win.location = data.signedUrl;
+    else window.open(data.signedUrl,'_blank');
+  }catch(e){
+    if(win) win.close();
+    alert('Erro ao abrir arquivo: '+e.message);
+  }
 }
 
 async function excluirDlArquivo(id, path){
