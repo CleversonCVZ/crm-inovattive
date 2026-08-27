@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.200';
+const APP_VERSION = '1.47.201';
 const APP_VERSION_DATE = '27/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.201',
+    data: '27/08/2026',
+    itens: [
+      'PDF da O.S. (Execução/Obra e Avulsa) ganhou a seção "Contatos da Obra" (nome, função, telefone) — só aparece quando a obra vinculada tem contatos cadastrados, facilita o técnico ligar direto pra quem precisa sem abrir o sistema.',
+    ]
+  },
   {
     versao: '1.47.200',
     data: '27/08/2026',
@@ -19436,6 +19443,28 @@ async function exportarPDFOSExecucao(osId, modo='download'){
   doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
   y += 7;
 
+  // ── CONTATOS DA OBRA ─────────────────────────────────────
+  // v1.47.201: pedido do Cleverson — facilita o técnico ligar direto pra quem
+  // ele precisa (síndico, morador, arquiteto...) sem precisar abrir o sistema.
+  const contatosObra = obra ? (db.obraContatos||[]).filter(ct=>ct.obraId===obra.id) : [];
+  if(contatosObra.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('CONTATOS DA OBRA', M, y);
+    y += 3;
+    doc.autoTable({
+      startY: y,
+      margin:{left:M,right:M},
+      head:[['Nome','Função','Telefone']],
+      body: contatosObra.map(ct=>[ct.nome||'—', ct.funcao||'—', ct.tel||'—']),
+      headStyles:{fillColor:[38,166,154],textColor:255,fontSize:8,fontStyle:'bold'},
+      bodyStyles:{fontSize:9},
+      theme:'striped',
+      alternateRowStyles:{fillColor:[240,250,249]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
   // ── INSTRUÇÕES ───────────────────────────────────────────
   if(os.instrucoes?.trim()){
     doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
@@ -20591,6 +20620,28 @@ async function exportarPDFOSAvulsa(osId, modo='download'){
   // ── LINHA DIVISÓRIA ───────────────────────────────────────
   doc.setDrawColor(210,210,210); doc.line(M, y, W-M, y);
   y += 7;
+
+  // ── CONTATOS DA OBRA ─────────────────────────────────────
+  // v1.47.201: mesma info adicionada na O.S. de Execução — só aparece se essa
+  // O.S. Avulsa estiver vinculada a uma obra que tenha contatos cadastrados.
+  const contatosObra = obra ? (db.obraContatos||[]).filter(ct=>ct.obraId===obra.id) : [];
+  if(contatosObra.length){
+    if(y > 230){ doc.addPage(); y = M; }
+    doc.setFontSize(8); doc.setFont(undefined,'bold'); doc.setTextColor(...labelColor);
+    doc.text('CONTATOS DA OBRA', M, y);
+    y += 3;
+    doc.autoTable({
+      startY: y,
+      margin:{left:M,right:M},
+      head:[['Nome','Função','Telefone']],
+      body: contatosObra.map(ct=>[ct.nome||'—', ct.funcao||'—', ct.tel||'—']),
+      headStyles:{fillColor:[33,113,48],textColor:255,fontSize:8,fontStyle:'bold'},
+      bodyStyles:{fontSize:9},
+      theme:'striped',
+      alternateRowStyles:{fillColor:[240,250,240]}
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
 
   // ── DESCRIÇÃO DO CHAMADO ───────────────────────────────────
   if(os.descricaoChamado?.trim()){
