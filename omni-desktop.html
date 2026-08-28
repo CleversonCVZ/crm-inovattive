@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.212';
+const APP_VERSION = '1.47.213';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.213',
+    data: '28/08/2026',
+    itens: [
+      'Espelho de Faturamento, aba Itens de Serviço: corrigido o reconhecimento de Número/Data/Valor no XML de NFS-e — algumas prefeituras emitem a NFS-e com prefixo de namespace na tag (ex.: "ns2:Numero"), que a leitura anterior não reconhecia e por isso os campos de cima não eram atualizados sozinhos. Quando o layout de um município ainda não for reconhecido, agora aparece um aviso claro em vez de ficar em silêncio.',
+    ]
+  },
   {
     versao: '1.47.212',
     data: '28/08/2026',
@@ -10996,32 +11003,58 @@ function _htmlXmlNFeProduto(doc){
     </div>`;
 }
 
+/* Acha o valor de uma tag em qualquer XML, procurando pelo nome local mesmo
+ * quando a tag vem com prefixo de namespace (ex.: <ns2:Numero>, comum em
+ * NFS-e gerada por sistemas tipo GINFES/Betha) ou com maiúsculas/minúsculas
+ * diferentes. Aceita vários nomes candidatos (em ordem de prioridade) e
+ * devolve o primeiro valor não vazio encontrado em toda a árvore de `raiz`
+ * (Document inteiro ou um Element específico, pra buscar só dentro dele). */
+function _xmlAcharValor(raiz, ...nomes){
+  if(!raiz) return '';
+  const alvo = nomes.map(n=>n.toLowerCase());
+  const all = raiz.getElementsByTagName('*');
+  for(let i=0;i<all.length;i++){
+    const local = (all[i].localName || all[i].tagName || '').toLowerCase();
+    if(alvo.includes(local)){
+      const txt = (all[i].textContent||'').trim();
+      if(txt) return txt;
+    }
+  }
+  return '';
+}
+function _xmlAcharEl(raiz, ...nomes){
+  if(!raiz) return null;
+  const alvo = nomes.map(n=>n.toLowerCase());
+  const all = raiz.getElementsByTagName('*');
+  for(let i=0;i<all.length;i++){
+    const local = (all[i].localName || all[i].tagName || '').toLowerCase();
+    if(alvo.includes(local)) return all[i];
+  }
+  return null;
+}
+
 /* NFS-e de serviço — NÃO existe layout nacional único (cada prefeitura define o
    seu, geralmente uma variação do padrão ABRASF). Tenta reconhecer os campos
-   mais comuns entre prefeituras; sempre soma a listagem bruta de tudo que foi
+   mais comuns entre prefeituras (com busca tolerante a namespace/maiúsculas,
+   ver _xmlAcharValor); sempre soma a listagem bruta de tudo que foi
    encontrado, já que não dá pra garantir cobertura de 100% dos municípios. */
 function _htmlXmlNFSeServico(doc){
-  const _t = tag => ((doc.getElementsByTagName(tag)[0]||{}).textContent||'').trim();
-  const _tDentro = (container, tag) => {
-    if(!container) return '';
-    return ((container.getElementsByTagName(tag)[0]||{}).textContent||'').trim();
-  };
-  const numero = _t('Numero')||_t('numero');
-  const dataEmissao = _t('DataEmissao')||_t('DataHoraEmissao')||_t('Competencia');
-  const discriminacao = _t('Discriminacao')||_t('discriminacao');
-  const valorServicos = _t('ValorServicos');
-  const valorIss = _t('ValorIss');
-  const aliquota = _t('Aliquota');
-  const valorLiquido = _t('ValorLiquidoNfse')||_t('ValorLiquido');
-  const issRetido = _t('IssRetido')||_t('IssRetencao');
+  const numero = _xmlAcharValor(doc,'Numero','NumeroNfse','numeroNota');
+  const dataEmissao = _xmlAcharValor(doc,'DataEmissao','DataHoraEmissao','Competencia');
+  const discriminacao = _xmlAcharValor(doc,'Discriminacao');
+  const valorServicos = _xmlAcharValor(doc,'ValorServicos');
+  const valorIss = _xmlAcharValor(doc,'ValorIss');
+  const aliquota = _xmlAcharValor(doc,'Aliquota');
+  const valorLiquido = _xmlAcharValor(doc,'ValorLiquidoNfse','ValorLiquido');
+  const issRetido = _xmlAcharValor(doc,'IssRetido','IssRetencao');
 
-  const prestadorEl = doc.getElementsByTagName('PrestadorServico')[0] || doc.getElementsByTagName('Prestador')[0];
-  const prestadorNome = _tDentro(prestadorEl,'RazaoSocial') || _t('RazaoSocialPrestador');
-  const prestadorCnpj = _tDentro(prestadorEl,'Cnpj') || _t('CnpjPrestador');
+  const prestadorEl = _xmlAcharEl(doc,'PrestadorServico','Prestador');
+  const prestadorNome = _xmlAcharValor(prestadorEl,'RazaoSocial') || _xmlAcharValor(doc,'RazaoSocialPrestador');
+  const prestadorCnpj = _xmlAcharValor(prestadorEl,'Cnpj') || _xmlAcharValor(doc,'CnpjPrestador');
 
-  const tomadorEl = doc.getElementsByTagName('TomadorServico')[0] || doc.getElementsByTagName('Tomador')[0];
-  const tomadorNome = _tDentro(tomadorEl,'RazaoSocial');
-  const tomadorDoc = _tDentro(tomadorEl,'Cnpj') || _tDentro(tomadorEl,'CpfCnpj');
+  const tomadorEl = _xmlAcharEl(doc,'TomadorServico','Tomador');
+  const tomadorNome = _xmlAcharValor(tomadorEl,'RazaoSocial');
+  const tomadorDoc = _xmlAcharValor(tomadorEl,'Cnpj') || _xmlAcharValor(tomadorEl,'CpfCnpj');
 
   const reconhecidos = [
     ['Número da NFS-e', numero], ['Data de Emissão', dataEmissao],
@@ -11104,13 +11137,16 @@ function _parseXmlNFeProdutoResumo(doc){
   return { nNF: _t(ide,'nNF'), dhEmi: _t(ide,'dhEmi')||_t(ide,'dEmi'), vNF: parseFloat(_t(total,'vNF'))||0, itens };
 }
 function _parseXmlNFSeServicoResumo(doc){
-  const _t = tag => ((doc.getElementsByTagName(tag)[0]||{}).textContent||'').trim();
-  const valorServicos = parseFloat(_t('ValorServicos'))||0;
-  const valorLiquido = parseFloat(_t('ValorLiquidoNfse')||_t('ValorLiquido'))||0;
+  // v1.47.213: usa _xmlAcharValor (tolerante a namespace/maiúsculas) em vez de
+  // getElementsByTagName direto — várias prefeituras emitem NFS-e com prefixo
+  // de namespace na tag (ex.: <ns2:Numero>), que getElementsByTagName('Numero')
+  // não reconhecia, deixando os campos de cima sem atualizar sozinhos.
+  const valorServicos = parseFloat(_xmlAcharValor(doc,'ValorServicos'))||0;
+  const valorLiquido = parseFloat(_xmlAcharValor(doc,'ValorLiquidoNfse','ValorLiquido'))||0;
   return {
-    numero: _t('Numero')||_t('numero'),
-    dataEmissao: _t('DataEmissao')||_t('DataHoraEmissao')||_t('Competencia'),
-    discriminacao: _t('Discriminacao')||_t('discriminacao'),
+    numero: _xmlAcharValor(doc,'Numero','NumeroNfse','numeroNota'),
+    dataEmissao: _xmlAcharValor(doc,'DataEmissao','DataHoraEmissao','Competencia'),
+    discriminacao: _xmlAcharValor(doc,'Discriminacao'),
     valor: valorServicos || valorLiquido
   };
 }
@@ -11153,6 +11189,14 @@ function _htmlConferenciaServico(nf, p, aplicado){
   const numEsp=nf.servicoNumero||'', numXml=p.numero||'';
   const dataEsp=nf.servicoData||'', dataXml=toISO(p.dataEmissao)||(p.dataEmissao?p.dataEmissao.slice(0,10):'');
   const valorEsp=nf.servicoValor, valorXml=p.valor||0;
+  const nadaReconhecido = !numXml && !dataXml && !valorXml;
+  if(nadaReconhecido){
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:14px;background:#fff8e1">
+      <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">📋 Conferência com o XML anexado</div>
+      <div style="font-size:12.5px;color:#e65100">⚠️ Não consegui reconhecer Número/Data/Valor neste XML — a prefeitura deste município usa um layout de NFS-e fora do padrão comum. Os campos acima não foram atualizados sozinhos; confira e preencha manualmente. A aba 🧾 XML Serviço lista tudo que foi encontrado no arquivo, caso ajude a localizar os dados.</div>
+    </div>`;
+  }
   const stNum = _statusConfer(numEsp, numXml, numEsp===numXml);
   const stData = _statusConfer(dataEsp, dataXml, dataEsp===dataXml);
   const stValor = _statusConfer(valorEsp?String(valorEsp):'', valorXml?String(valorXml):'', valorEsp!=null && Math.abs(valorEsp-valorXml)<0.005);
