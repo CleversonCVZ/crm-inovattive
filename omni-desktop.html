@@ -1413,7 +1413,7 @@ const CHANGELOG = [
     versao: '1.47.210',
     data: '28/08/2026',
     itens: [
-      'Espelho de Faturamento (abas Itens de Produto/Serviço): ao anexar o XML da NF, o sistema agora confere sozinho Número/Data/Valor com o que está lançado no Espelho (e a quantidade/total dos itens, no caso de Produto) e avisa quando tem diferença, com um botão "Usar número/data/valor do XML" pra corrigir os 3 campos de uma vez. Os itens em si continuam exigindo conferência manual — eles vêm da Proposta/O.S. e alimentam Estoque/Resultado Aparente, não são corrigidos sozinhos.',
+      'Espelho de Faturamento (abas Itens de Produto/Serviço): ao anexar o XML da NF, o sistema agora confere sozinho Número/Data/Valor com o que está lançado no Espelho (e a quantidade/total dos itens, no caso de Produto) e avisa quando tem diferença, com um botão "Usar número/data/valor do XML" pra corrigir os 3 campos de uma vez. Os itens em si continuam exigindo conferência manual — eles alimentam o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), não são corrigidos sozinhos.',
     ]
   },
   {
@@ -11071,10 +11071,12 @@ function _htmlXmlGenericoFallback(doc, titulo){
  * Roda toda vez que a aba Produtos/Serviços do Espelho abre com um XML já
  * anexado (ver abrirEspelhoNF) — compara Número/Data/Valor (e, só pra produto,
  * a quantidade/total dos itens) com o que está lançado no Espelho. Deliberadamente
- * NÃO corrige os itens sozinho: eles vêm da Proposta/O.S. de origem e alimentam
- * Estoque/Resultado Aparente — uma correção automática errada ali poderia
- * bagunçar outras telas. Só os campos soltos (número/data/valor) ganham o botão
- * de aplicar com 1 clique, que reaproveita salvarBlocoEspelhoNF pra persistir. */
+ * NÃO corrige os itens sozinho: são uma cópia congelada da Proposta/O.S. que
+ * alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o
+ * material foi usado na O.S. — o Espelho não mexe nisso) — uma correção
+ * automática errada aqui poderia bagunçar o Resultado Aparente sem necessidade.
+ * Só os campos soltos (número/data/valor) ganham o botão de aplicar com 1
+ * clique, que reaproveita salvarBlocoEspelhoNF pra persistir. */
 function _parseXmlNFeProdutoResumo(doc){
   const infNFe = doc.getElementsByTagName('infNFe')[0];
   if(!infNFe) return null;
@@ -11134,7 +11136,7 @@ function _htmlConferenciaProduto(nf, p){
       ${_linhaConferHTML('Valor Total', valorEsp!=null?fmtMoney(valorEsp):'', valorXml?fmtMoney(valorXml):'', stValor)}
       ${p.itens.length ? `<div style="padding:5px 0;font-size:12.5px">
         <span style="color:var(--muted)">Itens</span> — ${qtdItensOk?'✅':'⚠️'} ${itensEsp.length} no Espelho / ${p.itens.length} no XML${!totalItensOk?` · ⚠️ total diferente (Espelho: ${fmtMoney(totalItensEsp)} · XML: ${fmtMoney(totalItensXml)})`:''}
-        ${(!qtdItensOk||!totalItensOk)?'<div style="color:#e65100;margin-top:2px">Confira os itens manualmente — não são corrigidos automaticamente aqui, pois estão ligados à Proposta/O.S. de origem (afetam Estoque e Resultado Aparente).</div>':''}
+        ${(!qtdItensOk||!totalItensOk)?'<div style="color:#e65100;margin-top:2px">Confira os itens manualmente — não são corrigidos automaticamente aqui, pois são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.).</div>':''}
       </div>` : ''}
       ${precisaBotao?`<button class="btn sm" style="margin-top:8px" onclick="aplicarConferenciaFatura(${nf.id},'produto',this)">✔ Usar número/data/valor do XML</button>`:''}
     </div>`;
@@ -12544,7 +12546,7 @@ const AJUDA_CONTEUDO = {
           <h5>⚠ Sem descrição fiscal cadastrada</h5>
           <p>Aparece quando o produto vinculado no catálogo ainda não tem o campo "Descrição Fiscal (xProd)" preenchido. Use o link "🔗 Vincular produto" pra corrigir o vínculo direto por aqui, sem precisar sair da tela.</p>
           <h5>📋 Conferência com o XML anexado</h5>
-          <p>Assim que um XML é anexado (aqui embaixo, em "XML da NF"), o sistema já compara sozinho Número/Data/Valor com o que está preenchido acima, e a quantidade/total dos itens com o que veio na NF-e. Diferença aparece com ⚠, e um botão "Usar número/data/valor do XML" corrige os 3 campos com 1 clique. Os itens NÃO são corrigidos automaticamente — eles vêm da Proposta/O.S. e alimentam Estoque/Resultado Aparente, então uma divergência aí precisa ser conferida manualmente.</p>`
+          <p>Assim que um XML é anexado (aqui embaixo, em "XML da NF"), o sistema já compara sozinho Número/Data/Valor com o que está preenchido acima, e a quantidade/total dos itens com o que veio na NF-e. Diferença aparece com ⚠, e um botão "Usar número/data/valor do XML" corrige os 3 campos com 1 clique. Os itens NÃO são corrigidos automaticamente — são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), então uma divergência aí precisa ser conferida manualmente.</p>`
       },
       servicos: {
         titulo: 'Aba Itens de Serviço',
