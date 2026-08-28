@@ -1404,16 +1404,16 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.210';
+const APP_VERSION = '1.47.211';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
   {
-    versao: '1.47.210',
+    versao: '1.47.211',
     data: '28/08/2026',
     itens: [
-      'Espelho de Faturamento (abas Itens de Produto/Serviço): ao anexar o XML da NF, o sistema agora confere sozinho Número/Data/Valor com o que está lançado no Espelho (e a quantidade/total dos itens, no caso de Produto) e avisa quando tem diferença, com um botão "Usar número/data/valor do XML" pra corrigir os 3 campos de uma vez. Os itens em si continuam exigindo conferência manual — eles alimentam o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), não são corrigidos sozinhos.',
+      'Espelho de Faturamento (abas Itens de Produto/Serviço): ao anexar o XML da NF, o sistema agora confere sozinho Número/Data/Valor com o que está lançado no Espelho e já corrige automaticamente os 3 campos quando tem diferença (ou campo vazio) — sem precisar clicar em nada. Uma mensagem "✔ atualizados automaticamente" confirma quando isso acontece. Pra Produto, a quantidade/total dos itens continua só gerando aviso (⚠): eles alimentam o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.) e exigem conferência manual, de propósito.',
     ]
   },
   {
@@ -10545,10 +10545,11 @@ function abrirEspelhoNF(id, aba='dados'){
     </div>`, 'cartao');
   if(aba==='xmlproduto') carregarXmlFaturaTab(nf.id,'produto');
   if(aba==='xmlservico') carregarXmlFaturaTab(nf.id,'servico');
-  // v1.47.210: conferência automática — toda vez que a aba Produtos/Serviços abre
-  // com um XML já anexado, compara número/data/valor (e itens, no caso de produto)
-  // com o que está lançado no Espelho. Roda de novo sozinha logo após o upload do
-  // XML, já que uploadArquivoFaturamento termina reabrindo nesta mesma aba.
+  // v1.47.211: conferência automática — toda vez que a aba Produtos/Serviços abre
+  // com um XML já anexado, compara número/data/valor com o que está lançado no
+  // Espelho e já grava sozinha o que tiver diferente (itens, no caso de produto,
+  // só geram aviso). Roda de novo sozinha logo após o upload do XML, já que
+  // uploadArquivoFaturamento termina reabrindo nesta mesma aba.
   if(aba==='produtos' && nf.produtoXlsPath) carregarConferenciaFatura(nf.id,'produto');
   if(aba==='servicos' && nf.servicoXlsPath) carregarConferenciaFatura(nf.id,'servico');
 }
@@ -11067,16 +11068,17 @@ function _htmlXmlGenericoFallback(doc, titulo){
   </div>`;
 }
 
-/* ===== v1.47.210: Conferência automática do XML importado =====
+/* ===== v1.47.211: Conferência automática do XML importado =====
  * Roda toda vez que a aba Produtos/Serviços do Espelho abre com um XML já
- * anexado (ver abrirEspelhoNF) — compara Número/Data/Valor (e, só pra produto,
- * a quantidade/total dos itens) com o que está lançado no Espelho. Deliberadamente
- * NÃO corrige os itens sozinho: são uma cópia congelada da Proposta/O.S. que
- * alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o
- * material foi usado na O.S. — o Espelho não mexe nisso) — uma correção
- * automática errada aqui poderia bagunçar o Resultado Aparente sem necessidade.
- * Só os campos soltos (número/data/valor) ganham o botão de aplicar com 1
- * clique, que reaproveita salvarBlocoEspelhoNF pra persistir. */
+ * anexado (ver abrirEspelhoNF) — compara Número/Data/Valor com o que está
+ * lançado no Espelho e, se houver diferença (ou o campo estiver vazio), grava
+ * sozinho os 3 campos com o que veio do XML, sem precisar de clique. Pra
+ * produto, também compara a quantidade/total dos itens, só pra aviso — isso
+ * continua manual, deliberadamente: os itens são uma cópia congelada da
+ * Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado
+ * antes, quando o material foi usado na O.S. — o Espelho não mexe nisso), e
+ * uma correção automática errada aqui poderia bagunçar o Resultado Aparente
+ * sem necessidade. */
 function _parseXmlNFeProdutoResumo(doc){
   const infNFe = doc.getElementsByTagName('infNFe')[0];
   if(!infNFe) return null;
@@ -11114,7 +11116,7 @@ function _linhaConferHTML(label, valEspelho, valXml, status){
 }
 function _statusConfer(esp, xml, iguais){ return !xml ? 'ok' : (!esp ? 'vazio' : (iguais ? 'ok' : 'dif')); }
 
-function _htmlConferenciaProduto(nf, p){
+function _htmlConferenciaProduto(nf, p, aplicado){
   const numEsp=nf.produtoNumero||'', numXml=p.nNF||'';
   const dataEsp=nf.produtoData||'', dataXml=p.dhEmi?p.dhEmi.slice(0,10):'';
   const valorEsp=nf.produtoValor, valorXml=p.vNF||0;
@@ -11127,7 +11129,6 @@ function _htmlConferenciaProduto(nf, p){
   const totalItensEsp = itensEsp.reduce((s,i)=>s+(i.valorTotal||0),0);
   const totalItensOk = !p.itens.length || Math.abs(totalItensEsp-totalItensXml)<0.005;
   const tudoOk = stNum!=='dif' && stData!=='dif' && stValor!=='dif' && qtdItensOk && totalItensOk;
-  const precisaBotao = stNum!=='ok' || stData!=='ok' || stValor!=='ok';
   return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:14px;background:${tudoOk?'#f1f8f1':'#fff8e1'}">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">📋 Conferência com o XML anexado</div>
@@ -11138,10 +11139,10 @@ function _htmlConferenciaProduto(nf, p){
         <span style="color:var(--muted)">Itens</span> — ${qtdItensOk?'✅':'⚠️'} ${itensEsp.length} no Espelho / ${p.itens.length} no XML${!totalItensOk?` · ⚠️ total diferente (Espelho: ${fmtMoney(totalItensEsp)} · XML: ${fmtMoney(totalItensXml)})`:''}
         ${(!qtdItensOk||!totalItensOk)?'<div style="color:#e65100;margin-top:2px">Confira os itens manualmente — não são corrigidos automaticamente aqui, pois são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.).</div>':''}
       </div>` : ''}
-      ${precisaBotao?`<button class="btn sm" style="margin-top:8px" onclick="aplicarConferenciaFatura(${nf.id},'produto',this)">✔ Usar número/data/valor do XML</button>`:''}
+      ${aplicado?'<div style="margin-top:8px;font-size:12px;color:#2e7d32">✔ Número/Data/Valor atualizados automaticamente a partir do XML.</div>':''}
     </div>`;
 }
-function _htmlConferenciaServico(nf, p){
+function _htmlConferenciaServico(nf, p, aplicado){
   const numEsp=nf.servicoNumero||'', numXml=p.numero||'';
   const dataEsp=nf.servicoData||'', dataXml=toISO(p.dataEmissao)||(p.dataEmissao?p.dataEmissao.slice(0,10):'');
   const valorEsp=nf.servicoValor, valorXml=p.valor||0;
@@ -11149,7 +11150,6 @@ function _htmlConferenciaServico(nf, p){
   const stData = _statusConfer(dataEsp, dataXml, dataEsp===dataXml);
   const stValor = _statusConfer(valorEsp?String(valorEsp):'', valorXml?String(valorXml):'', valorEsp!=null && Math.abs(valorEsp-valorXml)<0.005);
   const tudoOk = stNum!=='dif' && stData!=='dif' && stValor!=='dif';
-  const precisaBotao = stNum!=='ok' || stData!=='ok' || stValor!=='ok';
   return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:14px;background:${tudoOk?'#f1f8f1':'#fff8e1'}">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">📋 Conferência com o XML anexado</div>
@@ -11157,7 +11157,7 @@ function _htmlConferenciaServico(nf, p){
       ${_linhaConferHTML('Data de Emissão', dataEsp?fmtDia2(dataEsp):'', dataXml?fmtDia2(dataXml):'', stData)}
       ${_linhaConferHTML('Valor Total', valorEsp!=null?fmtMoney(valorEsp):'', valorXml?fmtMoney(valorXml):'', stValor)}
       <div style="font-size:11px;color:var(--muted);margin-top:6px">NFS-e não tem itens separados por padrão nacional — a Discriminação dos Serviços do XML fica só pra leitura, na aba 🧾 XML Serviço; confira manualmente contra os itens lançados aqui.</div>
-      ${precisaBotao?`<button class="btn sm" style="margin-top:8px" onclick="aplicarConferenciaFatura(${nf.id},'servico',this)">✔ Usar número/data/valor do XML</button>`:''}
+      ${aplicado?'<div style="margin-top:8px;font-size:12px;color:#2e7d32">✔ Número/Data/Valor atualizados automaticamente a partir do XML.</div>':''}
     </div>`;
 }
 
@@ -11173,35 +11173,57 @@ async function _lerEParsearXmlFatura(nf, bloco){
   return bloco==='produto' ? _parseXmlNFeProdutoResumo(doc) : _parseXmlNFSeServicoResumo(doc);
 }
 
+/* Compara Número/Data/Valor do Espelho com o que veio do XML e, se houver
+ * diferença (ou o campo do Espelho estiver vazio), grava sozinho — sem
+ * precisar de clique. Retorna true se algo foi corrigido. */
+async function _autoAplicarConferencia(nf, bloco, p){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')) return false;
+  const pref = bloco==='produto'?'prod':'serv';
+  const numero = (bloco==='produto' ? p.nNF : p.numero) || '';
+  const dataIso = bloco==='produto' ? (p.dhEmi?p.dhEmi.slice(0,10):'') : (toISO(p.dataEmissao)||(p.dataEmissao?p.dataEmissao.slice(0,10):''));
+  const valor = (bloco==='produto' ? p.vNF : p.valor) || 0;
+  const numEsp = nf[bloco+'Numero']||'', dataEsp = nf[bloco+'Data']||'', valorEsp = nf[bloco+'Valor'];
+  const difNum = numero && numero!==numEsp;
+  const difData = dataIso && dataIso!==dataEsp;
+  const difValor = valor && (valorEsp==null || Math.abs(valorEsp-valor)>=0.005);
+  if(!difNum && !difData && !difValor) return false;
+  const novoNumero = numero || numEsp;
+  const novaData = dataIso || dataEsp;
+  const novoValor = valor || valorEsp;
+  const numeroAntes = nf[bloco+'Numero'], dataAntes = nf[bloco+'Data'], valorAntes = nf[bloco+'Valor'];
+  nf[bloco+'Numero']=novoNumero; nf[bloco+'Data']=novaData; nf[bloco+'Valor']=novoValor;
+  nf.valor = _totaisEspelho(nf).total;
+  try{
+    const {error} = await sb.from('notas_fiscais').update({
+      [`${bloco}_numero`]:novoNumero||null, [`${bloco}_data`]:novaData||null, [`${bloco}_valor`]:novoValor, valor:nf.valor
+    }).eq('id', nf.id);
+    if(error) throw error;
+  }catch(e){
+    nf[bloco+'Numero']=numeroAntes; nf[bloco+'Data']=dataAntes; nf[bloco+'Valor']=valorAntes;
+    console.error('Erro ao aplicar conferência automática do XML:', e);
+    return false;
+  }
+  await sincronizarProvisaoImpostoEspelho(nf);
+  registrarLog('editar','nota_fiscal',nf.id,`Dados da NF de ${bloco} atualizados automaticamente a partir do XML no Espelho #${nf.id}`);
+  save();
+  const inpNum = document.getElementById(`fe-${pref}-numero`), inpData = document.getElementById(`fe-${pref}-data`), inpValor = document.getElementById(`fe-${pref}-valor`);
+  if(inpNum) inpNum.value = novoNumero;
+  if(inpData) inpData.value = novaData;
+  if(inpValor) inpValor.value = novoValor!=null ? novoValor.toFixed(2).replace('.',',') : '';
+  return true;
+}
+
 async function carregarConferenciaFatura(nfId, bloco){
   const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
   const el = document.getElementById(`fe-confer-${bloco}`); if(!el) return;
   try{
     const p = await _lerEParsearXmlFatura(nf, bloco);
     if(!p){ el.innerHTML=''; return; }
-    el.innerHTML = bloco==='produto' ? _htmlConferenciaProduto(nf,p) : _htmlConferenciaServico(nf,p);
+    const aplicado = await _autoAplicarConferencia(nf, bloco, p);
+    el.innerHTML = bloco==='produto' ? _htmlConferenciaProduto(nf,p,aplicado) : _htmlConferenciaServico(nf,p,aplicado);
   }catch(e){
     el.innerHTML = `<div class="empty" style="padding:10px;text-align:center;color:#c62828;font-size:12px">Não consegui conferir com o XML: ${escHtml(e.message||String(e))}</div>`;
   }
-}
-
-async function aplicarConferenciaFatura(nfId, bloco, btn){
-  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
-  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
-  let p;
-  try{
-    p = await _lerEParsearXmlFatura(nf, bloco);
-    if(!p) return;
-  }catch(e){ alert('Erro ao ler o XML: '+(e.message||e)); return; }
-  const pref = bloco==='produto'?'prod':'serv';
-  const numero = bloco==='produto' ? p.nNF : p.numero;
-  const dataIso = bloco==='produto' ? (p.dhEmi?p.dhEmi.slice(0,10):'') : (toISO(p.dataEmissao)||(p.dataEmissao?p.dataEmissao.slice(0,10):''));
-  const valor = bloco==='produto' ? p.vNF : p.valor;
-  const inpNum = document.getElementById(`fe-${pref}-numero`), inpData = document.getElementById(`fe-${pref}-data`), inpValor = document.getElementById(`fe-${pref}-valor`);
-  if(numero && inpNum) inpNum.value = numero;
-  if(dataIso && inpData) inpData.value = dataIso;
-  if(valor && inpValor) inpValor.value = valor.toFixed(2).replace('.',',');
-  await salvarBlocoEspelhoNF(nfId, bloco, btn);
 }
 
 function _blocoAnexosHTML(nf, bloco, podeEditar){
@@ -12546,14 +12568,14 @@ const AJUDA_CONTEUDO = {
           <h5>⚠ Sem descrição fiscal cadastrada</h5>
           <p>Aparece quando o produto vinculado no catálogo ainda não tem o campo "Descrição Fiscal (xProd)" preenchido. Use o link "🔗 Vincular produto" pra corrigir o vínculo direto por aqui, sem precisar sair da tela.</p>
           <h5>📋 Conferência com o XML anexado</h5>
-          <p>Assim que um XML é anexado (aqui embaixo, em "XML da NF"), o sistema já compara sozinho Número/Data/Valor com o que está preenchido acima, e a quantidade/total dos itens com o que veio na NF-e. Diferença aparece com ⚠, e um botão "Usar número/data/valor do XML" corrige os 3 campos com 1 clique. Os itens NÃO são corrigidos automaticamente — são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), então uma divergência aí precisa ser conferida manualmente.</p>`
+          <p>Assim que um XML é anexado (aqui embaixo, em "XML da NF"), o sistema já compara Número/Data/Valor com o que está preenchido acima e, se houver diferença (ou o campo estiver vazio), corrige sozinho os 3 campos — sem precisar de clique. Uma mensagem "✔ atualizados automaticamente" confirma quando isso acontece. Já a quantidade/total dos itens só gera aviso (⚠): NÃO são corrigidos automaticamente, pois são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), então uma divergência aí precisa ser conferida manualmente.</p>`
       },
       servicos: {
         titulo: 'Aba Itens de Serviço',
         html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>
           <p>O botão "🔀" em cada item divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela. Funciona tanto nos itens já adicionados aqui em cima (remove do Espelho e já abre a divisão) quanto nos "Disponíveis pra adicionar" embaixo.</p>
           <h5>📋 Conferência com o XML anexado</h5>
-          <p>Mesma ideia da aba de Produto — Número/Data/Valor são comparados automaticamente assim que o XML é anexado, com botão pra corrigir os 3 de uma vez. Como a NFS-e não tem itens separados (cada prefeitura manda um texto único de "Discriminação dos Serviços"), não tem como comparar item a item aqui — a discriminação fica só pra leitura na aba 🧾 XML Serviço.</p>`
+          <p>Mesma ideia da aba de Produto — Número/Data/Valor são comparados e corrigidos automaticamente assim que o XML é anexado, sem precisar de clique. Como a NFS-e não tem itens separados (cada prefeitura manda um texto único de "Discriminação dos Serviços"), não tem como comparar item a item aqui — a discriminação fica só pra leitura na aba 🧾 XML Serviço.</p>`
       },
       xmlproduto: {
         titulo: 'Aba XML Produto',
