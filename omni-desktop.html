@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.206';
+const APP_VERSION = '1.47.207';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.207',
+    data: '28/08/2026',
+    itens: [
+      'Origem do Lead → visualização "Leads por origem": trocado o kanban de colunas lado a lado por um layout em grade (cabeçalho + cards que quebram linha), mesmo padrão já usado em "CRM → Perdidos & Concluídos" — aproveita a largura toda da tela em vez de rolar várias colunas estreitas na horizontal.',
+    ]
+  },
   {
     versao: '1.47.206',
     data: '28/08/2026',
@@ -6714,7 +6721,10 @@ function renderOrigens(){
   const desc = document.getElementById('origens-desc');
   const btnNova = document.getElementById('btn-nova-origem');
   if(tabela) tabela.style.display = ehKanban?'none':'';
-  if(kanban) kanban.style.display = ehKanban?'':'none';
+  // v1.47.207: layout em grade (mesmo padrão de "CRM → Perdidos & Concluídos")
+  // em vez do kanban de colunas lado a lado — com muitas origens, colunas
+  // estreitas rolando na horizontal incomodavam mais do que ajudavam aqui.
+  if(kanban){ kanban.style.display = ehKanban?'block':'none'; kanban.style.overflowX = ehKanban?'unset':''; }
   if(periodoSel) periodoSel.style.display = ehKanban?'':'none';
   if(statusSel) statusSel.style.display = ehKanban?'':'none';
   if(desc) desc.style.display = ehKanban?'none':'';
@@ -6723,7 +6733,7 @@ function renderOrigens(){
   else renderOrigensLista();
 }
 
-/* Vista: leads agrupados por origem (kanban só-leitura, sem drag — a origem se corrige editando o cartão) */
+/* Vista: leads agrupados por origem (só-leitura, sem drag — a origem se corrige editando o cartão) */
 function _origemStatusMatch(c, status){
   if(status==='ativos') return !c.perdido && !c.concluido;
   if(status==='perdidos') return !!c.perdido;
@@ -6731,9 +6741,13 @@ function _origemStatusMatch(c, status){
   return true; // 'todos'
 }
 
+/* v1.47.207: layout em grade (cabeçalho + grid que quebra linha, mesmo padrão
+ * de renderVistaArquivados em "CRM → Perdidos & Concluídos") no lugar do
+ * kanban de colunas lado a lado — com o número de origens cadastradas hoje,
+ * ficar rolando várias colunas estreitas na horizontal incomodava mais do
+ * que ajudava; a grade aproveita a largura toda da tela. */
 function renderOrigemLeadsKanban(){
   const k = document.getElementById('origens-kanban'); if(!k) return;
-  k.innerHTML = '';
   const periodo = (document.getElementById('origens-periodo')||{}).value || 'tudo';
   const status  = (document.getElementById('origens-status')||{}).value || 'todos';
   // Mesmas regras de visibilidade do Painel CRM (renderVistaFases/renderVistaArquivados):
@@ -6742,18 +6756,29 @@ function renderOrigemLeadsKanban(){
   // visão vazaria cards de outras fases/vendedores que o usuário não devia ver em lugar nenhum.
   const visivel = c => podeVerFase(c.faseId) && cardVisivelParaUsuario(c) && filtroBusca(c);
   const idsOrigem = new Set(db.origens.map(o=>o.id));
-  [...db.origens].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).forEach(o=>{
-    const itens = db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo) && _origemStatusMatch(c, status) && visivel(c));
-    k.appendChild(colEl(`${o.emoji||'🏷'} ${o.nome}`, '#495057', itens, {
-      render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
-    }));
-  });
+  const grupos = [...db.origens].sort((a,b)=>(a.ordem||0)-(b.ordem||0)).map(o=>({
+    key: 'o'+o.id,
+    titulo: `${o.emoji||'🏷'} ${o.nome}`,
+    itens: db.cards.filter(c=>c.origemId===o.id && _finPainelDentroFiltro(c.criadoEm, periodo) && _origemStatusMatch(c, status) && visivel(c))
+  }));
   const semOrigem = db.cards.filter(c=>!idsOrigem.has(c.origemId) && _finPainelDentroFiltro(c.criadoEm, periodo) && _origemStatusMatch(c, status) && visivel(c));
-  if(semOrigem.length){
-    k.appendChild(colEl('Sem origem', '#adb5bd', semOrigem, {
-      render: c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; return el; }
-    }));
-  }
+  if(semOrigem.length) grupos.push({key:'sem', titulo:'Sem origem', itens:semOrigem});
+
+  let html = '';
+  grupos.forEach(g=>{
+    if(!g.itens.length) return;
+    html += `<div class="os-grupo-header" style="color:#495057">
+      ${g.titulo} <span class="col-count" style="background:#495057;color:#fff">${g.itens.length}</span>
+    </div>
+    <div class="os-painel-list" style="margin-bottom:24px" id="lead-lista-${g.key}"></div>`;
+  });
+  k.innerHTML = html || '<div class="empty" style="padding:40px">Nenhum lead encontrado com esse filtro.</div>';
+  grupos.forEach(g=>{
+    if(!g.itens.length) return;
+    const lista = document.getElementById(`lead-lista-${g.key}`);
+    if(!lista) return;
+    g.itens.forEach(c=>{ const el = crmCard(c, true); el.draggable=false; el.ondragstart=null; lista.appendChild(el); });
+  });
 }
 
 function renderOrigensLista(){
@@ -11915,7 +11940,7 @@ const AJUDA_CONTEUDO = {
     html: `
       <p>Cadastro de onde os leads costumam vir (ex.: Site, Indicação, Instagram) — aparece como opção no campo "Origem do lead" da aba Dados do Cartão CRM, só pra fins de relatório/análise de onde o negócio veio. Clique no ícone pra escolher outro, edite o nome e a ordem direto na lista (mesmo padrão de "Obras — Categorias de Custo").</p>
       <h5>Visualizações</h5>
-      <p>"Lista de origens" é o cadastro (ícone/nome/ordem/excluir). "Leads por origem" é um kanban de leitura — uma coluna por origem, com os cartões daquela origem. Não dá pra arrastar cartões entre colunas aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado. O filtro de status escolhe entre Todos (default, inclusive Perdidos e Concluídos — visão histórica completa de onde vieram os negócios), só Ativos (ainda em andamento), só Perdidos/Abandonados ou só Concluídos.</p>`
+      <p>"Lista de origens" é o cadastro (ícone/nome/ordem/excluir). "Leads por origem" é uma visão de leitura — um grupo por origem, com os cartões daquela origem. Não dá pra arrastar cartões entre grupos aqui; pra corrigir a origem de um lead, edita direto no Cartão. O filtro de período fatia pela data em que o cartão foi criado. O filtro de status escolhe entre Todos (default, inclusive Perdidos e Concluídos — visão histórica completa de onde vieram os negócios), só Ativos (ainda em andamento), só Perdidos/Abandonados ou só Concluídos.</p>`
   },
   'clientes': {
     titulo: 'CRM — Clientes / Prospects',
