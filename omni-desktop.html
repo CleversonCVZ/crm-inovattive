@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.205';
+const APP_VERSION = '1.47.206';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.206',
+    data: '28/08/2026',
+    itens: [
+      'Painel de Obras, visualização "Por fase": agora dá pra arrastar o card pra outra coluna, igual já era possível no CRM/SRM/Faturamento. Soltar em "Sem fase" tira a fase da obra. As fases Concluída/Abandonada não aparecem nesta visão (só na "Arquivadas"), então não tem risco de concluir uma obra sem querer ao arrastar.',
+    ]
+  },
   {
     versao: '1.47.205',
     data: '28/08/2026',
@@ -12031,7 +12038,7 @@ const AJUDA_CONTEUDO = {
   },
   'obras-painel': {
     titulo: 'Obras — Acompanhamento',
-    html: `<p>Kanban das obras em andamento. Visualizações: por fase (etapa física da obra), por status (ativa/pausada), por cidade, ou concluídas/abandonadas (arquivo). Cada card representa uma Obra — a mesma entidade acessada pela aba "Obra" do Cartão CRM correspondente.</p>
+    html: `<p>Kanban das obras em andamento. Visualizações: por fase (etapa física da obra), por status (ativa/pausada), por cidade, ou concluídas/abandonadas (arquivo). Cada card representa uma Obra — a mesma entidade acessada pela aba "Obra" do Cartão CRM correspondente. Na visualização "Por fase" dá pra arrastar o card pra outra coluna, igual no Painel CRM — solta em "Sem fase" pra tirar a fase da obra. As fases Concluída/Abandonada não aparecem aqui (só na visualização "Arquivadas"), então não tem risco de arrastar sem querer e concluir uma obra.</p>
       <h5>Por que alguns cards não abrem ao clicar</h5>
       <p>O clique no card leva direto pra aba "Obra" do Cartão CRM vinculado — só que uma Obra pode existir sem nenhum Cartão CRM associado (ex.: cadastro antigo, ou obra criada solta). Nesse caso o card fica sem ação de clique (cursor normal, nada acontece). Pra resolver, cadastre um Cartão CRM vinculado a essa obra, ou exclua a obra pelo cadastro de Obras se ela não for mais necessária.</p>
       <h5>Coluna "Concluída" na visualização por fase vs. campo Status</h5>
@@ -25059,7 +25066,11 @@ function _obrasCardHTML(o){
   };
   const si = statusInfo[o.status||'ativa'] || statusInfo.ativa;
   const onclick = card ? `abrirEditarCartao(${card.id},'obras')` : 'void(0)';
-  return `<div class="os-painel-card" onclick="${onclick}" style="border-left-color:${f?.cor||'#adb5bd'};${!card?'cursor:default':''}">
+  // v1.47.206: arrastar entre fases, mesmo padrão do CRM/SRM/Faturamento — gated
+  // pela mesma permissão de edição da tela.
+  const podeArrastar = podeEditarTela(usuarioAtual,'obras-painel');
+  const dragAttrs = podeArrastar ? `draggable="true" ondragstart="event.dataTransfer.setData('text','${o.id}')"` : '';
+  return `<div class="os-painel-card" ${dragAttrs} onclick="${onclick}" style="border-left-color:${f?.cor||'#adb5bd'};${!card?'cursor:default':''}">
     <div class="os-painel-top">
       <span class="os-numero">${o.nome}</span>
       ${f?`<span class="os-fase-badge" style="background:${f.cor}">${f.nome}</span>`:''}
@@ -25096,6 +25107,27 @@ function _renderObrasPainelArquivadas(corpo, lista){
   corpo.innerHTML = html || '<div class="empty">Nenhuma obra concluída ou abandonada.</div>';
 }
 
+/* v1.47.206: arrastar obra pra outra coluna de fase — mesmo padrão de onDrop já
+ * usado em colEl() (CRM/SRM/Faturamento), só que aplicado direto nos .col desta
+ * tela (que são montados via innerHTML, não via colEl). Soltar em "Sem fase"
+ * limpa o faseId (mesma lógica do "Sem Agenda/Reagendar" do CRM). As fases de
+ * sistema (Concluída/Abandonada) já não aparecem nesta visão — só na
+ * "Arquivadas" — então não existe coluna aqui que precise de confirmação/trava
+ * como o CRM tem pra Perdido/Concluído. */
+function _wireDropObraFase(col, faseIdAlvo, faseNome){
+  col.ondragover = e=>{ e.preventDefault(); col.classList.add('dragover'); };
+  col.ondragleave = ()=> col.classList.remove('dragover');
+  col.ondrop = e=>{
+    e.preventDefault(); col.classList.remove('dragover');
+    if(!podeEditarTela(usuarioAtual,'obras-painel')) return;
+    const id = +e.dataTransfer.getData('text');
+    const o = (db.obras||[]).find(x=>x.id===id);
+    if(!o || o.faseId===faseIdAlvo) return;
+    o.faseId = faseIdAlvo;
+    registrarLog('editar','obra',o.id,`Obra "${o.nome}" movida pra fase "${faseNome}" (arrastar no Painel)`);
+    save(); renderAll();
+  };
+}
 function _renderObrasPainelFases(corpo, lista){
   corpo.innerHTML = '';
   const fases = fasesObraOrdenadas().filter(f=>f.tipo!=='concluida' && f.tipo!=='cancelada');
@@ -25112,6 +25144,7 @@ function _renderObrasPainelFases(corpo, lista){
       <span class="col-count">${itens.length}</span>
     </div>
     <div class="col-body">${itens.map(_obrasCardHTML).join('')}</div>`;
+    _wireDropObraFase(col, f.id, f.nome);
     kanban.appendChild(col);
   });
   const semFase = lista.filter(o=>!o.faseId);
@@ -25123,6 +25156,7 @@ function _renderObrasPainelFases(corpo, lista){
       <span class="col-count">${semFase.length}</span>
     </div>
     <div class="col-body">${semFase.map(_obrasCardHTML).join('')}</div>`;
+    _wireDropObraFase(col, null, 'Sem fase');
     kanban.appendChild(col);
   }
   if(!kanban.children.length) corpo.innerHTML='<div class="empty">Nenhuma obra encontrada.</div>';
