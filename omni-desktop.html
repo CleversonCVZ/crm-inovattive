@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.211';
+const APP_VERSION = '1.47.212';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.212',
+    data: '28/08/2026',
+    itens: [
+      'Espelho de Faturamento (abas Itens de Produto/Serviço): adicionado um ✕ vermelho ao lado do PDF e do XML já anexados, pra remover manualmente antes de subir um novo arquivo no lugar.',
+    ]
+  },
   {
     versao: '1.47.211',
     data: '28/08/2026',
@@ -11229,16 +11236,23 @@ async function carregarConferenciaFatura(nfId, bloco){
 function _blocoAnexosHTML(nf, bloco, podeEditar){
   const pdfPath = nf[bloco+'PdfPath'], pdfNome = nf[bloco+'PdfNome'];
   const xlsPath = nf[bloco+'XlsPath'], xlsNome = nf[bloco+'XlsNome'];
+  const xBtn = (tipoArq) => `<button type="button" title="Remover arquivo" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="excluirArquivoFaturamento(${nf.id},'${bloco}','${tipoArq}')">✕</button>`;
   return `
     <div style="display:flex;gap:20px;margin-top:12px;flex-wrap:wrap">
       <div>
         <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">PDF da NF</label>
-        ${pdfPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${pdfPath}','${(pdfNome||'nf.pdf').replace(/'/g,"\\'")}')">📄 ${escHtml(pdfNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        <div style="display:flex;align-items:center;gap:2px">
+          ${pdfPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${pdfPath}','${(pdfNome||'nf.pdf').replace(/'/g,"\\'")}')">📄 ${escHtml(pdfNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+          ${pdfPath&&podeEditar?xBtn('pdf'):''}
+        </div>
         ${podeEditar?`<input type="file" accept="application/pdf" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','pdf')">`:''}
       </div>
       <div>
         <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">XML da NF</label>
-        ${xlsPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${xlsPath}','${(xlsNome||'nf.xml').replace(/'/g,"\\'")}')">🧾 ${escHtml(xlsNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        <div style="display:flex;align-items:center;gap:2px">
+          ${xlsPath?`<button class="btn-xs" onclick="baixarArquivoFaturamento('${bloco}','${xlsPath}','${(xlsNome||'nf.xml').replace(/'/g,"\\'")}')">🧾 ${escHtml(xlsNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+          ${xlsPath&&podeEditar?xBtn('xls'):''}
+        </div>
         ${podeEditar?`<input type="file" accept=".xml,.xls,.xlsx,.csv" style="display:block;margin-top:4px;font-size:12px" onchange="uploadArquivoFaturamento(this,${nf.id},'${bloco}','xls')">`:''}
       </div>
     </div>`;
@@ -11294,6 +11308,28 @@ async function uploadArquivoFaturamento(input, nfId, bloco, tipoArq){
 async function baixarArquivoFaturamento(bloco, path, nome){
   const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
   await _baixarArquivoBucket(bucket, path, nome);
+}
+/* v1.47.212: exclusão manual do PDF/XML anexado, pra poder subir um novo no lugar
+ * sem precisar sobrescrever direto. Só limpa o anexo — número/data/valor já
+ * lançados no Espelho não são mexidos. */
+async function excluirArquivoFaturamento(nfId, bloco, tipoArq){
+  if(!podeEditarTela(usuarioAtual,'fat-painel')){ alert('Sem permissão para editar.'); return; }
+  const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
+  const pathField = `${bloco}${tipoArq==='pdf'?'Pdf':'Xls'}Path`;
+  const nomeField = `${bloco}${tipoArq==='pdf'?'Pdf':'Xls'}Nome`;
+  const path = nf[pathField]; if(!path) return;
+  if(!confirm(`Remover o ${tipoArq==='pdf'?'PDF':'XML'} anexado desta NF?`)) return;
+  const bucket = bloco==='produto' ? 'faturamento-produtos' : 'faturamento-servicos';
+  try{
+    await sb.storage.from(bucket).remove([path]);
+    nf[pathField] = null; nf[nomeField] = null;
+    const colPath = `${bloco}_${tipoArq}_path`, colNome = `${bloco}_${tipoArq}_nome`;
+    const {error} = await sb.from('notas_fiscais').update({[colPath]:null, [colNome]:null}).eq('id', nfId);
+    if(error) throw error;
+  }catch(e){ alert('Erro ao remover: '+(e.message||e)); return; }
+  registrarLog('excluir','nota_fiscal',nfId,`Anexo ${tipoArq.toUpperCase()} de ${bloco} removido do Espelho #${nfId}`);
+  save();
+  abrirEspelhoNF(nfId, bloco==='produto'?'produtos':'servicos');
 }
 
 /* v1.47.38: "Instrução para Emissão de NF" — PDF/Excel gerados a partir dos dados
@@ -12567,6 +12603,8 @@ const AJUDA_CONTEUDO = {
           <p>Lista os materiais já entregues (baixados em O.S.) ainda não faturados. Nome comercial (o mesmo da proposta) em destaque; Descrição Fiscal do catálogo, menor, embaixo — é essa descrição fiscal que precisa constar na NF de verdade.</p>
           <h5>⚠ Sem descrição fiscal cadastrada</h5>
           <p>Aparece quando o produto vinculado no catálogo ainda não tem o campo "Descrição Fiscal (xProd)" preenchido. Use o link "🔗 Vincular produto" pra corrigir o vínculo direto por aqui, sem precisar sair da tela.</p>
+          <h5>Trocar o PDF/XML anexado</h5>
+          <p>Use o ✕ vermelho ao lado do arquivo pra remover o PDF ou o XML já anexado antes de subir um novo no lugar.</p>
           <h5>📋 Conferência com o XML anexado</h5>
           <p>Assim que um XML é anexado (aqui embaixo, em "XML da NF"), o sistema já compara Número/Data/Valor com o que está preenchido acima e, se houver diferença (ou o campo estiver vazio), corrige sozinho os 3 campos — sem precisar de clique. Uma mensagem "✔ atualizados automaticamente" confirma quando isso acontece. Já a quantidade/total dos itens só gera aviso (⚠): NÃO são corrigidos automaticamente, pois são uma cópia congelada da Proposta/O.S. que alimenta o Resultado Aparente (o Estoque já foi baixado antes, quando o material foi usado na O.S.), então uma divergência aí precisa ser conferida manualmente.</p>`
       },
