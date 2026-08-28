@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.204';
+const APP_VERSION = '1.47.205';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.205',
+    data: '28/08/2026',
+    itens: [
+      'Painel CRM, visualização "Por data da agenda": agora dá pra arrastar um cartão pra outra coluna de data, igual já era possível entre fases. Em "Hoje"/"Amanhã" a agenda vai pra aquele dia exato; em "Esta Semana"/"Próxima Semana"/"Futuros" vai pro primeiro dia da faixa; em "Sem Agenda/Reagendar" a data é apagada. "Atrasados" continua sem aceitar arrastar (é um status calculado, não uma data real).',
+    ]
+  },
   {
     versao: '1.47.204',
     data: '28/08/2026',
@@ -7291,6 +7298,21 @@ function toISO(d){
 }
 function fmtDia(s){ const [a,m,dd]=s.split('-'); return `${dd}/${m}`; }
 
+/* v1.47.205: arrastar cards entre as colunas de data. "Hoje" e "Amanhã" têm uma
+ * data exata pra usar; as colunas de faixa (Esta Semana/Próxima Semana/Futuros)
+ * não têm uma data única, então usam o 1º dia da própria faixa como padrão
+ * automático (ex.: soltar em "Próxima Semana" agenda pra segunda-feira da semana
+ * que vem). "Sem Agenda/Reagendar" limpa a data (mesmo efeito do ✕ do cartão).
+ * "Atrasados" não aceita soltar — é um status calculado (agenda que já passou),
+ * não uma data que faça sentido escolher de propósito. */
+async function moverCardParaBucketData(cardId, novaData){
+  const c = db.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  const hora = (c.agenda && c.agenda.length>=16) ? c.agenda.slice(11,16) : '09:00';
+  c.agenda = `${novaData}T${hora}`;
+  save(); renderAll();
+}
+
 function renderVistaData(k){
   const hojeS=localDia(0), amanhaS=localDia(1);
   const dow=(new Date().getDay()+6)%7; // 0 = segunda-feira
@@ -7311,15 +7333,19 @@ function renderVistaData(k){
   });
   Object.values(buckets).forEach(arr=>arr.sort((a,b)=>(a.agenda||'9999').localeCompare(b.agenda||'9999')));
   [
-    ['atrasado','Atrasados','#dc3545','agenda vencida, sem novo contato'],
-    ['hoje','Hoje','#fd7e14',fmtDia(hojeS)],
-    ['amanha','Amanhã','#ffc107',fmtDia(amanhaS)],
-    ['semana','Esta Semana','#20c997','até '+fmtDia(fimSem)],
-    ['proxsemana','Próxima Semana','#1c8dbf','até '+fmtDia(fimProx)],
-    ['futuro','Futuros','#6c757d','após '+fmtDia(fimProx)],
-    ['sem','Sem Agenda / Reagendar','#adb5bd','contato feito ou sem data']
-  ].forEach(([key,titulo,cor,sub])=>{
-    k.appendChild(colEl(titulo, cor, buckets[key], {sub, showFase:true}));
+    ['atrasado','Atrasados','#dc3545','agenda vencida, sem novo contato', null],
+    ['hoje','Hoje','#fd7e14',fmtDia(hojeS), hojeS],
+    ['amanha','Amanhã','#ffc107',fmtDia(amanhaS), amanhaS],
+    ['semana','Esta Semana','#20c997','até '+fmtDia(fimSem), localDia(2)],
+    ['proxsemana','Próxima Semana','#1c8dbf','até '+fmtDia(fimProx), localDia(7-dow)],
+    ['futuro','Futuros','#6c757d','após '+fmtDia(fimProx), localDia(14-dow)],
+    ['sem','Sem Agenda / Reagendar','#adb5bd','contato feito ou sem data', 'limpar']
+  ].forEach(([key,titulo,cor,sub,dataAlvo])=>{
+    let onDrop = null;
+    if(podeEditarTela(usuarioAtual,'painel') && dataAlvo){
+      onDrop = dataAlvo==='limpar' ? (id=>limparAgendaCartao(id)) : (id=>moverCardParaBucketData(id, dataAlvo));
+    }
+    k.appendChild(colEl(titulo, cor, buckets[key], {sub, showFase:true, onDrop}));
   });
 }
 
@@ -11868,7 +11894,7 @@ const AJUDA_CONTEUDO = {
       <h5>Fases "Perdido" e "Concluído"</h5>
       <p>São fases de sistema: mover um cartão pra uma delas marca automaticamente as flags ✖ Perdido / ✔ Concluído (com confirmação), e o cartão sai do kanban — vai pra visualização "perdidos & concluídos". Não precisa marcar a flag manualmente, só arrastar (ou marcar a flag na aba Dados, que move a fase sozinho).</p>
       <h5>Visualizações</h5>
-      <p>"Por fase" é o kanban normal. "Perdidos & concluídos" mostra o arquivo morto. "Por data da agenda" reorganiza os cartões pela próxima ação agendada, útil pra planejar o dia.</p>`
+      <p>"Por fase" é o kanban normal. "Perdidos & concluídos" mostra o arquivo morto. "Por data da agenda" reorganiza os cartões pela próxima ação agendada, útil pra planejar o dia — também dá pra arrastar um cartão pra outra coluna de data: em "Hoje"/"Amanhã" a agenda vai pra aquele dia exato; em "Esta Semana"/"Próxima Semana"/"Futuros" (que são faixas de vários dias) vai pro primeiro dia da faixa; em "Sem Agenda/Reagendar" a data é apagada. "Atrasados" não aceita arrastar — é calculado a partir de uma agenda que já venceu.</p>`
   },
   'fases': {
     titulo: 'CRM — Fases',
