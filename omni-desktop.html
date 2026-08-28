@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.213';
+const APP_VERSION = '1.47.214';
 const APP_VERSION_DATE = '28/08/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.214',
+    data: '28/08/2026',
+    itens: [
+      'Espelho de Faturamento, aba Itens de Serviço: a leitura do XML de NFS-e agora reconhece também o padrão NACIONAL (em vigor desde 2024/2025, schema "NFSe/infNFSe") — testado com um XML real que usava esse formato, cujos campos (Número, Data, Valor) não eram reconhecidos até agora. O layout antigo de cada prefeitura (ABRASF) continua funcionando em paralelo.',
+    ]
+  },
   {
     versao: '1.47.213',
     data: '28/08/2026',
@@ -11033,27 +11040,29 @@ function _xmlAcharEl(raiz, ...nomes){
   return null;
 }
 
-/* NFS-e de serviço — NÃO existe layout nacional único (cada prefeitura define o
-   seu, geralmente uma variação do padrão ABRASF). Tenta reconhecer os campos
-   mais comuns entre prefeituras (com busca tolerante a namespace/maiúsculas,
-   ver _xmlAcharValor); sempre soma a listagem bruta de tudo que foi
-   encontrado, já que não dá pra garantir cobertura de 100% dos municípios. */
+/* NFS-e de serviço — desde 2024/2025 existe um padrão NACIONAL (schema
+   <NFSe><infNFSe>, namespace sped.fazenda.gov.br/nfse), mas boa parte das
+   prefeituras ainda emite no layout antigo (uma variação própria do padrão
+   ABRASF, sem norma nacional). Tenta reconhecer os campos mais comuns dos
+   DOIS formatos (com busca tolerante a namespace/maiúsculas, ver
+   _xmlAcharValor); sempre soma a listagem bruta de tudo que foi encontrado,
+   já que não dá pra garantir cobertura de 100% dos emissores. */
 function _htmlXmlNFSeServico(doc){
-  const numero = _xmlAcharValor(doc,'Numero','NumeroNfse','numeroNota');
-  const dataEmissao = _xmlAcharValor(doc,'DataEmissao','DataHoraEmissao','Competencia');
-  const discriminacao = _xmlAcharValor(doc,'Discriminacao');
-  const valorServicos = _xmlAcharValor(doc,'ValorServicos');
+  const numero = _xmlAcharValor(doc,'nNFSe','Numero','NumeroNfse','numeroNota');
+  const dataEmissao = _xmlAcharValor(doc,'dhProc','dCompet','dhEmi','DataEmissao','DataHoraEmissao','Competencia');
+  const discriminacao = _xmlAcharValor(doc,'xDescServ','Discriminacao');
+  const valorServicos = _xmlAcharValor(doc,'vLiq','vServ','ValorServicos');
   const valorIss = _xmlAcharValor(doc,'ValorIss');
   const aliquota = _xmlAcharValor(doc,'Aliquota');
-  const valorLiquido = _xmlAcharValor(doc,'ValorLiquidoNfse','ValorLiquido');
+  const valorLiquido = _xmlAcharValor(doc,'vLiq','ValorLiquidoNfse','ValorLiquido');
   const issRetido = _xmlAcharValor(doc,'IssRetido','IssRetencao');
 
-  const prestadorEl = _xmlAcharEl(doc,'PrestadorServico','Prestador');
-  const prestadorNome = _xmlAcharValor(prestadorEl,'RazaoSocial') || _xmlAcharValor(doc,'RazaoSocialPrestador');
+  const prestadorEl = _xmlAcharEl(doc,'PrestadorServico','Prestador','emit');
+  const prestadorNome = _xmlAcharValor(prestadorEl,'RazaoSocial','xNome') || _xmlAcharValor(doc,'RazaoSocialPrestador');
   const prestadorCnpj = _xmlAcharValor(prestadorEl,'Cnpj') || _xmlAcharValor(doc,'CnpjPrestador');
 
-  const tomadorEl = _xmlAcharEl(doc,'TomadorServico','Tomador');
-  const tomadorNome = _xmlAcharValor(tomadorEl,'RazaoSocial');
+  const tomadorEl = _xmlAcharEl(doc,'TomadorServico','Tomador','toma');
+  const tomadorNome = _xmlAcharValor(tomadorEl,'RazaoSocial','xNome');
   const tomadorDoc = _xmlAcharValor(tomadorEl,'Cnpj') || _xmlAcharValor(tomadorEl,'CpfCnpj');
 
   const reconhecidos = [
@@ -11138,16 +11147,17 @@ function _parseXmlNFeProdutoResumo(doc){
 }
 function _parseXmlNFSeServicoResumo(doc){
   // v1.47.213: usa _xmlAcharValor (tolerante a namespace/maiúsculas) em vez de
-  // getElementsByTagName direto — várias prefeituras emitem NFS-e com prefixo
-  // de namespace na tag (ex.: <ns2:Numero>), que getElementsByTagName('Numero')
-  // não reconhecia, deixando os campos de cima sem atualizar sozinhos.
-  const valorServicos = parseFloat(_xmlAcharValor(doc,'ValorServicos'))||0;
-  const valorLiquido = parseFloat(_xmlAcharValor(doc,'ValorLiquidoNfse','ValorLiquido'))||0;
+  // getElementsByTagName direto. v1.47.214: também reconhece o padrão NACIONAL
+  // de NFS-e (schema <NFSe><infNFSe>, em vigor desde 2024/2025) — testado com
+  // XML real: número vem em "nNFSe", emissão em "dhProc"/"dCompet", valor em
+  // "vLiq". O layout antigo ABRASF (cada prefeitura com o seu) continua
+  // reconhecido em paralelo, como fallback.
+  const valor = parseFloat(_xmlAcharValor(doc,'vLiq','vServ','ValorServicos','ValorLiquidoNfse','ValorLiquido'))||0;
   return {
-    numero: _xmlAcharValor(doc,'Numero','NumeroNfse','numeroNota'),
-    dataEmissao: _xmlAcharValor(doc,'DataEmissao','DataHoraEmissao','Competencia'),
-    discriminacao: _xmlAcharValor(doc,'Discriminacao'),
-    valor: valorServicos || valorLiquido
+    numero: _xmlAcharValor(doc,'nNFSe','Numero','NumeroNfse','numeroNota'),
+    dataEmissao: _xmlAcharValor(doc,'dhProc','dCompet','dhEmi','DataEmissao','DataHoraEmissao','Competencia'),
+    discriminacao: _xmlAcharValor(doc,'xDescServ','Discriminacao'),
+    valor
   };
 }
 function _linhaConferHTML(label, valEspelho, valXml, status){
