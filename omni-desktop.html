@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.217';
+const APP_VERSION = '1.47.218';
 const APP_VERSION_DATE = '03/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.218',
+    data: '03/09/2026',
+    itens: [
+      'Faturamento → Guias de Recolhimento: o total dos valores reais lançados manualmente por Espelho agora é comparado sozinho com o "Valor Total do Documento" lido do PDF da guia — ✅ quando bate, ⚠️ com a diferença em R$ quando não bate. Atualiza na hora conforme os valores são editados.',
+    ]
+  },
   {
     versao: '1.47.217',
     data: '03/09/2026',
@@ -11921,6 +11928,7 @@ function abrirEditarGuiaTributos(id){
   const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
   window._egtGuiaId = id;
   window._egtEspelhos = espelhos;
+  window._egtValorGuiaPdf = null;
   contextoAjuda.modal='guia-tributos'; contextoAjuda.aba=null; _refreshAjudaSeAberta();
 
   const linhas = espelhos.map(n=>{
@@ -11966,6 +11974,7 @@ function abrirEditarGuiaTributos(id){
       <span>Previsto: <b id="egt-tot-previsto">${fmtMoney(espelhos.reduce((s,n)=>s+previsaoImpostosEspelho(n),0))}</b></span>
       <span>Valor real: <b id="egt-tot-real">${fmtMoney(g.valorTotal)}</b></span>
     </div>
+    <div id="egt-comparacao-pdf" style="text-align:right;font-size:12px;margin-top:2px"></div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div>${podeExcluir?`<button class="btn danger" onclick="excluirGuiaTributos(${id})">Excluir</button>`:''}</div>
       <div style="display:flex;gap:8px">
@@ -11980,6 +11989,20 @@ function _egtRecalc(){
   let totReal=0;
   espelhos.forEach(n=>{ totReal += lerMoeda(`egt-real-${n.id}`)||0; });
   const elR = document.getElementById('egt-tot-real'); if(elR) elR.textContent = fmtMoney(totReal);
+  _egtAtualizarComparacaoPdf(totReal);
+}
+/* v1.47.218: compara sempre (a cada edição de valor real) o total lançado
+ * manualmente contra o "Valor Total do Documento" lido do PDF da guia — pra
+ * pegar na hora um valor real digitado errado. Só roda se o PDF já foi lido
+ * (window._egtValorGuiaPdf setado por carregarDadosPdfGuiaTributos). */
+function _egtAtualizarComparacaoPdf(totReal){
+  const el = document.getElementById('egt-comparacao-pdf'); if(!el) return;
+  const valorPdf = window._egtValorGuiaPdf;
+  if(valorPdf==null){ el.innerHTML=''; return; }
+  const dif = Math.abs((totReal||0) - valorPdf);
+  el.innerHTML = dif < 0.005
+    ? `<span style="color:#2e7d32">✅ Confere com o valor total do PDF (${fmtMoney(valorPdf)})</span>`
+    : `<span style="color:#e65100">⚠️ Diferença de ${fmtMoney(dif)} em relação ao PDF (${fmtMoney(valorPdf)})</span>`;
 }
 async function salvarEdicaoGuiaTributos(id){
   if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão pra editar guias.'); return; }
@@ -12138,6 +12161,10 @@ async function carregarDadosPdfGuiaTributos(guiaId){
   try{
     const dados = await _lerEParsearPdfGuiaTributos(g);
     if(!dados){ el.innerHTML=''; return; }
+    window._egtValorGuiaPdf = dados.valorTotal!=null ? dados.valorTotal : null;
+    const espelhos = window._egtEspelhos||[];
+    const totRealAtual = espelhos.reduce((s,n)=>s+(lerMoeda(`egt-real-${n.id}`)||0),0);
+    _egtAtualizarComparacaoPdf(totRealAtual);
     const aplicado = await _autoAplicarPdfGuiaTributos(g, dados);
     if(aplicado){
       const inpNum = document.getElementById('egt-numero'), inpData = document.getElementById('egt-data'),
@@ -12797,7 +12824,8 @@ const AJUDA_CONTEUDO = {
       <p>Só aparecem aqui Espelhos marcados "Incluir na Previsão de Impostos" e que ainda não foram vinculados a nenhuma outra guia.</p>
       <p>Se a mesma guia cobrir vários Espelhos, peça pro contador separar o valor de cada um — o rateio é manual, não há divisão automática.</p>
       <h5>PDF da Guia</h5>
-      <p>Depois de criada, reabra a guia (lista de Guias de Recolhimento) pra anexar o PDF que a contabilidade enviou — fica guardado ali, com botão ✕ vermelho pra remover e subir outro no lugar se precisar. Pra guias no formato DAS do Simples Nacional (sistema SENDA), o sistema lê o PDF sozinho e já preenche Número/Data de Recebimento/Vencimento, e o campo Observações ganha o detalhamento dos tributos (IRPJ/CSLL/COFINS/PIS/INSS/ISS) — só quando Observações estiver vazio, pra não apagar anotação já digitada.</p>`
+      <p>Depois de criada, reabra a guia (lista de Guias de Recolhimento) pra anexar o PDF que a contabilidade enviou — fica guardado ali, com botão ✕ vermelho pra remover e subir outro no lugar se precisar. Pra guias no formato DAS do Simples Nacional (sistema SENDA), o sistema lê o PDF sozinho e já preenche Número/Data de Recebimento/Vencimento, e o campo Observações ganha o detalhamento dos tributos (IRPJ/CSLL/COFINS/PIS/INSS/ISS) — só quando Observações estiver vazio, pra não apagar anotação já digitada.</p>
+      <p>Logo abaixo do "Valor real" aparece a comparação com o "Valor Total do Documento" do PDF — ✅ se bater, ⚠️ com a diferença em R$ se não bater. Atualiza sozinha conforme você edita o valor real de cada Espelho.</p>`
   },
   'fat-espelhos': {
     titulo: 'Faturamento — Espelhos de NF',
