@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.215';
-const APP_VERSION_DATE = '28/08/2026';
+const APP_VERSION = '1.47.216';
+const APP_VERSION_DATE = '03/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.216',
+    data: '03/09/2026',
+    itens: [
+      'Faturamento → Guias de Recolhimento: agora dá pra anexar o PDF da guia (DAS) que a contabilidade envia, direto na tela da guia — com botão ✕ vermelho pra remover e substituir se precisar.',
+    ]
+  },
   {
     versao: '1.47.215',
     data: '28/08/2026',
@@ -4590,6 +4597,7 @@ async function carregarDadosSupabase(){
       db.guiasTributos = guiasTributosRes.data.map(g=>({
         id:g.id, numero:g.numero||'', dataRecebimento:g.data_recebimento?g.data_recebimento.slice(0,10):'', observacoes:g.observacoes||'',
         valorTotal:Number(g.valor_total)||0, status:g.status||'aberta', contasPagarId:g.contas_pagar_id||null,
+        pdfPath:g.pdf_path||null, pdfNome:g.pdf_nome||null,
         criadoEm:g.criado_em||''
       }));
     if(faturamentoItensRes.data)
@@ -11790,7 +11798,7 @@ async function confirmarNovaGuiaTributos(){
     });
     await sb.from('guias_tributos').update({contas_pagar_id:cpId}).eq('id', guiaId);
   }
-  db.guiasTributos.push({id:guiaId, numero, dataRecebimento, observacoes, valorTotal, status:'lancada', contasPagarId:errCp?null:cpId, criadoEm:new Date().toISOString()});
+  db.guiasTributos.push({id:guiaId, numero, dataRecebimento, observacoes, valorTotal, status:'lancada', contasPagarId:errCp?null:cpId, pdfPath:null, pdfNome:null, criadoEm:new Date().toISOString()});
 
   for(const {nf, valorReal} of selecionados){
     nf.guiaTributosId = guiaId;
@@ -11937,6 +11945,14 @@ function abrirEditarGuiaTributos(id){
       <div><label>Vencimento da Conta a Pagar</label><input type="date" id="egt-vencimento" value="${cp?.dataVencimento||''}" ${podeEditar?'':'disabled'}></div>
     </div>
     <label>Observações</label><textarea id="egt-obs" placeholder="Opcional" ${podeEditar?'':'disabled'}>${escHtml(g.observacoes||'')}</textarea>
+    <div style="margin-top:10px">
+      <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">PDF da Guia (enviado pela contabilidade)</label>
+      <div style="display:flex;align-items:center;gap:2px">
+        ${g.pdfPath?`<button class="btn-xs" onclick="baixarPdfGuiaTributos('${g.pdfPath}','${(g.pdfNome||'guia.pdf').replace(/'/g,"\\'")}')">📄 ${escHtml(g.pdfNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+        ${g.pdfPath&&podeEditar?`<button type="button" title="Remover arquivo" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="excluirPdfGuiaTributos(${id})">✕</button>`:''}
+      </div>
+      ${podeEditar?`<input type="file" accept="application/pdf" style="display:block;margin-top:4px;font-size:12px" onchange="uploadPdfGuiaTributos(this,${id})">`:''}
+    </div>
     <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;margin-top:10px">${linhas}</div>
     <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
       <span>Previsto: <b id="egt-tot-previsto">${fmtMoney(espelhos.reduce((s,n)=>s+previsaoImpostosEspelho(n),0))}</b></span>
@@ -11996,6 +12012,46 @@ async function salvarEdicaoGuiaTributos(id){
   renderFatTributos(); renderFinPainel();
   btnSalvo(btn);
 }
+/* v1.47.216: anexo do PDF da guia (DAS) que a contabilidade manda — mesmo padrão
+ * de upload/download/exclusão já usado nos anexos do Espelho de Faturamento
+ * (bucket próprio "guias-tributos", 1 arquivo por guia, sobrescreve o anterior). */
+async function uploadPdfGuiaTributos(input, guiaId){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para editar.'); return; }
+  const g = (db.guiasTributos||[]).find(x=>x.id===guiaId); if(!g) return;
+  const file = input && input.files && input.files[0]; if(!file) return;
+  const path = `guia_${guiaId}/pdf_${Date.now()}.pdf`;
+  try{
+    const {error} = await uploadOSArquivoXHR('guias-tributos', path, file, ()=>{});
+    if(error) throw new Error(error.message||'Erro no upload');
+    const antigoPath = g.pdfPath;
+    if(antigoPath) await sb.storage.from('guias-tributos').remove([antigoPath]);
+    g.pdfPath = path; g.pdfNome = file.name;
+    await sb.from('guias_tributos').update({pdf_path:path, pdf_nome:file.name}).eq('id', guiaId);
+    registrarLog('editar','guia_tributos',guiaId,`PDF da Guia de Recolhimento #${guiaId} enviado (${escHtml(file.name)})`);
+    save();
+    abrirEditarGuiaTributos(guiaId);
+  }catch(e){
+    alert('Erro no upload: '+(e.message||e));
+  }
+}
+async function baixarPdfGuiaTributos(path, nome){
+  await _baixarArquivoBucket('guias-tributos', path, nome);
+}
+async function excluirPdfGuiaTributos(guiaId){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para editar.'); return; }
+  const g = (db.guiasTributos||[]).find(x=>x.id===guiaId); if(!g) return;
+  if(!g.pdfPath) return;
+  if(!confirm('Remover o PDF anexado desta guia?')) return;
+  try{
+    await sb.storage.from('guias-tributos').remove([g.pdfPath]);
+    g.pdfPath = null; g.pdfNome = null;
+    const {error} = await sb.from('guias_tributos').update({pdf_path:null, pdf_nome:null}).eq('id', guiaId);
+    if(error) throw error;
+  }catch(e){ alert('Erro ao remover: '+(e.message||e)); return; }
+  registrarLog('excluir','guia_tributos',guiaId,`PDF removido da Guia de Recolhimento #${guiaId}`);
+  save();
+  abrirEditarGuiaTributos(guiaId);
+}
 async function excluirGuiaTributos(id){
   if(!podeExcluirTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para excluir guias.'); return; }
   const g = (db.guiasTributos||[]).find(x=>x.id===id); if(!g) return;
@@ -12004,6 +12060,8 @@ async function excluirGuiaTributos(id){
   const avisoPaga = (cp&&cp.status==='pago') ? '\n\nA Conta a Pagar já estava paga — a movimentação na conta corrente também será removida.'
     : (cp&&cp.status==='parcial') ? `\n\nA Conta a Pagar já tinha pagamento(s) parcial(is) registrado(s) (${fmtMoney(cp.valorPago||0)}) — essas movimentações na conta corrente também serão removidas.` : '';
   if(!confirm(`Excluir a Guia #${id}? ${espelhos.length} Espelho(s) vinculado(s) voltam a ficar disponíveis pra outra guia, e a Conta a Pagar gerada será removida.${avisoPaga}`)) return;
+
+  if(g.pdfPath) await sb.storage.from('guias-tributos').remove([g.pdfPath]);
 
   for(const nf of espelhos){
     nf.guiaTributosId = null;
@@ -12634,7 +12692,9 @@ const AJUDA_CONTEUDO = {
     html: `
       <p>Marque os Espelhos que essa guia cobre (segundo o que o contador informou) e digite o valor real de imposto de cada um — o campo vem pré-preenchido com a Previsão de Impostos calculada, mas edite pro valor real se for diferente.</p>
       <p>Só aparecem aqui Espelhos marcados "Incluir na Previsão de Impostos" e que ainda não foram vinculados a nenhuma outra guia.</p>
-      <p>Se a mesma guia cobrir vários Espelhos, peça pro contador separar o valor de cada um — o rateio é manual, não há divisão automática.</p>`
+      <p>Se a mesma guia cobrir vários Espelhos, peça pro contador separar o valor de cada um — o rateio é manual, não há divisão automática.</p>
+      <h5>PDF da Guia</h5>
+      <p>Depois de criada, reabra a guia (lista de Guias de Recolhimento) pra anexar o PDF que a contabilidade enviou — fica guardado ali, com botão ✕ vermelho pra remover e subir outro no lugar se precisar.</p>`
   },
   'fat-espelhos': {
     titulo: 'Faturamento — Espelhos de NF',
