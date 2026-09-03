@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.216';
+const APP_VERSION = '1.47.217';
 const APP_VERSION_DATE = '03/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.217',
+    data: '03/09/2026',
+    itens: [
+      'Faturamento → Guias de Recolhimento: o PDF anexado (DAS do Simples Nacional, formato SENDA) agora é lido automaticamente — Número, Data de Recebimento e Vencimento são preenchidos sozinhos, e Observações ganha o detalhamento dos tributos que compõem a guia (IRPJ/CSLL/COFINS/PIS/INSS/ISS), só quando o campo estiver vazio.',
+    ]
+  },
   {
     versao: '1.47.216',
     data: '03/09/2026',
@@ -11952,6 +11959,7 @@ function abrirEditarGuiaTributos(id){
         ${g.pdfPath&&podeEditar?`<button type="button" title="Remover arquivo" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="excluirPdfGuiaTributos(${id})">✕</button>`:''}
       </div>
       ${podeEditar?`<input type="file" accept="application/pdf" style="display:block;margin-top:4px;font-size:12px" onchange="uploadPdfGuiaTributos(this,${id})">`:''}
+      ${g.pdfPath?`<div id="egt-pdf-status" style="margin-top:6px;font-size:12px;color:var(--muted)">⏳ Lendo dados do PDF...</div>`:''}
     </div>
     <div style="max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0 10px;margin-top:10px">${linhas}</div>
     <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px">
@@ -11965,6 +11973,7 @@ function abrirEditarGuiaTributos(id){
         ${podeEditar?`<button class="btn primary" data-btn-salvar onclick="salvarEdicaoGuiaTributos(${id})">Salvar</button>`:''}
       </div>
     </div>`, 'wide');
+  if(g.pdfPath) carregarDadosPdfGuiaTributos(id);
 }
 function _egtRecalc(){
   const espelhos = window._egtEspelhos||[];
@@ -12051,6 +12060,100 @@ async function excluirPdfGuiaTributos(guiaId){
   registrarLog('excluir','guia_tributos',guiaId,`PDF removido da Guia de Recolhimento #${guiaId}`);
   save();
   abrirEditarGuiaTributos(guiaId);
+}
+
+/* v1.47.217: leitura automática do PDF da Guia de Recolhimento — DAS (Documento
+ * de Arrecadação do Simples Nacional), layout do sistema SENDA que a
+ * contabilidade da Inovattive usa (confirmado com Cleverson que o formato não
+ * muda). Ao anexar o PDF (ou reabrir uma guia que já tem um anexado), o sistema
+ * lê Número/Vencimento/Data de emissão sozinho e já grava — mesmo padrão da
+ * conferência automática do XML no Espelho de Faturamento. Observações só é
+ * preenchido se estiver vazio, pra não sobrescrever anotação que o Cleverson
+ * já tenha digitado ali; nele vai o detalhamento dos tributos que compõem o
+ * DAS (IRPJ/CSLL/COFINS/PIS/INSS/ISS etc.), útil pra conferência posterior. */
+function _parseGuiaTributosPDF(texto){
+  const t = (texto||'').replace(/\s+/g,' ').trim();
+  const numero = (t.match(/N[uú]mero do Documento\s*([\d.]+-\d)/i)||[])[1] || '';
+  const mVenc = t.match(/Pagar (?:este documento )?at[eé]\s*(\d{2}\/\d{2}\/\d{4})/i)
+             || t.match(/Data de Vencimento\D{0,20}?(\d{2}\/\d{2}\/\d{4})/i);
+  const dataVencimento = mVenc ? mVenc[1] : '';
+  const mValor = t.match(/Valor Total do Documento\s*([\d.]+,\d{2})/i);
+  const valorTotal = mValor ? parseValorBR(mValor[1]) : null;
+  const mPeriodo = t.match(/\b([a-zà-ú]+\/\d{4})\b/i);
+  const periodoApuracao = mPeriodo ? mPeriodo[1] : '';
+  const mGeracao = t.match(/(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}:\d{2}/);
+  const dataGeracao = mGeracao ? mGeracao[1] : '';
+  const itens = [];
+  const reLinha = /\b(10\d{2})\b\s+([A-ZÀ-Úa-zà-ú()\-\s]+?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})\s+(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+  let m;
+  while((m=reLinha.exec(t))){
+    itens.push({codigo:m[1], denominacao:m[2].replace(/\s*-\s*$/,'').trim(), valor:parseValorBR(m[4])});
+  }
+  return { numero, dataVencimento, valorTotal, periodoApuracao, dataGeracao, itens };
+}
+async function _lerEParsearPdfGuiaTributos(g){
+  if(!g.pdfPath) return null;
+  const {data, error} = await sb.storage.from('guias-tributos').download(g.pdfPath);
+  if(error || !data) throw new Error(error?.message||'Falha ao baixar o arquivo');
+  const buf = await data.arrayBuffer();
+  const lib = await carregarPdfJs();
+  const doc = await lib.getDocument({data:new Uint8Array(buf)}).promise;
+  let texto = '';
+  for(let i=1;i<=doc.numPages;i++){
+    const pg = await doc.getPage(i);
+    const tc = await pg.getTextContent();
+    texto += tc.items.map(it=>it.str).join(' ') + '\n';
+  }
+  return _parseGuiaTributosPDF(texto);
+}
+function _composicaoGuiaTexto(dados){
+  if(!dados.itens.length) return '';
+  const linhas = dados.itens.map(i=>`${i.denominacao}: ${fmtMoney(i.valor)}`).join('\n');
+  return `Composição do DAS${dados.periodoApuracao?` (competência ${dados.periodoApuracao})`:''}:\n${linhas}`;
+}
+async function _autoAplicarPdfGuiaTributos(g, dados){
+  if(!podeEditarTela(usuarioAtual,'fat-tributos')) return false;
+  let mudouGuia = false;
+  if(dados.numero && dados.numero!==g.numero){ g.numero = dados.numero; mudouGuia = true; }
+  const dataRecISO = dados.dataGeracao ? toISO(dados.dataGeracao) : null;
+  if(dataRecISO && dataRecISO!==g.dataRecebimento){ g.dataRecebimento = dataRecISO; mudouGuia = true; }
+  const obsNova = _composicaoGuiaTexto(dados);
+  if(obsNova && !g.observacoes){ g.observacoes = obsNova; mudouGuia = true; }
+  const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+  const vencISO = dados.dataVencimento ? toISO(dados.dataVencimento) : null;
+  let mudouCp = false;
+  if(cp && vencISO && vencISO!==cp.dataVencimento){ cp.dataVencimento = vencISO; mudouCp = true; }
+  if(!mudouGuia && !mudouCp) return false;
+  try{
+    if(mudouGuia) await sb.from('guias_tributos').update({numero:g.numero, data_recebimento:g.dataRecebimento||null, observacoes:g.observacoes}).eq('id', g.id);
+    if(mudouCp) await sb.from('contas_pagar').update({data_vencimento:cp.dataVencimento}).eq('id', cp.id);
+  }catch(e){ console.error('Erro ao aplicar dados do PDF da guia:', e); return false; }
+  registrarLog('editar','guia_tributos',g.id,`Dados da Guia #${g.id} preenchidos automaticamente a partir do PDF anexado`);
+  save();
+  return true;
+}
+async function carregarDadosPdfGuiaTributos(guiaId){
+  const g = (db.guiasTributos||[]).find(x=>x.id===guiaId); if(!g) return;
+  const el = document.getElementById('egt-pdf-status'); if(!el) return;
+  try{
+    const dados = await _lerEParsearPdfGuiaTributos(g);
+    if(!dados){ el.innerHTML=''; return; }
+    const aplicado = await _autoAplicarPdfGuiaTributos(g, dados);
+    if(aplicado){
+      const inpNum = document.getElementById('egt-numero'), inpData = document.getElementById('egt-data'),
+            inpVenc = document.getElementById('egt-vencimento'), inpObs = document.getElementById('egt-obs');
+      if(inpNum) inpNum.value = g.numero||'';
+      if(inpData) inpData.value = g.dataRecebimento||'';
+      if(inpObs) inpObs.value = g.observacoes||'';
+      const cp = (db.contasPagar||[]).find(c=>c.id===g.contasPagarId);
+      if(inpVenc && cp) inpVenc.value = cp.dataVencimento||'';
+      el.innerHTML = '<span style="color:#2e7d32">✔ Número/Data preenchidos automaticamente a partir do PDF.</span>';
+    } else {
+      el.innerHTML = '';
+    }
+  }catch(e){
+    el.innerHTML = `<span style="color:#c62828">Não consegui ler os dados do PDF automaticamente: ${escHtml(e.message||String(e))}</span>`;
+  }
 }
 async function excluirGuiaTributos(id){
   if(!podeExcluirTela(usuarioAtual,'fat-tributos')){ alert('Sem permissão para excluir guias.'); return; }
@@ -12694,7 +12797,7 @@ const AJUDA_CONTEUDO = {
       <p>Só aparecem aqui Espelhos marcados "Incluir na Previsão de Impostos" e que ainda não foram vinculados a nenhuma outra guia.</p>
       <p>Se a mesma guia cobrir vários Espelhos, peça pro contador separar o valor de cada um — o rateio é manual, não há divisão automática.</p>
       <h5>PDF da Guia</h5>
-      <p>Depois de criada, reabra a guia (lista de Guias de Recolhimento) pra anexar o PDF que a contabilidade enviou — fica guardado ali, com botão ✕ vermelho pra remover e subir outro no lugar se precisar.</p>`
+      <p>Depois de criada, reabra a guia (lista de Guias de Recolhimento) pra anexar o PDF que a contabilidade enviou — fica guardado ali, com botão ✕ vermelho pra remover e subir outro no lugar se precisar. Pra guias no formato DAS do Simples Nacional (sistema SENDA), o sistema lê o PDF sozinho e já preenche Número/Data de Recebimento/Vencimento, e o campo Observações ganha o detalhamento dos tributos (IRPJ/CSLL/COFINS/PIS/INSS/ISS) — só quando Observações estiver vazio, pra não apagar anotação já digitada.</p>`
   },
   'fat-espelhos': {
     titulo: 'Faturamento — Espelhos de NF',
