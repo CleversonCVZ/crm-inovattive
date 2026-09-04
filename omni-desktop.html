@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.218';
-const APP_VERSION_DATE = '03/09/2026';
+const APP_VERSION = '1.47.219';
+const APP_VERSION_DATE = '04/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.219',
+    data: '04/09/2026',
+    itens: [
+      'SRM → Pedido Aprovado: agora dá pra corrigir manualmente o valor total da NF importada (✏️ ao lado do valor), pra quando ela chega divergente por algum motivo desconhecido (erro do fornecedor, frete não capturado no XML etc.). O valor corrigido passa a ser a referência usada pela aba Financeiro pra lançar a Conta a Pagar, e o valor original do XML fica guardado e visível na tela pra auditoria.',
+    ]
+  },
   {
     versao: '1.47.218',
     data: '03/09/2026',
@@ -4641,6 +4648,8 @@ async function carregarDadosSupabase(){
         nfNumero:x.nf_numero||null,
         nfData:x.nf_data?x.nf_data.slice(0,10):null,
         nfValorTotal:x.nf_valor_total!=null?Number(x.nf_valor_total):null,
+        nfValorOriginal:x.nf_valor_original!=null?Number(x.nf_valor_original):null,
+        nfValorCorrigido:!!x.nf_valor_corrigido,
         nfEmitCnpj:x.nf_emit_cnpj||null,
         nfEmitNome:x.nf_emit_nome||null,
         nfItensOrigem:x.nf_itens_origem||null,
@@ -4882,6 +4891,8 @@ function syncDadosSupabase(){
       nf_numero:x.nfNumero||null,
       nf_data:x.nfData||null,
       nf_valor_total:x.nfValorTotal||null,
+      nf_valor_original:x.nfValorOriginal||null,
+      nf_valor_corrigido:!!x.nfValorCorrigido,
       nf_emit_cnpj:x.nfEmitCnpj||null,
       nf_emit_nome:x.nfEmitNome||null,
       nf_itens_origem:x.nfItensOrigem||null,
@@ -8832,7 +8843,16 @@ function abaPedidoAprovadoSRMHTML(c){
             ${cot.nfEmitNome?`<div style="font-size:12px;margin-top:2px">${escHtml(cot.nfEmitNome)}${cot.nfEmitCnpj?` <span style="color:var(--muted);font-size:10px">(${cnpjFmt(cot.nfEmitCnpj)})</span>`:''}</div>`:''}
           </div>
           <div style="text-align:right">
-            <div style="font-size:16px;font-weight:700">${fmtMoney(nfTotal)}</div>
+            <div id="nf-total-view-${cot.id}" style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+              <div style="font-size:16px;font-weight:700">${fmtMoney(nfTotal)}</div>
+              ${podeUsar(usuarioAtual,'srm-painel')?`<button type="button" onclick="iniciarCorrecaoValorNfSRM(${cot.id})" title="Corrigir valor da NF" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0 2px;color:var(--muted)">✏️</button>`:''}
+            </div>
+            <div id="nf-total-edit-${cot.id}" style="display:none;align-items:center;gap:6px;justify-content:flex-end;margin-top:2px">
+              <input type="text" id="nf-total-input-${cot.id}" inputmode="decimal" value="${fmtMoney(nfTotal).replace('R$','').trim()}" oninput="mascaraMoeda(this)" style="width:110px;text-align:right;font-size:13px;padding:3px 6px">
+              <button type="button" class="btn sm primary" style="padding:2px 8px" onclick="salvarCorrecaoValorNfSRM(${cot.id},${c.id})">✔</button>
+              <button type="button" class="btn sm" style="padding:2px 8px" onclick="document.getElementById('nf-total-edit-${cot.id}').style.display='none';document.getElementById('nf-total-view-${cot.id}').style.display='flex';">✕</button>
+            </div>
+            ${cot.nfValorCorrigido?`<div style="font-size:10px;color:#1565c0;margin-top:2px">✏️ valor corrigido manualmente${cot.nfValorOriginal!=null?' — XML: '+fmtMoney(cot.nfValorOriginal):''}</div>`:''}
             ${semCotTotal?`<div style="font-size:10px;color:var(--muted)">cotação sem valor registrado</div>`:
               valorOk?`<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Valor confere</span>`:
               `<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">⚠️ Diverge da cotação (${fmtMoney(cotTotal)})</span>`}
@@ -9010,13 +9030,13 @@ async function uploadXmlNfSRM(input, cotId, srmId){
     cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
     cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
     cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
-    cot.nfItensOrigem='xml';
+    cot.nfItensOrigem='xml'; cot.nfValorOriginal=null; cot.nfValorCorrigido=false;
     await sb.from('srm_cotacoes').update({
       xml_nf_path:path, xml_nf_nome:file.name,
       nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
       nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
       nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome,
-      nf_itens_origem:'xml'
+      nf_itens_origem:'xml', nf_valor_original:null, nf_valor_corrigido:false
     }).eq('id',cotId);
     registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} importada via XML (${nfDados.itens.length} itens, ${fmtMoney(nfDados.vNF)})`);
     save(); abrirEditarSRM(srmId,'pedidos');
@@ -9091,13 +9111,13 @@ async function removerXmlNfSRM(cotId, srmId){
   cot.xmlNfPath=null; cot.xmlNfNome=null;
   cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
   cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
-  cot.nfItensOrigem=null;
+  cot.nfItensOrigem=null; cot.nfValorOriginal=null; cot.nfValorCorrigido=false;
   cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
   await sb.from('srm_cotacoes').update({
     xml_nf_path:null, xml_nf_nome:null,
     nf_itens:null, nf_numero:null, nf_data:null,
     nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
-    nf_itens_origem:null,
+    nf_itens_origem:null, nf_valor_original:null, nf_valor_corrigido:false,
     estoque_lancado:false, estoque_lancado_em:null
   }).eq('id',cotId);
   registrarLog('excluir','srm',srmId,`XML da NF-e removido de uma cotação do SRM #${(db.cardsSRM||[]).find(c=>c.id===srmId)?.num||srmId} — dados importados e lançamento de estoque vinculado foram apagados`); // v1.47.110
@@ -9117,12 +9137,12 @@ async function removerPdfNfSRM(cotId, srmId){
   if(!temXml){
     cot.nfItens=null; cot.nfNumero=null; cot.nfData=null;
     cot.nfValorTotal=null; cot.nfEmitCnpj=null; cot.nfEmitNome=null;
-    cot.nfItensOrigem=null;
+    cot.nfItensOrigem=null; cot.nfValorOriginal=null; cot.nfValorCorrigido=false;
     cot.estoqueLancado=false; cot.estoqueLancadoEm=null;
     Object.assign(dbUpdate,{
       nf_itens:null, nf_numero:null, nf_data:null,
       nf_valor_total:null, nf_emit_cnpj:null, nf_emit_nome:null,
-      nf_itens_origem:null,
+      nf_itens_origem:null, nf_valor_original:null, nf_valor_corrigido:false,
       estoque_lancado:false, estoque_lancado_em:null
     });
   }
@@ -9152,12 +9172,12 @@ async function extrairDanfePdfSRM(cotId, srmId){
     cot.nfItens=nfDados.itens; cot.nfNumero=nfDados.nNF;
     cot.nfData=nfDados.nfData; cot.nfValorTotal=nfDados.vNF;
     cot.nfEmitCnpj=nfDados.emitCNPJ; cot.nfEmitNome=nfDados.emitNome;
-    cot.nfItensOrigem='pdf';
+    cot.nfItensOrigem='pdf'; cot.nfValorOriginal=null; cot.nfValorCorrigido=false;
     await sb.from('srm_cotacoes').update({
       nf_itens:nfDados.itens, nf_numero:nfDados.nNF,
       nf_data:nfDados.nfData, nf_valor_total:nfDados.vNF,
       nf_emit_cnpj:nfDados.emitCNPJ, nf_emit_nome:nfDados.emitNome,
-      nf_itens_origem:'pdf'
+      nf_itens_origem:'pdf', nf_valor_original:null, nf_valor_corrigido:false
     }).eq('id',cotId);
     registrarLog('editar','srm',srmId,`NF-e ${nfDados.nNF} extraída do PDF DANFE (${nfDados.itens.length} itens)`);
     save(); abrirEditarSRM(srmId,'pedidos');
@@ -9270,6 +9290,7 @@ async function salvarNFManualSRM(cotId, srmId){
   }
   cot.nfItens=itens; cot.nfNumero=numero; cot.nfData=data; cot.nfValorTotal=valorTotal;
   cot.nfEmitCnpj=emitCnpj; cot.nfEmitNome=emitNome; cot.nfItensOrigem='manual';
+  cot.nfValorOriginal=null; cot.nfValorCorrigido=false;
   registrarLog('editar','srm',srmId,`NF ${numero} cadastrada manualmente (${itens.length} itens, ${fmtMoney(valorTotal)}) — sem XML/PDF`);
   save(); abrirEditarSRM(srmId,'pedidos');
 }
@@ -9324,6 +9345,48 @@ async function salvarCorrespondenciasNF(cotId, srmId){
   registrarLog('editar','srm',srmId,`Correspondências item×proposta salvas numa cotação do SRM #${srm.num}`); // v1.47.110
   if(btn){ btn.textContent='✓ Salvo!'; }
   setTimeout(()=>abrirEditarSRM(srmId,'pedidos'), 700);
+}
+
+/* Corrige manualmente o valor total da NF importada, quando ele vem
+   divergente do real por algum motivo (erro do fornecedor, frete/desconto
+   não capturado no XML etc.) e não dá pra saber a causa. O valor corrigido
+   passa a ser o nf_valor_total — é ele que o Financeiro usa como referência
+   (blocoRef/valRef em abaFinanceiroSRMHTML e abrirNovaCPSRM), então corrigir
+   aqui já propaga automaticamente pro valor a lançar em Conta a Pagar.
+   Guarda o valor original do XML em nf_valor_original (só na primeira
+   correção, pra não perder o dado de origem em correções sucessivas) e marca
+   nf_valor_corrigido=true, exibido como aviso permanente na tela — v1.47.219. */
+function iniciarCorrecaoValorNfSRM(cotId){
+  const view=document.getElementById(`nf-total-view-${cotId}`);
+  const edit=document.getElementById(`nf-total-edit-${cotId}`);
+  if(!view||!edit) return;
+  view.style.display='none'; edit.style.display='flex';
+  const inp=document.getElementById(`nf-total-input-${cotId}`);
+  if(inp){ inp.focus(); inp.select(); }
+}
+
+async function salvarCorrecaoValorNfSRM(cotId, srmId){
+  if(!podeUsar(usuarioAtual,'srm-painel')){ alert('Sem permissão para esta ação.'); return; }
+  const cot=(db.srmCotacoes||[]).find(x=>x.id===cotId);
+  const srm=(db.cardsSRM||[]).find(x=>x.id===srmId);
+  if(!cot||!srm) return;
+  const novoValor=lerMoeda(`nf-total-input-${cotId}`);
+  if(!novoValor||novoValor<=0){ alert('Informe um valor válido.'); return; }
+  const valorAntigo=cot.nfValorTotal||0;
+  if(Math.abs(novoValor-valorAntigo)<0.005){
+    document.getElementById(`nf-total-edit-${cotId}`).style.display='none';
+    document.getElementById(`nf-total-view-${cotId}`).style.display='flex';
+    return;
+  }
+  const original = cot.nfValorOriginal!=null ? cot.nfValorOriginal : valorAntigo;
+  const {error}=await sb.from('srm_cotacoes').update({
+    nf_valor_total:novoValor, nf_valor_original:original, nf_valor_corrigido:true
+  }).eq('id',cotId);
+  if(error){ alert('Erro ao salvar: '+(error.message||error)); return; }
+  cot.nfValorTotal=novoValor; cot.nfValorOriginal=original; cot.nfValorCorrigido=true;
+  registrarLog('editar','srm',srmId,`Valor total da NF corrigido manualmente de ${fmtMoney(valorAntigo)} para ${fmtMoney(novoValor)} (XML original: ${fmtMoney(original)})`);
+  save();
+  abrirEditarSRM(srmId,'pedidos');
 }
 
 async function baixarPDFCotacaoSRM(path, nome){
@@ -12683,6 +12746,8 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Pedido Aprovado',
         html: `
           <p>É aqui que a Nota Fiscal da cotação vencedora é anexada. 3 jeitos de obter os itens, do mais confiável ao mais manual: <b>XML NF-e</b> (lê e quebra em itens automaticamente), <b>PDF da NF</b> (extração melhor-esforço, menos precisa) ou, se os dois falharem, <b>✍️ cadastro manual</b> (digita número/data da NF e os itens à mão — vira exatamente o mesmo formato dos outros dois, então "Lançar no Estoque"/"Cadastrar no Catálogo" funcionam normalmente depois). Itens digitados manualmente podem ser corrigidos depois no botão "✏️ Editar Itens" (some assim que "Lançar no Estoque" já foi confirmado, pra não desincronizar do que já virou movimentação real); itens de XML/PDF são fiéis ao documento fiscal — pra corrigi-los, o caminho é remover e reimportar.</p>
+          <h5>✏️ Corrigir valor total da NF</h5>
+          <p>Se a NF chegou com o valor total divergente por algum motivo (erro do fornecedor, frete não capturado no XML etc.), clique no ✏️ ao lado do valor total pra digitar o valor correto. É esse valor corrigido que passa a valer como referência na aba Financeiro pra lançar a Conta a Pagar — o valor original do XML fica guardado e visível abaixo do total ("valor corrigido manualmente"), pra auditoria. Só a soma total é editável aqui; os itens individuais continuam fiéis ao documento fiscal.</p>
           <h5>Lançar no Estoque</h5>
           <p>Disponível sempre que a NF já tem itens (XML, PDF ou cadastro manual). São 4 situações possíveis (texto do botão muda pra indicar qual):</p>
           <p><b>1. Empresa paga, sem obra vinculada (compra pro almoxarifado) — "Lançar no Estoque Geral":</b> a entrada fica no estoque geral, disponível pra qualquer obra puxar depois.</p>
