@@ -1404,11 +1404,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.219';
-const APP_VERSION_DATE = '04/09/2026';
+const APP_VERSION = '1.47.220';
+const APP_VERSION_DATE = '14/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.220',
+    data: '14/09/2026',
+    itens: [
+      'Contas Correntes: aviso no campo "Saldo Inicial" explicando que alterá-lo muda o saldo da conta inteira desde o início (não é um lançamento datado) — e que pra registrar um recebimento/pagamento real o caminho é "＋ Lançar".',
+    ]
+  },
   {
     versao: '1.47.219',
     data: '04/09/2026',
@@ -15689,6 +15696,7 @@ function _ccFormHTML(c={}){
           <input id="ncc-saldo" type="text" inputmode="decimal" placeholder="0,00" class="input"
             oninput="mascaraMoeda(this)" style="margin-top:4px"
             value="${c.saldoInicial!=null?fmtMoney(c.saldoInicial).replace('R$','').trim():''}">
+          <p style="margin:4px 0 0;font-size:11px;color:#e65100;font-style:italic">⚠️ Alterar este valor muda o saldo da conta inteira, desde o início — não é um lançamento datado. Use apenas para corrigir o saldo que a conta já tinha antes de entrar no sistema; pra um recebimento/pagamento real, use "＋ Lançar".</p>
         </label>
         <label style="display:flex;flex-direction:column;justify-content:flex-end">
           <label style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
