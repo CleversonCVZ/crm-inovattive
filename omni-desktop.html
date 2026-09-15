@@ -1401,14 +1401,22 @@
 <div class="ajuda-overlay" id="ajuda-overlay" onclick="fecharAjudaPainel()"></div>
 <div class="ajuda-painel" id="ajuda-painel"></div>
 
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.220';
-const APP_VERSION_DATE = '14/09/2026';
+const APP_VERSION = '1.47.221';
+const APP_VERSION_DATE = '15/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.221',
+    data: '15/09/2026',
+    itens: [
+      'Mudança técnica interna, sem impacto visível: a URL e a chave do Supabase deixaram de ficar fixas no código e passaram a vir de um arquivo separado (config.js). Prepara o sistema pra futuramente rodar pra outras empresas sem duplicar o código-fonte — ver supabase/PLANO-COMERCIALIZACAO.md.',
+    ]
+  },
   {
     versao: '1.47.220',
     data: '14/09/2026',
@@ -3448,8 +3456,11 @@ const CHANGELOG = [
 ];
 
 /* ================= SUPABASE ================= */
-const SUPABASE_URL = 'https://bazoyvccbxtjwfbldvuz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_z5HBPMKrCcMOYRfS5SQSTg_Gl04txHM';
+/* v1.47.221: valores vêm de config.js (window.OMNI_CONFIG), não mais fixos aqui —
+   permite que o mesmo HTML sirva deploys diferentes (ex.: futuro beta tester com
+   banco próprio) trocando só o config.js. Ver supabase/PLANO-COMERCIALIZACAO.md. */
+const SUPABASE_URL = window.OMNI_CONFIG.supabaseUrl;
+const SUPABASE_KEY = window.OMNI_CONFIG.supabaseKey;
 /* Armazenamento da sessão: se "Permanecer conectado" estiver marcado (crmLembrar=1),
    a sessão fica no localStorage (sobrevive a fechar o navegador); senão, fica só
    no sessionStorage (some ao fechar a aba/navegador). */
