@@ -1405,11 +1405,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.221';
-const APP_VERSION_DATE = '15/09/2026';
+const APP_VERSION = '1.47.222';
+const APP_VERSION_DATE = '16/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.222',
+    data: '16/09/2026',
+    itens: [
+      'Cliente, Fornecedor e Empresa (Configurações): o campo CPF/CNPJ agora valida o dígito verificador antes de salvar (cálculo local, sem consultar nenhuma base externa) — antes só existia a máscara visual, e um número mal digitado era aceito sem aviso. Texto livre (ex.: fornecedor estrangeiro sem CPF/CNPJ brasileiro) continua funcionando normalmente.',
+    ]
+  },
   {
     versao: '1.47.221',
     data: '15/09/2026',
@@ -6338,6 +6345,55 @@ function fmtCpfCnpj(v){
   return el.value;
 }
 
+/* v1.47.222: validação de CPF/CNPJ pelo dígito verificador (cálculo matemático
+   local — sem consultar nenhuma base externa). Existia só a máscara visual;
+   qualquer sequência de números "no formato certo" era aceita, mesmo inválida.
+   Algoritmo padrão (módulo 11) usado pela Receita Federal. */
+function validarCPF(cpf){
+  cpf = String(cpf||'').replace(/\D/g,'');
+  if(cpf.length!==11) return false;
+  if(/^(\d)\1{10}$/.test(cpf)) return false; // todos os digitos iguais (000.000.000-00 etc)
+  let soma=0;
+  for(let i=0;i<9;i++) soma += parseInt(cpf[i],10)*(10-i);
+  let dv1 = (soma*10)%11; if(dv1===10) dv1=0;
+  if(dv1!==parseInt(cpf[9],10)) return false;
+  soma=0;
+  for(let i=0;i<10;i++) soma += parseInt(cpf[i],10)*(11-i);
+  let dv2 = (soma*10)%11; if(dv2===10) dv2=0;
+  if(dv2!==parseInt(cpf[10],10)) return false;
+  return true;
+}
+function validarCNPJ(cnpj){
+  cnpj = String(cnpj||'').replace(/\D/g,'');
+  if(cnpj.length!==14) return false;
+  if(/^(\d)\1{13}$/.test(cnpj)) return false;
+  const calcDV = (base) => {
+    const pesos = base.length===12 ? [5,4,3,2,9,8,7,6,5,4,3,2] : [6,5,4,3,2,9,8,7,6,5,4,3,2];
+    let soma=0;
+    for(let i=0;i<base.length;i++) soma += parseInt(base[i],10)*pesos[i];
+    const resto = soma%11;
+    return resto<2 ? 0 : 11-resto;
+  };
+  const dv1 = calcDV(cnpj.slice(0,12));
+  if(dv1!==parseInt(cnpj[12],10)) return false;
+  const dv2 = calcDV(cnpj.slice(0,12)+dv1);
+  if(dv2!==parseInt(cnpj[13],10)) return false;
+  return true;
+}
+/** Valida o campo único CPF/CNPJ usado em Clientes/Fornecedores/Empresa.
+ *  Vazio = válido (campo opcional). Texto com letra = válido (ex.: fornecedor
+ *  estrangeiro sem CPF/CNPJ brasileiro, caso real já cadastrado — ver
+ *  mascaraCpfCnpj acima). Só valida quando for só números. */
+function cpfCnpjValido(v){
+  const s = String(v||'').trim();
+  if(!s) return true;
+  if(/[a-zA-Z]/.test(s)) return true;
+  const digitos = s.replace(/\D/g,'');
+  if(digitos.length===11) return validarCPF(digitos);
+  if(digitos.length===14) return validarCNPJ(digitos);
+  return false; // tamanho nao bate com CPF (11) nem CNPJ (14)
+}
+
 /* Texto preto ou branco conforme a cor de fundo */
 function textColor(hex){
   const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
@@ -6591,12 +6647,14 @@ function renderGerais(){
 }
 
 function salvarEmpresa(){
+  const cnpjDigitado = document.getElementById('emp-cnpj').value.trim();
+  if(!cpfCnpjValido(cnpjDigitado)){ alert('CNPJ inválido. Confira os números digitados.'); return; }
   const btn = document.getElementById('btn-salvar-empresa');
   if(btn){ btn.disabled=true; btn.textContent='Salvando...'; }
   const e = db.empresa;
   e.razao = document.getElementById('emp-razao').value.trim();
   e.fantasia = document.getElementById('emp-fantasia').value.trim();
-  e.cnpj = document.getElementById('emp-cnpj').value.trim();
+  e.cnpj = cnpjDigitado;
   e.ie = document.getElementById('emp-ie').value.trim();
   e.tel = document.getElementById('emp-tel').value.trim();
   e.email = document.getElementById('emp-email').value.trim();
@@ -12810,7 +12868,7 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Dados',
         html: `
           <p>Cada campo salva sozinho ao sair dele (autosave) quando o fornecedor já existe — não precisa clicar em Salvar pra não perder o que foi digitado ao trocar de aba. No cadastro de um fornecedor novo, o botão "Salvar" grava tudo de uma vez e libera as demais abas.</p>
-          <p>CEP preenchido busca endereço automaticamente. CNPJ/CPF aceita os dois formatos (detecta pela quantidade de dígitos).</p>`
+          <p>CEP preenchido busca endereço automaticamente. CNPJ/CPF aceita os dois formatos (detecta pela quantidade de dígitos) e agora valida o dígito verificador — número inválido não é salvo. Texto livre (ex.: fornecedor estrangeiro sem CPF/CNPJ brasileiro) continua aceito normalmente.</p>`
       },
       contatos: {
         titulo: 'Aba Contatos',
@@ -16616,6 +16674,12 @@ function autoSalvarCampoFornecedor(fornId, campo, valor){
   if(!podeUsar(usuarioAtual,'fin-fornecedores-gerenciar')) return;
   const f = (db.fornecedores||[]).find(x=>x.id===fornId);
   if(!f || valor===undefined || f[campo]===valor) return;
+  if(campo==='cnpjCpf' && !cpfCnpjValido(valor)){
+    alert('CPF/CNPJ inválido. Confira os números digitados.');
+    const el = document.getElementById('ff-cnpj');
+    if(el) el.value = fmtCpfCnpj(f.cnpjCpf||'');
+    return;
+  }
   f[campo] = valor;
   registrarLog('editar','fornecedor',fornId,`Fornecedor atualizado: ${f.nome}`);
   save();
@@ -16837,6 +16901,7 @@ function abrirNovoFornecedor(opts={}){
 async function salvarNovoFornecedor(callbackSelectId=null){
   const d = _fornFormLer();
   if(!d.nome){ alert('Informe o nome do fornecedor.'); return; }
+  if(!cpfCnpjValido(d.cnpjCpf)){ alert('CPF/CNPJ inválido. Confira os números digitados.'); return; }
   const btn = btnModalPrimario();
   btnSalvando(btn);
   const _delay = new Promise(r=>setTimeout(r,800));
@@ -24371,12 +24436,14 @@ async function salvarNovoCliente(){
   if(btn?.disabled) return;
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return; }
+  const cnpjCpfDigitado = document.getElementById('m-cnpj').value;
+  if(!cpfCnpjValido(cnpjCpfDigitado)){ alert('CPF/CNPJ inválido. Confira os números digitados.'); return; }
   btnSalvando(btn);
   const end=lerEndereco();
   const clienteId = await proximoIdSeguro('clientes', db.clientes);
   const cli = {
     id:clienteId, nome,
-    cnpjCpf:document.getElementById('m-cnpj').value,
+    cnpjCpf:cnpjCpfDigitado,
     tel:document.getElementById('m-tel').value,
     email:document.getElementById('m-email').value,
     cidade:end.cidade,
@@ -24444,8 +24511,10 @@ function salvarClienteCampos(id){
   const c=db.clientes.find(x=>x.id===id);
   const nome=document.getElementById('m-nome').value.trim();
   if(!nome){ alert('Informe o nome.'); return false; }
+  const cnpjCpfDigitado = document.getElementById('m-cnpj').value;
+  if(!cpfCnpjValido(cnpjCpfDigitado)){ alert('CPF/CNPJ inválido. Confira os números digitados.'); return false; }
   c.nome=nome;
-  c.cnpjCpf=document.getElementById('m-cnpj').value;
+  c.cnpjCpf=cnpjCpfDigitado;
   c.tel=document.getElementById('m-tel').value;
   c.email=document.getElementById('m-email').value;
   c.endereco=lerEndereco();
