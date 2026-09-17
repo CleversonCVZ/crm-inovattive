@@ -1405,11 +1405,19 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.222';
-const APP_VERSION_DATE = '16/09/2026';
+const APP_VERSION = '1.47.223';
+const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.223',
+    data: '17/09/2026',
+    itens: [
+      'Corrigido bug real: excluir uma Conta a Pagar que veio de um Resultado de O.S. Avulsa ou de uma Retirada de Lucro de Obra podia falhar sem avisar — a tela mostrava como excluída, mas o banco rejeitava por trás e o registro reaparecia ao recarregar a página. Corrigido desvinculando a origem antes de excluir.',
+      'O.S. Avulsa → aba Custos: agora tem um 🗑 ao lado do selo "✅ Lançado C.P." no Resultado Aparente (rodapé), pra desfazer o lançamento sem precisar ir até a tela de Contas a Pagar procurar manualmente.',
+    ]
+  },
   {
     versao: '1.47.222',
     data: '16/09/2026',
@@ -12772,7 +12780,8 @@ const AJUDA_CONTEUDO = {
       },
       custos: {
         titulo: 'Aba Custos',
-        html: `<p>Custos extras dessa O.S. avulsa (ex.: material comprado à parte, deslocamento). Pode ser lançado como Conta a Pagar via botão "📋 → C.P." — esse lançamento NUNCA leva o campo Obra junto (mesmo escolhendo Centro de Custo "Mão de Obra"), de propósito: a Avulsa normalmente atende uma obra já concluída, e incluir o custo lá contaminaria o Resultado Aparente de uma obra já fechada.</p>`
+        html: `<p>Custos extras dessa O.S. avulsa (ex.: material comprado à parte, deslocamento). Pode ser lançado como Conta a Pagar via botão "📋 → C.P." — esse lançamento NUNCA leva o campo Obra junto (mesmo escolhendo Centro de Custo "Mão de Obra"), de propósito: a Avulsa normalmente atende uma obra já concluída, e incluir o custo lá contaminaria o Resultado Aparente de uma obra já fechada.</p>
+          <p>O 🗑 ao lado do selo "✅ Lançado C.P." (tanto num custo quanto no Resultado, no rodapé) desfaz esse lançamento: exclui a Conta a Pagar correspondente (mesma confirmação de sempre da tela Contas a Pagar) e o botão "📋 → C.P." volta a aparecer no lugar do selo.</p>`
       },
       fotos: {
         titulo: 'Aba Fotos',
@@ -17621,19 +17630,47 @@ async function confirmarPagamentoConta(id, srmId){
   else{ renderContasPagar(); }
 }
 
-/** Exclui uma conta a pagar */
+/** v1.47.223: antes de excluir uma Conta a Pagar, desvincula qualquer origem que
+ *  aponte pra ela — os_custos.cp_id, ordens_servico.resultado_cp_id (Resultado da
+ *  O.S. Avulsa lançado como C.P.) e obra_retiradas.cp_id (Retirada de Lucro da
+ *  Obra lançada como C.P.). Achado ao investigar como "desfazer um lançamento":
+ *  2 dessas 3 ligações têm FK "NO ACTION" no banco (só os_custos tem SET NULL) —
+ *  sem desvincular antes, o DELETE da C.P. era rejeitado pelo Postgres, e como
+ *  excluirDoSupabase só loga o erro no console (nunca avisa o usuário), a tela
+ *  seguia como se tivesse excluído: o registro sumia da lista na hora, mas
+ *  continuava intacto no banco — reaparecia "do nada" ao recarregar a página. */
+async function _desvincularOrigensDaCP(cpId){
+  const custo = (db.osCustos||[]).find(c=>c.cpId===cpId);
+  if(custo){
+    await sb.from('os_custos').update({cp_id:null}).eq('id', custo.id);
+    custo.cpId = null;
+  }
+  const os = (db.ordensServico||[]).find(o=>o.resultadoCpId===cpId);
+  if(os){
+    await sb.from('ordens_servico').update({resultado_cp_id:null}).eq('id', os.id);
+    os.resultadoCpId = null;
+  }
+  const ret = (db.obraRetiradas||[]).find(r=>r.cpId===cpId);
+  if(ret){
+    await sb.from('obra_retiradas').update({cp_id:null}).eq('id', ret.id);
+    ret.cpId = null;
+  }
+}
+
+/** Exclui uma conta a pagar. Retorna true se excluiu de fato, false se cancelou/errou
+ *  (v1.47.223: callers agora podem checar o retorno antes de atualizar sua própria tela). */
 async function excluirContaPagar(id){
-  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para excluir Contas a Pagar.'); return; }
+  if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para excluir Contas a Pagar.'); return false; }
   const p = (db.contasPagar||[]).find(x=>x.id===id);
-  if(!p) return;
+  if(!p) return false;
   if(p.status==='pago'){
-    if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nA movimentação na conta corrente também será removida.`)) return;
+    if(!confirm(`"${p.descricao}" já foi paga. Excluir mesmo assim?\n\nA movimentação na conta corrente também será removida.`)) return false;
   } else if(p.status==='parcial'){
     // v1.47.121: avisa que já existe(m) pagamento(s) parcial(is) registrado(s) — excluir a CP
     // remove também essas movimentações da conta corrente (e o histórico, via cascade no banco).
-    if(!confirm(`"${p.descricao}" já tem pagamento(s) parcial(is) registrado(s) (${fmtMoney(p.valorPago||0)} de ${fmtMoney(p.valor)}). Excluir mesmo assim?\n\nAs movimentações desses pagamentos na conta corrente também serão removidas.`)) return;
+    if(!confirm(`"${p.descricao}" já tem pagamento(s) parcial(is) registrado(s) (${fmtMoney(p.valorPago||0)} de ${fmtMoney(p.valor)}). Excluir mesmo assim?\n\nAs movimentações desses pagamentos na conta corrente também serão removidas.`)) return false;
   } else {
-    if(!confirm(`Excluir "${p.descricao}"?`)) return;
+    if(!confirm(`Excluir "${p.descricao}"?`)) return false;
   }
   // remove movimentações vinculadas
   const movsVinculadas = (db.movimentacoes||[]).filter(m=>m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(id));
@@ -17641,11 +17678,16 @@ async function excluirContaPagar(id){
     await excluirDoSupabase('movimentacoes_financeiras', m.id);
   }
   db.movimentacoes = (db.movimentacoes||[]).filter(m=>!(m.origemTipo==='contas_pagar' && Number(m.origemId)===Number(id)));
-  await excluirDoSupabase('contas_pagar', id);
+
+  await _desvincularOrigensDaCP(id);
+
+  const {error} = await sb.from('contas_pagar').delete().eq('id', id);
+  if(error){ alert('Erro ao excluir: '+error.message); return false; }
   db.contasPagar = db.contasPagar.filter(x=>x.id!==id);
   save();
   registrarLog('excluir','conta_pagar',id,`Conta a Pagar excluída: ${p.descricao} — ${fmtMoney(p.valor)} (status era: ${p.status})`); // v1.47.108
   renderContasPagar(); renderFinPainel();
+  return true;
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -20954,7 +20996,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
               <span style="font-weight:800;font-size:15px;color:${resCor}">${resultado>=0?'+':''}${fmtMoney(resultado)}</span>
               ${resultado>0 ? (
                 os.resultadoCpId
-                  ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>`
+                  ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn del" style="width:24px;height:24px;font-size:13px" title="Excluir lançamento" onclick="excluirResultadoOSAvulsaComoCP(${osId},${cardId})">🗑</button>`:''}`
                   : (podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')
                       ? `<button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarResultadoOSAvulsaComoCP(${osId},${cardId})">📋 → C.P.</button>`
                       : '')
@@ -21279,6 +21321,19 @@ async function confirmarLancarResultadoOSAvulsaComoCP(osId, cardId){
   save();
   fecharModal();
   abrirVerOSAvulsa(osId, cardId, 'custos');
+}
+
+/** v1.47.223: desfaz o "Lançar C.P." do Resultado Aparente da O.S. Avulsa — botão
+ *  🗑 que aparece ao lado do selo "✅ Lançado C.P." (aba Custos). Reusa
+ *  excluirContaPagar (mesma confirmação/regras de sempre da tela Contas a Pagar,
+ *  incluindo o aviso se ela já foi paga) — que agora já limpa os.resultadoCpId
+ *  de volta (ver _desvincularOrigensDaCP), então o botão "📋 → C.P." reaparece
+ *  no lugar do selo assim que a aba recarrega. */
+async function excluirResultadoOSAvulsaComoCP(osId, cardId){
+  const os = (db.ordensServico||[]).find(x=>x.id===osId);
+  if(!os?.resultadoCpId) return;
+  const ok = await excluirContaPagar(os.resultadoCpId);
+  if(ok) abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
 async function exportarPDFOSAvulsa(osId, modo='download'){
