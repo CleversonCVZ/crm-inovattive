@@ -1,0 +1,32 @@
+# Arquivos de proposta e documentos gerados
+*.pdf
+*.xlsx
+*.xls
+*.docx
+*.pptx
+*.csv
+
+# Imagens/anexos soltos na pasta do projeto (fotos, prints, WhatsApp) — não são
+# parte do app, ficam só localmente
+*.png
+*.jpg
+*.jpeg
+*.xml
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
+.vercel
+.env*
+
+# Repositório separado (Solv) vivendo dentro dessa pasta — tem seu próprio .git,
+# não deve ser rastreado aqui
+crm-solv-deploy/
+
+# Pasta de testes temporários
+.tmptest/
