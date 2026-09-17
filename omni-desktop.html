@@ -1405,11 +1405,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.225';
+const APP_VERSION = '1.47.226';
 const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.226',
+    data: '17/09/2026',
+    itens: [
+      'Corrigido bug real: "Lançar Resultado como Conta a Pagar" (O.S. Avulsa) tinha seu próprio cálculo de resultado, separado do que a aba Custos exibia — então o Imposto Estimado (v1.47.225) aparecia descontado na tela, mas o C.P. gerado saía sem o desconto. Unificado pra usar sempre o mesmo cálculo.',
+    ]
+  },
   {
     versao: '1.47.225',
     data: '17/09/2026',
@@ -21252,17 +21259,11 @@ function abrirLancarResultadoOSAvulsaComoCP(osId, cardId){
   if(!podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')){ alert('Sem permissão para lançar Contas a Pagar.'); return; }
   const os = (db.ordensServico||[]).find(x=>x.id===osId);
   if(!os) return;
-  const totalReceita = valorTotalOSAvulsa(os);
-  const custos = (db.osCustos||[]).filter(c=>Number(c.osId)===osId);
-  const totalCustos = custos.reduce((s,c)=>s+(c.valor||0),0);
-  const produtosOS = (os.produtos||[]).filter(it=>it.produtoEstoqueId);
-  let custoProdutos = 0;
-  produtosOS.forEach(it=>{
-    const vm = valorMedioProduto(it.produtoEstoqueId);
-    if(vm==null) return;
-    custoProdutos += vm * (it.qtd||1);
-  });
-  const resultado = totalReceita - totalCustos - custoProdutos;
+  // v1.47.226: usa _calcResultadoAparenteOSAvulsa (mesma fonte de verdade da aba
+  // Custos) em vez de recalcular aqui — senão o valor lançado no C.P. diverge do
+  // que aparece na tela (bug real encontrado: imposto estimado já entrava no
+  // "Resultado" exibido, mas não entrava aqui, então o C.P. saía sem o desconto).
+  const {resultado} = _calcResultadoAparenteOSAvulsa(os);
   const hoje = localDia(0);
   const ccPL = (db.centrosCusto||[]).find(cc=>cc.nome==='Pró-Labore');
   const ccOpts = (db.centrosCusto||[]).map(cc=>`<option value="${cc.id}" ${ccPL&&cc.id===ccPL.id?'selected':''}>${escHtml(cc.nome)}</option>`).join('');
@@ -21301,17 +21302,9 @@ function abrirLancarResultadoOSAvulsaComoCP(osId, cardId){
 async function confirmarLancarResultadoOSAvulsaComoCP(osId, cardId){
   const os = (db.ordensServico||[]).find(x=>x.id===osId);
   if(!os) return;
-  const totalReceita = valorTotalOSAvulsa(os);
-  const custos = (db.osCustos||[]).filter(c=>Number(c.osId)===osId);
-  const totalCustos = custos.reduce((s,c)=>s+(c.valor||0),0);
-  const produtosOS = (os.produtos||[]).filter(it=>it.produtoEstoqueId);
-  let custoProdutos = 0;
-  produtosOS.forEach(it=>{
-    const vm = valorMedioProduto(it.produtoEstoqueId);
-    if(vm==null) return;
-    custoProdutos += vm * (it.qtd||1);
-  });
-  const resultado = totalReceita - totalCustos - custoProdutos;
+  // v1.47.226: mesma fonte de verdade de abrirLancarResultadoOSAvulsaComoCP — ver
+  // comentário lá.
+  const {resultado} = _calcResultadoAparenteOSAvulsa(os);
 
   const venc = document.getElementById('lros-venc').value;
   const ccId = parseInt(document.getElementById('lros-cc').value)||null;
