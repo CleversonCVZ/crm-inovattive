@@ -1405,11 +1405,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.226';
+const APP_VERSION = '1.47.227';
 const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.227',
+    data: '17/09/2026',
+    itens: [
+      'Espelho de Faturamento agora aceita itens de O.S. Avulsa "Cobrada": além dos itens de Proposta aprovada, a aba Itens de Serviço passa a listar também os itens de qualquer O.S. Avulsa do mesmo Cartão CRM (marcados "O.S. Avulsa OS-..."). Lacuna real — primeira vez que um cliente pediu Nota Fiscal de um atendimento avulso. O item ganha o selo "✅ Faturado" na O.S. e não pode mais ser removido de lá depois de faturado.',
+    ]
+  },
   {
     versao: '1.47.226',
     data: '17/09/2026',
@@ -4680,6 +4687,7 @@ async function carregarDadosSupabase(){
       db.faturamentoItens = faturamentoItensRes.data.map(x=>({
         id:x.id, notaFiscalId:x.nota_fiscal_id, tipo:x.tipo,
         osId:x.os_id||null, propostaId:x.proposta_id||null, propostaIdx:x.proposta_idx!=null?Number(x.proposta_idx):null,
+        osItemIdx:x.os_item_idx!=null?Number(x.os_item_idx):null,
         produtoEstoqueId:x.produto_estoque_id||null,
         descricao:x.descricao||'', quantidade:x.quantidade!=null?Number(x.quantidade):null,
         valorUnitario:x.valor_unitario!=null?Number(x.valor_unitario):null, valorTotal:x.valor_total!=null?Number(x.valor_total):null
@@ -10129,19 +10137,59 @@ function nfsEntradaDoProduto(produtoEstoqueId, obraId){
  * ainda não presos em nenhum espelho ativo. */
 function itensServicoDisponiveis(cardId){
   const travados = new Set(
-    (db.faturamentoItens||[]).filter(fi=>fi.tipo==='servico').filter(fi=>{
+    (db.faturamentoItens||[]).filter(fi=>fi.tipo==='servico' && fi.propostaId!=null).filter(fi=>{
       const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
       return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
     }).map(fi=>`${fi.propostaId}_${fi.propostaIdx}`)
   );
-  return _itensPropostasAprovadas(cardId)
+  const itensProposta = _itensPropostasAprovadas(cardId)
     .filter(it=>it.categoria==='servico' && !it.clienteFornece)
     .filter(it=>!travados.has(`${it.propostaId}_${it.idx}`))
     .map(it=>({
-      propostaId: it.propostaId, propostaIdx: it.idx, propostaNum: it.propostaNum,
+      origem:'proposta', propostaId: it.propostaId, propostaIdx: it.idx, propostaNum: it.propostaNum,
       descricao: it.descricao||it.item||'', quantidade: it.qtd||1,
       valorUnitario: it.unit||0, valorTotal: it.total!=null?it.total:(it.unit||0)*(it.qtd||1)
     }));
+
+  /* v1.47.227: itens de O.S. Avulsa "Cobrada" do mesmo cartão também entram como
+   * disponíveis pra Serviço — Avulsa não tem proposta por trás (é lançamento livre,
+   * sem produtoEstoqueId em 100% dos casos reais, conferido no banco), então usa
+   * osId+osItemIdx (índice dentro de os.produtos) como chave de trava, em vez de
+   * propostaId+propostaIdx. Ver _itemAvulsaTravado (usado em removerItemAVL) pra
+   * impedir remover um item já faturado, o que descolaria esse índice. */
+  const travadosOS = new Set(
+    (db.faturamentoItens||[]).filter(fi=>fi.tipo==='servico' && fi.osId!=null && fi.osItemIdx!=null).filter(fi=>{
+      const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
+      return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
+    }).map(fi=>`${fi.osId}_${fi.osItemIdx}`)
+  );
+  const itensAvulsa = [];
+  (db.ordensServico||[]).filter(o=>o.cardId===cardId && o.tipo==='avulsa' && o.tipoAtendimento==='cobrado').forEach(os=>{
+    (os.produtos||[]).forEach((it,idx)=>{
+      if(travadosOS.has(`${os.id}_${idx}`)) return;
+      const qtd = Number(it.qtd)||1;
+      const unit = Number(it.valorUnit)||0;
+      itensAvulsa.push({
+        origem:'os', osId: os.id, osNumero: os.numero, osItemIdx: idx,
+        descricao: it.descricao||'', quantidade: qtd,
+        valorUnitario: unit, valorTotal: unit*qtd
+      });
+    });
+  });
+
+  return [...itensProposta, ...itensAvulsa];
+}
+
+/** Espelho da _itemServicoTravado, mas pra item de O.S. Avulsa (osId+idx em vez de
+ *  propostaId+idx) — usado em removerItemAVL pra nunca deixar remover um item que
+ *  já está em algum Espelho de Faturamento ativo (removeria o índice errado depois,
+ *  já que os demais itens do array deslizam uma posição pra trás). */
+function _itemAvulsaTravado(osId, idx){
+  return (db.faturamentoItens||[]).some(fi=>{
+    if(fi.tipo!=='servico' || fi.osId!==osId || fi.osItemIdx!==idx) return false;
+    const nf=(db.notasFiscais||[]).find(n=>n.id===fi.notaFiscalId);
+    return nf && faseFat(nf.faseId)?.tipo!=='cancelada';
+  });
 }
 
 /* v1.47.164: divide um item de SERVIÇO da proposta (ex.: mão de obra) em várias
@@ -10340,12 +10388,12 @@ async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propost
   if(_fatItemLock) return;
   _fatItemLock = true;
   try{
-    const linha = itensServicoDisponiveis(cardId).find(l=>l.propostaId===propostaId && l.propostaIdx===propostaIdx);
+    const linha = itensServicoDisponiveis(cardId).find(l=>l.origem==='proposta' && l.propostaId===propostaId && l.propostaIdx===propostaIdx);
     if(!linha){ alert('Este item não está mais disponível.'); return; }
     if(!db.faturamentoItens) db.faturamentoItens=[];
     const novo = {
       id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
-      notaFiscalId:nfId, tipo:'servico', osId:null, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx,
+      notaFiscalId:nfId, tipo:'servico', osId:null, propostaId:linha.propostaId, propostaIdx:linha.propostaIdx, osItemIdx:null,
       descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
     };
     const {error} = await sb.from('faturamento_itens').insert({
@@ -10358,6 +10406,34 @@ async function adicionarItemFaturamentoServico(nfId, cardId, propostaId, propost
     registrarLog('criar','nota_fiscal',nfId,`Item de serviço adicionado ao Espelho #${nfId}: ${novo.descricao} (${fmtNum(novo.quantidade)})`); // v1.47.110
     const nf2 = (db.notasFiscais||[]).find(x=>x.id===nfId);
     if(nf2) await sincronizarProvisaoImpostoEspelho(nf2);
+    abrirEspelhoNF(nfId, 'servicos');
+  } finally { _fatItemLock = false; }
+}
+
+/** v1.47.227: mesmo papel de adicionarItemFaturamentoServico, mas pra item de O.S.
+ *  Avulsa (sem propostaId — usa osId+osItemIdx, ver itensServicoDisponiveis). */
+async function adicionarItemFaturamentoServicoOS(nfId, cardId, osId, osItemIdx){
+  if(_fatItemLock) return;
+  _fatItemLock = true;
+  try{
+    const linha = itensServicoDisponiveis(cardId).find(l=>l.origem==='os' && l.osId===osId && l.osItemIdx===osItemIdx);
+    if(!linha){ alert('Este item não está mais disponível.'); return; }
+    if(!db.faturamentoItens) db.faturamentoItens=[];
+    const novo = {
+      id: await proximoIdSeguro('faturamento_itens', db.faturamentoItens),
+      notaFiscalId:nfId, tipo:'servico', osId:linha.osId, propostaId:null, propostaIdx:null, osItemIdx:linha.osItemIdx,
+      descricao:linha.descricao, quantidade:linha.quantidade, valorUnitario:linha.valorUnitario, valorTotal:linha.valorTotal
+    };
+    const {error} = await sb.from('faturamento_itens').insert({
+      id:novo.id, nota_fiscal_id:nfId, tipo:'servico', os_id:novo.osId, proposta_id:null, proposta_idx:null, os_item_idx:novo.osItemIdx,
+      descricao:novo.descricao, quantidade:novo.quantidade, valor_unitario:novo.valorUnitario, valor_total:novo.valorTotal
+    });
+    if(error){ alert('Erro ao adicionar item: '+error.message); return; }
+    db.faturamentoItens.push(novo);
+    save();
+    registrarLog('criar','nota_fiscal',nfId,`Item de serviço (O.S. Avulsa ${linha.osNumero}) adicionado ao Espelho #${nfId}: ${novo.descricao} (${fmtNum(novo.quantidade)})`);
+    const nf3 = (db.notasFiscais||[]).find(x=>x.id===nfId);
+    if(nf3) await sincronizarProvisaoImpostoEspelho(nf3);
     abrirEspelhoNF(nfId, 'servicos');
   } finally { _fatItemLock = false; }
 }
@@ -11030,27 +11106,34 @@ function abaEspelhoServicosHTML(nf){
   const podeEditar = podeEditarTela(usuarioAtual,'fat-painel');
   const itens = itensDoEspelho(nf.id,'servico');
   const total = itens.reduce((s,i)=>s+(i.valorTotal||0),0);
-  const linhas = itens.map(i=>`
+  const linhas = itens.map(i=>{
+    const osOrigem = i.osId ? (db.ordensServico||[]).find(o=>o.id===i.osId) : null;
+    return `
     <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
         <div>
           <div style="font-weight:600">${escHtml(i.descricao)}</div>
-          <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)}</div>
+          <div style="font-size:12px;color:var(--muted)">Qtd: ${fmtNum(i.quantidade)} × ${fmtMoney(i.valorUnitario)}${osOrigem?' · O.S. Avulsa '+escHtml(osOrigem.numero):''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
           <b>${fmtMoney(i.valorTotal)}</b>
-          ${podeEditar?`<button class="btn-xs" title="Dividir em parcelas — remove deste Espelho e já abre a divisão" onclick="dividirItemJaFaturado(${i.id},${nf.id})">🔀</button>`:''}
+          ${podeEditar&&!i.osId?`<button class="btn-xs" title="Dividir em parcelas — remove deste Espelho e já abre a divisão" onclick="dividirItemJaFaturado(${i.id},${nf.id})">🔀</button>`:''}
           ${podeEditar?`<button class="btn-xs" onclick="abrirEditarItemFaturamento(${i.id},${nf.id},'servico')">✏️</button>`:''}
           ${podeEditar?`<button class="btn-xs btn-danger" onclick="removerItemFaturamento(${i.id},${nf.id},'servico')">🗑</button>`:''}
         </div>
       </div>
-    </div>`).join('') || `<div class="empty" style="padding:16px;text-align:center">Nenhum item de serviço adicionado ainda.</div>`;
+    </div>`;
+  }).join('') || `<div class="empty" style="padding:16px;text-align:center">Nenhum item de serviço adicionado ainda.</div>`;
 
   const disponiveis = podeEditar ? itensServicoDisponiveis(nf.cardId) : [];
   const listaDisponiveis = disponiveis.length ? `
     <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px">
       <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Disponíveis pra adicionar</div>
-      ${disponiveis.map(l=>`
+      ${disponiveis.map(l=>l.origem==='os' ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
+          <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (O.S. Avulsa ${l.osNumero})</span></div>
+          <button class="btn-xs" onclick="adicionarItemFaturamentoServicoOS(${nf.id},${nf.cardId},${l.osId},${l.osItemIdx})">+ Adicionar</button>
+        </div>` : `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">
           <div style="font-size:13px">${escHtml(l.descricao)} <span style="color:var(--muted)">— Qtd ${fmtNum(l.quantidade)} × ${fmtMoney(l.valorUnitario)} (Proposta #${l.propostaNum||l.propostaId})</span></div>
           <div style="display:flex;gap:6px;flex-shrink:0">
@@ -12798,7 +12881,9 @@ const AJUDA_CONTEUDO = {
       },
       itens: {
         titulo: 'Aba Itens',
-        html: `<p>Diferente da Execução (que puxa da proposta aprovada), aqui Serviços e Produtos são escolhidos direto do catálogo — não depende de uma proposta vinculada, já que atendimento avulso normalmente não tem uma proposta formal por trás. Selecionar um produto na combo já debita do estoque na hora, mas sempre do estoque GERAL — nunca da reserva de uma obra específica, mesmo que esta O.S. esteja vinculada a um cartão de obra (o raciocínio: atendimento avulso normalmente acontece numa obra já concluída, então não faz sentido reservar material contra ela).</p>`
+        html: `<p>Diferente da Execução (que puxa da proposta aprovada), aqui Serviços e Produtos são escolhidos direto do catálogo — não depende de uma proposta vinculada, já que atendimento avulso normalmente não tem uma proposta formal por trás. Selecionar um produto na combo já debita do estoque na hora, mas sempre do estoque GERAL — nunca da reserva de uma obra específica, mesmo que esta O.S. esteja vinculada a um cartão de obra (o raciocínio: atendimento avulso normalmente acontece numa obra já concluída, então não faz sentido reservar material contra ela).</p>
+          <h5>✅ Faturado</h5>
+          <p>Se o cliente pedir Nota Fiscal desse atendimento (v1.47.227), o item pode ser colocado num Espelho de Faturamento do mesmo Cartão CRM (aba Itens de Serviço lá, seção "Disponíveis pra adicionar"). Depois disso ganha o selo "✅ Faturado" aqui e não pode mais ser removido — só continua removível enquanto ainda não foi faturado.</p>`
       },
       custos: {
         titulo: 'Aba Custos',
@@ -13036,8 +13121,8 @@ const AJUDA_CONTEUDO = {
       },
       servicos: {
         titulo: 'Aba Itens de Serviço',
-        html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF).</p>
-          <p>O botão "🔀" em cada item divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela. Funciona tanto nos itens já adicionados aqui em cima (remove do Espelho e já abre a divisão) quanto nos "Disponíveis pra adicionar" embaixo.</p>
+        html: `<p>Lista os serviços de propostas aprovadas ainda não faturados (exclui itens marcados "Cliente fornece", já que esses não são cobrados na NF) e também os itens de qualquer O.S. Avulsa "Cobrada" do mesmo Cartão CRM ainda não faturados (marcados "O.S. Avulsa OS-...") — v1.47.227, primeira vez que um cliente pediu NF de um atendimento avulso. Um item de O.S. Avulsa já colocado num Espelho ganha o selo "✅ Faturado" na própria aba Itens da O.S. e não pode mais ser removido de lá (senão o índice dos outros itens da lista deslizaria e o Espelho ficaria apontando pro item errado).</p>
+          <p>O botão "🔀" em cada item divide esse valor em parcelas menores, cada uma faturável num Espelho diferente — útil pra faturar mão de obra aos poucos, em várias NFs, sem sair desta tela. Funciona tanto nos itens já adicionados aqui em cima (remove do Espelho e já abre a divisão) quanto nos "Disponíveis pra adicionar" embaixo. Só existe pra itens de proposta — item de O.S. Avulsa não tem essa opção (não faz sentido dividir uma cobrança avulsa em parcelas fiscais separadas).</p>
           <h5>📋 Conferência com o XML anexado</h5>
           <p>Mesma ideia da aba de Produto — Número/Data/Valor são comparados e corrigidos automaticamente assim que o XML é anexado, sem precisar de clique. Como a NFS-e não tem itens separados (cada prefeitura manda um texto único de "Discriminação dos Serviços"), não tem como comparar item a item aqui — a discriminação fica só pra leitura na aba 🧾 XML Serviço.</p>`
       },
@@ -20842,7 +20927,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
                   onchange="toggleValorPDFAVL(${osId},${i},${cardId},this.checked)"
                   style="width:16px;height:16px;cursor:pointer;accent-color:var(--primary)">
               </td>
-              ${!os.fechada&&podeEditar?`<td style="text-align:center;padding:4px"><button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button></td>`:''}
+              ${!os.fechada&&podeEditar?`<td style="text-align:center;padding:4px">${_itemAvulsaTravado(osId,i)?`<span style="font-size:10px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 6px;font-weight:600;white-space:nowrap" title="Já colocado num Espelho de Faturamento — não pode mais ser removido">✅ Faturado</span>`:`<button class="icon-btn del" onclick="removerItemAVL(${osId},${i},${cardId})">🗑</button>`}</td>`:''}
             </tr>`;
           }).join('')}
         </tbody>
@@ -21742,6 +21827,10 @@ async function adicionarProdutoAVL(osId, cardId){
 async function removerItemAVL(osId, idx, cardId){
   if(!podeEditarRecurso(usuarioAtual,'aba-os')){ alert('Sem permissão para esta ação.'); return; }
   const os   = db.ordensServico.find(x=>x.id===osId);
+  // v1.47.227: item já colocado num Espelho de Faturamento ativo não pode ser
+  // removido — o índice dos itens seguintes deslizaria e o Espelho ficaria
+  // apontando pro item errado (ver itensServicoDisponiveis/_itemAvulsaTravado).
+  if(_itemAvulsaTravado(osId, idx)){ alert('Este item já foi colocado em algum Espelho de Faturamento — não é mais possível removê-lo.'); return; }
   const item = os.produtos[idx];
   if(item?.estoqueMovIds?.length){
     await estornarEstoque(item.estoqueMovIds, `Remoção de item — O.S. ${os.numero}`);
