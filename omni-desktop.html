@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.231';
+const APP_VERSION = '1.47.232';
 const APP_VERSION_DATE = '17/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.232',
+    data: '17/09/2026',
+    itens: [
+      'Cadastro de Fornecedores: busca de CEP e busca de CNPJ agora seguem o mesmo padrão visual e operacional já usado no endereço da Obra — botão explícito "Buscar CEP"/"Buscar CNPJ" (também dispara ao apertar Enter ou saltar de campo), com aviso quando não encontra nada ou quando falta conexão. Antes, buscavam sozinhas a cada tecla digitada e falhavam em silêncio.',
+    ]
+  },
   {
     versao: '1.47.231',
     data: '17/09/2026',
@@ -13030,7 +13037,7 @@ const AJUDA_CONTEUDO = {
         titulo: 'Aba Dados',
         html: `
           <p>Cada campo salva sozinho ao sair dele (autosave) quando o fornecedor já existe — não precisa clicar em Salvar pra não perder o que foi digitado ao trocar de aba. No cadastro de um fornecedor novo, o botão "Salvar" grava tudo de uma vez e libera as demais abas.</p>
-          <p>CEP preenchido busca endereço automaticamente. CNPJ/CPF aceita os dois formatos (detecta pela quantidade de dígitos) e agora valida o dígito verificador — número inválido não é salvo. Texto livre (ex.: fornecedor estrangeiro sem CPF/CNPJ brasileiro) continua aceito normalmente.</p>`
+          <p>Botão "Buscar CEP" preenche o endereço automaticamente (também dispara ao apertar Enter ou saltar de campo). Botão "Buscar CNPJ" faz o mesmo com razão social, nome fantasia, telefone, e-mail e endereço, direto da Receita Federal — só funciona pra CNPJ, não pra CPF. Os dois avisam quando não encontram nada ou quando falta conexão. CNPJ/CPF aceita os dois formatos (detecta pela quantidade de dígitos) e valida o dígito verificador — número inválido não é salvo. Texto livre (ex.: fornecedor estrangeiro sem CPF/CNPJ brasileiro) continua aceito normalmente.</p>`
       },
       contatos: {
         titulo: 'Aba Contatos',
@@ -16775,8 +16782,12 @@ function _fornFormHTML(f={}){
     <!-- Linha 1b: CNPJ/CPF -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>CNPJ / CPF
-        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this);buscarCnpjFornecedor(this.value${edit?','+f.id:''})" ${auto('cnpjCpf')}>
-        <span id="ff-cnpj-status" style="font-size:11px;color:var(--muted)"></span>
+        <div class="cep-linha" style="margin-top:4px">
+          <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="max-width:190px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18"
+            oninput="mascaraCpfCnpj(this)" onblur="buscarCnpjFornecedor(${edit?f.id:'null'})" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCnpjFornecedor(${edit?f.id:'null'});}" ${auto('cnpjCpf')}>
+          <button class="btn sm" type="button" onclick="buscarCnpjFornecedor(${edit?f.id:'null'})">🔍 Buscar CNPJ</button>
+        </div>
+        <span class="cep-status" id="ff-cnpj-status"></span>
       </label>
       <div></div>
     </div>
@@ -16790,10 +16801,15 @@ function _fornFormHTML(f={}){
       </label>
     </div>
     <!-- Linha 3: CEP e Logradouro -->
-    <div style="display:grid;grid-template-columns:120px 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:12px">
       <label>CEP
-        <input id="ff-cep" type="text" value="${escHtml(f.cep||'')}" class="input" style="margin-top:4px" placeholder="00000-000"
-          oninput="buscarCepFornecedor(this.value${edit?','+f.id:''})" ${auto('cep')}>
+        <div class="cep-linha" style="margin-top:4px">
+          <input id="ff-cep" type="text" value="${escHtml(f.cep||'')}" class="input" style="max-width:140px" placeholder="00000-000" maxlength="9"
+            oninput="this.value=this.value.replace(/\\D/g,'').replace(/(\\d{5})(\\d)/,'$1-$2')"
+            onblur="buscarCepFornecedor(${edit?f.id:'null'})" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCepFornecedor(${edit?f.id:'null'});}" ${auto('cep')}>
+          <button class="btn sm" type="button" onclick="buscarCepFornecedor(${edit?f.id:'null'})">🔍 Buscar CEP</button>
+        </div>
+        <span class="cep-status" id="ff-cep-status"></span>
       </label>
       <label>Logradouro
         <input id="ff-logr" type="text" value="${escHtml(f.logradouro||'')}" class="input" style="margin-top:4px" placeholder="Rua, Avenida…" ${auto('logradouro')}>
@@ -16879,13 +16895,22 @@ function _fornFormLer(){
  *  fornecedor existente, já salva os campos preenchidos automaticamente — senão o preenchimento
  *  via CEP fica só visual e some se o usuário trocar de aba sem tocar em cada campo (mesmo
  *  bug corrigido em autoSalvarCampoFornecedor). */
-async function buscarCepFornecedor(cep, fornId=null){
-  const c = cep.replace(/\D/g,'');
-  if(c.length!==8) return;
+/* v1.47.232: busca de CEP no cadastro de Fornecedores — reescrita pra seguir o
+ * mesmo padrão visual/operacional da busca de CEP em Clientes/Obra (buscarCEP
+ * acima): botão explícito "Buscar CEP" (+ Enter/blur no campo), mensagem de
+ * status abaixo do campo (.cep-status, com estado ok/erro) avisando quando o
+ * CEP não é encontrado ou quando falta conexão — antes buscava silenciosamente
+ * a cada tecla digitada e nunca avisava nada. */
+async function buscarCepFornecedor(fornId=null){
+  const inp = document.getElementById('ff-cep'), st = document.getElementById('ff-cep-status');
+  if(!inp) return;
+  const cep = inp.value.replace(/\D/g,'');
+  if(cep.length!==8){ if(st){ st.textContent = cep.length>0 ? 'CEP incompleto (8 dígitos).' : ''; st.className='cep-status erro'; } return; }
+  if(st){ st.textContent='Buscando...'; st.className='cep-status'; }
   try{
-    const r = await fetch(`https://viacep.com.br/ws/${c}/json/`);
+    const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
     const d = await r.json();
-    if(d.erro) return;
+    if(d.erro){ if(st){ st.textContent='CEP não encontrado — preencha manualmente.'; st.className='cep-status erro'; } return; }
     if(document.getElementById('ff-logr'))  document.getElementById('ff-logr').value  = d.logradouro||'';
     if(document.getElementById('ff-bairro'))document.getElementById('ff-bairro').value= d.bairro||'';
     if(document.getElementById('ff-cidade'))document.getElementById('ff-cidade').value= d.localidade||'';
@@ -16896,28 +16921,31 @@ async function buscarCepFornecedor(cep, fornId=null){
       autoSalvarCampoFornecedor(fornId,'cidade',d.localidade||'');
       autoSalvarCampoFornecedor(fornId,'estado',d.uf||'');
     }
-  }catch(e){}
+    if(st){ st.textContent='✓ Endereço encontrado'; st.className='cep-status ok'; }
+  }catch(e){ if(st){ st.textContent='Sem conexão — preencha manualmente.'; st.className='cep-status erro'; } }
 }
 
-/* v1.47.231: busca automática dos dados cadastrais do fornecedor a partir do
+/* v1.47.231/232: busca automática dos dados cadastrais do fornecedor a partir do
  * CNPJ, via BrasilAPI (https://brasilapi.com.br) — gratuita, sem chave/cadastro,
- * agrega dados direto da Receita Federal. Só dispara com CNPJ completo (14
- * dígitos) E com dígito verificador válido (cpfCnpjValido) — evita bater na API
- * a cada tecla digitada. CPF (pessoa física) nunca é consultado aqui: não existe
- * base pública equivalente, e não seria apropriado consultar dado de pessoa
- * física por CPF de qualquer forma. Mesmo padrão de "falha silenciosa" do
- * buscarCepFornecedor acima — se a API não responder (fora do ar, CNPJ não
- * encontrado, sem internet), o cadastro continua normal, só sem o preenchimento
- * automático; nunca trava nem avisa com erro, pra não incomodar por causa de
- * um serviço de terceiro. */
-async function buscarCnpjFornecedor(valor, fornId=null){
-  const digitos = String(valor||'').replace(/\D/g,'');
-  if(digitos.length!==14 || !cpfCnpjValido(digitos)) return;
-  const statusEl = document.getElementById('ff-cnpj-status');
-  if(statusEl) statusEl.textContent = '🔎 Buscando dados do CNPJ...';
+ * agrega dados direto da Receita Federal. CPF (pessoa física) nunca é consultado
+ * aqui: não existe base pública equivalente, e não seria apropriado consultar
+ * dado de pessoa física por CPF de qualquer forma — nesse caso só avisa que a
+ * busca automática não se aplica.
+ * v1.47.232: reescrita pra seguir o mesmo padrão visual/operacional da busca de
+ * CEP (botão explícito "Buscar CNPJ" + Enter/blur, mensagem de status com
+ * estado ok/erro) — antes buscava silenciosamente a cada tecla digitada e nunca
+ * avisava quando não encontrava nada. */
+async function buscarCnpjFornecedor(fornId=null){
+  const inp = document.getElementById('ff-cnpj'), st = document.getElementById('ff-cnpj-status');
+  if(!inp) return;
+  const digitos = inp.value.replace(/\D/g,'');
+  if(digitos.length===11){ if(st){ st.textContent='Busca automática só está disponível para CNPJ.'; st.className='cep-status erro'; } return; }
+  if(digitos.length!==14){ if(st){ st.textContent = digitos.length>0 ? 'CNPJ incompleto (14 dígitos).' : ''; st.className='cep-status erro'; } return; }
+  if(!cpfCnpjValido(digitos)){ if(st){ st.textContent='CNPJ inválido — confira os números digitados.'; st.className='cep-status erro'; } return; }
+  if(st){ st.textContent='Buscando...'; st.className='cep-status'; }
   try{
     const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digitos}`);
-    if(!r.ok){ if(statusEl) statusEl.textContent=''; return; }
+    if(!r.ok){ if(st){ st.textContent='CNPJ não encontrado — preencha manualmente.'; st.className='cep-status erro'; } return; }
     const d = await r.json();
 
     const setVal = (id, valor) => { const el = document.getElementById(id); if(el) el.value = valor||''; };
@@ -16946,8 +16974,8 @@ async function buscarCnpjFornecedor(valor, fornId=null){
       autoSalvarCampoFornecedor(fornId,'cidade', d.municipio||'');
       autoSalvarCampoFornecedor(fornId,'estado', d.uf||'');
     }
-    if(statusEl){ statusEl.textContent='✔ Dados preenchidos automaticamente'; setTimeout(()=>{statusEl.textContent='';},3000); }
-  }catch(e){ if(statusEl) statusEl.textContent=''; }
+    if(st){ st.textContent='✓ Dados encontrados'; st.className='cep-status ok'; }
+  }catch(e){ if(st){ st.textContent='Sem conexão — preencha manualmente.'; st.className='cep-status erro'; } }
 }
 
 /** Conteúdo da aba Contatos do fornecedor */
