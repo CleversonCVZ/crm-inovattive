@@ -1,6 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/", "destination": "/omni-desktop.min.html" },
-    { "source": "/mobile", "destination": "/omni-mobile.min.html" }
-  ]
-}
