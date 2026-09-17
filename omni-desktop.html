@@ -16780,10 +16780,10 @@ function _fornFormHTML(f={}){
       </label>
     </div>
     <!-- Linha 1b: CNPJ/CPF -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:12px">
       <label>CNPJ / CPF
         <div class="cep-linha" style="margin-top:4px">
-          <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="max-width:190px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18"
+          <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="max-width:260px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18"
             oninput="mascaraCpfCnpj(this)" onblur="buscarCnpjFornecedor(${edit?f.id:'null'})" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCnpjFornecedor(${edit?f.id:'null'});}" ${auto('cnpjCpf')}>
           <button class="btn sm" type="button" onclick="buscarCnpjFornecedor(${edit?f.id:'null'})">🔍 Buscar CNPJ</button>
         </div>
