@@ -1394,6 +1394,7 @@
     <label class="lembrar"><input type="checkbox" id="lg-perm"> Permanecer conectado</label>
     <div id="lg-erro" class="lg-erro"></div>
     <button class="btn primary" id="lg-btn" style="width:100%;margin-top:16px;padding:12px;font-size:15px" onclick="fazerLogin()">Entrar</button>
+    <div id="login-versao" style="text-align:center;font-size:11px;color:var(--muted);margin-top:14px"></div>
   </div>
 </div>
 
@@ -1405,11 +1406,23 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.227';
+const APP_VERSION = '1.47.228';
 const APP_VERSION_DATE = '17/09/2026';
+// v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
+// (sem precisar entrar) se o navegador já pegou a última versão publicada —
+// útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
+// escondido atrás do login-bg), então não precisa esperar nenhum load.
+{ const elLV = document.getElementById('login-versao'); if(elLV) elLV.textContent = 'v'+APP_VERSION; }
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.228',
+    data: '17/09/2026',
+    itens: [
+      'Tela de Login: número da versão atual (ex.: v1.47.228) agora aparece embaixo do botão "Entrar" — ajuda a confirmar se o navegador já pegou a última versão publicada sem precisar entrar no sistema.',
+    ]
+  },
   {
     versao: '1.47.227',
     data: '17/09/2026',
