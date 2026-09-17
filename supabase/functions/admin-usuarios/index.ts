@@ -45,6 +45,30 @@ function descreverErro(contexto: string, err: any): string {
   return `falha interna (status ${status}, código ${code}) — veja os Logs da Edge Function "admin-usuarios" no Supabase para o detalhe técnico`;
 }
 
+// v1.47.230: o link do e-mail de convite usava direto o header "Origin" da
+// requisição como redirectTo — na prática funciona, MAS um caso real mostrou
+// o risco: dois usuários da Solv (Jackysson, Gabriel) foram cadastrados num
+// momento em que o Origin recebido era "http://localhost:3000" (resquício de
+// teste local durante a configuração inicial), e o convite deles saiu
+// apontando pra lá — link inválido, sem jeito de entrar. Agora o Origin só é
+// aceito se estiver numa lista de domínios conhecidos; fora disso, cai num
+// padrão seguro escolhido pelo projeto Supabase que está rodando (detectado
+// pela própria SUPABASE_URL), nunca localhost.
+const DOMINIOS_PERMITIDOS = [
+  'https://crm-inovattive.vercel.app',
+  'https://crm-solv.vercel.app',
+];
+const DOMINIO_PADRAO_POR_PROJETO: Record<string, string> = {
+  'bazoyvccbxtjwfbldvuz': 'https://crm-inovattive.vercel.app', // Inovattive
+  'bkyujsfggeskmohmtilw': 'https://crm-solv.vercel.app',       // Solv Automação
+};
+
+function redirectSeguro(origin: string | null, supabaseUrl: string): string {
+  if (origin && DOMINIOS_PERMITIDOS.includes(origin)) return origin;
+  const ref = supabaseUrl.replace(/^https?:\/\//, '').split('.')[0];
+  return DOMINIO_PADRAO_POR_PROJETO[ref] || DOMINIOS_PERMITIDOS[0];
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
@@ -82,7 +106,7 @@ Deno.serve(async (req) => {
 
       // Cria o usuário no Supabase Auth e envia e-mail de convite (link para definir a senha).
       const { data: novo, error: erroAuth } = await admin.auth.admin.inviteUserByEmail(email, {
-        redirectTo: req.headers.get('origin') || undefined
+        redirectTo: redirectSeguro(req.headers.get('origin'), SUPABASE_URL)
       });
       if (erroAuth) return json({ error: 'Erro ao criar usuário no Auth: ' + descreverErro('criar → inviteUserByEmail', erroAuth) }, 400);
 
