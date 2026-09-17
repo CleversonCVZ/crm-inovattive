@@ -1405,11 +1405,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.223';
+const APP_VERSION = '1.47.224';
 const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.224',
+    data: '17/09/2026',
+    itens: [
+      'O.S. Avulsa → aba Custos: novo campo "Imposto estimado" no rodapé do Resultado Aparente, com uma linha extra "Resultado projetado" (Resultado − imposto estimado). É só referência pessoal — não vira Conta a Pagar, não tem status de estimativa/efetivado, não afeta o Resultado Aparente oficial. Conferido que, tanto em Obra quanto em O.S., imposto nunca é pago dessa forma na prática — o pagamento real é sempre via Guia de Recolhimento (Faturamento → Tributos), por empresa, não por Obra/O.S.',
+    ]
+  },
   {
     versao: '1.47.223',
     data: '17/09/2026',
@@ -4449,6 +4456,7 @@ async function carregarDadosSupabase(){
         itensTrabalho: Array.isArray(o.itens_trabalho) ? o.itens_trabalho : [],
         custoMO: o.custo_mo && typeof o.custo_mo==='object' ? o.custo_mo : {valor:0, tecnicoIds:[]},
         resultadoCpId: o.resultado_cp_id||null,
+        impostoEstimado: o.imposto_estimado!=null ? Number(o.imposto_estimado) : null,
         instrucoes: o.instrucoes||'',
         descricaoChamado: o.descricao_chamado||'',
         tipoAtendimento: o.tipo_atendimento||'a_definir',
@@ -12781,7 +12789,9 @@ const AJUDA_CONTEUDO = {
       custos: {
         titulo: 'Aba Custos',
         html: `<p>Custos extras dessa O.S. avulsa (ex.: material comprado à parte, deslocamento). Pode ser lançado como Conta a Pagar via botão "📋 → C.P." — esse lançamento NUNCA leva o campo Obra junto (mesmo escolhendo Centro de Custo "Mão de Obra"), de propósito: a Avulsa normalmente atende uma obra já concluída, e incluir o custo lá contaminaria o Resultado Aparente de uma obra já fechada.</p>
-          <p>O 🗑 ao lado do selo "✅ Lançado C.P." (tanto num custo quanto no Resultado, no rodapé) desfaz esse lançamento: exclui a Conta a Pagar correspondente (mesma confirmação de sempre da tela Contas a Pagar) e o botão "📋 → C.P." volta a aparecer no lugar do selo.</p>`
+          <p>O 🗑 ao lado do selo "✅ Lançado C.P." (tanto num custo quanto no Resultado, no rodapé) desfaz esse lançamento: exclui a Conta a Pagar correspondente (mesma confirmação de sempre da tela Contas a Pagar) e o botão "📋 → C.P." volta a aparecer no lugar do selo.</p>
+          <h5>🧮 Imposto estimado</h5>
+          <p>Campo de referência abaixo do Resultado Aparente, pra você digitar quanto acha que vai pesar de imposto nessa O.S. e ver o "Resultado projetado" (Resultado − imposto estimado). É só uma estimativa pessoal: não tem status, não vira Conta a Pagar e não afeta o Resultado Aparente oficial (o que pode virar "📋 → C.P."). Isso é de propósito — imposto de verdade nunca é pago por Obra/O.S., é sempre pago pela empresa como um todo, via Guia de Recolhimento (Faturamento → Tributos).</p>`
       },
       fotos: {
         titulo: 'Aba Fotos',
@@ -19003,7 +19013,11 @@ function _calcResultadoAparenteOSAvulsa(os){
     custoProdutos += vm * (it.qtd||1);
   });
   const resultado = totalReceita - totalCustos - custoProdutos;
-  return {custos, totalReceita, totalCustos, produtosOS, custoProdutos, produtosSemCusto, resultado};
+  // v1.47.224: imposto estimado é só referência (ver salvarImpostoEstimadoOS) —
+  // não desconta do "resultado" oficial (usado no selo/C.P.), só do projetado.
+  const impostoEstimado = Number(os.impostoEstimado)||0;
+  const resultadoProjetado = resultado - impostoEstimado;
+  return {custos, totalReceita, totalCustos, produtosOS, custoProdutos, produtosSemCusto, resultado, impostoEstimado, resultadoProjetado};
 }
 
 function abaOSCartaoHTML(c){
@@ -20910,8 +20924,9 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
       </div>`:''}`;
   }
   else if(aba === 'custos'){
-    const {custos, totalReceita, totalCustos, custoProdutos, produtosSemCusto, resultado} = _calcResultadoAparenteOSAvulsa(os);
+    const {custos, totalReceita, totalCustos, custoProdutos, produtosSemCusto, resultado, impostoEstimado, resultadoProjetado} = _calcResultadoAparenteOSAvulsa(os);
     const resCor = resultado >= 0 ? '#1b5e20' : '#b71c1c';
+    const resProjCor = resultadoProjetado >= 0 ? '#1b5e20' : '#b71c1c';
 
     tabContent = `
       ${custos.length ? `
@@ -21002,6 +21017,17 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
                       : '')
               ) : ''}
             </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0 0;border-top:1px dashed var(--border);margin-top:2px;gap:10px">
+            <span>🧮 Imposto estimado <span style="font-weight:400;color:var(--muted);font-size:11px">(referência — nunca gera Conta a Pagar; imposto real é pago por Guia de Recolhimento, não por O.S.)</span></span>
+            <div style="display:flex;align-items:center;gap:6px">
+              <input id="os-imposto-est" type="text" inputmode="decimal" placeholder="0,00" value="${impostoEstimado?impostoEstimado.toFixed(2).replace('.',','):''}" style="width:110px;text-align:right" ${podeEditar?'':'disabled'}>
+              ${podeEditar?`<button class="btn sm neutral" style="font-size:11px;padding:2px 8px" onclick="salvarImpostoEstimadoOS(${osId},${cardId})">Salvar</button>`:''}
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px">
+            <span style="font-weight:700">Resultado projetado <span style="font-weight:400;color:var(--muted);font-size:11px">(após imposto estimado)</span></span>
+            <span style="font-weight:800;color:${resProjCor}">${resultadoProjetado>=0?'+':''}${fmtMoney(resultadoProjetado)}</span>
           </div>
         </div>
       </div>`;
@@ -21334,6 +21360,27 @@ async function excluirResultadoOSAvulsaComoCP(osId, cardId){
   if(!os?.resultadoCpId) return;
   const ok = await excluirContaPagar(os.resultadoCpId);
   if(ok) abrirVerOSAvulsa(osId, cardId, 'custos');
+}
+
+/** v1.47.224: "Imposto Estimado" da O.S. Avulsa — campo de referência (aba Custos),
+ *  igual em espírito ao item "Impostos" de Outros Custos da Obra, mas simplificado
+ *  pra um valor único: cleverson confirmou que, na prática, imposto NUNCA é lançado
+ *  como Conta a Pagar por Obra/O.S. (nem em Outros Custos da Obra isso acontece —
+ *  conferido no banco: todo item categoria "Impostos" fica pra sempre em
+ *  "estimativa", nunca tem cpId) — o pagamento real de imposto é sempre feito pela
+ *  Guia de Recolhimento (Faturamento → Tributos), que é por empresa, não por
+ *  Obra/O.S. Por isso este campo é só uma referência pro cálculo do "Resultado
+ *  projetado" (abaixo do Resultado Aparente oficial, que não muda) — sem status,
+ *  sem categoria, sem botão de C.P., sem nenhuma ligação com Contas a Pagar. */
+async function salvarImpostoEstimadoOS(osId, cardId){
+  const os = (db.ordensServico||[]).find(x=>x.id===osId);
+  if(!os) return;
+  const raw = document.getElementById('os-imposto-est')?.value||'';
+  const valor = raw.trim()==='' ? null : parseValorBR(raw);
+  const {error} = await sb.from('ordens_servico').update({imposto_estimado:valor}).eq('id', osId);
+  if(error){ alert('Erro ao salvar imposto estimado: '+error.message); return; }
+  os.impostoEstimado = valor;
+  abrirVerOSAvulsa(osId, cardId, 'custos');
 }
 
 async function exportarPDFOSAvulsa(osId, modo='download'){
