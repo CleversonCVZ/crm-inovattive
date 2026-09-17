@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.230';
+const APP_VERSION = '1.47.231';
 const APP_VERSION_DATE = '17/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.231',
+    data: '17/09/2026',
+    itens: [
+      'Cadastro de Fornecedores: agora, ao digitar um CNPJ completo e válido, o sistema busca automaticamente os dados cadastrais na Receita Federal (via BrasilAPI, serviço público gratuito) e preenche razão social, nome fantasia, telefone, e-mail e endereço — igual já acontecia com o CEP. Só CNPJ (pessoa jurídica); CPF continua sendo digitado manualmente. Se a busca falhar por qualquer motivo, o preenchimento manual continua funcionando normalmente.',
+    ]
+  },
   {
     versao: '1.47.230',
     data: '17/09/2026',
@@ -16768,7 +16775,8 @@ function _fornFormHTML(f={}){
     <!-- Linha 1b: CNPJ/CPF -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <label>CNPJ / CPF
-        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this)" ${auto('cnpjCpf')}>
+        <input id="ff-cnpj" type="text" value="${escHtml(fmtCpfCnpj(f.cnpjCpf||''))}" class="input" style="margin-top:4px" placeholder="00.000.000/0001-00 ou 000.000.000-00" maxlength="18" oninput="mascaraCpfCnpj(this);buscarCnpjFornecedor(this.value${edit?','+f.id:''})" ${auto('cnpjCpf')}>
+        <span id="ff-cnpj-status" style="font-size:11px;color:var(--muted)"></span>
       </label>
       <div></div>
     </div>
@@ -16889,6 +16897,57 @@ async function buscarCepFornecedor(cep, fornId=null){
       autoSalvarCampoFornecedor(fornId,'estado',d.uf||'');
     }
   }catch(e){}
+}
+
+/* v1.47.231: busca automática dos dados cadastrais do fornecedor a partir do
+ * CNPJ, via BrasilAPI (https://brasilapi.com.br) — gratuita, sem chave/cadastro,
+ * agrega dados direto da Receita Federal. Só dispara com CNPJ completo (14
+ * dígitos) E com dígito verificador válido (cpfCnpjValido) — evita bater na API
+ * a cada tecla digitada. CPF (pessoa física) nunca é consultado aqui: não existe
+ * base pública equivalente, e não seria apropriado consultar dado de pessoa
+ * física por CPF de qualquer forma. Mesmo padrão de "falha silenciosa" do
+ * buscarCepFornecedor acima — se a API não responder (fora do ar, CNPJ não
+ * encontrado, sem internet), o cadastro continua normal, só sem o preenchimento
+ * automático; nunca trava nem avisa com erro, pra não incomodar por causa de
+ * um serviço de terceiro. */
+async function buscarCnpjFornecedor(valor, fornId=null){
+  const digitos = String(valor||'').replace(/\D/g,'');
+  if(digitos.length!==14 || !cpfCnpjValido(digitos)) return;
+  const statusEl = document.getElementById('ff-cnpj-status');
+  if(statusEl) statusEl.textContent = '🔎 Buscando dados do CNPJ...';
+  try{
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digitos}`);
+    if(!r.ok){ if(statusEl) statusEl.textContent=''; return; }
+    const d = await r.json();
+
+    const setVal = (id, valor) => { const el = document.getElementById(id); if(el) el.value = valor||''; };
+    setVal('ff-nome', d.razao_social);
+    setVal('ff-fantasia', d.nome_fantasia);
+    if(d.ddd_telefone_1){ const tel=document.getElementById('ff-tel'); if(tel){ tel.value=d.ddd_telefone_1; mascaraTel(tel); } }
+    if(d.email) setVal('ff-email', d.email);
+    if(d.cep) setVal('ff-cep', d.cep);
+    setVal('ff-logr', d.logradouro);
+    setVal('ff-num', d.numero);
+    setVal('ff-comp', d.complemento);
+    setVal('ff-bairro', d.bairro);
+    setVal('ff-cidade', d.municipio);
+    setVal('ff-uf', d.uf);
+
+    if(fornId){
+      autoSalvarCampoFornecedor(fornId,'nome', d.razao_social||'');
+      autoSalvarCampoFornecedor(fornId,'nomeFantasia', d.nome_fantasia||'');
+      if(d.ddd_telefone_1) autoSalvarCampoFornecedor(fornId,'telefone', document.getElementById('ff-tel').value);
+      if(d.email) autoSalvarCampoFornecedor(fornId,'email', d.email);
+      if(d.cep) autoSalvarCampoFornecedor(fornId,'cep', d.cep);
+      autoSalvarCampoFornecedor(fornId,'logradouro', d.logradouro||'');
+      autoSalvarCampoFornecedor(fornId,'numero', d.numero||'');
+      autoSalvarCampoFornecedor(fornId,'complemento', d.complemento||'');
+      autoSalvarCampoFornecedor(fornId,'bairro', d.bairro||'');
+      autoSalvarCampoFornecedor(fornId,'cidade', d.municipio||'');
+      autoSalvarCampoFornecedor(fornId,'estado', d.uf||'');
+    }
+    if(statusEl){ statusEl.textContent='✔ Dados preenchidos automaticamente'; setTimeout(()=>{statusEl.textContent='';},3000); }
+  }catch(e){ if(statusEl) statusEl.textContent=''; }
 }
 
 /** Conteúdo da aba Contatos do fornecedor */
