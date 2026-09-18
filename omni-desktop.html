@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.233';
+const APP_VERSION = '1.47.234';
 const APP_VERSION_DATE = '18/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '18/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.234',
+    data: '18/09/2026',
+    itens: [
+      'O.S. Avulsa → aba Custos: corrigido bug real — o 🗑 que desfaz o "Lançado C.P." do Resultado Aparente (rodapé) continuava aparecendo mesmo com a O.S. já fechada/encerrada, permitindo excluir esse lançamento fora de hora (nos custos individuais isso já era travado corretamente). Agora, uma vez fechada a O.S., o selo fica travado igual aos demais — sem opção de desfazer por aqui.',
+    ]
+  },
   {
     versao: '1.47.233',
     data: '18/09/2026',
@@ -21249,7 +21256,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
               <span style="font-weight:800;font-size:15px;color:${resCor}">${resultado>=0?'+':''}${fmtMoney(resultado)}</span>
               ${resultado>0 ? (
                 os.resultadoCpId
-                  ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>${podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')?`<button class="icon-btn del" style="width:24px;height:24px;font-size:13px" title="Excluir lançamento" onclick="excluirResultadoOSAvulsaComoCP(${osId},${cardId})">🗑</button>`:''}`
+                  ? `<span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span>${(!os.fechada && podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar'))?`<button class="icon-btn del" style="width:24px;height:24px;font-size:13px" title="Excluir lançamento" onclick="excluirResultadoOSAvulsaComoCP(${osId},${cardId})">🗑</button>`:''}`
                   : (podeUsar(usuarioAtual,'fin-contas-pagar-gerenciar')
                       ? `<button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarResultadoOSAvulsaComoCP(${osId},${cardId})">📋 → C.P.</button>`
                       : '')
