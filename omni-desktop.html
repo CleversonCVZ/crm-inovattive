@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.232';
-const APP_VERSION_DATE = '17/09/2026';
+const APP_VERSION = '1.47.233';
+const APP_VERSION_DATE = '18/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '17/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.233',
+    data: '18/09/2026',
+    itens: [
+      'O.S. Avulsa → aba Custos: o selo do custo já lançado em Contas a Pagar dizia só "✅ Lançado" (o único lugar do sistema com esse texto) — agora diz "✅ Lançado C.P.", igual a todos os outros lugares (Custo M.Obra, Retiradas, Outros Custos, Resultado Aparente).',
+    ]
+  },
   {
     versao: '1.47.232',
     data: '17/09/2026',
@@ -21170,7 +21177,7 @@ function abrirVerOSAvulsa(osId, cardId, aba='geral'){
             const cc = db.centrosCusto ? db.centrosCusto.find(x=>x.id===c.centroCustoId) : null;
             const cpLancado = !!c.cpId;
             const cpCell = cpLancado
-              ? `<td style="text-align:center;padding:4px"><span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado</span></td>`
+              ? `<td style="text-align:center;padding:4px"><span style="font-size:11px;background:#dcfce7;color:#166534;border-radius:10px;padding:2px 8px;font-weight:600;white-space:nowrap">✅ Lançado C.P.</span></td>`
               : (!os.fechada && podeEditar
                   ? `<td style="text-align:center;padding:4px"><button class="btn sm neutral" style="font-size:11px;padding:2px 8px;white-space:nowrap" onclick="abrirLancarCustoComoCP(${c.id},${osId},${cardId})">📋 → C.P.</button></td>`
                   : `<td style="text-align:center;padding:4px;color:var(--muted);font-size:12px">—</td>`);
