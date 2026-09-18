@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.235';
+const APP_VERSION = '1.47.236';
 const APP_VERSION_DATE = '18/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '18/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.236',
+    data: '18/09/2026',
+    itens: [
+      'Cartão de CRM: ao marcar um cartão como Perdido ou Concluído (por qualquer caminho — checkbox no cartão, arrastar no painel Kanban, ou registrar perda), a agenda (data da próxima ação) agora é zerada automaticamente, já que o cartão sai do painel e não faz mais sentido continuar com um retorno agendado. Os avisos de confirmação já existentes foram atualizados pra informar essa ação também.',
+    ]
+  },
   {
     versao: '1.47.235',
     data: '18/09/2026',
@@ -7539,11 +7546,11 @@ function renderVistaFases(k){
         const c = db.cards.find(x=>x.id===id);
         if(!c) return;
         if(f.tipo==='perdido'){
-          if(!confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)) return;
-          c.perdido=true; c.concluido=false;
+          if(!confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)) return;
+          c.perdido=true; c.concluido=false; c.agenda='';
         } else if(f.tipo==='concluido'){
-          if(!confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. Confirmar?`)) return;
-          c.concluido=true; c.perdido=false;
+          if(!confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)) return;
+          c.concluido=true; c.perdido=false; c.agenda='';
         }
         c.faseId=f.id; save(); renderAll();
       }
@@ -13768,11 +13775,11 @@ function wireValidacao(cardId){
       if(cardId){
         sel.value=faseAnt;
         abrirModalPerdido(cardId);
-      } else if(confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. Confirmar?`)){
+      } else if(confirm(`Mover para "${f.nome}" marca o cartão como PERDIDO e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)){
         cbP.checked=true; cbC.checked=false; faseAnt=sel.value;
       } else sel.value=faseAnt;
     } else if(f.tipo==='concluido' && !cbC.checked){
-      if(confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. Confirmar?`)){
+      if(confirm(`Mover para "${f.nome}" marca o cartão como CONCLUÍDO e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)){
         cbC.checked=true; cbP.checked=false; faseAnt=sel.value;
       } else sel.value=faseAnt;
     } else {
@@ -13788,7 +13795,7 @@ function wireValidacao(cardId){
         cbP.checked=false; // desfaz até confirmar no modal
         abrirModalPerdido(cardId);
       } else {
-        if(confirm(`Marcar como PERDIDO move o cartão para a fase "${fPerd.nome}" e ele sai do painel. Confirmar?`)){
+        if(confirm(`Marcar como PERDIDO move o cartão para a fase "${fPerd.nome}" e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)){
           sel.value=fPerd.id; cbC.checked=false; faseAnt=sel.value;
         } else cbP.checked=false;
       }
@@ -13800,7 +13807,7 @@ function wireValidacao(cardId){
     if(cbC.checked){
       const fConc = faseTipo('concluido');
       if(!fConc){ cbC.checked=false; alert('Fase "concluido" não encontrada.'); return; }
-      if(confirm(`Marcar como CONCLUÍDO move o cartão para a fase "${fConc.nome}" e ele sai do painel. Confirmar?`)){
+      if(confirm(`Marcar como CONCLUÍDO move o cartão para a fase "${fConc.nome}" e ele sai do painel. A agenda (próxima ação) também será zerada. Confirmar?`)){
         sel.value=fConc.id; cbP.checked=false; faseAnt=sel.value;
       } else cbC.checked=false;
     } else if(fase(+sel.value).tipo==='concluido'){
@@ -13830,7 +13837,7 @@ function abrirModalPerdido(cardId){
 
   abrirModal(`
     <h3 style="color:var(--red)">✖ Registrar Perda — Cartão #${c.num}</h3>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:18px">O cartão de <b>${cli.nome}</b> sairá do painel e ficará visível apenas em "Perdidos & Concluídos".</p>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:18px">O cartão de <b>${cli.nome}</b> sairá do painel e ficará visível apenas em "Perdidos & Concluídos". A agenda (próxima ação) também será zerada.</p>
 
     <label>Fase final do CRM</label>
     <select id="mp-fase">${optsF}</select>
@@ -13863,6 +13870,7 @@ async function confirmarPerdido(cardId){
   c.perdido   = true;
   c.concluido = false;
   c.faseId    = faseId;
+  c.agenda    = ''; // v1.47.236: perdido zera a agenda (próxima ação) — ver aviso no modal acima
   const fNome = fase(faseId)?.nome||'?';
   registrarLog('marcar_perdida','card',cardId,`Cartão #${c.num} marcado como perdido. Fase: "${fNome}". ${propsMarcadas} proposta(s) marcada(s) como perdida(s).`);
 
@@ -13981,6 +13989,11 @@ async function salvarNovoCartao(){
       endereco:{cep:'',rua:'',numero:'',complemento:'',bairro:'',cidade:document.getElementById('nc-cidade').value,uf:''}
     });
   }
+  // v1.47.236: se já nasce marcado Perdido/Concluído, a agenda (próxima ação)
+  // não faz sentido sobreviver — mesmo raciocínio aplicado ao marcar um cartão
+  // existente como perdido/concluído (ver salvarEdicaoCartao/confirmarPerdido).
+  const _perdidoNovo   = document.getElementById('m-perdido').checked;
+  const _concluidoNovo = document.getElementById('m-concluido').checked;
   const novo = {
     id: await proximoIdSeguro('cards', db.cards),
     num:db.cards.reduce((m,c)=>Math.max(m,c.num),0)+1,
@@ -13990,10 +14003,10 @@ async function salvarNovoCartao(){
     faseId:+document.getElementById('m-fase').value,
     responsavelId:+document.getElementById('m-resp').value||null,
     responsavel:(db.usuarios.find(u=>u.id===+document.getElementById('m-resp').value)||{}).nome||'',
-    agenda:document.getElementById('m-agenda').value,
+    agenda:(_perdidoNovo||_concluidoNovo) ? '' : document.getElementById('m-agenda').value,
     valor:+document.getElementById('m-valor').value,
-    perdido:document.getElementById('m-perdido').checked,
-    concluido:document.getElementById('m-concluido').checked,
+    perdido:_perdidoNovo,
+    concluido:_concluidoNovo,
     historico:[],
     criadoEm:new Date().toISOString()
   };
@@ -24611,6 +24624,10 @@ async function salvarEdicaoCartao(id){
   c.valor=+document.getElementById('m-valor').value;
   c.perdido=document.getElementById('m-perdido').checked;
   c.concluido=document.getElementById('m-concluido').checked;
+  // v1.47.236: marcar Perdido/Concluído zera a agenda (próxima ação) — não faz
+  // sentido continuar tocando um cartão que já saiu do painel. O aviso já
+  // mostrado ao marcar (wireValidacao) avisa disso também.
+  if(c.perdido || c.concluido) c.agenda='';
   registrarLog('editar', 'card', id, `CRM #${c.num} editado — ${cliente(c.clienteId).nome}`);
 
   const btn = btnModalPrimario();
