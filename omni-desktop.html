@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.237';
+const APP_VERSION = '1.47.238';
 const APP_VERSION_DATE = '22/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '22/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.238',
+    data: '22/09/2026',
+    itens: [
+      'Contas Correntes: corrigido bug real — uma Transferência entre Contas grava dois lançamentos (saída numa conta, entrada na outra), mas editar ou excluir qualquer um deles não tinha nenhuma ligação com o outro lado. Dava pra corrigir o valor/data só de uma perna e deixar as duas contas com saldos que não conferiam mais entre si, ou excluir uma perna e deixar a outra órfã pra sempre. Agora: editar uma perna trava Tipo, Valor e Data (avisando que é preciso excluir e lançar de novo pra corrigir); excluir uma perna exclui a outra automaticamente, com aviso mostrando as duas contas afetadas.',
+    ]
+  },
   {
     versao: '1.47.237',
     data: '22/09/2026',
@@ -16552,6 +16559,24 @@ function editarMovimentacao(id, contaId){
   const mostrarObra = _ccVinculaObra(ccAtual);
   const valorFmt = m.valor.toFixed(2).replace('.',',');
 
+  // v1.47.238: as duas pernas de uma Transferência entre Contas agora travam Tipo, Valor
+  // e Data aqui — editar só um lado deixava as duas contas com saldos que não conversam
+  // mais entre si (a outra perna nunca era atualizada). Ver _ehMovTransferencia.
+  const ehTransf            = _ehMovTransferencia(m);
+  const travaValor          = _ehMovLigadaCPouCR(m) || ehTransf;
+  const travaTipo           = m.origemTipo!=='manual' || m.tipo==='transferencia';
+  const parceiraTransf      = ehTransf ? _movParceiraTransferencia(m) : null;
+  const contaParceiraTransf = parceiraTransf ? (db.contasCorrente||[]).find(x=>x.id===parceiraTransf.contaId) : null;
+
+  let bannerAuto = '';
+  if(_ehMovLigadaCPouCR(m)){
+    bannerAuto = `<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:12px;color:#2e7d32">✔ Este lançamento veio da baixa de uma ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} — o "Valor" fica travado aqui, porque editá-lo não atualizaria o valor pago lá na origem (ficariam divergentes). Pra corrigir, vá até a ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} de origem e exclua-a (isso remove este lançamento também) — depois lance de novo com o valor certo.</div>`;
+  } else if(ehTransf){
+    bannerAuto = `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">🔁 Este lançamento é uma das duas pernas de uma Transferência entre Contas${contaParceiraTransf?` (a outra está em "${escHtml(contaParceiraTransf.nome)}")`:''}. Tipo, Valor e Data ficam travados aqui, porque corrigir só um lado deixaria as duas contas com saldos que não conversam mais entre si. Pra corrigir, exclua este lançamento — as duas pernas somem juntas — e lance a transferência de novo com os dados certos.</div>`;
+  } else if(m.origemTipo!=='manual'){
+    bannerAuto = `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</div>`;
+  }
+
   abrirModal(`
     <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
       <h3>✏️ Editar Lançamento</h3>
@@ -16559,7 +16584,7 @@ function editarMovimentacao(id, contaId){
     <div class="aba-corpo" style="display:grid;gap:14px">
       <div>
         <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Tipo</label>
-        <select id="em-tipo" class="input" style="margin-top:6px;width:100%" ${m.origemTipo!=='manual'?'disabled title="Não é possível alterar o tipo de lançamentos automáticos"':''}>
+        <select id="em-tipo" class="input" style="margin-top:6px;width:100%" ${travaTipo?'disabled title="Não é possível alterar o tipo deste lançamento"':''}>
           <option value="entrada"      ${m.tipo==='entrada'     ?'selected':''}>➕ Entrada</option>
           <option value="saida"        ${m.tipo==='saida'       ?'selected':''}>➖ Saída</option>
           <option value="transferencia"${m.tipo==='transferencia'?'selected':''}>🔁 Transferência</option>
@@ -16569,11 +16594,11 @@ function editarMovimentacao(id, contaId){
         <div>
           <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Valor (R$) *</label>
           <input id="em-valor" type="text" inputmode="decimal" value="${valorFmt}" class="input"
-            oninput="mascaraMoeda(this)" style="margin-top:6px;width:100%" ${_ehMovLigadaCPouCR(m)?'disabled':''}>
+            oninput="mascaraMoeda(this)" style="margin-top:6px;width:100%" ${travaValor?'disabled':''}>
         </div>
         <div>
           <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase">Data *</label>
-          <input id="em-data" type="date" value="${m.dataMovimento||''}" class="input" style="margin-top:6px;width:100%">
+          <input id="em-data" type="date" value="${m.dataMovimento||''}" class="input" style="margin-top:6px;width:100%" ${ehTransf?'disabled':''}>
         </div>
       </div>
       <div>
@@ -16596,8 +16621,7 @@ function editarMovimentacao(id, contaId){
         </select>
         <p class="cp-obra-hint" style="display:none;margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic"></p>
       </div>
-      ${m.origemTipo!=='manual'?'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">⚠️ Lançamento gerado automaticamente. Apenas data, valor e centro de custo podem ser ajustados.</div>':''}
-      ${_ehMovLigadaCPouCR(m)?`<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px 14px;font-size:12px;color:#2e7d32">✔ Este lançamento veio da baixa de uma ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} — o "Valor" fica travado aqui, porque editá-lo não atualizaria o valor pago lá na origem (ficariam divergentes). Pra corrigir, vá até a ${m.origemTipo==='contas_pagar'?'Conta a Pagar':'Parcela a Receber'} de origem e exclua-a (isso remove este lançamento também) — depois lance de novo com o valor certo.</div>`:''}
+      ${bannerAuto}
     </div>
     <div class="actions rodape-cartao">
       <button class="btn neutral" onclick="fecharModal();abrirMovimentacoesContaCorrente(${contaId})">← Fechar</button>
@@ -16616,6 +16640,25 @@ function editarMovimentacao(id, contaId){
    movimentação em cascata corretamente). */
 function _ehMovLigadaCPouCR(m){
   return m.origemTipo==='contas_pagar' || m.origemTipo==='recebimento';
+}
+
+/* v1.47.238: uma Transferência entre Contas grava DUAS movimentações — a perna de saída
+   (tipo:'transferencia', origemTipo:'manual', contaDestinoId:<conta destino>) e a perna de
+   entrada (tipo:'entrada', origemTipo:'transferencia', origemId:<id da perna de saída>).
+   Antes desta versão, editar ou excluir qualquer uma das pernas não tinha nenhuma noção da
+   outra — dava pra corrigir valor/data só de um lado e deixar as duas contas com saldos que
+   não conversam mais entre si, ou excluir uma perna e deixar a outra órfã pra sempre (uma
+   "transferência" que nunca mais teve par do outro lado). */
+function _ehMovTransferencia(m){
+  return m.tipo==='transferencia' || m.origemTipo==='transferencia';
+}
+/** Encontra a perna correspondente de uma movimentação de transferência (o outro lado do
+ *  mesmo lançamento), em qualquer direção. Retorna null se não achar — dado órfão de antes
+ *  desta correção, ou a perna já foi removida por algum outro motivo. */
+function _movParceiraTransferencia(m){
+  if(m.origemTipo==='transferencia') return (db.movimentacoes||[]).find(x=>x.id===m.origemId) || null;
+  if(m.tipo==='transferencia') return (db.movimentacoes||[]).find(x=>x.origemTipo==='transferencia' && x.origemId===m.id) || null;
+  return null;
 }
 
 /** Persiste edição de movimentação */
@@ -16682,6 +16725,30 @@ async function excluirMovimentacao(id, contaId){
         if(r) editarParcelaReceber(r.id, r.cardId);
       }
     }
+    return;
+  }
+  // v1.47.238: transferência entre contas grava duas pernas (saída numa conta, entrada na
+  // outra) — excluir só uma deixava a outra órfã pra sempre (uma "transferência" sem par
+  // do outro lado). Agora localiza a perna correspondente e exclui as duas juntas.
+  if(m && _ehMovTransferencia(m)){
+    const parceira = _movParceiraTransferencia(m);
+    const contaParceira = parceira ? (db.contasCorrente||[]).find(x=>x.id===parceira.contaId) : null;
+    const aviso = parceira
+      ? ` Isso vai excluir as DUAS pernas da transferência: esta e a de ${fmtMoney(parceira.valor)} em "${contaParceira?escHtml(contaParceira.nome):'?'}".`
+      : ' A perna correspondente não foi encontrada (já deve ter sido removida antes) — só esta será excluída.';
+    if(!confirm(`Excluir este lançamento de transferência?${aviso}`)) return;
+    await excluirDoSupabase('movimentacoes_financeiras', id);
+    db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==id);
+    registrarLog('excluir','movimentacao',id,`Lançamento excluído de "${_cc?.nome||contaId}": ${m.descricao} — ${fmtMoney(m.valor)}`);
+    if(parceira){
+      await excluirDoSupabase('movimentacoes_financeiras', parceira.id);
+      db.movimentacoes = (db.movimentacoes||[]).filter(x=>x.id!==parceira.id);
+      registrarLog('excluir','movimentacao',parceira.id,`Lançamento excluído de "${contaParceira?contaParceira.nome:parceira.contaId}" (perna da transferência): ${parceira.descricao} — ${fmtMoney(parceira.valor)}`);
+    }
+    save();
+    renderContasCorrente();
+    fecharModal();
+    abrirMovimentacoesContaCorrente(contaId);
     return;
   }
   if(!confirm('Excluir este lançamento?')) return;
