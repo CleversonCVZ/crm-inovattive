@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.238';
+const APP_VERSION = '1.47.239';
 const APP_VERSION_DATE = '22/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '22/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.239',
+    data: '22/09/2026',
+    itens: [
+      'Preparação multiempresa (Fase B.4): a tela de Configurações do Sistema (dados da empresa, logotipo, alíquotas, garantia) agora lê e grava na nova tabela multiempresa em vez da tabela antiga de empresa única. Tela de login deixou de tentar mostrar a marca da empresa antes do login (isso só fazia sentido com uma empresa por banco) — agora fica neutra ("OMNI") até o login ser confirmado, quando a marca certa da empresa do usuário aparece normalmente. Sem mudança visível pra quem já está logado.',
+    ]
+  },
   {
     versao: '1.47.238',
     data: '22/09/2026',
@@ -4367,7 +4374,11 @@ async function carregarConfigSupabase(){
       sb.from('origens').select('*').order('id'),
       sb.from('funcoes').select('*').order('id'),
       sb.from('grupos').select('*').order('id'),
-      sb.from('empresa').select('*').limit(1).maybeSingle(),
+      // v1.47.239 (Fase B.4 — login neutro): antes lia da tabela singular `empresa`
+      // (1 linha por banco). Agora lê de `empresas` (multiempresa) — a RLS já filtra
+      // pela empresa do usuário logado via current_empresa_id(), então continua
+      // devolvendo só 1 linha, mas a linha certa pra cada empresa.
+      sb.from('empresas').select('*').maybeSingle(),
       sb.from('categorias_outros_custos').select('*').order('ordem'),
       sb.from('garantia_classes').select('*').order('ordem')
     ]);
@@ -4888,15 +4899,22 @@ function syncConfigSupabase(){
     sincronizarTabela('funcoes', db.funcoes, f=>({id:f.id, nome:f.nome}));
     sincronizarTabela('grupos', db.grupos, g=>({id:g.id, nome:g.nome, admin:!!g.admin, telas:g.telas||[], telas_nivel:g.telasNivel||{}, recursos:g.recursos||[], recursos_editar:g.recursosEditar||[], fases_permitidas:g.fasesPermitidas??null, filtrar_os:!!g.filtrarOS, filtrar_propostas:!!g.filtrarPropostas, filtrar_obras:!!g.filtrarObras, filtrar_cards:!!g.filtrarCards, acesso_comercial:!!g.acessoComercial, acesso_tecnico:!!g.acessoTecnico, notificacoes_categorias:g.notificacoesCategorias??null}));
     const e = db.empresa||{};
-    sb.from('empresa').upsert({
-      id: e.id||1, razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
-      tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
-      endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90,
-      aliquota_tributos_produto: e.aliquotaTributosProduto!=null?e.aliquotaTributosProduto:6,
-      aliquota_tributos_servico: e.aliquotaTributosServico!=null?e.aliquotaTributosServico:6,
-      garantia_servico_obra_meses: e.garantiaServicoObraMeses!=null?e.garantiaServicoObraMeses:12,
-      garantia_servico_os_avulsa_meses: e.garantiaServicoOsAvulsaMeses!=null?e.garantiaServicoOsAvulsaMeses:12
-    }).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
+    // v1.47.239 (Fase B.4 — login neutro): antes era upsert com id:e.id||1 — num banco
+    // multiempresa isso é perigoso (se e.id não tivesse carregado ainda, o upsert criaria/
+    // sobrescreveria SEMPRE a empresa 1, mesmo pra quem é de outra empresa). Agora é um
+    // update explícito filtrado pelo próprio id — nunca cria linha nova (empresa nova só
+    // se cadastra por migração), e sem id carregado simplesmente não sincroniza.
+    if(e.id){
+      sb.from('empresas').update({
+        razao:e.razao||'', fantasia:e.fantasia||'', cnpj:e.cnpj||'', ie:e.ie||'',
+        tel:e.tel||'', email:e.email||'', site:e.site||'', logo:e.logo||'',
+        endereco: e.endereco || {}, log_retencao_dias: e.logRetencaoDias||90,
+        aliquota_tributos_produto: e.aliquotaTributosProduto!=null?e.aliquotaTributosProduto:6,
+        aliquota_tributos_servico: e.aliquotaTributosServico!=null?e.aliquotaTributosServico:6,
+        garantia_servico_obra_meses: e.garantiaServicoObraMeses!=null?e.garantiaServicoObraMeses:12,
+        garantia_servico_os_avulsa_meses: e.garantiaServicoOsAvulsaMeses!=null?e.garantiaServicoOsAvulsaMeses:12
+      }).eq('id', e.id).then(({error})=>{ if(error) console.error('Erro ao sincronizar empresa:', error); });
+    }
   }, 800);
 }
 
@@ -6829,6 +6847,11 @@ function removerLogo(){
   save(); renderGerais(); atualizarMarca();
 }
 
+/* v1.47.239 (Fase B.4 — login neutro): antes do login não dá mais pra saber de qual
+   empresa é o visitante (banco agora é multiempresa), então o fallback (sem db.empresa
+   carregado ainda) mostra uma marca neutra "OMNI" em vez do nome fixo da Inovattive.
+   Depois do login, db.empresa vem de `empresas` já filtrado pela própria empresa (RLS) —
+   `nome` fica preenchido e a marca real aparece normalmente. */
 function atualizarMarca(){
   const e = db.empresa||{};
   const nome = e.fantasia || e.razao;
@@ -6838,7 +6861,7 @@ function atualizarMarca(){
   const elLogin = document.getElementById('login-logo');
   if(elLogin) elLogin.innerHTML = e.logo
     ? `<img src="${e.logo}" alt="logo">${nome?`<div style="font-size:13px;font-weight:700;color:#2a2a28;text-align:center;margin-top:8px">${nome}</div>`:''}`
-    : `<svg width="40" height="40" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 8px"><rect width="64" height="64" rx="14" fill="#2a2a28"/><path d="M12 34L32 16L52 34V52H40V40H24V52H12V34Z" fill="white"/></svg><div style="font-size:14px;font-weight:800;color:#2a2a28;letter-spacing:.6px">${nome||'INOVATTIVE'}</div>${!nome?'<div style="font-size:9px;color:#888;letter-spacing:3px;margin-top:2px">HOME</div>':''}`;
+    : `<svg width="40" height="40" viewBox="0 0 64 64" fill="none" style="display:block;margin:0 auto 8px"><rect width="64" height="64" rx="14" fill="#2a2a28"/><path d="M12 34L32 16L52 34V52H40V40H24V52H12V34Z" fill="white"/></svg><div style="font-size:14px;font-weight:800;color:#2a2a28;letter-spacing:.6px">${nome||'OMNI'}</div>`;
 }
 
 /* ===== Configurações do próprio usuário ===== */
@@ -27486,27 +27509,14 @@ async function confirmarCadastrarCatalogo(){
 function renderAll(){ renderKanban(); renderFases(); renderClientes(); renderUsuarios(); renderGrupos(); renderFuncoes(); renderOrigens(); renderPropostas(); renderPropPainel(); renderPropFases(); renderObrasFases(); renderObrasLista(); renderObrasPainel(); renderOSFases(); renderOSLista(); renderOSPainel(); renderContasCorrente(); renderFornecedores(); renderContasPagar(); renderFinanceiroPainel(); renderCentrosCusto(); renderCatOutrosCustos(); renderCCPainel(); renderRecorrentes(); renderSRMFases(); renderSRMPainel(); renderEstoquePainel(); renderEstoqueCategorias(); renderEstoqueAlmoxarifado(); renderEstoqueMovimentacoes(); renderEstoqueCatalogo(); renderFatFases(); renderFatPainel(); renderFatEspelhos(); renderFatTributos(); }
 load();
 atualizarMarca();
-/* Busca só a marca da empresa (nome/logotipo) via view pública `empresa_marca`
-   (RLS liberada pro role anon — só esses 3 campos, sem CNPJ/IE/alíquotas/config
-   interna). Isso garante que a tela de login mostre o logotipo certo mesmo sem
-   sessão ativa: o cache local (localStorage) é apagado de propósito em todo
-   logout/expiração de sessão (ver limparDadosEmMemoria()) por privacidade, então
-   sem essa busca a tela de login ficava só com o placeholder genérico até o
-   próximo login bem-sucedido. Roda em paralelo, sem bloquear nada — se falhar,
-   mantém o placeholder normalmente. */
-async function atualizarMarcaDoServidor(){
-  try{
-    const {data} = await sb.from('empresa_marca').select('razao,fantasia,logo').limit(1).maybeSingle();
-    if(data){
-      db.empresa = db.empresa || {};
-      db.empresa.razao = data.razao;
-      db.empresa.fantasia = data.fantasia;
-      db.empresa.logo = data.logo;
-      atualizarMarca();
-    }
-  }catch(e){ /* silencioso — mantém o placeholder em caso de erro/offline */ }
-}
-atualizarMarcaDoServidor();
+/* v1.47.239 (Fase B.4 — login neutro): até aqui existia atualizarMarcaDoServidor(),
+   que buscava a marca (nome/logo) via view pública `empresa_marca` liberada pro role
+   anon, pra pintar o logotipo certo na tela de login ANTES de qualquer sessão — isso
+   fazia sentido enquanto existia só 1 empresa por banco. Com o banco multiempresa
+   (Fase B), não tem mais como saber de qual empresa é um visitante anônimo, então essa
+   busca foi removida (a view `empresa_marca` também foi excluída do banco) — agora a
+   tela de login fica com a marca neutra "OMNI" (ver fallback em atualizarMarca()) até
+   o login ser confirmado, quando db.empresa passa a vir da empresa real do usuário. */
 (async function(){
   // Links de convite/recuperação de senha trazem o token no #hash da URL
   const hashParams = new URLSearchParams(window.location.hash.slice(1));
