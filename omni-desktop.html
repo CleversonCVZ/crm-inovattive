@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.239';
+const APP_VERSION = '1.47.240';
 const APP_VERSION_DATE = '22/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '22/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.240',
+    data: '22/09/2026',
+    itens: [
+      'Corrigido bug que podia gerar cartões e clientes duplicados no CRM: se a gravação de um novo cartão falhasse (rede instável, erro momentâneo etc.), o app já tinha guardado o cartão/cliente na memória local antes de tentar salvar — e não desfazia isso quando o salvamento falhava. Uma sincronização posterior podia então enviar esse registro "fantasma" pro banco como um cartão duplicado de verdade. Agora, se a gravação falhar, o cartão (e o cliente, se era novo) são removidos da memória local também.',
+    ]
+  },
   {
     versao: '1.47.239',
     data: '22/09/2026',
@@ -14053,9 +14060,10 @@ async function salvarNovoCartao(){
     registrarLog('criar', 'cliente', clienteId, `Novo cliente criado: "${db.clientes.find(c=>c.id===clienteId).nome}" (junto com novo CRM)`);
   registrarLog('criar', 'card', novo.id, `Novo CRM #${novo.num} — ${db.clientes.find(c=>c.id===clienteId).nome}`);
 
+  const _clienteNovo = box.classList.contains('open');
   const _delay = new Promise(r=>setTimeout(r,800));
   try{
-    if(box.classList.contains('open')){
+    if(_clienteNovo){
       const cli = db.clientes.find(x=>x.id===clienteId);
       const {error:errCli} = await sb.from('clientes').upsert({
         id:cli.id, nome:cli.nome, tel:cli.tel||'', email:cli.email||'',
@@ -14074,6 +14082,14 @@ async function salvarNovoCartao(){
     await sincronizarHistoricoCard(novo.id);
     await _delay;
   }catch(e){
+    // v1.47.240: se a gravação no Supabase falhar, desfaz os push() locais feitos
+    // acima (db.cards e, se for o caso, db.clientes) — antes disso, um erro aqui
+    // deixava o cartão/cliente "fantasma" só na memória local, e uma sincronização
+    // qualquer posterior (depois de o usuário tentar salvar de novo) acabava
+    // enviando esses fantasmas pro banco como registros duplicados de verdade
+    // (caso real: 3 cópias de "Gilceia Herbarium" criadas no mesmo dia).
+    db.cards = db.cards.filter(c=>c.id!==novo.id);
+    if(_clienteNovo) db.clientes = db.clientes.filter(c=>c.id!==clienteId);
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
     return;
