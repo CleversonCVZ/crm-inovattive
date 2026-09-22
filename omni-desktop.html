@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.240';
+const APP_VERSION = '1.47.241';
 const APP_VERSION_DATE = '22/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '22/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.241',
+    data: '22/09/2026',
+    itens: [
+      'Depois de corrigir o bug de cartão/cliente duplicado (v1.47.240), auditei todo o sistema à procura do mesmo padrão em outros cadastros. Encontrados e corrigidos mais 3 pontos com o mesmo risco: criação de Grupo de acesso, criação de Cliente pela tela de Clientes (fora do cartão), e abertura de novo SRM — em todos, se a gravação falhasse, o registro ficava "fantasma" na memória local e podia se transformar em duplicata de verdade numa sincronização posterior. Também corrigido: ao criar um cartão novo já vinculado a uma obra nova (mesmo modal), se a gravação do cartão falhasse, a obra nova criada junto ficava com o mesmo problema — agora ela também é desfeita.',
+    ]
+  },
   {
     versao: '1.47.240',
     data: '22/09/2026',
@@ -8290,7 +8297,12 @@ async function salvarNovoSRM(){
       historico:novo.historico||[]
     });
     if(error) throw error;
-  }catch(e){ btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return; }
+  }catch(e){
+    // v1.47.240: mesmo fix do salvarNovoCartao — desfaz o push local se a
+    // gravação falhar, senão o SRM fantasma pode duplicar numa sync futura.
+    db.cardsSRM = db.cardsSRM.filter(c=>c.id!==novo.id);
+    btnRestaurar(btn); alert('Erro ao salvar: '+(e.message||e)); return;
+  }
   saveLocal(); syncDadosSupabase();
   fecharModal(); renderAll();
 }
@@ -14038,11 +14050,17 @@ async function salvarNovoCartao(){
   // existente como perdido/concluído (ver salvarEdicaoCartao/confirmarPerdido).
   const _perdidoNovo   = document.getElementById('m-perdido').checked;
   const _concluidoNovo = document.getElementById('m-concluido').checked;
+  // v1.47.240: resolverObra() também faz um push local (obra nova, se o box "nova
+  // obra" estiver aberto) sem tentar salvar nada no Supabase — guardamos aqui se
+  // era uma obra nova e o id gerado, pra poder desfazer no catch abaixo também
+  // (mesma lógica do _clienteNovo/db.clientes já corrigida).
+  const _obraNova = document.getElementById('nova-obra-box')?.classList.contains('open') || false;
+  const _obraIdNova = await resolverObra(clienteId);
   const novo = {
     id: await proximoIdSeguro('cards', db.cards),
     num:db.cards.reduce((m,c)=>Math.max(m,c.num),0)+1,
     clienteId,
-    obraId: await resolverObra(clienteId),
+    obraId: _obraIdNova,
     origemId:+document.getElementById('m-origem').value||null,
     faseId:+document.getElementById('m-fase').value,
     responsavelId:+document.getElementById('m-resp').value||null,
@@ -14090,6 +14108,7 @@ async function salvarNovoCartao(){
     // (caso real: 3 cópias de "Gilceia Herbarium" criadas no mesmo dia).
     db.cards = db.cards.filter(c=>c.id!==novo.id);
     if(_clienteNovo) db.clientes = db.clientes.filter(c=>c.id!==clienteId);
+    if(_obraNova && _obraIdNova) db.obras = db.obras.filter(o=>o.id!==_obraIdNova);
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
     return;
@@ -24936,6 +24955,9 @@ async function salvarNovoCliente(){
     if(error) throw error;
     await _delay;
   }catch(e){
+    // v1.47.240: mesmo fix do salvarNovoCartao — desfaz o push local se a
+    // gravação falhar, senão o cliente fantasma pode duplicar numa sync futura.
+    db.clientes = db.clientes.filter(c=>c.id!==clienteId);
     btnRestaurar(btn);
     alert('Erro ao salvar: '+(e.message||e));
     return;
@@ -25871,6 +25893,9 @@ async function salvarGrupo(id){
     if(error) throw error;
     await _delay;
   }catch(e){
+    // v1.47.240: se era grupo NOVO (não edição) e a gravação falhar, desfaz o push
+    // local — mesmo bug de duplicação fantasma corrigido em salvarNovoCartao.
+    if(!id) db.grupos = db.grupos.filter(g=>g.id!==row.id);
     btnRestaurar(btn);
     alert('Erro ao salvar: '+e.message);
     return;
