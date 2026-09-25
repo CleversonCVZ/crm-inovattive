@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.241';
-const APP_VERSION_DATE = '22/09/2026';
+const APP_VERSION = '1.47.242';
+const APP_VERSION_DATE = '25/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '22/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.242',
+    data: '25/09/2026',
+    itens: [
+      'Contas a Pagar: agora dá pra anexar um arquivo (boleto, guia ou comprovante em PDF ou foto) direto na tela de editar cada conta — útil pra guardar o documento de onde você tira o código de barras ou o QR code do Pix pra pagar. Mesmo estilo de anexo que já existia na Guia de Recolhimento. Um anexo por conta; enviar outro substitui o anterior.',
+    ]
+  },
   {
     versao: '1.47.241',
     data: '22/09/2026',
@@ -4712,6 +4719,7 @@ async function carregarDadosSupabase(){
         observacao:p.observacao||'',
         recorrenteId:p.recorrente_id||null,
         guiaTributosId:p.guia_tributos_id||null,
+        anexoPath:p.anexo_path||null, anexoNome:p.anexo_nome||null,
         criadoEm:p.created_at||'',
         pagamentos:[]
       }));
@@ -17818,6 +17826,14 @@ function abrirEditarContaPagar(id){
       <label>Observação
         <input id="ecp-obs" type="text" value="${escHtml(p.observacao)}" class="input" style="margin-top:4px">
       </label>
+      <div>
+        <label style="display:block;font-size:11px;color:var(--muted);margin-bottom:4px">Anexo (boleto, guia ou comprovante — pra consultar o código de barras/QR do Pix)</label>
+        <div style="display:flex;align-items:center;gap:2px">
+          ${p.anexoPath?`<button type="button" class="btn-xs" onclick="baixarAnexoContaPagar('${p.anexoPath}','${(p.anexoNome||'anexo').replace(/'/g,"\\'")}')">📄 ${escHtml(p.anexoNome||'Abrir')}</button>`:'<span style="font-size:12px;color:var(--muted)">Nenhum</span>'}
+          ${p.anexoPath?`<button type="button" title="Remover arquivo" style="background:none;border:none;cursor:pointer;font-size:16px;color:#c62828;padding:2px 4px" onclick="excluirAnexoContaPagar(${id})">✕</button>`:''}
+        </div>
+        <input type="file" accept="application/pdf,image/*" style="display:block;margin-top:4px;font-size:12px" onchange="uploadAnexoContaPagar(this,${id})">
+      </div>
     </div>
     <div class="actions rodape-cartao" style="justify-content:space-between">
       <div style="display:flex;gap:8px">
@@ -17879,6 +17895,50 @@ async function salvarEdicaoContaPagar(id){
   await _delay;
   btnSalvo(btn); // v1.47.36: não fecha mais — só confirma que salvou
   renderContasPagar();
+}
+
+/* v1.47.242: anexo de Conta a Pagar (boleto/guia/comprovante) — mesmo padrão de
+ * uploadPdfGuiaTributos/baixarPdfGuiaTributos/excluirPdfGuiaTributos, mas genérico
+ * pra qualquer Conta a Pagar (não só as originadas de Guia de Tributos) e aceitando
+ * também foto (jpg/png), já que o boleto às vezes só existe como foto tirada com o
+ * celular. Um anexo só por conta — subir outro substitui o anterior. */
+async function uploadAnexoContaPagar(input, id){
+  if(!podeEditarTela(usuarioAtual,'fin-contas-pagar')){ alert('Sem permissão para editar.'); return; }
+  const p = (db.contasPagar||[]).find(x=>x.id===id); if(!p) return;
+  const file = input && input.files && input.files[0]; if(!file) return;
+  const ext = (file.name.split('.').pop()||'dat').toLowerCase();
+  const path = `cp_${id}/anexo_${Date.now()}.${ext}`;
+  try{
+    const {error} = await uploadOSArquivoXHR('contas-pagar', path, file, ()=>{});
+    if(error) throw new Error(error.message||'Erro no upload');
+    const antigoPath = p.anexoPath;
+    if(antigoPath) await sb.storage.from('contas-pagar').remove([antigoPath]);
+    p.anexoPath = path; p.anexoNome = file.name;
+    await sb.from('contas_pagar').update({anexo_path:path, anexo_nome:file.name}).eq('id', id);
+    registrarLog('editar','conta_pagar',id,`Anexo enviado na Conta a Pagar "${p.descricao}" (${escHtml(file.name)})`);
+    save();
+    abrirEditarContaPagar(id);
+  }catch(e){
+    alert('Erro no upload: '+(e.message||e));
+  }
+}
+async function baixarAnexoContaPagar(path, nome){
+  await _baixarArquivoBucket('contas-pagar', path, nome);
+}
+async function excluirAnexoContaPagar(id){
+  if(!podeEditarTela(usuarioAtual,'fin-contas-pagar')){ alert('Sem permissão para editar.'); return; }
+  const p = (db.contasPagar||[]).find(x=>x.id===id); if(!p) return;
+  if(!p.anexoPath) return;
+  if(!confirm('Remover o anexo desta conta?')) return;
+  try{
+    await sb.storage.from('contas-pagar').remove([p.anexoPath]);
+    p.anexoPath = null; p.anexoNome = null;
+    const {error} = await sb.from('contas_pagar').update({anexo_path:null, anexo_nome:null}).eq('id', id);
+    if(error) throw error;
+  }catch(e){ alert('Erro ao remover: '+(e.message||e)); return; }
+  registrarLog('excluir','conta_pagar',id,`Anexo removido da Conta a Pagar "${p.descricao}"`);
+  save();
+  abrirEditarContaPagar(id);
 }
 
 /** Abre modal de confirmação de pagamento (v1.47.120: suporta pagamento parcial/adiantamento,
@@ -18088,6 +18148,8 @@ async function excluirContaPagar(id){
 
   const {error} = await sb.from('contas_pagar').delete().eq('id', id);
   if(error){ alert('Erro ao excluir: '+error.message); return false; }
+  // v1.47.242: remove o anexo do Storage junto — senão fica arquivo órfão no bucket
+  if(p.anexoPath) await sb.storage.from('contas-pagar').remove([p.anexoPath]);
   db.contasPagar = db.contasPagar.filter(x=>x.id!==id);
   save();
   registrarLog('excluir','conta_pagar',id,`Conta a Pagar excluída: ${p.descricao} — ${fmtMoney(p.valor)} (status era: ${p.status})`); // v1.47.108
