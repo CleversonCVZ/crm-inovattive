@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.242';
-const APP_VERSION_DATE = '25/09/2026';
+const APP_VERSION = '1.47.243';
+const APP_VERSION_DATE = '29/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '25/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.243',
+    data: '29/09/2026',
+    itens: [
+      'Corrigido: uma obra podia ficar marcada como "Concluída" ou "Abandonada" no Status sem a Fase acompanhar — acontecia quando o Status era trocado manualmente no cadastro da obra sem mexer na Fase (só o sentido contrário, Fase→Status, era sincronizado). Isso fazia a obra sumir das telas que agrupam por Fase, aparecendo em "Sem fase" (ex.: Estoque → Acompanhamento). Agora escolher Concluída/Abandonada no Status já move a Fase automaticamente pra fase correspondente. Corrigida também uma obra que já estava nessa situação ("Casa Eduardo projeto Zaqueu").',
+    ]
+  },
   {
     versao: '1.47.242',
     data: '25/09/2026',
@@ -25148,7 +25155,7 @@ function abrirObraModal(obraId, clienteId, returnCardId=null){
     <label>Nome da obra</label><input id="o-nome" value="${o?o.nome.replace(/"/g,'&quot;'):''}" placeholder="Ex.: Residência Alphaville — Automação">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div><label>Fase da obra</label><select id="o-fase" style="width:100%" onchange="_sincronizarStatusPelaFaseObra(this)"><option value="">— sem fase —</option>${fasesOpts}</select></div>
-      <div><label>Status</label><select id="o-status" style="width:100%" onchange="toggleCampoConcluidaEmObra(this)" ${travaStatus?'disabled':''}>${statusOpts}</select></div>
+      <div><label>Status</label><select id="o-status" style="width:100%" onchange="onchangeStatusObra(this)" ${travaStatus?'disabled':''}>${statusOpts}</select></div>
     </div>
     <p id="o-status-trava-msg" style="font-size:11px;color:var(--muted);margin:2px 0 0">${travaStatus?`🔒 Status travado em "${faseAtual.tipo==='concluida'?'Concluída':'Abandonada'}" porque a Fase escolhida é desse tipo — troque a Fase pra liberar edição manual.`:'Escolher uma fase "Concluída" ou "Abandonada" trava o Status automaticamente nesse valor (evita ficar dessincronizado).'}</p>
     <div id="o-concluida-wrap" style="display:${(o?o.status||'ativa':'ativa')==='concluida'?'':'none'}">
@@ -25208,6 +25215,23 @@ function toggleCampoConcluidaEmObra(selStatus){
   if(ehConcluida){
     const inp = document.getElementById('o-concluida-em');
     if(inp && !inp.value) inp.value = localDia(0);
+  }
+}
+/* v1.47.243: _sincronizarStatusPelaFaseObra (acima) só cobria o sentido Fase→Status
+ * (mudar a Fase pra uma do tipo concluída/cancelada trava o Status nesse valor). Mas
+ * o Status também podia ser trocado manualmente pra "Concluída"/"Abandonada" sem
+ * nunca tocar na Fase (o select de Status só fica travado quando a Fase JÁ é desse
+ * tipo) — isso deixava a obra com status=concluida mas Fase ainda numa fase normal
+ * de andamento, e ela sumia (caía em "Sem fase") em qualquer tela que agrupa obras
+ * concluídas/abandonadas por Fase (Estoque→Acompanhamento e outras). Agora o sentido
+ * contrário também é sincronizado: escolher Concluída/Abandonada no Status já move
+ * a Fase pra fase correspondente daquele tipo (se existir uma cadastrada). */
+function onchangeStatusObra(selStatus){
+  toggleCampoConcluidaEmObra(selStatus);
+  if(selStatus.value==='concluida' || selStatus.value==='cancelada'){
+    const selFase = document.getElementById('o-fase');
+    const faseAlvo = (db.fasesObra||[]).find(f=>f.tipo===selStatus.value);
+    if(selFase && faseAlvo && String(selFase.value)!==String(faseAlvo.id)) selFase.value = faseAlvo.id;
   }
 }
 
