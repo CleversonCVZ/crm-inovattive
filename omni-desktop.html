@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.243';
+const APP_VERSION = '1.47.244';
 const APP_VERSION_DATE = '29/09/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '29/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.244',
+    data: '29/09/2026',
+    itens: [
+      'Novo: alerta na tela do Espelho de Faturamento quando o cliente vinculado à obra não tem CPF/CNPJ ou endereço cadastrado — pra evitar mandar um espelho incompleto pra contabilidade. Aparece como aviso fixo na aba Dados (com link direto pra cadastrar) e como confirmação antes de gerar um novo Espelho, baixar o PDF ou gerar o Excel de instrução de NF.',
+    ]
+  },
   {
     versao: '1.47.243',
     data: '29/09/2026',
@@ -10924,6 +10931,11 @@ async function confirmarNovoEspelhoFaturamento(){
   const c = (db.cards||[]).find(x=>x.id===cardId);
   const obraId = c?.obraId||null;
   if(!obraId){ alert('Este cartão ainda não tem obra vinculada — vincule uma obra antes de criar o espelho.'); return; }
+  {
+    const obraChk = (db.obras||[]).find(o=>o.id===obraId);
+    const faltando = _clienteFaturamentoFaltando(obraChk ? cliente(obraChk.clienteId) : null);
+    if(faltando.length && !confirm(`Cliente sem ${faltando.join(' e ')} cadastrado. Gerar o Espelho assim mesmo?\n\n(A contabilidade vai precisar pedir esse dado antes de emitir a NF.)`)) return;
+  }
   btnSalvando(btn);
   const primeiraFase = fasesFatOrdenadas().filter(f=>!f.tipo)[0]||fasesFatOrdenadas()[0];
   if(!db.notasFiscais) db.notasFiscais=[];
@@ -11118,7 +11130,14 @@ function abaEspelhoDadosHTML(nf, c, ob, cli){
   const previsaoImpostos = previsaoImpostosEspelho(nf);
   const resumoCard = nf.cardId ? _resumoFaturamentoCard(nf.cardId) : null;
   const outrosEspelhos = resumoCard ? resumoCard.espelhos.filter(e=>e.id!==nf.id) : [];
+  const faltandoCli = _clienteFaturamentoFaltando(cli);
+  const avisoCliFaltando = faltandoCli.length ? `
+    <div style="background:#fff3e0;border:1.5px solid #f9a825;border-radius:8px;padding:10px 12px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:#e65100">⚠ Cliente sem ${faltandoCli.join(' e ')} cadastrado</div>
+      <div style="font-size:12px;color:#7a4a00;margin-top:2px">Enviar este Espelho pra contabilidade assim vai fazer ela voltar pedindo esse dado. ${cli?.id?`<a href="#" onclick="event.preventDefault();abrirEditarCliente(${cli.id})" style="color:#e65100;font-weight:600;text-decoration:underline">Cadastrar agora</a>`:''}</div>
+    </div>` : '';
   return `
+    ${avisoCliFaltando}
     <div class="form-row">
       <div><label>Cartão CRM</label><input value="${c?'#'+c.num:'—'}" disabled></div>
       <div><label>Cliente</label><input value="${cli?escHtml(cli.nome):'—'}" disabled></div>
@@ -11830,6 +11849,19 @@ function _endCompletoStr(e){
   const cep = e.cep ? 'CEP '+e.cep : '';
   return [linha1, linha2, cep].filter(Boolean).join(' — ') || '—';
 }
+/* v1.47.244: dados básicos que a contabilidade precisa pra emitir a NF de verdade
+ * (CPF/CNPJ e endereço do cliente) — sem eles, o Espelho ainda é útil pra
+ * organizar os itens, mas mandar assim pra contabilidade obriga ela a voltar
+ * pedindo o que falta. Usado tanto pro aviso fixo na aba Dados quanto pra
+ * confirmar antes de criar o Espelho ou gerar o PDF/Excel de instrução. */
+function _clienteFaturamentoFaltando(cli){
+  if(!cli) return ['cliente vinculado à obra'];
+  const faltando = [];
+  if(!(cli.cnpjCpf||'').trim()) faltando.push('CPF/CNPJ');
+  const end = cli.endereco||{};
+  if(!((end.rua||'').trim() && (end.cidade||'').trim())) faltando.push('endereço');
+  return faltando;
+}
 function _dadosInstrucaoFaturamento(nf){
   const card = (db.cards||[]).find(x=>x.id===nf.cardId);
   const obra = (db.obras||[]).find(o=>o.id===nf.obraId);
@@ -11853,6 +11885,11 @@ function _dadosInstrucaoFaturamento(nf){
 }
 
 async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
+  {
+    const nfChk = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nfChk) return;
+    const faltando = _clienteFaturamentoFaltando(_dadosInstrucaoFaturamento(nfChk).cliente);
+    if(faltando.length && !confirm(`Cliente sem ${faltando.join(' e ')} cadastrado. Gerar o PDF assim mesmo?\n\n(A contabilidade vai precisar pedir esse dado antes de emitir a NF.)`)) return;
+  }
   if(!window.jspdf){
     await new Promise((res,rej)=>{
       const s=document.createElement('script');
@@ -12017,6 +12054,10 @@ async function exportarPDFInstrucaoFaturamento(nfId, modo='download'){
 async function exportarExcelInstrucaoFaturamento(nfId){
   const nf = (db.notasFiscais||[]).find(x=>x.id===nfId); if(!nf) return;
   const { card, obra, cliente:cli, itensProd, itensServ, totalProduto, totalServico } = _dadosInstrucaoFaturamento(nf);
+  {
+    const faltando = _clienteFaturamentoFaltando(cli);
+    if(faltando.length && !confirm(`Cliente sem ${faltando.join(' e ')} cadastrado. Gerar o Excel assim mesmo?\n\n(A contabilidade vai precisar pedir esse dado antes de emitir a NF.)`)) return;
+  }
   let X;
   try{ X = await carregarXlsxJs(); } catch(e){ alert('Sem acesso ao CDN pra gerar o Excel (verifique a internet).'); return; }
 
