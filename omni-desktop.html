@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.245';
+const APP_VERSION = '1.47.246';
 const APP_VERSION_DATE = '01/10/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '01/10/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.246',
+    data: '01/10/2026',
+    itens: [
+      'Corrigido: numa Conta a Pagar "Parcial", baixar o valor total (pra corrigir um valor que veio diferente do esperado) até ele ficar igual ao que já tinha sido pago não promovia a conta pra "Pago" — ela ficava mostrando "falta R$ 0,00" mas continuava com o botão "Restante" ativo, como se ainda faltasse pagar. Agora, nesse caso, o sistema já marca como "Pago" sozinho ao salvar a edição.',
+    ]
+  },
   {
     versao: '1.47.245',
     data: '01/10/2026',
@@ -17977,7 +17984,19 @@ async function salvarEdicaoContaPagar(id){
   // Preserva status=pago/parcial; caso contrário sempre pendente (condicional é tipo, não status)
   // v1.47.121: antes resetava 'parcial' pra 'pendente' ao salvar uma edição — perdia o rastro
   // de que já havia pagamento(s) parcial(is) registrado(s) (valorPago continua intacto).
-  const novoStatus = (p.status==='pago'||p.status==='parcial') ? p.status : 'pendente';
+  let novoStatus = (p.status==='pago'||p.status==='parcial') ? p.status : 'pendente';
+  let novaDataPagamento = p.dataPagamento;
+  // v1.47.246: baixar o valor TOTAL de uma conta "Parcial" até ele ficar igual (ou menor)
+  // que o que já foi pago antes nunca promovia o status pra "Pago" — ficava com falta R$0,00
+  // mas continuava mostrando o botão "Restante", como se ainda faltasse pagar. Agora, se o
+  // valor novo já estiver coberto pelo valorPago existente, promove sozinho pra "Pago" (usando
+  // a data do último pagamento parcial registrado, já que não há um novo pagamento sendo
+  // lançado aqui — só a correção do valor total previsto).
+  if(novoStatus==='parcial' && (p.valorPago||0) >= valor - 0.01){
+    novoStatus = 'pago';
+    const ultimoPagamento = (p.pagamentos||[]).slice(-1)[0];
+    novaDataPagamento = p.dataPagamento || ultimoPagamento?.data || localDia(0);
+  }
 
   const btn = btnModalPrimario();
   btnSalvando(btn);
@@ -17987,13 +18006,14 @@ async function salvarEdicaoContaPagar(id){
     descricao, fornecedor_id:fornecedorId||null, valor,
     data_vencimento:dataVenc||null, status:novoStatus, condicao:condicao||null,
     centro_custo_id:ccId, obra_id:obraId||null,
-    observacao:observacao||null
+    observacao:observacao||null, data_pagamento:novaDataPagamento||null
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
   p.descricao=descricao; p.fornecedorId=fornecedorId; p.valor=valor;
   p.dataVencimento=dataVenc; p.status=novoStatus; p.condicao=condicao;
   p.centroCustoId=ccId; p.obraId=obraId; p.observacao=observacao;
+  p.dataPagamento=novaDataPagamento;
   save();
   registrarLog('editar','conta_pagar',id,`Conta a Pagar editada: ${descricao} — ${fmtMoney(valor)}`); // v1.47.108
   await _delay;
