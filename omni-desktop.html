@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.244';
-const APP_VERSION_DATE = '29/09/2026';
+const APP_VERSION = '1.47.245';
+const APP_VERSION_DATE = '01/10/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '29/09/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.245',
+    data: '01/10/2026',
+    itens: [
+      'Novo: na tela Financeiro — Acompanhamento (visão Centros de Custo), clicar numa linha (inclusive "(sem centro)") agora abre a lista dos lançamentos que compõem aquele total, cada um já com o botão de editar — antes só dava pra ver o valor somado, sem jeito fácil de achar qual lançamento específico estava sem centro de custo.',
+    ]
+  },
   {
     versao: '1.47.244',
     data: '29/09/2026',
@@ -5290,7 +5297,7 @@ function _finPainelCC(statsEl, corpoEl, periodo){
 
   const linhas = Object.entries(mapa).map(([idStr,v])=>{
     const id=Number(idStr); const cc=CCs.find(x=>x.id===id);
-    return {nome:cc?.nome||'(sem centro)',tipo:cc?.tipo||'variavel',total:v.total,nLanc:v.nLanc};
+    return {id, nome:cc?.nome||'(sem centro)',tipo:cc?.tipo||'variavel',total:v.total,nLanc:v.nLanc};
   }).filter(l=>l.total>0).sort((a,b)=>a.tipo!==b.tipo?a.tipo==='fixo'?-1:1:b.total-a.total);
 
   const totGeral=linhas.reduce((s,l)=>s+l.total,0);
@@ -5316,7 +5323,7 @@ function _finPainelCC(statsEl, corpoEl, periodo){
     let hdr='';
     if(l.tipo!==lastTipo){ lastTipo=l.tipo;
       hdr=`<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:14px 0 6px">${isFixo?'🏢 Custos Fixos (Overhead)':'🏗️ Custos Variáveis (Projetos)'}</div>`; }
-    return `${hdr}<div style="display:grid;grid-template-columns:220px 1fr 110px 70px;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${bgCor}">
+    return `${hdr}<div onclick="abrirDetalheCentroCusto(${l.id},'${periodo}')" title="Clique para ver os lançamentos" style="cursor:pointer;display:grid;grid-template-columns:220px 1fr 110px 70px;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;margin-bottom:6px;background:${bgCor}">
       <div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(l.nome)}">${escHtml(l.nome)}</div>
       <div style="position:relative;height:8px;background:rgba(0,0,0,.08);border-radius:4px">
         <div style="position:absolute;left:0;top:0;height:100%;border-radius:4px;background:${barCor};width:${pct.toFixed(1)}%"></div></div>
@@ -5324,6 +5331,55 @@ function _finPainelCC(statsEl, corpoEl, periodo){
       <div style="text-align:center;font-size:12px;color:var(--muted)">${l.nLanc} lanç.</div>
     </div>`;
   }).join('')+'</div>';
+}
+
+/* v1.47.245: detalhe dos lançamentos por trás de uma linha da grade de Centros de
+ * Custo (inclusive "(sem centro)") — a grade só mostrava o total somado, sem
+ * nenhum jeito de descobrir QUAL lançamento compunha aquele valor. Clicar na
+ * linha abre essa lista (mesmo filtro de período/tipo/conta-sistema usado na
+ * grade) com um ✏️ por item que já abre o editor de lançamento existente, pra
+ * corrigir o centro de custo (ou qualquer outro campo) sem precisar ir caçar
+ * manualmente na tela de Contas Correntes. */
+function abrirDetalheCentroCusto(ccId, periodo){
+  const cc = ccId ? (db.centrosCusto||[]).find(x=>x.id===ccId) : null;
+  const contasSistemaIds = new Set((db.contasCorrente||[]).filter(c=>c.ehContaSistema).map(c=>c.id));
+  const lancs = (db.movimentacoes||[]).filter(m=>{
+    if(m.tipo!=='saida') return false;
+    if(contasSistemaIds.has(m.contaId)) return false;
+    if(!_finPainelDentroFiltro(m.dataMovimento, periodo)) return false;
+    return (m.centroCustoId||0) === (ccId||0);
+  }).sort((a,b)=>(b.dataMovimento||'').localeCompare(a.dataMovimento||''));
+
+  const total = lancs.reduce((s,m)=>s+(m.valor||0),0);
+
+  const linhas = lancs.map(m=>{
+    const conta = (db.contasCorrente||[]).find(c=>c.id===m.contaId);
+    return `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+        <div>
+          <div style="font-weight:600">${escHtml(m.descricao||'—')}</div>
+          <div style="font-size:12px;color:var(--muted)">${m.dataMovimento?fmtDia2(m.dataMovimento):'—'} · ${conta?escHtml(conta.nome):'—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+          <b style="color:#b71c1c">${fmtMoney(m.valor)}</b>
+          <button class="btn-xs" onclick="editarMovimentacao(${m.id},${m.contaId})" title="Editar lançamento">✏️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty" style="padding:16px;text-align:center">Nenhum lançamento encontrado.</div>`;
+
+  abrirModal(`
+    <div style="flex-shrink:0;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <h3>${cc?escHtml(cc.nome):'(sem centro)'} — Lançamentos</h3>
+    </div>
+    <div class="aba-corpo">
+      ${linhas}
+      <div style="text-align:right;margin-top:10px;font-size:14px"><b>Total: ${fmtMoney(total)}</b></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" onclick="fecharModal()">Fechar</button>
+    </div>`);
 }
 
 /** Sub-renderer: Contas a Pagar */
