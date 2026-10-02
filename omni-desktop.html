@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.246';
-const APP_VERSION_DATE = '01/10/2026';
+const APP_VERSION = '1.47.247';
+const APP_VERSION_DATE = '02/10/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '01/10/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.247',
+    data: '02/10/2026',
+    itens: [
+      'Novo: contas do tipo Cartão de Crédito ganharam o checkbox "Exibir saldo devedor no Contas a Pagar" (em Contas Correntes). Quando marcado, a fatura atual do cartão (atualizada sozinha a cada despesa lançada nele) aparece como uma linha informativa na tela Contas a Pagar, com vencimento calculado automaticamente pro "Dia Venc. Fatura" configurado — some sozinha quando a fatura zera, e entra nos totais de "A Pagar"/"Pendente" do topo (sem duplicar valor: o momento em que uma Conta a Pagar é quitada no cartão é o mesmo em que ela sai do Pendente e a fatura sobe).',
+    ]
+  },
   {
     versao: '1.47.246',
     data: '01/10/2026',
@@ -4714,7 +4721,8 @@ async function carregarDadosSupabase(){
         faturaInicial:Number(c.fatura_inicial)||0,
         ocultarPainel:!!c.ocultar_painel,
         ehProvisaoImpostos:!!c.eh_provisao_impostos,
-        ehContaSistema:!!c.eh_conta_sistema
+        ehContaSistema:!!c.eh_conta_sistema,
+        exibirFaturaCP:!!c.exibir_fatura_cp
       }));
     if(movimentacoes.data)
       db.movimentacoes = movimentacoes.data.map(m=>({
@@ -13284,7 +13292,7 @@ const AJUDA_CONTEUDO = {
       <h5>Saldo</h5>
       <p>Nunca é digitado — sempre calculado a partir do Saldo Inicial + entradas − saídas − transferências enviadas, olhando todo o histórico de lançamentos daquela conta (manuais, Contas a Pagar pagas, Contas a Receber recebidas, transferências entre contas). Corrigir um saldo errado é ajustar/excluir o lançamento que causou o erro, nunca o campo "Saldo Inicial" da conta (a menos que o erro seja mesmo no saldo de abertura).</p>
       <h5>Tipos de conta</h5>
-      <p><b>Corrente/Caixa Interno:</b> saldo simples, soma e subtrai normalmente. <b>Cartão de Crédito:</b> funciona ao contrário — "Fatura Inicial" é uma dívida (mostrada negativa), gastos aumentam a fatura em aberto, pagamentos da fatura reduzem; use "Fechamento"/"Vencimento" só como referência de data, o sistema não fecha fatura sozinho.</p>
+      <p><b>Corrente/Caixa Interno:</b> saldo simples, soma e subtrai normalmente. <b>Cartão de Crédito:</b> funciona ao contrário — "Fatura Inicial" é uma dívida (mostrada negativa), gastos aumentam a fatura em aberto, pagamentos da fatura reduzem; use "Fechamento" só como referência de data, o sistema não fecha fatura sozinho. O campo "Dia Venc. Fatura" é usado pelo checkbox "Exibir saldo devedor no Contas a Pagar" (v1.47.247): quando marcado, a fatura atual do cartão aparece como uma linha informativa na tela Contas a Pagar, sempre com o saldo devedor ao vivo e o vencimento calculado pra próxima ocorrência desse dia — some sozinha quando a fatura zera.</p>
       <h5>📋 Extrato × ＋ Lançar</h5>
       <p>Extrato é a lista completa de movimentações da conta (filtrável por tipo) — clique numa linha pra editar/excluir aquele lançamento específico. "＋ Lançar" cria um lançamento manual novo (entrada, saída ou transferência para outra conta). Lançamentos que vieram de outra tela (pagamento de Conta a Pagar, recebimento de Conta a Receber, previsão de imposto de um Espelho etc.) também aparecem aqui, mas alguns campos ficam travados pra edição — mexer neles direto no extrato desalinharia com a tela de origem. Centro de Custo (e Obra) só aparecem numa "Saída" — é uma classificação de gasto (Custos Fixos/Variáveis), não existe pro lado de receita, por isso some em Entrada e Transferência.</p>
       <h5>🔒 Conta de Sistema</h5>
@@ -13292,7 +13300,7 @@ const AJUDA_CONTEUDO = {
   },
   'fin-contas-pagar': {
     titulo: 'Contas a Pagar',
-    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Cada conta pode estar Pendente, Parcial (pagou uma parte, ex.: um adiantamento) ou Paga (quitada). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui.</p>`
+    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Cada conta pode estar Pendente, Parcial (pagou uma parte, ex.: um adiantamento) ou Paga (quitada). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui. A linha roxa "💳 Fatura em aberto" (quando aparece) não é uma Conta a Pagar de verdade — é o saldo devedor ao vivo de um Cartão de Crédito marcado em Contas Correntes pra aparecer aqui; clique nela pra ir até a conta do cartão (quitar a fatura é um lançamento lá, não um "pagar" aqui).</p>`
   },
   'confirmar-pagamento': {
     titulo: 'Confirmar Pagamento',
@@ -16009,6 +16017,53 @@ function saldoTotalContas(){
     .reduce((t,c)=>t+saldoContaCorrente(c.id),0);
 }
 
+/* v1.47.247: próxima ocorrência do "Dia Venc. Fatura" de um cartão a partir de hoje —
+ * usado pra mostrar a fatura do cartão no Contas a Pagar sempre com vencimento futuro,
+ * sem precisar o usuário redigitar a data toda vez. Se o dia configurado não existir no
+ * mês (ex.: 31 em fevereiro), cai pro último dia daquele mês. */
+function _proximoVencimentoCartao(dia){
+  if(!dia) return null;
+  const hoje = new Date();
+  const monta = (ano,mesIdx)=>{
+    const ultimoDia = new Date(ano, mesIdx+1, 0).getDate();
+    const d = Math.min(dia, ultimoDia);
+    return `${ano}-${String(mesIdx+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  };
+  const hojeStr = localDia(0);
+  let cand = monta(hoje.getFullYear(), hoje.getMonth());
+  if(cand < hojeStr){
+    const prox = new Date(hoje.getFullYear(), hoje.getMonth()+1, 1);
+    cand = monta(prox.getFullYear(), prox.getMonth());
+  }
+  return cand;
+}
+
+/* v1.47.247: monta uma linha "virtual" (nunca gravada em contas_pagar) pra cada cartão
+ * de crédito com "Exibir saldo devedor no Contas a Pagar" marcado — o saldo devedor
+ * já é calculado ao vivo por saldoContaCorrente(), então essa linha nunca fica
+ * desatualizada igual um lançamento manual ficaria. Representa uma dívida DIFERENTE
+ * da dos lançamentos normais de Contas a Pagar (dívida com a operadora do cartão, não
+ * com o fornecedor original — ver conversa com o Cleverson em 02/10/2026: não duplica
+ * valor porque, no momento em que uma Conta a Pagar é quitada usando o cartão, ela sai
+ * do Pendente e essa fatura sobe na mesma hora, nunca as duas contando o mesmo valor
+ * ao mesmo tempo). Some da lista sozinha quando a fatura zera. */
+function _faturasCartaoVirtuais(){
+  return (db.contasCorrente||[])
+    .filter(c=>c.tipo==='cartao' && c.ativo && c.exibirFaturaCP)
+    .map(c=>{
+      const fatura = Math.max(-saldoContaCorrente(c.id), 0);
+      if(fatura<=0.01) return null;
+      return {
+        id:`cartao-${c.id}`, __contaCartaoId:c.id, _nomeCartao:c.nome,
+        descricao:`Fatura do cartão — ${c.nome}`, fornecedorId:null,
+        valor:fatura, valorPago:0, status:'pendente',
+        dataVencimento:_proximoVencimentoCartao(c.diaVencimentoFatura),
+        condicao:null, centroCustoId:null, obraId:null,
+        dataPagamento:null, recorrenteId:null, observacao:null
+      };
+    }).filter(Boolean);
+}
+
 /** Renderiza a tela principal de Contas Correntes */
 function renderContasCorrente(){
   const fBusca  = termoBusca();
@@ -16153,6 +16208,13 @@ function _ccFormHTML(c={}){
             value="${c.faturaInicial?fmtMoney(c.faturaInicial).replace('R$','').trim():''}">
           <p style="margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">Valor já gasto no cartão antes de começar a usar o sistema (despesas anteriores ainda na fatura).</p>
         </label>
+        <label style="display:flex;flex-direction:column;justify-content:flex-start">
+          <span style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="ncc-exibir-fatura-cp" ${c.exibirFaturaCP?'checked':''}>
+            <span>Exibir saldo devedor no Contas a Pagar</span>
+          </span>
+          <p style="margin:4px 0 0;font-size:11px;color:var(--muted);font-style:italic">Mostra uma linha com a fatura atual (atualizada sozinha a cada despesa no cartão) na tela Contas a Pagar, com vencimento no "Dia Venc. Fatura" configurado acima.</p>
+        </label>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <label id="ncc-saldo-label" ${isCartao?'style="display:none"':''}>Saldo Inicial (R$)
@@ -16273,7 +16335,7 @@ function _toggleCCCartao(){
 /** Lê os campos extras de cartão do formulário */
 function _ccCartaoCampos(){
   const tipo = (document.getElementById('ncc-tipo')||{}).value||'corrente';
-  if(tipo!=='cartao') return {limite:null, diaFechamento:null, diaVencimentoFatura:null, faturaInicial:0};
+  if(tipo!=='cartao') return {limite:null, diaFechamento:null, diaVencimentoFatura:null, faturaInicial:0, exibirFaturaCP:false};
   const limite = parseFloat(
     ((document.getElementById('ncc-limite')||{}).value||'0').replace(/\./g,'').replace(',','.')
   ) || null;
@@ -16282,7 +16344,8 @@ function _ccCartaoCampos(){
   const faturaInicial = parseFloat(
     ((document.getElementById('ncc-fatura-ini')||{}).value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
-  return {limite, diaFechamento, diaVencimentoFatura, faturaInicial};
+  const exibirFaturaCP = document.getElementById('ncc-exibir-fatura-cp')?.checked || false;
+  return {limite, diaFechamento, diaVencimentoFatura, faturaInicial, exibirFaturaCP};
 }
 
 /** Persiste edição de conta corrente */
@@ -16303,15 +16366,15 @@ async function salvarEdicaoContaCorrente(id){
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
-  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial} = _ccCartaoCampos();
+  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial, exibirFaturaCP} = _ccCartaoCampos();
   const {error} = await sb.from('contas_correntes').update({
     nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo, ocultar_painel:ocultarPainel,
     limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
-    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema
+    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema, exibir_fatura_cp:exibirFaturaCP
   }).eq('id', id);
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
-  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial});
+  Object.assign(c, {nome, banco, agencia, tipo, saldoInicial, ativo, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial, exibirFaturaCP});
   save();
   registrarLog('editar','conta_corrente',id,`Conta corrente editada: "${nome}"`); // v1.47.108
   await _delay;
@@ -16357,18 +16420,18 @@ async function salvarNovaContaCorrente(){
   const saldoInicial = parseFloat(
     (document.getElementById('ncc-saldo').value||'0').replace(/\./g,'').replace(',','.')
   ) || 0;
-  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial} = _ccCartaoCampos();
+  const {limite, diaFechamento, diaVencimentoFatura, faturaInicial, exibirFaturaCP} = _ccCartaoCampos();
   const ocultarPainel = document.getElementById('ncc-ocultar')?.checked || false;
   const ehContaSistema = document.getElementById('ncc-sistema')?.checked || false;
 
   const id = await proximoIdSeguro('contas_correntes', db.contasCorrente||[]);
-  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial};
+  const row = {id, nome, banco, agencia, conta:'', tipo, saldoInicial, ativo:true, ocultarPainel, ehContaSistema, limite, diaFechamento, diaVencimentoFatura, faturaInicial, exibirFaturaCP};
 
   const {error} = await sb.from('contas_correntes').insert({
     id, nome, banco:banco||null, agencia:agencia||null, conta:null,
     tipo, saldo_inicial:saldoInicial, ativo:true, ocultar_painel:ocultarPainel,
     limite, dia_fechamento:diaFechamento, dia_vencimento_fatura:diaVencimentoFatura,
-    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema
+    fatura_inicial:faturaInicial||0, eh_conta_sistema:ehContaSistema, exibir_fatura_cp:exibirFaturaCP
   });
   if(error){ btnRestaurar(btn); alert('Erro ao salvar: '+error.message); return; }
 
@@ -17606,7 +17669,9 @@ function renderContasPagar(){
   if(!tbody) return;
 
   const hoje  = localDia(0);
-  const todas = db.contasPagar || [];
+  // v1.47.247: faturas de cartão de crédito (virtuais, nunca gravadas) entram junto
+  // das contas a pagar de verdade — ver _faturasCartaoVirtuais().
+  const todas = [...(db.contasPagar||[]), ..._faturasCartaoVirtuais()];
 
   // Popular select de CC (só uma vez)
   if(selCC && selCC.options.length<=1){
@@ -17669,6 +17734,25 @@ function renderContasPagar(){
   if(empty) empty.style.display='none';
 
   tbody.innerHTML = lista.map(p=>{
+    // v1.47.247: linha virtual da fatura do cartão — nunca é uma Conta a Pagar de
+    // verdade, então renderiza separado (sem botão de pagar, clique abre a conta).
+    if(p.__contaCartaoId){
+      return `<tr style="cursor:pointer;background:#f3e8fd" onclick="abrirEditarContaCorrente(${p.__contaCartaoId})">
+        <td style="font-size:13px">💳 ${escHtml(p._nomeCartao)}</td>
+        <td>
+          <div style="font-weight:600;font-size:14px">Fatura do cartão</div>
+          <div style="font-size:11px;color:var(--muted);font-style:italic">Saldo devedor atualizado automaticamente</div>
+        </td>
+        <td style="font-size:12px;color:var(--muted)">—</td>
+        <td style="font-size:12px;color:var(--muted)">—</td>
+        <td style="font-weight:700;text-align:right">${fmtMoney(p.valor)}</td>
+        <td style="font-size:12px">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
+        <td><span style="color:#7c3aed;font-weight:700">💳 Fatura em aberto</span></td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="icon-btn" onclick="event.stopPropagation();abrirEditarContaCorrente(${p.__contaCartaoId})" title="Ver conta">↗</button>
+        </td>
+      </tr>`;
+    }
     const forn  = (db.fornecedores||[]).find(f=>f.id===p.fornecedorId);
     const cc    = (db.centrosCusto||[]).find(c=>c.id===p.centroCustoId);
     const obra  = (db.obras||[]).find(o=>o.id===p.obraId);
