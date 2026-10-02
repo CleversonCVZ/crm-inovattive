@@ -1406,7 +1406,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.247';
+const APP_VERSION = '1.47.248';
 const APP_VERSION_DATE = '02/10/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '02/10/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.248',
+    data: '02/10/2026',
+    itens: [
+      'Novo: a linha "💳 Fatura em aberto" do cartão de crédito no Contas a Pagar agora tem botão ✔ de pagar — escolhe a conta a debitar e o valor, igual nas contas normais, e lança por baixo dos panos a mesma Transferência pra conta do cartão que hoje precisava ser feita manualmente em Contas Correntes → ＋ Lançar.',
+    ]
+  },
   {
     versao: '1.47.247',
     data: '02/10/2026',
@@ -13300,7 +13307,7 @@ const AJUDA_CONTEUDO = {
   },
   'fin-contas-pagar': {
     titulo: 'Contas a Pagar',
-    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Cada conta pode estar Pendente, Parcial (pagou uma parte, ex.: um adiantamento) ou Paga (quitada). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui. A linha roxa "💳 Fatura em aberto" (quando aparece) não é uma Conta a Pagar de verdade — é o saldo devedor ao vivo de um Cartão de Crédito marcado em Contas Correntes pra aparecer aqui; clique nela pra ir até a conta do cartão (quitar a fatura é um lançamento lá, não um "pagar" aqui).</p>`
+    html: `<p>Lançamentos de saída — tanto manuais (aqui ou nas Contas Recorrentes) quanto os que chegam de outras telas (SRM, Custo M.Obra do Cartão CRM, Custos da O.S. Avulsa). Cada conta pode estar Pendente, Parcial (pagou uma parte, ex.: um adiantamento) ou Paga (quitada). Confirmar o pagamento (botão ✔) pede a conta corrente que vai debitar, e é o único jeito de "dar baixa" — mesmo lançamentos que nasceram em outra tela sempre são pagos por aqui. A linha roxa "💳 Fatura em aberto" (quando aparece) não é uma Conta a Pagar de verdade — é o saldo devedor ao vivo de um Cartão de Crédito marcado em Contas Correntes pra aparecer aqui. O botão ✔ nela abre um pagamento igual ao das contas normais (escolhe a conta a debitar e o valor), só que por baixo dos panos ele lança uma Transferência pra conta do cartão em vez de marcar algo como "pago" — é o mesmo efeito de ir em Contas Correntes → ＋ Lançar → Transferência, só mais rápido.</p>`
   },
   'confirmar-pagamento': {
     titulo: 'Confirmar Pagamento',
@@ -17749,6 +17756,7 @@ function renderContasPagar(){
         <td style="font-size:12px">${p.dataVencimento?fmtDia2(p.dataVencimento):'—'}</td>
         <td><span style="color:#7c3aed;font-weight:700">💳 Fatura em aberto</span></td>
         <td style="white-space:nowrap;text-align:right">
+          <button class="btn sm" style="background:#2e7d32;color:#fff" onclick="event.stopPropagation();abrirPagarFaturaCartao(${p.__contaCartaoId})">✔</button>
           <button class="icon-btn" onclick="event.stopPropagation();abrirEditarContaCorrente(${p.__contaCartaoId})" title="Ver conta">↗</button>
         </td>
       </tr>`;
@@ -18301,6 +18309,114 @@ async function confirmarPagamentoConta(id, srmId){
   fecharModal();
   if(srmId){ abrirEditarSRM(srmId,'financeiro'); renderContasPagar(); } // volta pro card SRM de onde veio
   else{ renderContasPagar(); }
+}
+
+/**
+ * v1.47.248: "Pagar" a fatura virtual de um Cartão de Crédito (linha "💳 Fatura em
+ * aberto" no Contas a Pagar — ver _faturasCartaoVirtuais). Não existe uma Conta a Pagar
+ * de verdade por trás, então não há o que marcar como "pago" — quitar a fatura do cartão
+ * já era, antes desse botão, uma Transferência manual lançada direto na conta do cartão
+ * (＋ Lançar → Transferência pra outra conta → destino = o cartão). Esse modal só dá um
+ * atalho pro mesmo mecanismo: debita da conta escolhida e credita na conta do cartão,
+ * reduzindo o saldo devedor na hora (mesmo "entrada" que salvarLancamentoManual cria do
+ * lado de destino de uma transferência comum).
+ */
+function abrirPagarFaturaCartao(contaCartaoId){
+  if(!podeUsar(usuarioAtual,'fin-contas-correntes-lancar')){ alert('Sem permissão para registrar pagamentos.'); return; }
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaCartaoId);
+  if(!c) return;
+  const fatura = Math.max(-saldoContaCorrente(contaCartaoId), 0);
+  const hoje = localDia(0);
+  const contasAtivas = (db.contasCorrente||[]).filter(x=>x.ativo && x.id!==contaCartaoId);
+  const contasOpts = contasAtivas.length
+    ? contasAtivas.map(x=>`<option value="${x.id}">${x.tipo==='cartao'?'💳 ':''}${escHtml(x.nome)}${x.banco?' — '+escHtml(x.banco):''}</option>`).join('')
+    : '<option value="">— nenhuma conta ativa disponível —</option>';
+
+  abrirModal(`
+    <div class="modal-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <h3 style="margin:0">✅ Pagar Fatura — ${escHtml(c.nome)}</h3>
+    </div>
+    <div class="modal-body" style="display:grid;gap:14px">
+      <p style="margin:0">Saldo devedor atual: <b style="color:#7c3aed">${fmtMoney(fatura)}</b></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label>Valor pago agora (R$) *
+          <input id="pfc-valor" type="text" inputmode="decimal" class="input" style="margin-top:4px;font-size:18px;font-weight:700;color:#7c3aed"
+            value="${fmtMoney(fatura).replace('R$','').trim()}" oninput="mascaraMoeda(this)">
+        </label>
+        <label>Data do pagamento *
+          <input id="pfc-data" type="date" value="${hoje}" class="input" style="margin-top:4px">
+        </label>
+      </div>
+      <label>Debitar de *
+        <select id="pfc-conta" class="input" style="margin-top:4px">
+          <option value="">— selecione a conta —</option>
+          ${contasOpts}
+        </select>
+      </label>
+      <p style="font-size:11.5px;color:var(--muted);margin:0">Se pagar menos que o saldo devedor atual (um adiantamento), a fatura continua aparecendo aqui com o valor que ainda falta.</p>
+      ${!contasAtivas.length?`<p style="font-size:12px;color:#f59e0b;margin:0">⚠️ Nenhuma outra conta corrente cadastrada.</p>`:''}
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" data-btn-salvar onclick="confirmarPagamentoFaturaCartao(${contaCartaoId})">Confirmar pagamento</button>
+    </div>`);
+}
+
+/** Persiste o pagamento da fatura de um cartão — mesma mecânica de transferência
+ *  entre contas usada em salvarLancamentoManual, só que já pré-preenchida e em
+ *  um clique só a partir do Contas a Pagar. */
+async function confirmarPagamentoFaturaCartao(contaCartaoId){
+  const c = (db.contasCorrente||[]).find(x=>x.id===contaCartaoId);
+  if(!c) return;
+  const dataPagamento = document.getElementById('pfc-data').value;
+  const contaOrigemId = parseInt(document.getElementById('pfc-conta').value) || null;
+  const valorInformado = lerMoeda('pfc-valor');
+  const fatura = Math.max(-saldoContaCorrente(contaCartaoId), 0);
+
+  if(!dataPagamento){ alert('Informe a data do pagamento.'); return; }
+  if(!contaOrigemId){ alert('Selecione a conta corrente a debitar.'); return; }
+  if(!valorInformado){ alert('Informe o valor pago.'); return; }
+  if(valorInformado > fatura + 0.01){ alert(`O valor informado (${fmtMoney(valorInformado)}) é maior que o saldo devedor atual (${fmtMoney(fatura)}).`); return; }
+
+  const btn = btnModalPrimario();
+  btnSalvando(btn, 'Confirmando…');
+  const _delay = new Promise(r=>setTimeout(r,800));
+
+  const contaOrigem = (db.contasCorrente||[]).find(x=>x.id===contaOrigemId);
+  const descOrigem = `Pagamento fatura: ${c.nome}`;
+  const idOrigem = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
+  const {error: eOrigem} = await sb.from('movimentacoes_financeiras').insert({
+    id:idOrigem, conta_id:contaOrigemId, tipo:'transferencia', valor:valorInformado,
+    descricao:descOrigem, data_movimento:dataPagamento, centro_custo_id:null,
+    origem_tipo:'manual', origem_id:null, conta_destino_id:contaCartaoId
+  });
+  if(eOrigem){ btnRestaurar(btn); alert('Erro ao confirmar: '+eOrigem.message); return; }
+  db.movimentacoes = db.movimentacoes || [];
+  db.movimentacoes.push({
+    id:idOrigem, contaId:contaOrigemId, tipo:'transferencia', valor:valorInformado,
+    descricao:descOrigem, dataMovimento:dataPagamento, centroCustoId:null,
+    origemTipo:'manual', origemId:null, contaDestinoId:contaCartaoId, criadoEm:new Date().toISOString()
+  });
+
+  const idDestino = await proximoIdSeguro('movimentacoes_financeiras', db.movimentacoes||[]);
+  const descDestino = `Transferência de: ${contaOrigem?.nome||contaOrigemId}`;
+  const {error: eDestino} = await sb.from('movimentacoes_financeiras').insert({
+    id:idDestino, conta_id:contaCartaoId, tipo:'entrada', valor:valorInformado,
+    descricao:descDestino, data_movimento:dataPagamento, centro_custo_id:null,
+    origem_tipo:'transferencia', origem_id:idOrigem, conta_destino_id:null
+  });
+  if(!eDestino) db.movimentacoes.push({
+    id:idDestino, contaId:contaCartaoId, tipo:'entrada', valor:valorInformado,
+    descricao:descDestino, dataMovimento:dataPagamento, centroCustoId:null,
+    origemTipo:'transferencia', origemId:idOrigem, contaDestinoId:null, criadoEm:new Date().toISOString()
+  });
+
+  save();
+  registrarLog('pagar','conta_corrente',contaCartaoId,`Pagamento de fatura: ${c.nome} — ${fmtMoney(valorInformado)} (conta: ${contaOrigem?.nome||contaOrigemId})`);
+  await _delay;
+  renderContasCorrente();
+  fecharModal();
+  renderContasPagar();
 }
 
 /** v1.47.223: antes de excluir uma Conta a Pagar, desvincula qualquer origem que
