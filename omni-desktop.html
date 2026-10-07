@@ -1406,8 +1406,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 /* ================= VERSÃO ================= */
-const APP_VERSION = '1.47.248';
-const APP_VERSION_DATE = '02/10/2026';
+const APP_VERSION = '1.47.249';
+const APP_VERSION_DATE = '07/10/2026';
 // v1.47.228: mostra a versão na tela de Login, pro usuário conseguir confirmar
 // (sem precisar entrar) se o navegador já pegou a última versão publicada —
 // útil pra diagnosticar cache antigo. Elemento sempre existe no DOM (só fica
@@ -1416,6 +1416,13 @@ const APP_VERSION_DATE = '02/10/2026';
 
 /** Histórico de versões exibido na tela Novidades (ordem: mais recente primeiro). */
 const CHANGELOG = [
+  {
+    versao: '1.47.249',
+    data: '07/10/2026',
+    itens: [
+      'Faturamento → Espelhos de NF: na primeira coluna, cada NF que compõe o Espelho (Produto e/ou Serviço) agora aparece em sua própria linha com o respectivo valor ao lado do número (ex.: "NF 26 — R$ 3.000,00").'
+    ]
+  },
   {
     versao: '1.47.248',
     data: '02/10/2026',
@@ -10934,13 +10941,19 @@ function renderFatEspelhos(){
     const c = (db.cards||[]).find(x=>x.id===n.cardId);
     const ob = (db.obras||[]).find(o=>o.id===n.obraId);
     const cli = ob ? cliente(ob.clienteId) : null;
-    const numeros = [n.produtoNumero, n.servicoNumero].filter(Boolean).join(' / ');
+    // v1.47.232: cada NF que compõe o Espelho (Produto e/ou Serviço) em sua própria linha,
+    // com o valor dela ao lado do número.
+    const nfsLinhas = [
+      n.produtoNumero ? {num:n.produtoNumero, valor:n.produtoValor, tipo:'Produto'} : null,
+      n.servicoNumero ? {num:n.servicoNumero, valor:n.servicoValor, tipo:'Serviço'} : null
+    ].filter(Boolean);
+    const numeros = nfsLinhas.map(x=>`<span title="NF de ${x.tipo}">NF ${escHtml(String(x.num))}${(x.valor!=null && x.valor!=='' && !isNaN(+x.valor))?' — '+fmtMoney(+x.valor):''}</span>`).join('<br>');
     const tr=document.createElement('tr');
     tr.style.cursor='pointer';
     tr.title='Clique para editar';
     tr.onclick=()=>abrirEspelhoNF(n.id);
     tr.innerHTML=`
-      <td><b>#${n.id}</b>${c?` <small style="color:var(--muted)">Cartão #${c.num}</small>`:''}${numeros?`<br><small style="color:var(--muted)">NF ${escHtml(numeros)}</small>`:''}</td>
+      <td><b>#${n.id}</b>${c?` <small style="color:var(--muted)">Cartão #${c.num}</small>`:''}${numeros?`<br><small style="color:var(--muted)">${numeros}</small>`:''}</td>
       <td>${ob?escHtml(ob.nome)+(cli&&cli.nome!=='—'?' <small style="color:var(--muted)">('+escHtml(cli.nome)+')</small>':''):'<em style="color:var(--muted)">—</em>'}</td>
       <td>${n.criadoEm?fmtDia2(n.criadoEm.slice(0,10)):'—'}</td>
       <td>${n.produtoData?fmtDia2(n.produtoData):(n.servicoData?fmtDia2(n.servicoData):'—')}</td>
